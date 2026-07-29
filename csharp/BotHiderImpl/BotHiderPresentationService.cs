@@ -11,7 +11,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     private const int MaxSlots = 64;
     private const int MaxOwnerLength = 64;
     private const int MaxCrosshairBytes = 63;
-    private static readonly Version MaxVerifiedManagedSchemaPatch = new(1, 41, 7, 2);
+    private static readonly Version MaxVerifiedManagedSchemaPatch = new(1, 41, 7, 3);
     private static readonly Lazy<(bool Allowed, string Patch)> ManagedSchemaRuntime =
         new(DetectManagedSchemaRuntime);
     private static readonly TimeSpan LeaseTimeout = TimeSpan.FromSeconds(4);
