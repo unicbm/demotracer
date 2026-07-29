@@ -1,0 +1,448 @@
+{
+  "CCSBot::EquipBestWeapon": {
+    "signatures": {
+      "library": "server",
+      "windows": "48 89 5C 24 ? 48 89 74 24 ? 57 48 83 EC ? 48 8B F9 84 D2",
+      "linux": ""
+    },
+    "comment": "Bot: bot picks and equips its best weapon."
+  },
+  "CCSBot::EquipPistol": {
+    "signatures": {
+      "library": "server",
+      "windows": "48 89 5C 24 ? 48 89 74 24 ? 57 48 83 EC ? 48 8B D9 84 D2",
+      "linux": ""
+    },
+    "comment": "Bot: bot switches to its pistol secondary."
+  },
+  "CCSPlayer_WeaponServices::SelectItem": {
+    "signatures": {
+      "library": "server",
+      "windows": "48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 48 83 EC ? 41 8B E8 48 8B DA 48 8B F1",
+      "linux": ""
+    },
+    "comment": "Funnel for any weapon switch"
+  },
+  "CCSPlayer_WeaponServices::GetSlot": {
+    "signatures": {
+      "library": "server",
+      "windows": "48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 48 89 7C 24 ? 41 54 41 56 41 57 48 83 EC ? 45 33 E4 45 8B F0",
+      "linux": ""
+    },
+    "comment": "Returns the weapon in engine slot N (0=primary, 1=pistol, 2=knife)."
+  },
+  "CCSBot::Update": {
+    "signatures": {
+      "library": "server",
+      "windows": "40 55 56 57 41 54 48 8D AC 24 ? ? ? ? 48 81 EC ? ? ? ? 48 8D 05 ? ? ? ? C6 81 ? ? ? ? 00",
+      "linux": ""
+    },
+    "comment": "Per-tick decision entry; PathFollower + look-around + reaction + weapon."
+  },
+  "CCSBot::Upkeep": {
+    "signatures": {
+      "library": "server",
+      "windows": "48 89 5C 24 ? 48 89 6C 24 ? 56 57 41 56 48 83 EC ? 4C 8B F1 33 ED 48 8B 49 ? 48 39 A9 ? ? ? ?",
+      "linux": ""
+    },
+    "comment": "Per-frame view mBotntenance; UpdateLookAround + jitter + UpdateLookAngles."
+  },
+  "CCSBot::IsVisiblePos": {
+    "signatures": {
+      "library": "server",
+      "windows": "48 89 5C 24 10 48 89 74 24 18 48 89 7C 24 20 55 41 54 41 55 41 56 41 57 48 8D AC 24 ? ? ? ? 48 81 EC ? ? ? ? 48 8D 05",
+      "linux": ""
+    },
+    "comment": "CCSBot::IsVisible(Vector const&, bool testFOV, ...). Replay detour disables only testFOV; native LOS/smoke semantics remain. Windows signature verified against server.dll 2026-07-10."
+  },
+  "CCSBot::IsVisiblePlayer": {
+    "signatures": {
+      "library": "server",
+      "windows": "48 89 5C 24 08 44 88 44 24 18 55 56 57 41 54 41 55 41 56 41 57 48 8D 6C 24 D9 48 81 EC 90 00 00 00",
+      "linux": ""
+    },
+    "comment": "CCSBot::IsVisible(CCSPlayerPawn*, bool testFOV, uint8_t* visibleParts). Replay detour disables only testFOV. Windows signature verified against server.dll 2026-07-10."
+  },
+  "CCSBot::Jump": {
+    "signatures": {
+      "library": "server",
+      "windows": "48 89 5C 24 ? 57 48 83 EC ? 48 8B D9 0F B6 FA 48 8B 49 ? 48 8B 91",
+      "linux": ""
+    },
+    "comment": "Bot requests a jump."
+  },
+  "BuyState::OnUpdate": {
+    "signatures": {
+      "library": "server",
+      "windows": "48 89 54 24 ? 48 89 4C 24 ? 55 57 41 54 48 8D AC 24",
+      "linux": ""
+    },
+    "comment": "Bot buy state per-tick ordering; issues buy commands. linux: TODO"
+  },
+  "BuyState::InitialDelay": {
+    "offsets": {
+      "windows": 8,
+      "linux": 8
+    },
+    "comment": "m_isInitialDelay (0x08); rising edge = entered BuyState. linux: TODO"
+  },
+  "BuyState::DoneBuying": {
+    "offsets": {
+      "windows": 24,
+      "linux": 24
+    },
+    "comment": "m_doneBuying (0x18); set 1 to stop vanilla buying. linux: TODO"
+  },
+  "CCSBot::UpdateLookAngles": {
+    "signatures": {
+      "library": "server",
+      "windows": "40 55 53 56 57 48 8D 6C 24 ? 48 81 EC ? ? ? ? 48 8D 05",
+      "linux": ""
+    },
+    "comment": "Spring-smooths view to m_lookPitch/m_lookYaw."
+  },
+  "CCSPlayerPawn::SetEyeAngles": {
+    "signatures": {
+      "library": "server",
+      "windows": "48 89 5C 24 ? 48 89 74 24 ? 48 89 7C 24 ? 55 48 8D 6C 24 ? 48 81 EC ? ? ? ? 48 8B DA 48 8B F1 48 8D 55",
+      "linux": ""
+    },
+    "comment": "Engine eye-angle."
+  },
+  "CBasePlayerPawn::GetEyeAngles": {
+    "signatures": {
+      "library": "server",
+      "windows": "48 89 5C 24 ? 57 48 81 EC ? ? ? ? 48 8B F9 48 8B DA 48 8B 89 ? ? ? ? 48 85 C9",
+      "linux": ""
+    },
+    "comment": "Eye-angle getter used by server-side camera/spectator paths."
+  },
+  "CCSPlayer_MovementServices::ProcessMovement": {
+    "signatures": {
+      "library": "server",
+      "windows": "40 57 41 57 48 81 EC B8 00 00 00",
+      "linux": ""
+    },
+    "comment": "Per-tick movement entry; 2nd arg is CMoveData."
+  },
+  "CCSPlayer_MovementServices::PhysicsSimulate": {
+    "signatures": {
+      "library": "server",
+      "windows": "40 55 53 56 57 41 55 41 56 48 8D AC 24 08 F9 FF FF",
+      "linux": ""
+    },
+    "comment": "CBasePlayerController::OnSimulateUserCommands; per-tick replay commit boundary."
+  },
+  "CCSBot::AiTickedFlag": {
+    "offsets": {
+      "windows": 1552,
+      "linux": 0
+    },
+    "comment": "AI-ran-this-tick byte flag (0x610). linux: TODO"
+  },
+  "CCSBot::Pawn": {
+    "offsets": {
+      "windows": 24,
+      "linux": 0
+    },
+    "comment": "CCSBot -> pawn (0x18). linux: TODO"
+  },
+  "CCSBot::Enemy": {
+    "offsets": { "windows": 23048, "linux": 0 },
+    "comment": "m_enemy CHandle at 0x5A08; recovered from server.dll 2026-07-10. linux: TODO"
+  },
+  "CCSBot::IsEnemyVisible": {
+    "offsets": { "windows": 23052, "linux": 0 },
+    "comment": "m_isEnemyVisible bool at 0x5A0C. linux: TODO"
+  },
+  "CCSBot::VisibleEnemyParts": {
+    "offsets": { "windows": 23053, "linux": 0 },
+    "comment": "m_visibleEnemyParts byte at 0x5A0D. linux: TODO"
+  },
+  "CCSBot::LastSawEnemyTimestamp": {
+    "offsets": { "windows": 23068, "linux": 0 },
+    "comment": "m_lastSawEnemyTimestamp float at 0x5A1C. linux: TODO"
+  },
+  "CCSBot::FirstSawEnemyTimestamp": {
+    "offsets": { "windows": 23072, "linux": 0 },
+    "comment": "m_firstSawEnemyTimestamp float at 0x5A20. linux: TODO"
+  },
+  "CCSBot::CurrentEnemyAcquireTimestamp": {
+    "offsets": { "windows": 23076, "linux": 0 },
+    "comment": "m_currentEnemyAcquireTimestamp float at 0x5A24. linux: TODO"
+  },
+  "CCSBot::IsLastEnemyDead": {
+    "offsets": { "windows": 23088, "linux": 0 },
+    "comment": "m_isLastEnemyDead bool at 0x5A30. linux: TODO"
+  },
+  "CCSBot::NearbyEnemyCount": {
+    "offsets": { "windows": 23092, "linux": 0 },
+    "comment": "m_nearbyEnemyCount int32 at 0x5A34. linux: TODO"
+  },
+  "CBaseEntity::Identity": {
+    "offsets": {
+      "windows": 16,
+      "linux": 0
+    },
+    "comment": "entity -> CEntityIdentity* (0x10). linux: TODO"
+  },
+  "CEntityIdentity::EHandle": {
+    "offsets": {
+      "windows": 16,
+      "linux": 0
+    },
+    "comment": "m_EHandle (0x10). linux: TODO"
+  },
+  "CBaseEntity::MoveType": {
+    "offsets": {
+      "windows": 755,
+      "linux": 0
+    },
+    "comment": "m_MoveType (0x2F3). linux: TODO"
+  },
+  "CBaseEntity::ActualMoveType": {
+    "offsets": {
+      "windows": 757,
+      "linux": 0
+    },
+    "comment": "m_nActualMoveType (0x2F5). linux: TODO"
+  },
+  "CBaseEntity::Flags": {
+    "offsets": {
+      "windows": 904,
+      "linux": 0
+    },
+    "comment": "m_fFlags (0x388). linux: TODO"
+  },
+  "CBaseEntity::AbsVelocity": {
+    "offsets": {
+      "windows": 908,
+      "linux": 0
+    },
+    "comment": "m_vecAbsVelocity (0x38C). linux: TODO"
+  },
+  "CBaseEntity::BodyComponent": {
+    "offsets": {
+      "windows": 48,
+      "linux": 0
+    },
+    "comment": "m_CBodyComponent pointer (0x30). linux: TODO"
+  },
+  "CBodyComponent::SceneNode": {
+    "offsets": {
+      "windows": 8,
+      "linux": 0
+    },
+    "comment": "m_pSceneNode pointer (0x08). linux: TODO"
+  },
+  "CBaseEntity::GameSceneNode": {
+    "offsets": {
+      "windows": 0,
+      "linux": 0
+    },
+    "comment": "legacy direct m_pGameSceneNode path; current server schema uses CBaseEntity::BodyComponent -> CBodyComponent::SceneNode. linux: TODO"
+  },
+  "CGameSceneNode::AbsOrigin": {
+    "offsets": {
+      "windows": 200,
+      "linux": 0
+    },
+    "comment": "m_vecAbsOrigin (0xC8). linux: TODO"
+  },
+  "CCSPlayerPawn::WeaponServices": {
+    "offsets": {
+      "windows": 2608,
+      "linux": 0
+    },
+    "comment": "m_pWeaponServices (0xA30). linux: TODO"
+  },
+  "CBasePlayerPawn::MovementServices": {
+    "offsets": {
+      "windows": 2672,
+      "linux": 0
+    },
+    "comment": "m_pMovementServices (0xA70), used as a stable pawn->movement-services cross-check. linux: TODO"
+  },
+  "CCSPlayerPawn::Controller": {
+    "offsets": {
+      "windows": 2992,
+      "linux": 0
+    },
+    "comment": "m_hController (0xBB0). linux: TODO"
+  },
+  "CCSPlayerPawn::OriginalController": {
+    "offsets": {
+      "windows": 3364,
+      "linux": 0
+    },
+    "comment": "m_hOriginalController (0xD24). linux: TODO"
+  },
+  "CCSPlayerPawn::ViewAngle": {
+    "offsets": {
+      "windows": 2792,
+      "linux": 0
+    },
+    "comment": "v_angle (0xAE8). linux: TODO"
+  },
+  "CCSPlayerPawn::ViewAnglePrevious": {
+    "offsets": {
+      "windows": 2804,
+      "linux": 0
+    },
+    "comment": "v_anglePrevious (0xAF4). linux: TODO"
+  },
+  "CCSPlayerPawn::ServerViewAngleChanges": {
+    "offsets": {
+      "windows": 2688,
+      "linux": 0
+    },
+    "comment": "m_ServerViewAngleChanges (0xA80). linux: TODO"
+  },
+  "CCSPlayerPawn::EyeAngles": {
+    "offsets": {
+      "windows": 4968,
+      "linux": 0
+    },
+    "comment": "m_angEyeAngles (CCSPlayerPawnBase, 0x1368). linux: TODO"
+  },
+  "CCSPlayer_WeaponServices::ActiveWeapon": {
+    "offsets": {
+      "windows": 96,
+      "linux": 0
+    },
+    "comment": "m_hActiveWeapon (0x60). linux: TODO"
+  },
+  "CBasePlayerWeapon::ItemDefIndex": {
+    "offsets": {
+      "windows": 2560,
+      "linux": 0
+    },
+    "comment": "m_iItemDefinitionIndex (0xA00). linux: TODO"
+  },
+  "CCSPlayer_MovementServices::Pawn": {
+    "offsets": {
+      "windows": 56,
+      "linux": 0
+    },
+    "comment": "CPlayerPawnComponent::Pawn pointer helper (0x38). linux: TODO"
+  },
+  "CCSPlayer_MovementServices::Buttons": {
+    "offsets": {
+      "windows": 88,
+      "linux": 0
+    },
+    "comment": "m_nButtons states[0] (0x58). linux: TODO"
+  },
+  "CCSPlayer_MovementServices::Buttons1": {
+    "offsets": {
+      "windows": 96,
+      "linux": 0
+    },
+    "comment": "states[1] (0x60). linux: TODO"
+  },
+  "CCSPlayer_MovementServices::Buttons2": {
+    "offsets": {
+      "windows": 104,
+      "linux": 0
+    },
+    "comment": "states[2] (0x68). linux: TODO"
+  },
+  "CCSPlayer_MovementServices::OldViewAngles": {
+    "offsets": {
+      "windows": 576,
+      "linux": 0
+    },
+    "comment": "m_vecOldViewAngles (0x240). linux: TODO"
+  },
+  "CCSPlayer_MovementServices::LadderNormal": {
+    "offsets": {
+      "windows": 1016,
+      "linux": 0
+    },
+    "comment": "m_vecLadderNormal (0x3F8). linux: TODO"
+  },
+  "CCSPlayer_MovementServices::Ducked": {
+    "offsets": {
+      "windows": 1032,
+      "linux": 0
+    },
+    "comment": "m_bDucked (0x408). linux: TODO"
+  },
+  "CCSPlayer_MovementServices::DuckAmount": {
+    "offsets": {
+      "windows": 1036,
+      "linux": 0
+    },
+    "comment": "m_flDuckAmount (0x40C). linux: TODO"
+  },
+  "CCSPlayer_MovementServices::DuckSpeed": {
+    "offsets": {
+      "windows": 1040,
+      "linux": 0
+    },
+    "comment": "m_flDuckSpeed (0x410). linux: TODO"
+  },
+  "CCSPlayer_MovementServices::DesiresDuck": {
+    "offsets": {
+      "windows": 1045,
+      "linux": 0
+    },
+    "comment": "m_bDesiresDuck (0x415). linux: TODO"
+  },
+  "CCSPlayer_MovementServices::Ducking": {
+    "offsets": {
+      "windows": 1046,
+      "linux": 0
+    },
+    "comment": "m_bDucking (0x416). linux: TODO"
+  },
+  "CMoveData::ForwardMove": {
+    "offsets": {
+      "windows": 44,
+      "linux": 0
+    },
+    "comment": "m_flForwardMove (44). linux: TODO"
+  },
+  "CMoveData::SideMove": {
+    "offsets": {
+      "windows": 48,
+      "linux": 0
+    },
+    "comment": "m_flSideMove (48). linux: TODO"
+  },
+  "CMoveData::UpMove": {
+    "offsets": {
+      "windows": 52,
+      "linux": 0
+    },
+    "comment": "m_flUpMove (52). linux: TODO"
+  },
+  "CMoveData::Velocity": {
+    "offsets": {
+      "windows": 56,
+      "linux": 0
+    },
+    "comment": "m_vecVelocity (56). linux: TODO"
+  },
+  "CMoveData::AbsOrigin": {
+    "offsets": {
+      "windows": 200,
+      "linux": 0
+    },
+    "comment": "m_vecAbsOrigin (200). linux: TODO"
+  },
+  "vtidx::PlayerRunCommand": {
+    "offsets": {
+      "windows": 25,
+      "linux": 0
+    },
+    "comment": "CCSPlayer_MovementServices vtable index. linux: TODO"
+  },
+  "vtidx::FinishMove": {
+    "offsets": {
+      "windows": 38,
+      "linux": 0
+    },
+    "comment": "CCSPlayer_MovementServices vtable index. linux: TODO"
+  }
+}

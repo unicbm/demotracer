@@ -1,0 +1,15 @@
+if(NOT DEFINED GENERATED_DIR OR GENERATED_DIR STREQUAL "")
+    message(FATAL_ERROR "GENERATED_DIR is required")
+endif()
+
+file(GLOB proto_headers LIST_DIRECTORIES false "${GENERATED_DIR}/*.pb.h")
+list(LENGTH proto_headers proto_header_count)
+if(proto_header_count EQUAL 0)
+    message(FATAL_ERROR "no generated protobuf headers found in ${GENERATED_DIR}")
+endif()
+
+foreach(proto_header IN LISTS proto_headers)
+    file(READ "${proto_header}" proto_contents)
+    string(REPLACE " final :" " :" proto_contents "${proto_contents}")
+    file(WRITE "${proto_header}" "${proto_contents}")
+endforeach()
