@@ -65,7 +65,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private const int AvatarOverrideMaxBytes = 16 * 1024;
     private static readonly byte[] AvatarPngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
     private const string FreezeTimeConVarName = "mp_freezetime";
-    private static readonly Version MaxVerifiedManagedSchemaPatch = new(1, 41, 7, 2);
+    private static readonly Version MaxVerifiedManagedSchemaPatch = new(1, 41, 7, 3);
     private static readonly Lazy<(bool Allowed, string Patch)> ManagedSchemaRuntime =
         new(DetectManagedSchemaRuntime);
     private const string CosmeticRiskNotice = "[DTR WARN] cosmetic alignment consumes opt-in manifest cosmetics evidence and may carry Valve GSLT/server-guideline risk outside local/private replay validation.";
@@ -5589,6 +5589,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         var itemServices = new CCSPlayer_ItemServices(pawn.ItemServices.Handle);
         itemServices.HasHelmet = loadout.HasHelmet;
         itemServices.HasDefuser = player.Team == CsTeam.CounterTerrorist && loadout.HasDefuser;
+        Utilities.SetStateChanged(pawn, "CCSPlayerPawn", "m_pItemServices");
     }
 
     private static bool ResetReplayPawnRoundStartHealth(int slot)
