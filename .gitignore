@@ -1,0 +1,4 @@
+/build/
+/dist/
+/csharp/**/bin/
+/csharp/**/obj/
