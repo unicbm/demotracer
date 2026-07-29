@@ -1,0 +1,32 @@
+[package]
+name = "cs2-demotracer"
+version = "1.0.3"
+edition = "2021"
+license-file = "../../LICENSE"
+publish = false
+
+[features]
+default = ["demoparser"]
+demoparser = ["dep:ahash", "dep:parser"]
+
+[lib]
+name = "cs2_demotracer"
+path = "src/lib.rs"
+
+[dependencies]
+ahash = { version = "0.8", optional = true, default-features = false, features = ["std", "no-rng"] }
+brotli = "8.0.3"
+rayon = "1.12"
+regex = "1.12"
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "1"
+zstd = { version = "0.13", default-features = false }
+
+[dependencies.parser]
+path = "../../third_party/demoparser/src/parser"
+optional = true
+
+[dev-dependencies]
+tempfile = "3"
