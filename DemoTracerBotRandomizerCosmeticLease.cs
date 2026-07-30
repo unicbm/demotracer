@@ -23,10 +23,7 @@ internal sealed record DemoTracerBotRandomizerWeaponEvidence(
     bool Keychain,
     bool? PaintUsesLegacyModel);
 
-internal sealed record DemoTracerBotRandomizerPositiveEvidence(
-    bool Agent,
-    bool Knife,
-    bool Gloves,
+internal sealed record DemoTracerBotRandomizerClaimEvidence(
     bool MusicKit,
     IReadOnlyList<DemoTracerBotRandomizerWeaponEvidence> Weapons);
 
@@ -168,9 +165,9 @@ public sealed partial class DemoTracerPlugin
 
     private bool SyncBotRandomizerCosmeticLease(bool announce)
     {
-        if (_loadedReplays.Count == 0 || !AnyCosmeticFeatureEnabled())
+        if (_loadedReplays.Count == 0)
         {
-            ReleaseBotRandomizerCosmeticLease("no_positive_claims");
+            ReleaseBotRandomizerCosmeticLease("no_replay_identity_claims");
             return true;
         }
 
@@ -195,7 +192,7 @@ public sealed partial class DemoTracerPlugin
         var requests = BuildBotRandomizerCosmeticWriteClaims();
         if (requests.Length == 0)
         {
-            ReleaseBotRandomizerCosmeticLease("no_positive_claims");
+            ReleaseBotRandomizerCosmeticLease("no_authenticated_replay_claims");
             return true;
         }
 
@@ -287,7 +284,7 @@ public sealed partial class DemoTracerPlugin
         return claims.ToArray();
     }
 
-    private DemoTracerBotRandomizerPositiveEvidence BuildBotRandomizerPositiveEvidence(LoadedReplay replay)
+    private DemoTracerBotRandomizerClaimEvidence BuildBotRandomizerPositiveEvidence(LoadedReplay replay)
     {
         var weapons = new List<DemoTracerBotRandomizerWeaponEvidence>();
         if (_cosmeticAlignEnabled && _weaponAlignEnabled)
@@ -310,10 +307,7 @@ public sealed partial class DemoTracerPlugin
             }
         }
 
-        return new DemoTracerBotRandomizerPositiveEvidence(
-            Agent: _cosmeticAlignEnabled && _cosmeticAgentsEnabled && replay.Cosmetics.Agent != null,
-            Knife: _cosmeticAlignEnabled && _weaponAlignEnabled && _cosmeticKnivesEnabled && replay.Cosmetics.Knife != null,
-            Gloves: _cosmeticAlignEnabled && _weaponAlignEnabled && _cosmeticGlovesEnabled && replay.Cosmetics.Glove != null,
+        return new DemoTracerBotRandomizerClaimEvidence(
             MusicKit: ReplayMusicKitAlignmentAllowed(replay.MusicKitId),
             Weapons: weapons);
     }
@@ -322,7 +316,7 @@ public sealed partial class DemoTracerPlugin
         int slot,
         ulong incarnation,
         ulong subjectSteamId,
-        DemoTracerBotRandomizerPositiveEvidence evidence)
+        DemoTracerBotRandomizerClaimEvidence evidence)
     {
         if (slot < 0 || incarnation == 0 || subjectSteamId == 0)
             return null;
@@ -344,17 +338,17 @@ public sealed partial class DemoTracerPlugin
                 PaintUsesLegacyModel = weapon.Paint ? weapon.PaintUsesLegacyModel : null
             })
             .ToArray();
-        if (!evidence.Agent && !evidence.Knife && !evidence.Gloves && !evidence.MusicKit && weapons.Length == 0)
-            return null;
-
         return new BotRandomizerCosmeticWriteClaim
         {
             Slot = slot,
             Incarnation = incarnation,
             SubjectSteamId = subjectSteamId,
-            Agent = evidence.Agent,
-            Knife = evidence.Knife,
-            Gloves = evidence.Gloves,
+            // These are identity-level claims for every authenticated replay
+            // slot. Null normalized evidence is applied as the native/default
+            // state by DemoTracer.
+            Agent = true,
+            Knife = true,
+            Gloves = true,
             MusicKit = evidence.MusicKit,
             Weapons = weapons
         };
@@ -489,8 +483,7 @@ public sealed partial class DemoTracerPlugin
                 PreloadReplayWeaponsForSlot(slot, replay);
                 if (ReplayMusicKitAlignmentAllowed(replay.MusicKitId))
                     _ = ApplyReplayMusicKitForSlot(slot, replay.MusicKitId);
-                if (_cosmeticAlignEnabled && (_weaponAlignEnabled || _cosmeticAgentsEnabled))
-                    ApplyLoadedReplayCosmeticsForSlot(slot, replay);
+                ApplyLoadedReplayCosmeticsForSlot(slot, replay);
             });
         }
     }

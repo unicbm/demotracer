@@ -256,6 +256,8 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         _appliedKnifeCosmeticBirths.Remove(playerSlot);
         _pendingKnifeEntityRefreshes.Remove(playerSlot);
         _knifeEntityRefreshUnavailableWarnings.Remove(playerSlot);
+        _nativeAgentModels.Remove(playerSlot);
+        _nativeAgentRespawnAttempts.Remove(playerSlot);
         _ = SyncBotRandomizerCosmeticLease(announce: false);
 
         if (!HasReplayLifecycleState(includeNative: true))
@@ -1028,6 +1030,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private void ReplyCosmeticsStatus(Action<string> reply)
     {
         reply($"[DTR COSMETICS] preset={CosmeticPresetName()} risk={FormatOnOff(_cosmeticAlignEnabled)}");
+        reply("[DTR COSMETICS] replay_identity_claims=agent,knife,gloves missing=native_agent,team_knife,no_gloves");
         reply($"[DTR COSMETICS] weapons={FormatOnOff(_cosmeticWeaponsEnabled)} knives={FormatOnOff(_cosmeticKnivesEnabled)} gloves={FormatOnOff(_cosmeticGlovesEnabled)} names={FormatOnOff(_cosmeticNamesEnabled)} agents={FormatOnOff(_cosmeticAgentsEnabled)} stickers={FormatOnOff(_stickerAlignEnabled)} charms={FormatOnOff(_charmAlignEnabled)} preserve_native={FormatOnOff(_preserveNativeBotCosmetics)}");
         reply($"[DTR COSMETICS] {FormatCosmeticStatusCounts()}");
     }
@@ -1606,6 +1609,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     {
         if (@event.Userid is { IsValid: true } player)
         {
+            CaptureNativeAgentModelForSpawn(player);
             var spawnedSlot = player.Slot;
             var spawnedUserId = player.UserId;
             if (_retainedReplayViewmodelSlots.Contains(player.Slot) &&
@@ -1618,6 +1622,11 @@ public sealed partial class DemoTracerPlugin : BasePlugin
             {
                 if (_loadedReplays.ContainsKey(player.Slot))
                 {
+                    // Establish the replay identity and its Agent/Knife/Gloves
+                    // writer lease in the spawn event itself. BotRandomizer's
+                    // pawn writes run on its later spawn callback.
+                    _ = SyncBotHiderPresentationLease(announce: false);
+                    _ = SyncBotRandomizerCosmeticLease(announce: false);
                     // Buy plans are slot-scoped, but the engine creates a new
                     // pawn each round. Reassert the skip edge at spawn and redo
                     // loadout preparation once the new pawn is fully usable.
@@ -1634,8 +1643,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
                             return;
                         }
 
-                        _ = SyncBotHiderPresentationLease(announce: false);
-                        _ = SyncBotRandomizerCosmeticLease(announce: false);
                         ApplyReplayLoadoutForSlot(spawnedSlot, replay);
                         PreloadReplayWeaponsForSlot(spawnedSlot, replay);
                     });
@@ -3633,7 +3640,10 @@ public sealed partial class DemoTracerPlugin : BasePlugin
             }
         }
 
-        if (_cosmeticAlignEnabled && (_weaponAlignEnabled || _cosmeticAgentsEnabled))
+        // Replay identity cosmetics are mandatory even when every optional
+        // positive-evidence component is disabled: missing agent/knife/glove
+        // evidence means native/default, not Randomizer ownership.
+        if (_loadedReplays.Count > 0)
         {
             foreach (var slot in _loadedSlots)
             {
@@ -5032,6 +5042,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
             _loadoutSyncedSlots.Clear();
             ResetCosmeticAlignState(resetCounters: true);
             ResetCosmeticEvidenceCache();
+            ResetNativeAgentModelCaptures();
             ResetStickerAlignState(resetCounters: true);
             ResetCharmAlignState(resetCounters: true);
             ResetCrosshairAlignState(resetCounters: true);
@@ -5450,6 +5461,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         _appliedGloveCosmetics.Remove(slot);
         _gloveCosmeticTokens.Remove(slot);
         _pendingKnifeEntityRefreshes.Remove(slot);
+        _nativeAgentRespawnAttempts.Remove(slot);
         _slotCosmeticEvidenceKeys.Remove(slot);
         _scoreboardSyncedSlots.Remove(slot);
         KillTrackedReplayDropsForSlot(slot, "forget_replay");
