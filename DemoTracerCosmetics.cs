@@ -2949,8 +2949,7 @@ public sealed partial class DemoTracerPlugin
         try
         {
             AttributeSetter.Value.Invoke(attributeListHandle, "set item texture prefab", cosmetic.PaintKit);
-            if (HasCosmeticSeedEvidence(cosmetic.SeedKnown))
-                AttributeSetter.Value.Invoke(attributeListHandle, "set item texture seed", cosmetic.Seed);
+            AttributeSetter.Value.Invoke(attributeListHandle, "set item texture seed", cosmetic.Seed);
             AttributeSetter.Value.Invoke(attributeListHandle, "set item texture wear", cosmetic.Wear);
             return true;
         }
