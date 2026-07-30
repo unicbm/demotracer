@@ -938,10 +938,22 @@ fn build_player_high_fidelity_metadata(
     });
 
     HighFidelityMetadata::with_projectiles(
+        round_start_balance_for_player(player_rows, live_start_tick),
         events,
         inventory_snapshots_for_player(player_rows),
         projectile_hifi_metadata(player_projectiles, player_rows),
     )
+}
+
+fn round_start_balance_for_player(
+    player_rows: &[&ParsedPlayerTick],
+    live_start_tick: i32,
+) -> Option<u32> {
+    player_rows
+        .iter()
+        .copied()
+        .find(|row| row.tick >= live_start_tick)
+        .and_then(|row| row.account_balance)
 }
 
 fn projectile_hifi_metadata(
@@ -5194,7 +5206,7 @@ mod tests {
         assert_eq!(rec.ticks[0].pre.origin[0], 20.0);
         assert_eq!(rec.ticks[80].pre.origin[0], 100.0);
         assert_eq!(rec.projectiles[0].tick_index, 144);
-        assert_eq!(rec.high_fidelity.schema_version, 3);
+        assert_eq!(rec.high_fidelity.schema_version, 4);
         assert_eq!(rec.high_fidelity.projectiles.len(), 1);
         assert_eq!(rec.high_fidelity.projectiles[0].tick_index, 144);
         assert_eq!(
@@ -5468,6 +5480,44 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn round_start_balance_uses_first_live_row_with_evidence() {
+        let steam_id = 76561198000000001;
+        let mut parsed = sample_demo();
+        parsed.rows = vec![
+            ParsedPlayerTick {
+                account_balance: Some(5_250),
+                ..row_with_inventory(100, steam_id, "alpha", vec![7])
+            },
+            ParsedPlayerTick {
+                account_balance: Some(8_500),
+                ..row_with_inventory(164, steam_id, "alpha", vec![7])
+            },
+        ];
+
+        let rec = rec_for_steam(&export_memory(parsed), steam_id);
+
+        assert_eq!(rec.high_fidelity.schema_version, 4);
+        assert_eq!(rec.high_fidelity.round_start_balance, Some(5_250));
+    }
+
+    #[test]
+    fn round_start_balance_does_not_fall_forward_from_missing_live_evidence() {
+        let steam_id = 76561198000000001;
+        let mut parsed = sample_demo();
+        parsed.rows = vec![
+            row_with_inventory(100, steam_id, "alpha", vec![7]),
+            ParsedPlayerTick {
+                account_balance: Some(8_500),
+                ..row_with_inventory(164, steam_id, "alpha", vec![7])
+            },
+        ];
+
+        let rec = rec_for_steam(&export_memory(parsed), steam_id);
+
+        assert_eq!(rec.high_fidelity.round_start_balance, None);
     }
 
     fn sticker(
@@ -5815,6 +5865,7 @@ mod tests {
             equipment_value_total: 2_700,
             money_saved_total: 800,
             cash_spent_this_round: 0,
+            account_balance: None,
             entity_flags: 1,
             move_type: 2,
             duck_amount: None,

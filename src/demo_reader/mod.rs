@@ -584,6 +584,7 @@ mod demoparser_impl {
         equipment_value_total => "equipment_value_total",
         money_saved_total => "money_saved_total",
         cash_spent_this_round => "cash_spent_this_round",
+        account_balance => "balance",
         move_type => "move_type",
         duck_amount => "duck_amount",
         duck_speed => "duck_speed",
@@ -1007,6 +1008,7 @@ mod demoparser_impl {
             "equipment_value_total",
             "money_saved_total",
             "cash_spent_this_round",
+            "balance",
             "team_num",
             "is_alive",
             "is_airborne",
@@ -1318,6 +1320,7 @@ mod demoparser_impl {
                             .unwrap_or_default(),
                         cash_spent_this_round: get_u32(columns.cash_spent_this_round, idx)
                             .unwrap_or_default(),
+                        account_balance: get_u32(columns.account_balance, idx),
                         entity_flags: explicit_flags.unwrap_or(if is_airborne { 0 } else { 1 }),
                         move_type: get_u32(columns.move_type, idx).unwrap_or(2) as u8,
                         duck_amount: get_f32(columns.duck_amount, idx),

@@ -302,6 +302,8 @@ pub struct ReplayProjectileMetadata {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct HighFidelityMetadata {
     pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub round_start_balance: Option<u32>,
     pub events: Vec<ReplayHifiEvent>,
     pub inventory_snapshots: Vec<ReplayInventorySnapshot>,
     #[serde(default)]
@@ -311,7 +313,8 @@ pub struct HighFidelityMetadata {
 impl Default for HighFidelityMetadata {
     fn default() -> Self {
         Self {
-            schema_version: 3,
+            schema_version: 4,
+            round_start_balance: None,
             events: Vec::new(),
             inventory_snapshots: Vec::new(),
             projectiles: Vec::new(),
@@ -325,7 +328,8 @@ impl HighFidelityMetadata {
         inventory_snapshots: Vec<ReplayInventorySnapshot>,
     ) -> Self {
         Self {
-            schema_version: 3,
+            schema_version: 4,
+            round_start_balance: None,
             events,
             inventory_snapshots,
             projectiles: Vec::new(),
@@ -333,12 +337,14 @@ impl HighFidelityMetadata {
     }
 
     pub fn with_projectiles(
+        round_start_balance: Option<u32>,
         events: Vec<ReplayHifiEvent>,
         inventory_snapshots: Vec<ReplayInventorySnapshot>,
         projectiles: Vec<ReplayProjectileMetadata>,
     ) -> Self {
         Self {
-            schema_version: 3,
+            schema_version: 4,
+            round_start_balance,
             events,
             inventory_snapshots,
             projectiles,
@@ -346,7 +352,10 @@ impl HighFidelityMetadata {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.events.is_empty() && self.inventory_snapshots.is_empty() && self.projectiles.is_empty()
+        self.round_start_balance.is_none()
+            && self.events.is_empty()
+            && self.inventory_snapshots.is_empty()
+            && self.projectiles.is_empty()
     }
 }
 
@@ -694,6 +703,7 @@ pub struct ParsedPlayerTick {
     pub equipment_value_total: u32,
     pub money_saved_total: u32,
     pub cash_spent_this_round: u32,
+    pub account_balance: Option<u32>,
     pub entity_flags: u32,
     pub move_type: u8,
     pub duck_amount: Option<f32>,

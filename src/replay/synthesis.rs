@@ -369,6 +369,7 @@ mod tests {
             equipment_value_total: 0,
             money_saved_total: 0,
             cash_spent_this_round: 0,
+            account_balance: None,
             entity_flags: 1,
             move_type: 2,
             duck_amount: None,
