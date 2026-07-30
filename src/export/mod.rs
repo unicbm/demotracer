@@ -23,6 +23,7 @@ use crate::replay::synthesis::{
 use crate::{io_error, Error, Result};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -2362,11 +2363,14 @@ fn replay_active_cosmetics(
     }
 
     if let Some(glove) = glove {
+        let seed_known = glove.seed.is_some();
         cosmetics.glove = Some(ReplayItemCosmetic {
             item_def_index: Some(glove.key.item_def_index),
             paint_kit: glove.key.paint_kit,
-            seed: glove.seed.unwrap_or_default(),
-            seed_known: glove.seed.is_none().then_some(false),
+            seed: glove
+                .seed
+                .unwrap_or_else(|| stable_glove_fallback_seed(rows, glove.key)),
+            seed_known: (!seed_known).then_some(false),
             wear: f32::from_bits(glove.key.wear_bits),
             custom_name: None,
             inspect: None,
@@ -2377,6 +2381,23 @@ fn replay_active_cosmetics(
         .weapons
         .sort_by_key(|weapon| weapon.weapon_def_index);
     (!cosmetics.is_empty()).then_some(cosmetics)
+}
+
+fn stable_glove_fallback_seed(rows: &[&ParsedPlayerTick], key: EconGloveKey) -> u32 {
+    let identity = rows
+        .iter()
+        .find(|row| row.steam_id != 0)
+        .map(|row| (row.steam_id, row.team_num))
+        .unwrap_or_default();
+    let mut hasher = Sha256::new();
+    hasher.update(b"cs2-demotracer-glove-fallback-seed-v1\0");
+    hasher.update(identity.0.to_le_bytes());
+    hasher.update(identity.1.to_le_bytes());
+    hasher.update(key.item_def_index.to_le_bytes());
+    hasher.update(key.paint_kit.to_le_bytes());
+    hasher.update(key.wear_bits.to_le_bytes());
+    let digest = hasher.finalize();
+    1 + u32::from_le_bytes(digest[..4].try_into().expect("SHA-256 prefix")) % 1_000
 }
 
 fn live_start_inventory_weapon_cosmetics(
@@ -3816,7 +3837,7 @@ mod tests {
             .expect("expected partial glove evidence");
         assert_eq!(glove.item_def_index, Some(5030));
         assert_eq!(glove.paint_kit, 10038);
-        assert_eq!(glove.seed, 0);
+        assert!((1..=1_000).contains(&glove.seed));
         assert_eq!(glove.seed_known, Some(false));
         assert_eq!(glove.wear.to_bits(), 0.148_281_16_f32.to_bits());
         assert!(glove.inspect.is_none());
@@ -4001,7 +4022,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_preserves_gloves_without_fabricating_a_missing_seed() {
+    fn manifest_uses_a_stable_fallback_without_claiming_missing_seed_evidence() {
         let mut parsed = sample_demo();
         parsed.rows = vec![
             ParsedPlayerTick {
@@ -4020,6 +4041,7 @@ mod tests {
             },
         ];
 
+        let repeated_parsed = parsed.clone();
         let memory = export_memory_with_cosmetics(parsed);
         let glove = memory.manifest.files[0]
             .cosmetics
@@ -4029,10 +4051,21 @@ mod tests {
 
         assert_eq!(glove.item_def_index, Some(5034));
         assert_eq!(glove.paint_kit, 10033);
-        assert_eq!(glove.seed, 0);
+        assert!((1..=1_000).contains(&glove.seed));
         assert_eq!(glove.seed_known, Some(false));
         assert_eq!(glove.wear.to_bits(), 0.382_f32.to_bits());
         assert!(glove.inspect.is_none());
+
+        let repeated = export_memory_with_cosmetics(repeated_parsed);
+        assert_eq!(
+            repeated.manifest.files[0]
+                .cosmetics
+                .as_ref()
+                .and_then(|cosmetics| cosmetics.glove.as_ref())
+                .expect("repeated partial glove evidence")
+                .seed,
+            glove.seed
+        );
     }
 
     #[test]
