@@ -2017,11 +2017,12 @@ pub(crate) struct EconGloveKey {
 pub(crate) type EconGloveSeedMap = BTreeMap<EconGloveKey, Option<u32>>;
 pub(crate) type EconGloveSeedIndex = BTreeMap<u64, EconGloveSeedMap>;
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) struct EconKnifePaint {
     pub(crate) paint_kit: u32,
     pub(crate) seed: u32,
     pub(crate) wear_bits: u32,
+    pub(crate) custom_name: Option<String>,
 }
 
 pub(crate) type EconKnifePaintMap = BTreeMap<i32, Option<EconKnifePaint>>;
@@ -2051,6 +2052,7 @@ pub(crate) fn knife_econ_paint_index(parsed: &ParsedDemo) -> EconKnifePaintIndex
             paint_kit: spec.paint_kit,
             seed: spec.seed,
             wear_bits: spec.wear_bits,
+            custom_name: cosmetic_custom_name_value(item.custom_name.as_deref()),
         };
         let paints = paints_by_player.entry(steam_id).or_default();
         match paints.entry(item_def_index) {
@@ -2058,8 +2060,22 @@ pub(crate) fn knife_econ_paint_index(parsed: &ParsedDemo) -> EconKnifePaintIndex
                 entry.insert(Some(paint));
             }
             std::collections::btree_map::Entry::Occupied(mut entry) => {
-                if entry.get().is_some_and(|current| current != paint) {
-                    entry.insert(None);
+                let Some(current) = entry.get_mut() else {
+                    continue;
+                };
+                if current.paint_kit != paint.paint_kit
+                    || current.seed != paint.seed
+                    || current.wear_bits != paint.wear_bits
+                {
+                    *entry.get_mut() = None;
+                    continue;
+                }
+                match (&current.custom_name, paint.custom_name) {
+                    (None, Some(name)) => current.custom_name = Some(name),
+                    (Some(existing), Some(name)) if existing != &name => {
+                        current.custom_name = None;
+                    }
+                    _ => {}
                 }
             }
         }
@@ -2071,22 +2087,40 @@ fn matching_econ_knife_paint(
     paints: Option<&EconKnifePaintMap>,
     item_def_index: i32,
 ) -> Option<EconKnifePaint> {
-    paints?.get(&item_def_index).copied().flatten()
+    paints?.get(&item_def_index).cloned().flatten()
 }
 
-pub(crate) fn matching_owned_active_econ_knife_paint(
+pub(crate) fn matching_active_econ_knife_paint(
     paints: Option<&EconKnifePaintMap>,
     row: &ParsedPlayerTick,
 ) -> Option<EconKnifePaint> {
-    if !active_cosmetic_owned_by(row) {
-        return None;
-    }
     let paint = matching_econ_knife_paint(paints, row.item_def_idx)?;
-    let observed_wear = row
-        .active_weapon_paint_wear
-        .filter(|wear| wear.is_finite() && (0.0..=1.0).contains(wear))?;
-    (row.active_weapon_paint_seed == Some(paint.seed) && observed_wear.to_bits() == paint.wear_bits)
-        .then_some(paint)
+    if active_cosmetic_owned_by(row) {
+        if let Some(observed_wear) = row
+            .active_weapon_paint_wear
+            .filter(|wear| wear.is_finite() && (0.0..=1.0).contains(wear))
+        {
+            return (row.active_weapon_paint_seed == Some(paint.seed)
+                && observed_wear.to_bits() == paint.wear_bits)
+                .then_some(paint);
+        }
+    }
+
+    // Some tournament demos expose the exact custom knife defindex while every
+    // live econ field remains at its network default. The end-of-match inventory
+    // is already scoped to this SteamID; when it contains one unambiguous paint
+    // for that same knife type, the active defindex is the missing linkage.
+    let live_econ_unavailable = row.active_weapon_paint_kit.is_none_or(|value| value == 0)
+        && row.active_weapon_paint_seed.is_none_or(|value| value == 0)
+        && row.active_weapon_paint_wear.is_none()
+        && row
+            .active_weapon_original_owner_steam_id
+            .is_none_or(|value| value == 0)
+        && row
+            .active_weapon_item_account_id
+            .is_none_or(|value| value <= 1)
+        && row.active_weapon_item_id.is_none_or(|value| value == 0);
+    live_econ_unavailable.then_some(paint)
 }
 
 pub(crate) fn glove_econ_seed_index(parsed: &ParsedDemo) -> EconGloveSeedIndex {
@@ -2190,14 +2224,12 @@ fn replay_active_cosmetics(
                     )
                 })
                 .flatten();
-            let econ_spec =
-                matching_owned_active_econ_knife_paint(econ_knife_paints, row).map(|paint| {
-                    CosmeticPaintSpec {
-                        paint_kit: paint.paint_kit,
-                        seed: paint.seed,
-                        wear_bits: paint.wear_bits,
-                    }
-                });
+            let econ_paint = matching_active_econ_knife_paint(econ_knife_paints, row);
+            let econ_spec = econ_paint.as_ref().map(|paint| CosmeticPaintSpec {
+                paint_kit: paint.paint_kit,
+                seed: paint.seed,
+                wear_bits: paint.wear_bits,
+            });
             if let Some(spec) = active_spec.or(econ_spec) {
                 knife_specs.insert((raw_def, spec));
             }
@@ -2205,6 +2237,9 @@ fn replay_active_cosmetics(
                 if let Some(name) = active_cosmetic_custom_name(row) {
                     knife_custom_names.insert((raw_def, name));
                 }
+            }
+            if let Some(name) = econ_paint.and_then(|paint| paint.custom_name) {
+                knife_custom_names.insert((raw_def, name));
             }
         } else {
             let def = normalize_weapon_def_index(raw_def);
@@ -3756,6 +3791,7 @@ mod tests {
             paint_seed: Some(260),
             paint_wear_raw: Some(wear.to_bits()),
             paint_wear: Some(wear),
+            custom_name: None,
             item_name: None,
             skin_name: Some("Crimson Kimono".to_string()),
         }];
@@ -4641,7 +4677,7 @@ mod tests {
     }
 
     #[test]
-    fn end_of_match_econ_knife_requires_matching_owned_live_evidence() {
+    fn end_of_match_econ_knife_recovers_missing_live_econ_fields() {
         let naf_steam_id = 76561198001151695;
         let elige_steam_id = 76561198066693739;
         let wear = 0.031_718_593_f32;
@@ -4664,6 +4700,7 @@ mod tests {
                     paint_seed: Some(80),
                     paint_wear_raw: Some(elige_wear.to_bits()),
                     paint_wear: Some(elige_wear),
+                    custom_name: Some("player scoped knife".to_string()),
                     ..ParsedEconItem::default()
                 },
             ],
@@ -4710,8 +4747,16 @@ mod tests {
             paints.get(&elige_steam_id),
             true,
             false,
+        )
+        .expect("player-scoped econ knife should fill unavailable live econ fields");
+        let elige_knife = elige_cosmetics.knife.expect("player-scoped econ knife");
+        assert_eq!(elige_knife.paint_kit, 570);
+        assert_eq!(elige_knife.seed, 80);
+        assert_eq!(elige_knife.wear.to_bits(), elige_wear.to_bits());
+        assert_eq!(
+            elige_knife.custom_name.as_deref(),
+            Some("player scoped knife")
         );
-        assert!(elige_cosmetics.is_none());
     }
 
     #[test]

@@ -512,6 +512,8 @@ pub struct ParsedEconItem {
     pub paint_seed: Option<u32>,
     pub paint_wear_raw: Option<u32>,
     pub paint_wear: Option<f32>,
+    #[serde(default)]
+    pub custom_name: Option<String>,
     pub item_name: Option<String>,
     pub skin_name: Option<String>,
 }

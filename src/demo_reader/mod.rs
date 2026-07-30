@@ -1480,6 +1480,7 @@ mod demoparser_impl {
                 paint_seed: item.paint_seed,
                 paint_wear_raw: item.paint_wear,
                 paint_wear: item.paint_wear.map(f32::from_bits),
+                custom_name: item.custom_name,
                 item_name: item.item_name,
                 skin_name: item.skin_name,
             })

@@ -1,6 +1,6 @@
 use crate::export::{
     glove_econ_seed_index, inventory_item_cosmetic_evidence, knife_econ_paint_index,
-    matching_econ_glove_seed, matching_owned_active_econ_knife_paint, valid_knife_item_def_index,
+    matching_active_econ_knife_paint, matching_econ_glove_seed, valid_knife_item_def_index,
     valid_music_kit_evidence_id, EconGloveSeedIndex,
 };
 use crate::inspect_link::item_inspect;
@@ -305,15 +305,29 @@ pub(super) fn summarize_player_details(
                 .then(|| active_item_spec(row))
                 .flatten();
             let econ_spec =
-                matching_owned_active_econ_knife_paint(econ_knife_paints.get(&row.steam_id), row)
-                    .map(|paint| ItemSpec {
+                matching_active_econ_knife_paint(econ_knife_paints.get(&row.steam_id), row).map(
+                    |paint| ItemSpec {
                         item_def_index: row.item_def_idx,
                         paint_kit: paint.paint_kit,
                         seed: paint.seed,
                         wear_bits: paint.wear_bits,
-                        custom_name: None,
-                    });
-            if let Some(spec) = active_spec.or(econ_spec) {
+                        custom_name: paint.custom_name,
+                    },
+                );
+            let spec = match (active_spec, econ_spec) {
+                (Some(mut active), Some(econ))
+                    if active.item_def_index == econ.item_def_index
+                        && active.paint_kit == econ.paint_kit
+                        && active.seed == econ.seed
+                        && active.wear_bits == econ.wear_bits =>
+                {
+                    active.custom_name = active.custom_name.or(econ.custom_name);
+                    Some(active)
+                }
+                (Some(active), _) => Some(active),
+                (None, econ) => econ,
+            };
+            if let Some(spec) = spec {
                 remember_stable_side_item(&mut accumulator.knives, side, spec);
             }
         }
@@ -1169,7 +1183,7 @@ mod tests {
     }
 
     #[test]
-    fn player_evidence_requires_matching_owned_live_econ_knife() {
+    fn player_evidence_recovers_player_scoped_econ_knife_when_live_econ_is_missing() {
         let naf_steam_id = 76561198001151695;
         let elige_steam_id = 76561198066693739;
         let wear = 0.031_718_593_f32;
@@ -1200,6 +1214,7 @@ mod tests {
                     paint_seed: Some(80),
                     paint_wear_raw: Some(elige_wear.to_bits()),
                     paint_wear: Some(elige_wear),
+                    custom_name: Some("player scoped knife".to_string()),
                     ..ParsedEconItem::default()
                 },
             ],
@@ -1217,10 +1232,22 @@ mod tests {
         assert_eq!(naf_knife.seed, Some(330));
         assert_eq!(naf_knife.wear.map(f32::to_bits), Some(wear.to_bits()));
 
-        assert!(!details[&elige_steam_id]
+        let elige_knife = details[&elige_steam_id]
             .cosmetics
             .iter()
-            .any(|cosmetic| cosmetic.kind == "knife"));
+            .find(|cosmetic| cosmetic.kind == "knife")
+            .expect("player-scoped econ knife");
+        assert_eq!(elige_knife.item_def_index, Some(507));
+        assert_eq!(elige_knife.paint_kit, Some(570));
+        assert_eq!(elige_knife.seed, Some(80));
+        assert_eq!(
+            elige_knife.wear.map(f32::to_bits),
+            Some(elige_wear.to_bits())
+        );
+        assert_eq!(
+            elige_knife.custom_name.as_deref(),
+            Some("player scoped knife")
+        );
     }
 
     #[test]

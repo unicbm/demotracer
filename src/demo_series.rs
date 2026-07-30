@@ -1023,6 +1023,7 @@ struct EconItemKey {
     paint_seed: Option<u32>,
     paint_wear_raw: Option<u32>,
     paint_wear_bits: Option<u32>,
+    custom_name: Option<String>,
     item_name: Option<String>,
     skin_name: Option<String>,
 }
@@ -1036,6 +1037,7 @@ impl From<&ParsedEconItem> for EconItemKey {
             paint_seed: item.paint_seed,
             paint_wear_raw: item.paint_wear_raw,
             paint_wear_bits: item.paint_wear.map(f32::to_bits),
+            custom_name: item.custom_name.clone(),
             item_name: item.item_name.clone(),
             skin_name: item.skin_name.clone(),
         }
