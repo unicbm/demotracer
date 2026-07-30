@@ -106,6 +106,7 @@ public sealed partial class DemoTracerPlugin
 
         if (cosmetics.Knife is { } knife &&
             IsValidItemCosmetic(knife) &&
+            HasCosmeticSeedEvidence(knife.SeedKnown) &&
             knife.ItemDefIndex is { } knifeDef &&
             IsExactKnifeCosmeticDefIndex(knifeDef) &&
             IsKnownKnifeCosmeticItemDefIndex(knifeDef))
@@ -138,6 +139,7 @@ public sealed partial class DemoTracerPlugin
             ItemDefIndex = source.ItemDefIndex,
             PaintKit = source.PaintKit,
             Seed = source.Seed,
+            SeedKnown = source.SeedKnown,
             Wear = source.Wear,
             OriginalOwnerSteamId = NormalizeOptionalULong(source.OriginalOwnerSteamId),
             ItemAccountId = NormalizeOptionalUInt(source.ItemAccountId),
@@ -207,6 +209,9 @@ public sealed partial class DemoTracerPlugin
            IsKnownPaintKit(cosmetic.PaintKit) &&
            cosmetic.Wear is >= 0.0f and <= 1.0f &&
            float.IsFinite(cosmetic.Wear);
+
+    internal static bool HasCosmeticSeedEvidence(bool? seedKnown)
+        => seedKnown is not false;
 
     private static int? NormalizeStattrakQuality(int? quality)
         => quality == 9 ? 9 : null;
@@ -2217,6 +2222,7 @@ public sealed partial class DemoTracerPlugin
                     ItemDefIndex = cosmetic.WeaponDefIndex,
                     PaintKit = cosmetic.PaintKit,
                     Seed = cosmetic.Seed,
+                    SeedKnown = null,
                     Wear = cosmetic.Wear,
                     OriginalOwnerSteamId = cosmetic.OriginalOwnerSteamId,
                     ItemAccountId = cosmetic.ItemAccountId,
@@ -2943,7 +2949,8 @@ public sealed partial class DemoTracerPlugin
         try
         {
             AttributeSetter.Value.Invoke(attributeListHandle, "set item texture prefab", cosmetic.PaintKit);
-            AttributeSetter.Value.Invoke(attributeListHandle, "set item texture seed", cosmetic.Seed);
+            if (HasCosmeticSeedEvidence(cosmetic.SeedKnown))
+                AttributeSetter.Value.Invoke(attributeListHandle, "set item texture seed", cosmetic.Seed);
             AttributeSetter.Value.Invoke(attributeListHandle, "set item texture wear", cosmetic.Wear);
             return true;
         }
@@ -3178,6 +3185,7 @@ public sealed partial class DemoTracerPlugin
         int ItemDefinitionIndex,
         uint PaintKit,
         uint Seed,
+        bool SeedKnown,
         int WearBits)
     {
         public static GloveCosmeticFingerprint From(ReplayItemCosmetic cosmetic)
@@ -3185,6 +3193,7 @@ public sealed partial class DemoTracerPlugin
                 cosmetic.ItemDefIndex ?? -1,
                 cosmetic.PaintKit,
                 cosmetic.Seed,
+                HasCosmeticSeedEvidence(cosmetic.SeedKnown),
                 BitConverter.SingleToInt32Bits(cosmetic.Wear));
     }
 
@@ -3192,6 +3201,7 @@ public sealed partial class DemoTracerPlugin
         int ItemDefinitionIndex,
         uint PaintKit,
         uint Seed,
+        bool SeedKnown,
         int WearBits)
     {
         public static KnifeCosmeticFingerprint From(ReplayItemCosmetic cosmetic)
@@ -3199,6 +3209,7 @@ public sealed partial class DemoTracerPlugin
                 cosmetic.ItemDefIndex ?? -1,
                 cosmetic.PaintKit,
                 cosmetic.Seed,
+                HasCosmeticSeedEvidence(cosmetic.SeedKnown),
                 BitConverter.SingleToInt32Bits(cosmetic.Wear));
     }
 

@@ -373,6 +373,9 @@ public sealed partial class DemoTracerPlugin
         [JsonPropertyName("seed")]
         public uint Seed { get; set; }
 
+        [JsonPropertyName("seed_known")]
+        public bool? SeedKnown { get; set; }
+
         [JsonPropertyName("wear")]
         public float Wear { get; set; }
 
