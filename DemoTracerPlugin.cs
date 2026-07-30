@@ -68,6 +68,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private const int AvatarOverrideMaxBytes = 16 * 1024;
     private static readonly byte[] AvatarPngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
     private const string FreezeTimeConVarName = "mp_freezetime";
+    private const string MaxMoneyConVarName = "mp_maxmoney";
     private static readonly Version MaxVerifiedManagedSchemaPatch = new(1, 41, 7, 3);
     private static readonly Lazy<(bool Allowed, string Patch)> ManagedSchemaRuntime =
         new(DetectManagedSchemaRuntime);
@@ -96,6 +97,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private readonly List<TrackedDroppedReplayItem> _trackedDroppedReplayItems = new();
     private readonly HashSet<int> _rebuiltInventorySlots = new();
     private readonly HashSet<int> _loadoutSyncedSlots = new();
+    private readonly HashSet<int> _balanceSyncedSlots = new();
     private readonly HashSet<int> _lastPlayingSlots = new();
     private readonly Dictionary<int, float> _replayStartedAt = new();
     private readonly Dictionary<int, uint> _replayPerceptionBaselineSerial = new();
@@ -159,6 +161,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private bool _crosshairAlignEnabled = true;
     private bool _scoreboardAlignEnabled;
     private bool _leftHandDesiredEnabled = true;
+    private bool _balanceAlignEnabled;
     private bool _weaponAlignFrameQueued;
     private int _cosmeticAppliedCount;
     private int _cosmeticSkippedCount;
@@ -501,7 +504,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         command.ReplyToCommand($"dtr: left_hand_desired={FormatOnOff(_leftHandDesiredEnabled)}");
     }
 
-    [ConsoleCommand("dtr_align", "dtr_align [status|default|full|handoff_safe|off|weapons|projectiles|left_hand|crosshair] [on|off]")]
+    [ConsoleCommand("dtr_align", "dtr_align [status|default|full|handoff_safe|off|weapons|projectiles|left_hand|crosshair|balance] [on|off]")]
     [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
     public void AlignCommand(CCSPlayerController? player, CommandInfo command)
     {
@@ -521,6 +524,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
                     projectiles: true,
                     leftHandDesired: true,
                     crosshair: true,
+                    balance: false,
                     command.ReplyToCommand);
                 return;
             case "full":
@@ -529,6 +533,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
                     projectiles: true,
                     leftHandDesired: true,
                     crosshair: true,
+                    balance: true,
                     command.ReplyToCommand);
                 return;
             case "handoff_safe":
@@ -539,6 +544,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
                     projectiles: true,
                     leftHandDesired: false,
                     crosshair: true,
+                    balance: false,
                     command.ReplyToCommand);
                 return;
             case "off":
@@ -551,6 +557,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
                     projectiles: false,
                     leftHandDesired: false,
                     crosshair: false,
+                    balance: false,
                     command.ReplyToCommand);
                 return;
             default:
@@ -929,14 +936,14 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private void ReplyAlignStatus(Action<string> reply)
     {
         reply($"[DTR ALIGN] preset={AlignPresetName()}");
-        reply($"[DTR ALIGN] weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_ticks={FormatProjectileAlignTicks()} molotov_point={FormatMolotovPointAlignMode(_molotovPointAlignMode)}:{_molotovPointAlignLeadTicks} crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)}");
+        reply($"[DTR ALIGN] weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_ticks={FormatProjectileAlignTicks()} molotov_point={FormatMolotovPointAlignMode(_molotovPointAlignMode)}:{_molotovPointAlignLeadTicks} crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)}");
         reply("[DTR ALIGN] note: cosmetics moved to dtr_cosmetics; scoreboard moved to dtr_match");
     }
 
     private static void ReplyAlignUsage(Action<string> reply)
     {
         reply("usage: dtr_align [status|default|full|handoff_safe|off]");
-        reply("usage: dtr_align <weapons|projectiles|crosshair|left_hand> <on|off>");
+        reply("usage: dtr_align <weapons|projectiles|crosshair|left_hand|balance> <on|off>");
     }
 
     private void ReplyUnknownAlignTarget(string target, Action<string> reply)
@@ -956,11 +963,13 @@ public sealed partial class DemoTracerPlugin : BasePlugin
 
     private string AlignPresetName()
     {
-        if (_weaponAlignEnabled && _projectileAlignEnabled && _crosshairAlignEnabled && _leftHandDesiredEnabled)
+        if (_weaponAlignEnabled && _projectileAlignEnabled && _crosshairAlignEnabled && _leftHandDesiredEnabled && _balanceAlignEnabled)
+            return "full";
+        if (_weaponAlignEnabled && _projectileAlignEnabled && _crosshairAlignEnabled && _leftHandDesiredEnabled && !_balanceAlignEnabled)
             return "default";
-        if (_weaponAlignEnabled && _projectileAlignEnabled && _crosshairAlignEnabled && !_leftHandDesiredEnabled)
+        if (_weaponAlignEnabled && _projectileAlignEnabled && _crosshairAlignEnabled && !_leftHandDesiredEnabled && !_balanceAlignEnabled)
             return "handoff_safe";
-        if (!_weaponAlignEnabled && !_projectileAlignEnabled && !_crosshairAlignEnabled && !_leftHandDesiredEnabled)
+        if (!_weaponAlignEnabled && !_projectileAlignEnabled && !_crosshairAlignEnabled && !_leftHandDesiredEnabled && !_balanceAlignEnabled)
             return "off";
         return "custom";
     }
@@ -970,12 +979,14 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         bool projectiles,
         bool leftHandDesired,
         bool crosshair,
+        bool balance,
         Action<string> reply)
     {
         SetWeaponAlignEnabled(weapons);
         SetProjectileAlignEnabled(projectiles);
         ApplyLeftHandDesiredMode(leftHandDesired, reply);
         SetCrosshairAlignEnabled(crosshair);
+        _balanceAlignEnabled = balance;
         ReplyAlignStatus(reply);
     }
 
@@ -1021,6 +1032,12 @@ public sealed partial class DemoTracerPlugin : BasePlugin
             case "view":
                 SetCrosshairAlignEnabled(enabled);
                 reply($"[DTR OK] dtr_align crosshair={FormatOnOff(_crosshairAlignEnabled)}");
+                return true;
+            case "balance":
+            case "money":
+            case "cash":
+                _balanceAlignEnabled = enabled;
+                reply($"[DTR OK] dtr_align balance={FormatOnOff(_balanceAlignEnabled)}");
                 return true;
             default:
                 return false;
@@ -1425,7 +1442,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
                     ? $"single source_round={_armedSourceRound} prepared={_armedPrepared}"
                     : "none";
             command.ReplyToCommand(
-                $"[DTR OK] status plan={plan} loaded_slots={_loadedSlots.Count} settings identity={ReplayIdentityModeName()} weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_ticks={FormatProjectileAlignTicks()} molotov_point={FormatMolotovPointAlignMode(_molotovPointAlignMode)}:{_molotovPointAlignLeadTicks} cosmetics={FormatOnOff(_cosmeticAlignEnabled)} agents={FormatOnOff(_cosmeticAgentsEnabled)} stickers={FormatOnOff(_stickerAlignEnabled)} charms={FormatOnOff(_charmAlignEnabled)} preserve_native={FormatOnOff(_preserveNativeBotCosmetics)} crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand_desired={FormatOnOff(_leftHandDesiredEnabled)} scoreboard={FormatOnOff(_scoreboardAlignEnabled)} handoff={FormatHandoffMode(_handoffMode)}:{(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} allow_partial={FormatOnOff(_partialReplayEnabled)} playoff={FormatOnOff(_playoffEnabled)}:{FormatPlayoffPlanStatus()} {FormatVoiceAutoStatusInline()} {FormatChatAutoStatusInline()} mp_freezetime={(float.IsFinite(freezeTime) ? freezeTime.ToString("F2", CultureInfo.InvariantCulture) : "unknown")} {(string.IsNullOrEmpty(freezeReason) ? "" : freezeReason)} {FormatCosmeticStatusCounts()} {FormatCrosshairStatusCounts()} {FormatViewmodelStatusCounts()} {FormatScoreboardStatusCounts()}");
+                $"[DTR OK] status plan={plan} loaded_slots={_loadedSlots.Count} settings identity={ReplayIdentityModeName()} weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_ticks={FormatProjectileAlignTicks()} molotov_point={FormatMolotovPointAlignMode(_molotovPointAlignMode)}:{_molotovPointAlignLeadTicks} cosmetics={FormatOnOff(_cosmeticAlignEnabled)} agents={FormatOnOff(_cosmeticAgentsEnabled)} stickers={FormatOnOff(_stickerAlignEnabled)} charms={FormatOnOff(_charmAlignEnabled)} preserve_native={FormatOnOff(_preserveNativeBotCosmetics)} crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand_desired={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)} scoreboard={FormatOnOff(_scoreboardAlignEnabled)} handoff={FormatHandoffMode(_handoffMode)}:{(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} allow_partial={FormatOnOff(_partialReplayEnabled)} playoff={FormatOnOff(_playoffEnabled)}:{FormatPlayoffPlanStatus()} {FormatVoiceAutoStatusInline()} {FormatChatAutoStatusInline()} mp_freezetime={(float.IsFinite(freezeTime) ? freezeTime.ToString("F2", CultureInfo.InvariantCulture) : "unknown")} {(string.IsNullOrEmpty(freezeReason) ? "" : freezeReason)} {FormatCosmeticStatusCounts()} {FormatCrosshairStatusCounts()} {FormatViewmodelStatusCounts()} {FormatScoreboardStatusCounts()}");
             return;
         }
 
@@ -1439,8 +1456,12 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         var playoff = _playoffEnabled
             ? $" playoff={FormatPlayoffPlanStatus()}"
             : string.Empty;
+        var roundStartBalance = _loadedReplays.TryGetValue(slot, out var loadedReplay) &&
+                                loadedReplay.RoundStartBalance is uint recordedBalance
+            ? recordedBalance.ToString(CultureInfo.InvariantCulture)
+            : "none";
         command.ReplyToCommand(
-            $"dtr: abi={BotControllerNative.AbiVersion} slot={slot} playing={state.Playing} cursor={state.Cursor} total={state.Total} handoff={FormatHandoffMode(_handoffMode)} scope={(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} handoff_360={_handoffThreat360Enabled}:{_handoffThreat360Range.ToString("F0", CultureInfo.InvariantCulture)} los={_handoffThreat360LosEnabled}:{_rayTraceLosProbe.ProbeStatus} partial={_partialReplayEnabled} identity={ReplayIdentityModeName()} projectile_align={_projectileAlignEnabled} projectile_ticks={FormatProjectileAlignTicks()} molotov_point={FormatMolotovPointAlignMode(_molotovPointAlignMode)}:{_molotovPointAlignLeadTicks} cosmetic_align={_cosmeticAlignEnabled} agent_align={_cosmeticAgentsEnabled} sticker_align={_stickerAlignEnabled} charm_align={_charmAlignEnabled} preserve_native={_preserveNativeBotCosmetics} crosshair_align={_crosshairAlignEnabled} left_hand_desired={_leftHandDesiredEnabled} scoreboard_align={_scoreboardAlignEnabled} {FormatVoiceAutoStatusInline()} {FormatChatAutoStatusInline()}{sequence}{playoff}");
+            $"dtr: abi={BotControllerNative.AbiVersion} slot={slot} playing={state.Playing} cursor={state.Cursor} total={state.Total} handoff={FormatHandoffMode(_handoffMode)} scope={(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} handoff_360={_handoffThreat360Enabled}:{_handoffThreat360Range.ToString("F0", CultureInfo.InvariantCulture)} los={_handoffThreat360LosEnabled}:{_rayTraceLosProbe.ProbeStatus} partial={_partialReplayEnabled} identity={ReplayIdentityModeName()} projectile_align={_projectileAlignEnabled} projectile_ticks={FormatProjectileAlignTicks()} molotov_point={FormatMolotovPointAlignMode(_molotovPointAlignMode)}:{_molotovPointAlignLeadTicks} cosmetic_align={_cosmeticAlignEnabled} agent_align={_cosmeticAgentsEnabled} sticker_align={_stickerAlignEnabled} charm_align={_charmAlignEnabled} preserve_native={_preserveNativeBotCosmetics} crosshair_align={_crosshairAlignEnabled} left_hand_desired={_leftHandDesiredEnabled} balance_align={_balanceAlignEnabled} round_start_balance={roundStartBalance} balance_applied={_balanceSyncedSlots.Contains(slot)} scoreboard_align={_scoreboardAlignEnabled} {FormatVoiceAutoStatusInline()} {FormatChatAutoStatusInline()}{sequence}{playoff}");
     }
 
     [ConsoleCommand("dtr_runtime", "dtr_runtime")]
@@ -4145,6 +4166,8 @@ public sealed partial class DemoTracerPlugin : BasePlugin
                     ReleaseReplaySlot(slot, "dead_start_target");
                     continue;
                 }
+
+                ApplyReplayRoundStartBalanceForSlot(slot, replay);
             }
 
             if (StartReplayForSlot(slot, loop, anchor, freezeTimeSeconds))
@@ -4939,6 +4962,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         BotControllerNative.ClearProjectileBirthAlign();
         _rebuiltInventorySlots.Clear();
         _loadoutSyncedSlots.Clear();
+        _balanceSyncedSlots.Clear();
         ResetCosmeticAlignState(resetCounters: true);
         ResetStickerAlignState(resetCounters: true);
         ResetCharmAlignState(resetCounters: true);
@@ -5040,6 +5064,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
             _trackedDroppedReplayItems.Clear();
             _rebuiltInventorySlots.Clear();
             _loadoutSyncedSlots.Clear();
+            _balanceSyncedSlots.Clear();
             ResetCosmeticAlignState(resetCounters: true);
             ResetCosmeticEvidenceCache();
             ResetNativeAgentModelCaptures();
@@ -5272,6 +5297,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         _demoTracerOwnedSlots.Remove(slot);
         _rebuiltInventorySlots.Remove(slot);
         _loadoutSyncedSlots.Remove(slot);
+        _balanceSyncedSlots.Remove(slot);
         _pendingBulletHits.Remove(slot);
         _pendingBulletDamages.Remove(slot);
         _pendingThreat360.Remove(slot);
@@ -5454,6 +5480,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         ClearPendingWeaponSlotReplacementsForSlot(slot);
         _replayHifiEventNextBySlot.Remove(slot);
         _rebuiltInventorySlots.Remove(slot);
+        _balanceSyncedSlots.Remove(slot);
         InvalidateReplayMusicKitRepair(slot);
         _cosmeticSyncedSlots.Remove(slot);
         _cosmeticHeartbeatTokens.Remove(slot);
@@ -5533,6 +5560,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
             metadata.Projectiles ?? [],
             hifiEvents,
             inventorySnapshots,
+            metadata.HighFidelity?.RoundStartBalance,
             metadata.TickCount,
             metadata.TickRate,
             metadata.PlayStartTickIndex,
@@ -5559,6 +5587,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         _replayHifiEventNextBySlot[slot] = 0;
         _rebuiltInventorySlots.Remove(slot);
         _loadoutSyncedSlots.Remove(slot);
+        _balanceSyncedSlots.Remove(slot);
         _cosmeticSyncedSlots.Remove(slot);
         _cosmeticHeartbeatTokens.Remove(slot);
         _scoreboardSyncedSlots.Remove(slot);
@@ -5678,6 +5707,66 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         var pawn = player.PlayerPawn.Value;
         pawn.Health = ReplayStartHealth;
         Utilities.SetStateChanged(pawn, "CBaseEntity", "m_iHealth");
+        return true;
+    }
+
+    private void ApplyReplayRoundStartBalanceForSlot(int slot, LoadedReplay replay)
+    {
+        if (_balanceSyncedSlots.Contains(slot) ||
+            !TryResolveReplayRoundStartBalance(
+                _balanceAlignEnabled,
+                ManagedSchemaWritesAllowed(),
+                replay.RoundStartBalance,
+                ReadServerMaxMoney(),
+                out var balance))
+        {
+            return;
+        }
+
+        var player = Utilities.GetPlayerFromSlot(slot);
+        if (!IsReplaySlotStillSafe(slot) ||
+            player is not { IsValid: true, PawnIsAlive: true } ||
+            player.InGameMoneyServices is not { } moneyServices ||
+            moneyServices.Handle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        moneyServices.Account = balance;
+        Utilities.SetStateChanged(player, "CCSPlayerController", "m_pInGameMoneyServices");
+        _balanceSyncedSlots.Add(slot);
+    }
+
+    private static int? ReadServerMaxMoney()
+    {
+        var conVar = ConVar.Find(MaxMoneyConVarName);
+        if (conVar == null)
+            return null;
+
+        try
+        {
+            var value = conVar.GetPrimitiveValue<int>();
+            return value >= 0 ? value : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    internal static bool TryResolveReplayRoundStartBalance(
+        bool enabled,
+        bool runtimeSupported,
+        uint? evidence,
+        int? serverMaxMoney,
+        out int balance)
+    {
+        balance = 0;
+        if (!enabled || !runtimeSupported || evidence is null)
+            return false;
+
+        var maximum = serverMaxMoney is >= 0 ? serverMaxMoney.Value : int.MaxValue;
+        balance = (int)Math.Min(evidence.Value, (uint)maximum);
         return true;
     }
 
@@ -6524,6 +6613,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         ReplayProjectileEvent[] Projectiles,
         ReplayHifiEvent[] HifiEvents,
         ReplayInventorySnapshot[] InventorySnapshots,
+        uint? RoundStartBalance,
         int TickCount,
         float TickRate,
         uint PlayStartTickIndex,

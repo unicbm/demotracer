@@ -223,7 +223,10 @@ internal sealed class ReplayHighFidelityMetadata
     public static ReplayHighFidelityMetadata Empty { get; } = new();
 
     [JsonPropertyName("schema_version")]
-    public int SchemaVersion { get; set; } = 3;
+    public int SchemaVersion { get; set; } = 4;
+
+    [JsonPropertyName("round_start_balance")]
+    public uint? RoundStartBalance { get; set; }
 
     [JsonPropertyName("events")]
     public ReplayHifiEvent[] Events { get; set; } = [];

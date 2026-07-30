@@ -20,7 +20,10 @@
     "preset": "default",
     // Safe by default: BotHider publishes demo crosshairs from the server and
     // never writes human client configuration. Set false to disable alignment.
-    "crosshair": true
+    "crosshair": true,
+    // Opt in to one authoritative m_iAccount write per replay bot when the
+    // corresponding DTR round starts. Missing demo evidence is never zeroed.
+    "balance": false
   },
   "match": {
     "preset": "off"
