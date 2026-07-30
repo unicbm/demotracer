@@ -47,7 +47,11 @@ pub(crate) fn item_inspect(
     rarity: Option<u32>,
 ) -> Option<ReplayCosmeticInspect> {
     let defindex = u32::try_from(cosmetic.item_def_index?).ok()?;
-    if defindex == 0 || cosmetic.paint_kit == 0 || !valid_wear(cosmetic.wear) {
+    if defindex == 0
+        || cosmetic.paint_kit == 0
+        || cosmetic.seed_known == Some(false)
+        || !valid_wear(cosmetic.wear)
+    {
         return None;
     }
     Some(build_inspect(PreviewData {
@@ -226,6 +230,7 @@ mod tests {
             item_def_index: Some(defindex),
             paint_kit,
             seed,
+            seed_known: None,
             wear,
             custom_name: None,
             inspect: None,

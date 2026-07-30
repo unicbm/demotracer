@@ -1232,6 +1232,8 @@ pub struct ReplayItemCosmetic {
     pub item_def_index: Option<i32>,
     pub paint_kit: u32,
     pub seed: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed_known: Option<bool>,
     pub wear: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_name: Option<String>,

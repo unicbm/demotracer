@@ -2353,6 +2353,7 @@ fn replay_active_cosmetics(
                 item_def_index: Some(item_def_index),
                 paint_kit: spec.paint_kit,
                 seed: spec.seed,
+                seed_known: None,
                 wear: f32::from_bits(spec.wear_bits),
                 custom_name: stable_knife_custom_name(&knife_custom_names, item_def_index),
                 inspect: None,
@@ -2361,16 +2362,15 @@ fn replay_active_cosmetics(
     }
 
     if let Some(glove) = glove {
-        if let Some(seed) = glove.seed {
-            cosmetics.glove = Some(ReplayItemCosmetic {
-                item_def_index: Some(glove.key.item_def_index),
-                paint_kit: glove.key.paint_kit,
-                seed,
-                wear: f32::from_bits(glove.key.wear_bits),
-                custom_name: None,
-                inspect: None,
-            });
-        }
+        cosmetics.glove = Some(ReplayItemCosmetic {
+            item_def_index: Some(glove.key.item_def_index),
+            paint_kit: glove.key.paint_kit,
+            seed: glove.seed.unwrap_or_default(),
+            seed_known: glove.seed.is_none().then_some(false),
+            wear: f32::from_bits(glove.key.wear_bits),
+            custom_name: None,
+            inspect: None,
+        });
     }
 
     cosmetics
@@ -3780,7 +3780,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_does_not_override_live_gloves_with_conflicting_end_metadata() {
+    fn manifest_keeps_live_gloves_without_using_conflicting_end_metadata() {
         let mut parsed = sample_demo();
         parsed.rows = vec![
             ParsedPlayerTick {
@@ -3809,10 +3809,17 @@ mod tests {
         }];
 
         let memory = export_memory_with_cosmetics(parsed);
-        assert!(memory.manifest.files[0]
+        let glove = memory.manifest.files[0]
             .cosmetics
             .as_ref()
-            .is_none_or(|cosmetics| cosmetics.glove.is_none()));
+            .and_then(|cosmetics| cosmetics.glove.as_ref())
+            .expect("expected partial glove evidence");
+        assert_eq!(glove.item_def_index, Some(5030));
+        assert_eq!(glove.paint_kit, 10038);
+        assert_eq!(glove.seed, 0);
+        assert_eq!(glove.seed_known, Some(false));
+        assert_eq!(glove.wear.to_bits(), 0.148_281_16_f32.to_bits());
+        assert!(glove.inspect.is_none());
     }
 
     #[test]
@@ -3994,7 +4001,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_does_not_fabricate_a_missing_glove_seed() {
+    fn manifest_preserves_gloves_without_fabricating_a_missing_seed() {
         let mut parsed = sample_demo();
         parsed.rows = vec![
             ParsedPlayerTick {
@@ -4017,9 +4024,15 @@ mod tests {
         let glove = memory.manifest.files[0]
             .cosmetics
             .as_ref()
-            .and_then(|cosmetics| cosmetics.glove.as_ref());
+            .and_then(|cosmetics| cosmetics.glove.as_ref())
+            .expect("expected partial glove evidence");
 
-        assert!(glove.is_none());
+        assert_eq!(glove.item_def_index, Some(5034));
+        assert_eq!(glove.paint_kit, 10033);
+        assert_eq!(glove.seed, 0);
+        assert_eq!(glove.seed_known, Some(false));
+        assert_eq!(glove.wear.to_bits(), 0.382_f32.to_bits());
+        assert!(glove.inspect.is_none());
     }
 
     #[test]
