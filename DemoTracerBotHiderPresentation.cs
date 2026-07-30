@@ -12,6 +12,7 @@ public sealed partial class DemoTracerPlugin
     private const float BotHiderLeaseRetrySeconds = 1.0f;
     private readonly Dictionary<int, string> _companionCrosshairOverrides = new();
     private readonly Dictionary<int, BotHiderPresentationEvidence> _retainedBotHiderPresentation = new();
+    private readonly Dictionary<int, ulong> _activeBotHiderReplaySteamIds = new();
     private string _botHiderPresentationLeaseToken = string.Empty;
     private string _botHiderPresentationSignature = string.Empty;
     private string _lastBotHiderPresentationError = string.Empty;
@@ -55,6 +56,7 @@ public sealed partial class DemoTracerPlugin
             {
                 _botHiderPresentationLeaseToken = string.Empty;
                 _botHiderPresentationSignature = string.Empty;
+                _activeBotHiderReplaySteamIds.Clear();
                 _nextBotHiderLeaseRetryAt = Server.CurrentTime;
             }
         }
@@ -111,6 +113,7 @@ public sealed partial class DemoTracerPlugin
             // instead of treating the stale local token as a healthy lease.
             _botHiderPresentationLeaseToken = string.Empty;
             _botHiderPresentationSignature = string.Empty;
+            _activeBotHiderReplaySteamIds.Clear();
             _nextBotHiderLeaseHeartbeatAt = 0.0f;
         }
 
@@ -159,6 +162,12 @@ public sealed partial class DemoTracerPlugin
 
         _botHiderPresentationLeaseToken = result.LeaseToken;
         _botHiderPresentationSignature = signature;
+        _activeBotHiderReplaySteamIds.Clear();
+        foreach (var request in requests)
+        {
+            if (request.SteamId is { } steamId && steamId != 0)
+                _activeBotHiderReplaySteamIds[request.Slot] = steamId;
+        }
         _lastBotHiderPresentationError = string.Empty;
         _nextBotHiderLeaseHeartbeatAt = Server.CurrentTime + BotHiderLeaseHeartbeatSeconds;
         _nextBotHiderLeaseRetryAt = 0.0f;
@@ -438,6 +447,7 @@ public sealed partial class DemoTracerPlugin
         var token = _botHiderPresentationLeaseToken;
         _botHiderPresentationLeaseToken = string.Empty;
         _botHiderPresentationSignature = string.Empty;
+        _activeBotHiderReplaySteamIds.Clear();
         _nextBotHiderLeaseHeartbeatAt = 0.0f;
         _nextBotHiderLeaseRetryAt = 0.0f;
         if (string.IsNullOrWhiteSpace(token))
@@ -446,6 +456,27 @@ public sealed partial class DemoTracerPlugin
         if (!_botHiderBridge.Release(token))
             _ = _botHiderBridge.ReleaseOwner(DemoTracerBotHiderContract.DemoTracerOwner);
         Server.PrintToConsole($"dtr: BotHider presentation lease released reason={reason}");
+    }
+
+    private bool HasActiveBotHiderReplayIdentity(int slot, ulong replaySteamId)
+    {
+        if (replaySteamId == 0 ||
+            string.IsNullOrWhiteSpace(_botHiderPresentationLeaseToken) ||
+            !_activeBotHiderReplaySteamIds.TryGetValue(slot, out var leasedSteamId) ||
+            leasedSteamId != replaySteamId ||
+            !_botHiderBridge.TryGetManagedSlot(slot, out _))
+        {
+            return false;
+        }
+        if (!_botHiderBridge.Heartbeat(_botHiderPresentationLeaseToken))
+        {
+            _botHiderPresentationLeaseToken = string.Empty;
+            _botHiderPresentationSignature = string.Empty;
+            _activeBotHiderReplaySteamIds.Clear();
+            _nextBotHiderLeaseRetryAt = Server.CurrentTime;
+            return false;
+        }
+        return true;
     }
 
     private int CountActiveBotHiderCrosshairOverrides()

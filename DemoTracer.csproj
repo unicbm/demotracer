@@ -15,6 +15,9 @@
     <ProjectReference Include="..\..\runtime\BotHider\csharp\BotHiderApi\BotHiderApi.csproj">
       <Private>false</Private>
     </ProjectReference>
+    <ProjectReference Include="..\..\vendor\BotRandomizerApi\BotRandomizerApi.csproj">
+      <Private>false</Private>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>

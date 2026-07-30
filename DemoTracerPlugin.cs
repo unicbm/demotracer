@@ -212,6 +212,9 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         _botHiderBridge.Refresh();
         _ = _botHiderBridge.ReleaseOwner(DemoTracerBotHiderContract.DemoTracerOwner);
         _ = SyncBotHiderPresentationLease(announce: _loadedSlots.Count > 0);
+        _botRandomizerBridge.Refresh();
+        _ = _botRandomizerBridge.ReleaseOwner(BotRandomizerApi.BotRandomizerContract.DemoTracerOwner);
+        _ = SyncBotRandomizerCosmeticLease(announce: _loadedSlots.Count > 0);
         RefreshRuntimeHealthHeartbeat();
     }
 
@@ -223,7 +226,9 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         ClearReplayStateForLifecycle(hotReload ? "plugin_reload" : "plugin_unload");
         StopUtilityTrace();
         BotControllerNative.ClearAllBuyPlans();
+        _ = _botRandomizerBridge.ReleaseOwner(BotRandomizerApi.BotRandomizerContract.DemoTracerOwner);
         _botHiderBridge.Refresh();
+        _botRandomizerBridge.Refresh();
     }
 
     private void OnMapStart(string mapName)
@@ -251,6 +256,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         _appliedKnifeCosmeticBirths.Remove(playerSlot);
         _pendingKnifeEntityRefreshes.Remove(playerSlot);
         _knifeEntityRefreshUnavailableWarnings.Remove(playerSlot);
+        _ = SyncBotRandomizerCosmeticLease(announce: false);
 
         if (!HasReplayLifecycleState(includeNative: true))
             return;
@@ -1185,6 +1191,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         _cosmeticAlignEnabled = AnyCosmeticFeatureEnabled();
         if (!_cosmeticAlignEnabled)
             RestoreAllReplayMusicKits("cosmetics_disabled");
+        _ = SyncBotRandomizerCosmeticLease(announce: false);
     }
 
     private void ApplyLeftHandDesiredMode(bool enabled, Action<string> reply)
@@ -1202,7 +1209,10 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     {
         _weaponAlignEnabled = enabled;
         if (_weaponAlignEnabled)
+        {
+            _ = SyncBotRandomizerCosmeticLease(announce: false);
             return;
+        }
 
         _pendingWeaponAlign.Clear();
         _pendingWeaponSlotReplacements.Clear();
@@ -1212,6 +1222,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         _activeWeaponCosmetics.Clear();
         foreach (var slot in _loadedSlots)
             BotControllerNative.UnlockWeaponSlot(slot);
+        _ = SyncBotRandomizerCosmeticLease(announce: false);
     }
 
     private void SetProjectileAlignEnabled(bool enabled)
@@ -1623,6 +1634,8 @@ public sealed partial class DemoTracerPlugin : BasePlugin
                             return;
                         }
 
+                        _ = SyncBotHiderPresentationLease(announce: false);
+                        _ = SyncBotRandomizerCosmeticLease(announce: false);
                         ApplyReplayLoadoutForSlot(spawnedSlot, replay);
                         PreloadReplayWeaponsForSlot(spawnedSlot, replay);
                     });
@@ -1777,6 +1790,8 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         _botHiderBridge.BeginTickQueryScope();
         try
         {
+            EnsureBotHiderPresentationLease();
+            EnsureBotRandomizerCosmeticLease();
             ProcessReplayTick();
         }
         finally
@@ -3599,6 +3614,8 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         // Establish round-start positions before any later freeze-time replay
         // scheduling can leave partial-roster bots at native spawn points.
         ScheduleInitialRoundSpawnAssignment();
+        _ = SyncBotHiderPresentationLease(announce: false);
+        _ = SyncBotRandomizerCosmeticLease(announce: false);
         ApplyLoadedReplayMusicKits();
         ScheduleLoadedReplayMusicKitRepairs();
 
@@ -3653,7 +3670,12 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private bool ApplyReplayMusicKitForSlot(int slot, int musicKitId)
     {
         if (!ReplayMusicKitAlignmentAllowed(musicKitId) ||
-            !IsReplaySlotStillSafe(slot))
+            !IsReplaySlotStillSafe(slot) ||
+            !_loadedReplays.TryGetValue(slot, out var replay) ||
+            !TryValidateBotRandomizerClaim(
+                slot,
+                replay.SteamId,
+                DemoTracerCosmeticWriteField.MusicKit))
             return false;
 
         var player = Utilities.GetPlayerFromSlot(slot);
@@ -3664,7 +3686,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         {
             if (ReplayMusicKitStateMatches(player, musicKitId))
                 return true;
-            return ApplyReplayMusicKit(player, musicKitId);
+            return ApplyReplayMusicKit(player, musicKitId, replay.SteamId);
         }
         catch (Exception ex)
         {
@@ -3737,10 +3759,15 @@ public sealed partial class DemoTracerPlugin : BasePlugin
 
     private bool ApplyReplayMusicKit(
         CCSPlayerController player,
-        int musicKitId)
+        int musicKitId,
+        ulong replaySteamId)
     {
         if (!ReplayMusicKitAlignmentAllowed(musicKitId) ||
             player is not { IsValid: true } ||
+            !TryValidateBotRandomizerClaim(
+                player.Slot,
+                replaySteamId,
+                DemoTracerCosmeticWriteField.MusicKit) ||
             musicKitId is > ushort.MaxValue)
             return false;
 
@@ -3801,6 +3828,15 @@ public sealed partial class DemoTracerPlugin : BasePlugin
 
         if (!_replayMusicKitBaselines.TryGetValue(slot, out var baseline))
             return;
+        if (!_loadedReplays.TryGetValue(slot, out var replay) ||
+            !TryValidateBotRandomizerClaim(
+                slot,
+                replay.SteamId,
+                DemoTracerCosmeticWriteField.MusicKit))
+        {
+            _replayMusicKitBaselines.Remove(slot);
+            return;
+        }
 
         if (!IsReplayIdentityGenerationCurrent(slot, baseline.Generation) ||
             !IsReplaySlotStillSafe(slot))
@@ -4858,6 +4894,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         ClearLoadedAutoVoiceClip();
         ClearLoadedAutoChat();
         RestoreAllReplayMusicKits("unload_all");
+        ReleaseBotRandomizerCosmeticLease("unload_all");
         foreach (var slot in _loadedSlots.ToArray())
         {
             if (releaseBuffers)
@@ -4959,6 +4996,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
             {
                 RestoreAllReplayMusicKits(reason);
             }
+            ReleaseBotRandomizerCosmeticLease(reason);
 
             if (BotControllerNative.IsCompatible)
             {
@@ -5416,6 +5454,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         _scoreboardSyncedSlots.Remove(slot);
         KillTrackedReplayDropsForSlot(slot, "forget_replay");
         _ = SyncBotHiderPresentationLease(announce: false);
+        _ = SyncBotRandomizerCosmeticLease(announce: false);
     }
 
     private void TrackLoadedReplay(
@@ -5514,6 +5553,8 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         _safeC4Aligned = false;
         if (normalizedMusicKitId <= 0)
             RestoreReplayMusicKitForSlot(slot, "manifest_without_music_kit");
+        _ = SyncBotHiderPresentationLease(announce: false);
+        _ = SyncBotRandomizerCosmeticLease(announce: false);
     }
 
     private static ReplayFileMetadata ReadReplayMetadataOrEmpty(string path)

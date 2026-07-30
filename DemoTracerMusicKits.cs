@@ -13,6 +13,10 @@ public sealed partial class DemoTracerPlugin
         if (player is not { IsValid: true } ||
             !_loadedReplays.TryGetValue(player.Slot, out var replay) ||
             !ReplayMusicKitAlignmentAllowed(replay.MusicKitId) ||
+            !TryValidateBotRandomizerClaim(
+                player.Slot,
+                replay.SteamId,
+                DemoTracerCosmeticWriteField.MusicKit) ||
             !IsReplaySlotStillSafe(player.Slot))
         {
             return HookResult.Continue;
@@ -20,7 +24,7 @@ public sealed partial class DemoTracerPlugin
 
         try
         {
-            _ = ApplyReplayMusicKit(player, replay.MusicKitId);
+            _ = ApplyReplayMusicKit(player, replay.MusicKitId, replay.SteamId);
 
             // Keep the original event and publish the demo-backed kit through every
             // field used by the MVP panel. Suppressing and recreating this event can

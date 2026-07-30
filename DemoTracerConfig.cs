@@ -305,6 +305,7 @@ public sealed partial class DemoTracerPlugin
             ResetStickerAlignState();
             ResetCharmAlignState();
         }
+        _ = SyncBotRandomizerCosmeticLease(announce: false);
     }
 
     private void ApplyRuntimeHandoffConfig(DemoTracerHandoffConfig? handoff, Action<string> reply)
@@ -377,6 +378,7 @@ public sealed partial class DemoTracerPlugin
             Server.ExecuteCommand("sv_reliableavatardata false");
         if (_loadedSlots.Count > 0 || _companionCrosshairOverrides.Count > 0)
             _ = SyncBotHiderPresentationLease(announce: false);
+        _ = SyncBotRandomizerCosmeticLease(announce: false);
     }
 
     private void ReplyRuntimeSettings(Action<string> reply, string prefix)
