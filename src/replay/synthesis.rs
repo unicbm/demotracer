@@ -459,9 +459,15 @@ mod tests {
     }
 
     #[test]
-    fn synthesis_canonicalizes_knife_def_indices() {
+    fn synthesis_canonicalizes_cs2_lib_knife_def_indices() {
         let rec = synthesize_player_rec(
-            &[row(10, 41), row(11, 526), row(12, 508), row(13, 7)],
+            &[
+                row(10, 42),
+                row(11, 59),
+                row(12, 526),
+                row(13, 508),
+                row(14, 7),
+            ],
             "de_nuke",
             64.0,
             1,
@@ -470,6 +476,7 @@ mod tests {
         assert_eq!(rec.ticks[0].weapon_def_index, 42);
         assert_eq!(rec.ticks[1].weapon_def_index, 42);
         assert_eq!(rec.ticks[2].weapon_def_index, 42);
+        assert_eq!(rec.ticks[3].weapon_def_index, 42);
     }
 
     #[test]

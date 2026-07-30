@@ -2954,34 +2954,32 @@ fn cosmetic_paint_spec(
 }
 
 fn valid_weapon_cosmetic_paint(weapon_def_index: i32, paint_kit: u32) -> bool {
-    demotracer_econ_index()
+    cs2_lib_econ_index()
         .weapon_paints
         .contains(&(normalize_weapon_def_index(weapon_def_index), paint_kit))
 }
 
 fn weapon_cosmetic_rarity(weapon_def_index: i32, paint_kit: u32) -> Option<u32> {
-    demotracer_econ_index()
+    cs2_lib_econ_index()
         .weapon_paint_rarities
         .get(&(normalize_weapon_def_index(weapon_def_index), paint_kit))
         .copied()
 }
 
 fn valid_paint_kit(paint_kit: u32) -> bool {
-    demotracer_econ_index().paint_kit_ids.contains(&paint_kit)
+    cs2_lib_econ_index().paint_kit_ids.contains(&paint_kit)
 }
 
 fn valid_sticker_id(sticker_id: u32) -> bool {
-    demotracer_econ_index().sticker_ids.contains(&sticker_id)
+    cs2_lib_econ_index().sticker_ids.contains(&sticker_id)
 }
 
 fn valid_keychain_id(keychain_id: u32) -> bool {
-    demotracer_econ_index().keychain_ids.contains(&keychain_id)
+    cs2_lib_econ_index().keychain_ids.contains(&keychain_id)
 }
 
 pub(crate) fn valid_music_kit_id(music_kit_id: u32) -> bool {
-    demotracer_econ_index()
-        .music_kit_ids
-        .contains(&music_kit_id)
+    cs2_lib_econ_index().music_kit_ids.contains(&music_kit_id)
 }
 
 pub(crate) fn valid_music_kit_evidence_id(music_kit_id: u32) -> bool {
@@ -2992,33 +2990,28 @@ pub(crate) fn valid_music_kit_evidence_id(music_kit_id: u32) -> bool {
 
 fn valid_scoreboard_flair_item_def(item_def_index: u32) -> bool {
     item_def_index == 0
-        || demotracer_econ_index()
+        || cs2_lib_econ_index()
             .scoreboard_flair_defidx
             .contains(&item_def_index)
 }
 
 fn valid_glove_item_def_index(item_def_index: i32) -> bool {
-    demotracer_econ_index()
-        .glove_defidx
-        .contains(&item_def_index)
+    cs2_lib_econ_index().glove_defidx.contains(&item_def_index)
 }
 
 pub(crate) fn valid_knife_item_def_index(item_def_index: i32) -> bool {
-    demotracer_econ_index()
-        .knife_defidx
-        .contains(&item_def_index)
+    cs2_lib_econ_index().knife_defidx.contains(&item_def_index)
 }
 
 fn valid_agent_item_def_index(item_def_index: u32) -> bool {
-    demotracer_econ_index()
-        .agent_defidx
-        .contains(&item_def_index)
+    cs2_lib_econ_index().agent_defidx.contains(&item_def_index)
 }
 
 #[derive(Debug, Deserialize)]
-struct RawDemoTracerEconIndex {
+struct RawCs2LibEconIndex {
     weapon_paints: Vec<RawPaintPair>,
     paint_kit_ids: Vec<u32>,
+    replay_equipment_defidx: Vec<i32>,
     knife_defidx: Vec<i32>,
     glove_defidx: Vec<i32>,
     agent_defidx: Vec<u32>,
@@ -3036,10 +3029,11 @@ struct RawPaintPair {
 }
 
 #[derive(Debug)]
-struct DemoTracerEconIndex {
+struct Cs2LibEconIndex {
     weapon_paints: BTreeSet<(i32, u32)>,
     weapon_paint_rarities: BTreeMap<(i32, u32), u32>,
     paint_kit_ids: BTreeSet<u32>,
+    replay_equipment_defidx: BTreeSet<i32>,
     knife_defidx: BTreeSet<i32>,
     glove_defidx: BTreeSet<i32>,
     agent_defidx: BTreeSet<u32>,
@@ -3049,14 +3043,14 @@ struct DemoTracerEconIndex {
     scoreboard_flair_defidx: BTreeSet<u32>,
 }
 
-fn demotracer_econ_index() -> &'static DemoTracerEconIndex {
-    static INDEX: OnceLock<DemoTracerEconIndex> = OnceLock::new();
+fn cs2_lib_econ_index() -> &'static Cs2LibEconIndex {
+    static INDEX: OnceLock<Cs2LibEconIndex> = OnceLock::new();
     INDEX.get_or_init(|| {
-        let raw: RawDemoTracerEconIndex = serde_json::from_str(include_str!(concat!(
+        let raw: RawCs2LibEconIndex = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/econ/demotracer-econ-index.v1.json"
+            "/../../shared/econ/cs2-lib-econ-index.v1.json"
         )))
-        .expect("embedded demotracer-econ-index.v1.json must be valid JSON");
+        .expect("embedded cs2-lib-econ-index.v1.json must be valid JSON");
         let knife_defidx = raw.knife_defidx.into_iter().collect::<BTreeSet<_>>();
         let mut weapon_paints = BTreeSet::new();
         let mut weapon_paint_rarities = BTreeMap::new();
@@ -3073,7 +3067,7 @@ fn demotracer_econ_index() -> &'static DemoTracerEconIndex {
                 weapon_paint_rarities.insert(key, rarity);
             }
         }
-        DemoTracerEconIndex {
+        Cs2LibEconIndex {
             weapon_paints,
             weapon_paint_rarities,
             paint_kit_ids: raw
@@ -3081,6 +3075,7 @@ fn demotracer_econ_index() -> &'static DemoTracerEconIndex {
                 .into_iter()
                 .filter(|value| *value > 0)
                 .collect(),
+            replay_equipment_defidx: raw.replay_equipment_defidx.into_iter().collect(),
             knife_defidx,
             glove_defidx: raw.glove_defidx.into_iter().collect(),
             agent_defidx: raw.agent_defidx.into_iter().collect(),
@@ -3136,7 +3131,7 @@ fn observed_glove_spec(
 }
 
 fn normalize_weapon_def_index(def: i32) -> i32 {
-    normalize_weapon_def_index_with_knives(def, &demotracer_econ_index().knife_defidx)
+    normalize_weapon_def_index_with_knives(def, &cs2_lib_econ_index().knife_defidx)
 }
 
 fn normalize_weapon_def_index_with_knives(def: i32, knife_defidx: &BTreeSet<i32>) -> i32 {
@@ -3147,52 +3142,14 @@ fn normalize_weapon_def_index_with_knives(def: i32, knife_defidx: &BTreeSet<i32>
     }
 }
 
+pub(crate) fn valid_replay_equipment_item_def_index(def: i32) -> bool {
+    cs2_lib_econ_index()
+        .replay_equipment_defidx
+        .contains(&normalize_weapon_def_index(def))
+}
+
 fn is_known_weapon_def_index(def: i32) -> bool {
-    matches!(
-        def,
-        1 | 2
-            | 3
-            | 4
-            | 7
-            | 8
-            | 9
-            | 10
-            | 11
-            | 13
-            | 14
-            | 16
-            | 17
-            | 19
-            | 23
-            | 24
-            | 25
-            | 26
-            | 27
-            | 28
-            | 29
-            | 30
-            | 31
-            | 32
-            | 33
-            | 34
-            | 35
-            | 36
-            | 38
-            | 39
-            | 40
-            | 42
-            | 43
-            | 44
-            | 45
-            | 46
-            | 47
-            | 48
-            | 49
-            | 60
-            | 61
-            | 63
-            | 64
-    )
+    valid_replay_equipment_item_def_index(def)
 }
 
 fn is_replay_equipment_event_def(def: i32) -> bool {
@@ -3535,7 +3492,8 @@ mod tests {
         assert!(weapon_inspect
             .command
             .starts_with("csgo_econ_action_preview "));
-        assert!(weapon_inspect.command.contains("2805"));
+        assert_eq!(weapon_cosmetic_rarity(7, 180), Some(6));
+        assert!(weapon_inspect.command.contains("2806"));
         assert!(weapon_inspect.steam_url.is_some());
         assert_eq!(cosmetics.knife.as_ref().unwrap().item_def_index, Some(508));
         assert_eq!(cosmetics.knife.as_ref().unwrap().paint_kit, 38);
