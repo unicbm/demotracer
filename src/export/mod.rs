@@ -3165,7 +3165,7 @@ fn is_replay_equipment_event_def(def: i32) -> bool {
 }
 
 fn is_weapon_cosmetic_def_index(def: i32) -> bool {
-    is_known_weapon_def_index(def) && !matches!(def, 31 | 42 | 43 | 44 | 45 | 46 | 47 | 48 | 49)
+    is_known_weapon_def_index(def) && !matches!(def, 42 | 43 | 44 | 45 | 46 | 47 | 48 | 49)
 }
 
 fn is_knife_cosmetic_def_index(def: i32) -> bool {
@@ -4407,6 +4407,19 @@ mod tests {
         assert_eq!(weapon.stickers.len(), 2);
         assert_eq!(weapon.stickers[0].sticker_id, 225);
         assert_eq!(weapon.stickers[1].sticker_id, 7891);
+    }
+
+    #[test]
+    fn taser_inventory_cosmetic_is_exported() {
+        let item = inventory_weapon_cosmetic(31, 1183, 733, 0.139_071_45, None, Vec::new());
+
+        let cosmetic = inventory_item_cosmetic_evidence(&item)
+            .expect("Zeus x27 cosmetic evidence should be exported");
+
+        assert_eq!(cosmetic.weapon_def_index, 31);
+        assert_eq!(cosmetic.paint_kit, 1183);
+        assert_eq!(cosmetic.seed, 733);
+        assert_eq!(cosmetic.wear.to_bits(), 0.139_071_45_f32.to_bits());
     }
 
     #[test]

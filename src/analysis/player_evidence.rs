@@ -1048,6 +1048,33 @@ mod tests {
     }
 
     #[test]
+    fn includes_owned_taser_cosmetic_evidence() {
+        let account_id = 123;
+        let steam_id = STEAM_ID64_BASE + u64::from(account_id);
+        let mut zeus = inventory_item(account_id, 31);
+        zeus.item_def_index = 31;
+        zeus.paint_kit = 1183;
+        zeus.paint_seed = 733;
+        zeus.paint_wear = 0.139_071_45;
+        let parsed = ParsedDemo {
+            rows: vec![player_row(steam_id, 100, 2, vec![zeus])],
+            ..ParsedDemo::default()
+        };
+
+        let details = summarize_player_details(&parsed, None, Some(1))
+            .remove(&steam_id)
+            .expect("player evidence");
+
+        assert_eq!(details.cosmetics.len(), 1);
+        let cosmetic = &details.cosmetics[0];
+        assert_eq!(cosmetic.kind, "weapon");
+        assert_eq!(cosmetic.item_def_index, Some(31));
+        assert_eq!(cosmetic.item_name.as_deref(), Some("Zeus x27"));
+        assert_eq!(cosmetic.paint_kit, Some(1183));
+        assert_eq!(cosmetic.seed, Some(733));
+    }
+
+    #[test]
     fn persisted_details_obey_cosmetic_and_attachment_export_gates() {
         let account_id = 123;
         let steam_id = STEAM_ID64_BASE + u64::from(account_id);
