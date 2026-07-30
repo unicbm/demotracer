@@ -192,7 +192,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
                 $"dtr: compatibility safe mode active for CS2 {ManagedSchemaRuntime.Value.Patch}; " +
                 $"managed presentation/schema writes are verified only through {MaxVerifiedManagedSchemaPatch}");
         }
-        LoadDemoTracerEconIndex();
+        LoadCs2LibEconIndex();
         HookCosmeticGiveNamedItem();
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
         RegisterListener<Listeners.OnMapEnd>(OnMapEnd);

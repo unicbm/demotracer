@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\..\shared\econ\demotracer-econ-index.v1.json" Link="demotracer-econ-index.v1.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\..\shared\econ\cs2-lib-econ-index.v1.json" Link="cs2-lib-econ-index.v1.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="demotracer.config.example.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

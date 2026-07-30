@@ -19,15 +19,6 @@ public sealed partial class DemoTracerPlugin
     private const float KnifeEntityRefreshMinFreezeSeconds = 0.25f;
     private const string AttributeSetterWindowsSignature = "40 53 55 41 56 48 81 EC 90 00 00 00";
     private const string AttributeSetterLinuxSignature = "55 48 89 E5 41 57 41 56 49 89 FE 41 55 41 54 53 48 89 F3 48 83 EC ? F3 0F 11 85";
-    private static readonly (int WeaponDefIndex, int PaintKit)[] BuiltInLegacyCosmeticPaints =
-    [
-        // Fallback when the compact econ index is absent. These older USP-S
-        // finishes use the legacy bodygroup in CS2; bodygroup 0 renders as the
-        // plain dark model.
-        (61, 277), // USP-S | Stainless
-        (61, 339), // USP-S | Caiman
-        (61, 504), // USP-S | Kill Confirmed
-    ];
     private static readonly Lazy<MemoryFunctionVoid<nint, string, float>?> AttributeSetter = new(CreateAttributeSetter);
     private readonly HashSet<(int WeaponDefIndex, uint PaintKit)> _legacyCosmeticPaints = new();
     private readonly Dictionary<ulong, PlayerCosmeticEvidence> _cosmeticEvidenceByKey = new();

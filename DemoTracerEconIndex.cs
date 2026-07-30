@@ -6,7 +6,7 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
-    private const string DemoTracerEconIndexFileName = "demotracer-econ-index.v1.json";
+    private const string Cs2LibEconIndexFileName = "cs2-lib-econ-index.v1.json";
     private readonly HashSet<(int WeaponDefIndex, uint PaintKit)> _validWeaponCosmeticPaints = new();
     private readonly HashSet<uint> _validPaintKits = new();
     private readonly HashSet<int> _validKnifeCosmeticItemDefs = new();
@@ -16,15 +16,14 @@ public sealed partial class DemoTracerPlugin
     private readonly HashSet<uint> _validKeychainIds = new();
     private readonly HashSet<uint> _validMusicKitIds = new();
     private readonly HashSet<uint> _validScoreboardFlairItemDefs = new();
-    private bool _demoTracerEconIndexLoaded;
-    private string _demoTracerEconIndexSnapshot = "unknown";
+    private bool _cs2LibEconIndexLoaded;
+    private string _cs2LibEconIndexVersion = "unknown";
 
-    private void LoadDemoTracerEconIndex()
+    private void LoadCs2LibEconIndex()
     {
-        ClearDemoTracerEconIndex();
-        AddBuiltInLegacyBodygroupPaints();
+        ClearCs2LibEconIndex();
 
-        var path = Path.Combine(ModuleDirectory, DemoTracerEconIndexFileName);
+        var path = Path.Combine(ModuleDirectory, Cs2LibEconIndexFileName);
         if (!File.Exists(path))
         {
             Server.PrintToConsole(
@@ -36,7 +35,9 @@ public sealed partial class DemoTracerPlugin
         {
             using var document = JsonDocument.Parse(File.ReadAllText(path));
             var root = document.RootElement;
-            _demoTracerEconIndexSnapshot = ReadEconIndexSnapshot(root);
+            _cs2LibEconIndexVersion = ReadEconIndexVersion(root);
+            if (_cs2LibEconIndexVersion == "unknown")
+                throw new InvalidDataException("econ index is not a recognized @ianlucas/cs2-lib projection");
             ReadPaintPairs(root, "weapon_paints", _validWeaponCosmeticPaints, normalizeWeaponDefIndex: true);
             ReadPaintPairs(root, "legacy_bodygroup_paints", _legacyCosmeticPaints, normalizeWeaponDefIndex: true);
             ReadUIntSet(root, "paint_kit_ids", _validPaintKits);
@@ -47,22 +48,21 @@ public sealed partial class DemoTracerPlugin
             ReadUIntSet(root, "keychain_ids", _validKeychainIds);
             ReadUIntSet(root, "music_kit_ids", _validMusicKitIds);
             ReadUIntSet(root, "scoreboard_flair_defidx", _validScoreboardFlairItemDefs);
-            _demoTracerEconIndexLoaded = _validWeaponCosmeticPaints.Count > 0 &&
-                                         _validPaintKits.Count > 0 &&
-                                         _validStickerIds.Count > 0;
+            _cs2LibEconIndexLoaded = _validWeaponCosmeticPaints.Count > 0 &&
+                                     _validPaintKits.Count > 0 &&
+                                     _validStickerIds.Count > 0;
 
             Server.PrintToConsole(
-                $"dtr: loaded econ index snapshot={_demoTracerEconIndexSnapshot} weapon_paints={_validWeaponCosmeticPaints.Count} legacy_bodygroups={_legacyCosmeticPaints.Count} paints={_validPaintKits.Count} stickers={_validStickerIds.Count} charms={_validKeychainIds.Count} music={_validMusicKitIds.Count} flair={_validScoreboardFlairItemDefs.Count}");
+                $"dtr: loaded cs2-lib econ index version={_cs2LibEconIndexVersion} weapon_paints={_validWeaponCosmeticPaints.Count} legacy_bodygroups={_legacyCosmeticPaints.Count} paints={_validPaintKits.Count} stickers={_validStickerIds.Count} charms={_validKeychainIds.Count} music={_validMusicKitIds.Count} flair={_validScoreboardFlairItemDefs.Count}");
         }
         catch (Exception ex)
         {
-            ClearDemoTracerEconIndex();
-            AddBuiltInLegacyBodygroupPaints();
-            Server.PrintToConsole($"dtr: failed to load econ index; validation will fail closed: {ex.Message}");
+            ClearCs2LibEconIndex();
+            Server.PrintToConsole($"dtr: failed to load cs2-lib econ index; validation will fail closed: {ex.Message}");
         }
     }
 
-    private void ClearDemoTracerEconIndex()
+    private void ClearCs2LibEconIndex()
     {
         _validWeaponCosmeticPaints.Clear();
         _validPaintKits.Clear();
@@ -74,23 +74,20 @@ public sealed partial class DemoTracerPlugin
         _validMusicKitIds.Clear();
         _validScoreboardFlairItemDefs.Clear();
         _legacyCosmeticPaints.Clear();
-        _demoTracerEconIndexLoaded = false;
-        _demoTracerEconIndexSnapshot = "unknown";
+        _cs2LibEconIndexLoaded = false;
+        _cs2LibEconIndexVersion = "unknown";
     }
 
-    private void AddBuiltInLegacyBodygroupPaints()
-    {
-        foreach (var (weaponDefIndex, paintKit) in BuiltInLegacyCosmeticPaints)
-            _legacyCosmeticPaints.Add((NormalizeWeaponDefIndex(weaponDefIndex), (uint)paintKit));
-    }
-
-    private static string ReadEconIndexSnapshot(JsonElement root)
+    private static string ReadEconIndexVersion(JsonElement root)
     {
         if (root.TryGetProperty("source", out var source) &&
-            source.TryGetProperty("snapshot_date", out var snapshot) &&
-            snapshot.ValueKind == JsonValueKind.String)
+            source.TryGetProperty("package", out var package) &&
+            package.ValueKind == JsonValueKind.String &&
+            package.GetString() == "@ianlucas/cs2-lib" &&
+            source.TryGetProperty("version", out var version) &&
+            version.ValueKind == JsonValueKind.String)
         {
-            return snapshot.GetString() ?? "unknown";
+            return version.GetString() ?? "unknown";
         }
         return "unknown";
     }
