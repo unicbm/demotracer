@@ -3,6 +3,28 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
+    internal enum WeaponSlotReplacementAction
+    {
+        TargetReady,
+        WaitForClear,
+        GrantTarget,
+        PreserveExisting
+    }
+
+    internal static WeaponSlotReplacementAction DecideWeaponSlotReplacement(
+        bool targetPresent,
+        bool anySlotWeapon,
+        int clearWaitFramesRemaining)
+    {
+        if (targetPresent)
+            return WeaponSlotReplacementAction.TargetReady;
+        if (!anySlotWeapon)
+            return WeaponSlotReplacementAction.GrantTarget;
+        return clearWaitFramesRemaining > 0
+            ? WeaponSlotReplacementAction.WaitForClear
+            : WeaponSlotReplacementAction.PreserveExisting;
+    }
+
     private static ReplayLoadoutSnapshot NormalizeReplayLoadout(ReplayLoadoutSnapshot loadout)
     {
         return new ReplayLoadoutSnapshot
