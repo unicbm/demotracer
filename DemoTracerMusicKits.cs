@@ -11,7 +11,7 @@ public sealed partial class DemoTracerPlugin
     {
         var player = @event.Userid;
         if (player is not { IsValid: true } ||
-            !_loadedReplays.TryGetValue(player.Slot, out var replay) ||
+            !_session.LoadedReplays.TryGetValue(player.Slot, out var replay) ||
             !ReplayMusicKitAlignmentAllowed(replay.MusicKitId) ||
             !TryValidateBotRandomizerClaim(
                 player.Slot,

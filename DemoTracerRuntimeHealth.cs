@@ -164,7 +164,7 @@ public sealed partial class DemoTracerPlugin
     private RuntimeReplayWeaponHealth[] BuildRuntimeReplayWeaponHealth()
     {
         var snapshots = new List<RuntimeReplayWeaponHealth>();
-        foreach (var slot in _loadedSlots.Distinct().Order())
+        foreach (var slot in _session.LoadedSlots.Distinct().Order())
         {
             try
             {
@@ -197,18 +197,18 @@ public sealed partial class DemoTracerPlugin
                     }
                 }
 
-                int? cachedReplayDefIndex = _lastReplayWeaponDef.TryGetValue(
+                int? cachedReplayDefIndex = _session.LastReplayWeaponDef.TryGetValue(
                     slot,
                     out var cachedDefIndex)
                     ? cachedDefIndex
                     : null;
-                int? lockedTarget = _lastLockedWeaponTarget.TryGetValue(
+                int? lockedTarget = _session.LastLockedWeaponTarget.TryGetValue(
                     slot,
                     out var target)
                     ? target
                     : null;
                 RuntimeReplayCosmeticClaimHealth? cosmeticClaim = null;
-                if (_loadedReplays.TryGetValue(slot, out var replay) &&
+                if (_session.LoadedReplays.TryGetValue(slot, out var replay) &&
                     _botRandomizerLease.TryGet(
                         slot,
                         replay.SteamId,
@@ -240,8 +240,8 @@ public sealed partial class DemoTracerPlugin
                     ReplayDefIndex: replayState.WeaponDefIndex,
                     CachedReplayDefIndex: cachedReplayDefIndex,
                     LockedTarget: lockedTarget,
-                    LoadoutSynced: _loadoutSyncedSlots.Contains(slot),
-                    PendingSlotReplacements: _pendingWeaponSlotReplacements.Keys.Count(
+                    LoadoutSynced: _session.LoadoutSyncedSlots.Contains(slot),
+                    PendingSlotReplacements: _session.PendingWeaponSlotReplacements.Keys.Count(
                         key => key.PlayerSlot == slot),
                     CosmeticClaim: cosmeticClaim,
                     Inventory: inventory.ToArray(),

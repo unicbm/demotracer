@@ -39,10 +39,7 @@ public sealed partial class DemoTracerPlugin
     }
 
     private string RuntimeConfigPath()
-    {
-        var directory = Path.GetDirectoryName(GetType().Assembly.Location);
-        return Path.Combine(string.IsNullOrWhiteSpace(directory) ? "." : directory, RuntimeConfigFileName);
-    }
+        => Path.Combine(ModuleDirectory, RuntimeConfigFileName);
 
     private void LoadRuntimeConfig(Action<string> reply, bool announceMissing)
     {
@@ -342,7 +339,7 @@ public sealed partial class DemoTracerPlugin
         {
             _handoffThreat360Enabled = handoff.Threat360.Value;
             if (!_handoffThreat360Enabled)
-                _pendingThreat360.Clear();
+                _session.PendingThreat360.Clear();
         }
 
         if (handoff.Threat360Range.HasValue)
@@ -351,13 +348,13 @@ public sealed partial class DemoTracerPlugin
                 handoff.Threat360Range.Value,
                 HandoffThreat360MinRange,
                 HandoffThreat360MaxRange);
-            _pendingThreat360.Clear();
+            _session.PendingThreat360.Clear();
         }
 
         if (handoff.Threat360Los.HasValue)
         {
             _handoffThreat360LosEnabled = handoff.Threat360Los.Value;
-            _pendingThreat360.Clear();
+            _session.PendingThreat360.Clear();
         }
 
         if (!string.IsNullOrWhiteSpace(handoff.ViewmodelContinuity))
@@ -383,7 +380,7 @@ public sealed partial class DemoTracerPlugin
         BotControllerNative.SetReplayNativeFovOverride(_handoffThreat360Enabled);
         if (_replayIdentityMode != ReplayIdentityMode.Avatar)
             Server.ExecuteCommand("sv_reliableavatardata false");
-        if (_loadedSlots.Count > 0 || _companionCrosshairOverrides.Count > 0)
+        if (_session.LoadedSlots.Count > 0 || _companionCrosshairOverrides.Count > 0)
             _ = SyncBotHiderPresentationLease(announce: false);
         _ = SyncBotRandomizerCosmeticLease(announce: false);
     }

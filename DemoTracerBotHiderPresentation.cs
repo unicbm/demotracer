@@ -40,7 +40,7 @@ public sealed partial class DemoTracerPlugin
         if (_botHiderPresentationTransitionDepth > 0)
             return;
 
-        if (_loadedSlots.Count == 0 &&
+        if (_session.LoadedSlots.Count == 0 &&
             _retainedBotHiderPresentation.Count == 0 &&
             _companionCrosshairOverrides.Count == 0)
         {
@@ -185,9 +185,9 @@ public sealed partial class DemoTracerPlugin
         if (_companionCrosshairOverrides.Count > 0)
             return true;
 
-        foreach (var slot in _loadedSlots)
+        foreach (var slot in _session.LoadedSlots)
         {
-            if (!_loadedReplays.TryGetValue(slot, out var replay))
+            if (!_session.LoadedReplays.TryGetValue(slot, out var replay))
             {
                 continue;
             }
@@ -224,9 +224,9 @@ public sealed partial class DemoTracerPlugin
     private BotHiderPresentationOverride[] BuildBotHiderPresentationOverrides(out string signature)
     {
         var bySlot = new Dictionary<int, BotHiderPresentationOverride>();
-        foreach (var slot in _loadedSlots.ToArray())
+        foreach (var slot in _session.LoadedSlots.ToArray())
         {
-            if (!_loadedReplays.TryGetValue(slot, out var replay))
+            if (!_session.LoadedReplays.TryGetValue(slot, out var replay))
                 continue;
             AddBotHiderPresentationOverride(
                 bySlot,
@@ -416,7 +416,7 @@ public sealed partial class DemoTracerPlugin
     private void RetainLoadedBotHiderPresentation()
     {
         var replacement = new Dictionary<int, BotHiderPresentationEvidence>();
-        foreach (var pair in _loadedReplays)
+        foreach (var pair in _session.LoadedReplays)
         {
             var replay = pair.Value;
             replacement[pair.Key] = new BotHiderPresentationEvidence(
@@ -484,7 +484,7 @@ public sealed partial class DemoTracerPlugin
         var slots = new HashSet<int>(_companionCrosshairOverrides.Keys);
         if (_crosshairAlignEnabled)
         {
-            foreach (var pair in _loadedReplays)
+            foreach (var pair in _session.LoadedReplays)
             {
                 if (HasCrosshairEvidence(pair.Value.View))
                     slots.Add(pair.Key);

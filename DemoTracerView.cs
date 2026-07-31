@@ -70,7 +70,7 @@ public sealed partial class DemoTracerPlugin
     {
         if (resetCounters)
             _companionCrosshairOverrides.Clear();
-        if (_loadedSlots.Count == 0 &&
+        if (_session.LoadedSlots.Count == 0 &&
             _retainedBotHiderPresentation.Count == 0 &&
             _companionCrosshairOverrides.Count == 0)
             ReleaseBotHiderPresentationLease("crosshair_reset");
@@ -90,13 +90,13 @@ public sealed partial class DemoTracerPlugin
     }
 
     private string FormatViewmodelStatusCounts()
-        => $"viewmodel_evidence={CountLoadedViewmodelEvidence()} viewmodel_bots={_replayAppliedViewmodels.Count} viewmodel_failed={_replayFailedViewmodelSlots.Count} viewmodel_retained={_retainedReplayViewmodelSlots.Count} left_hand_latches={_replayLeftHandDesiredLatches.Count}";
+        => $"viewmodel_evidence={CountLoadedViewmodelEvidence()} viewmodel_bots={_session.ReplayAppliedViewmodels.Count} viewmodel_failed={_session.ReplayFailedViewmodelSlots.Count} viewmodel_retained={_retainedReplayViewmodelSlots.Count} left_hand_latches={_replayLeftHandDesiredLatches.Count}";
 
     private int CountLoadedCrosshairEvidence()
-        => _loadedReplays.Values.Count(replay => HasCrosshairEvidence(replay.View));
+        => _session.LoadedReplays.Values.Count(replay => HasCrosshairEvidence(replay.View));
 
     private int CountLoadedViewmodelEvidence()
-        => _loadedReplays.Values.Count(replay => HasViewmodelEvidence(replay.View));
+        => _session.LoadedReplays.Values.Count(replay => HasViewmodelEvidence(replay.View));
 
     private void UpdateReplayCrosshairPresentation()
     {
@@ -118,7 +118,7 @@ public sealed partial class DemoTracerPlugin
     {
         var changed = _companionCrosshairOverrides.Count > 0;
         _companionCrosshairOverrides.Clear();
-        if (_loadedSlots.Count == 0 && _retainedBotHiderPresentation.Count == 0)
+        if (_session.LoadedSlots.Count == 0 && _retainedBotHiderPresentation.Count == 0)
             ReleaseBotHiderPresentationLease("crosshair_clear_all");
         else if (changed)
             _ = SyncBotHiderPresentationLease(announce: false);
@@ -128,7 +128,7 @@ public sealed partial class DemoTracerPlugin
 
     private void UpdateReplayBotViewmodels(TickPlayerSnapshot playerSnapshot)
     {
-        if (_loadedSlots.Count == 0)
+        if (_session.LoadedSlots.Count == 0)
         {
             RestoreAllReplayBotViewmodels();
             return;
@@ -137,10 +137,10 @@ public sealed partial class DemoTracerPlugin
             ClearReplayLeftHandDesiredLatches();
 
         ulong activeReplaySlotMask = 0;
-        foreach (var slot in _lastPlayingSlots)
+        foreach (var slot in _session.LastPlayingSlots)
         {
             if (slot is < 0 or >= MaxPlayerSlots ||
-                !_loadedReplays.TryGetValue(slot, out var replay) ||
+                !_session.LoadedReplays.TryGetValue(slot, out var replay) ||
                 !HasViewmodelEvidence(replay.View))
             {
                 ClearReplayLeftHandDesiredLatch(slot);
@@ -172,16 +172,16 @@ public sealed partial class DemoTracerPlugin
     }
 
     private bool HasTrackedReplayViewmodelState()
-        => _replayOriginalViewmodels.Count > 0 ||
-           _replayAppliedViewmodels.Count > 0 ||
-           _replayFailedViewmodelSlots.Count > 0 ||
+        => _session.ReplayOriginalViewmodels.Count > 0 ||
+           _session.ReplayAppliedViewmodels.Count > 0 ||
+           _session.ReplayFailedViewmodelSlots.Count > 0 ||
            _retainedReplayViewmodelSlots.Count > 0 ||
            _replayLeftHandDesiredLatches.Count > 0;
 
     private bool IsReplayViewmodelSlotTracked(int slot)
-        => _replayOriginalViewmodels.ContainsKey(slot) ||
-           _replayAppliedViewmodels.ContainsKey(slot) ||
-           _replayFailedViewmodelSlots.Contains(slot) ||
+        => _session.ReplayOriginalViewmodels.ContainsKey(slot) ||
+           _session.ReplayAppliedViewmodels.ContainsKey(slot) ||
+           _session.ReplayFailedViewmodelSlots.Contains(slot) ||
            _retainedReplayViewmodelSlots.Contains(slot) ||
            _replayLeftHandDesiredLatches.ContainsKey(slot);
 
@@ -234,26 +234,26 @@ public sealed partial class DemoTracerPlugin
         if (pawn is not { IsValid: true })
             return;
 
-        if (!_replayOriginalViewmodels.ContainsKey(slot))
-            _replayOriginalViewmodels[slot] = ReadCurrentViewmodel(pawn);
+        if (!_session.ReplayOriginalViewmodels.ContainsKey(slot))
+            _session.ReplayOriginalViewmodels[slot] = ReadCurrentViewmodel(pawn);
 
-        if (_replayAppliedViewmodels.TryGetValue(slot, out var current) &&
+        if (_session.ReplayAppliedViewmodels.TryGetValue(slot, out var current) &&
             ViewmodelsEquivalent(current, viewmodel))
         {
             return;
         }
 
-        if (_replayFailedViewmodelSlots.Contains(slot))
+        if (_session.ReplayFailedViewmodelSlots.Contains(slot))
             return;
 
         if (TryApplyViewmodelToPawn(pawn, viewmodel, $"slot={slot} replay_bot"))
         {
-            _replayAppliedViewmodels[slot] = CopyViewmodel(viewmodel);
-            _replayFailedViewmodelSlots.Remove(slot);
+            _session.ReplayAppliedViewmodels[slot] = CopyViewmodel(viewmodel);
+            _session.ReplayFailedViewmodelSlots.Remove(slot);
         }
         else
         {
-            _replayFailedViewmodelSlots.Add(slot);
+            _session.ReplayFailedViewmodelSlots.Add(slot);
         }
     }
 
@@ -267,9 +267,9 @@ public sealed partial class DemoTracerPlugin
             if (IsReplayViewmodelSlotTracked(slot))
                 RestoreReplayBotViewmodel(slot, clearLeftHandDesiredLatch: false);
         }
-        _replayOriginalViewmodels.Clear();
-        _replayAppliedViewmodels.Clear();
-        _replayFailedViewmodelSlots.Clear();
+        _session.ReplayOriginalViewmodels.Clear();
+        _session.ReplayAppliedViewmodels.Clear();
+        _session.ReplayFailedViewmodelSlots.Clear();
         _retainedReplayViewmodelSlots.Clear();
         ClearReplayLeftHandDesiredLatches();
     }
@@ -277,14 +277,14 @@ public sealed partial class DemoTracerPlugin
     private void RestoreReplayBotViewmodel(int slot, bool clearLeftHandDesiredLatch = true)
     {
         _retainedReplayViewmodelSlots.Remove(slot);
-        _replayAppliedViewmodels.Remove(slot);
-        _replayFailedViewmodelSlots.Remove(slot);
+        _session.ReplayAppliedViewmodels.Remove(slot);
+        _session.ReplayFailedViewmodelSlots.Remove(slot);
         if (clearLeftHandDesiredLatch)
             ClearReplayLeftHandDesiredLatch(slot);
-        if (!_replayOriginalViewmodels.TryGetValue(slot, out var original))
+        if (!_session.ReplayOriginalViewmodels.TryGetValue(slot, out var original))
             return;
 
-        _replayOriginalViewmodels.Remove(slot);
+        _session.ReplayOriginalViewmodels.Remove(slot);
 
         if (!ManagedSchemaWritesAllowed())
             return;

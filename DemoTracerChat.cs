@@ -160,7 +160,7 @@ public sealed partial class DemoTracerPlugin
     private float LoadedReplayChatPrerollSeconds(float? freezeTimeSeconds, float fallbackTickRate)
     {
         var maxRecordedPrerollSeconds = 0.0f;
-        foreach (var replay in _loadedReplays.Values)
+        foreach (var replay in _session.LoadedReplays.Values)
         {
             var tickRate = replay.TickRate > 0.0f ? replay.TickRate : fallbackTickRate;
             if (replay.PlayStartTickIndex == 0 || tickRate <= 0.0f)
@@ -283,7 +283,7 @@ public sealed partial class DemoTracerPlugin
 
     private bool TryResolveChatSender(ulong senderSteamId, out CCSPlayerController sender)
     {
-        foreach (var (slot, replay) in _loadedReplays)
+        foreach (var (slot, replay) in _session.LoadedReplays)
         {
             if (replay.SteamId != senderSteamId || !IsReplaySlotStillSafe(slot))
                 continue;
@@ -306,9 +306,9 @@ public sealed partial class DemoTracerPlugin
     {
         if (rawTarget.Equals("loaded", StringComparison.OrdinalIgnoreCase))
         {
-            foreach (var slot in _loadedSlots)
+            foreach (var slot in _session.LoadedSlots)
             {
-                if (!_loadedReplays.TryGetValue(slot, out var replay) ||
+                if (!_session.LoadedReplays.TryGetValue(slot, out var replay) ||
                     !IsReplaySlotStillSafe(slot))
                 {
                     continue;

@@ -13,13 +13,13 @@ public sealed partial class DemoTracerPlugin
     [GameEventHandler]
     public HookResult OnRoundEndReplayPrefetch(EventRoundEnd @event, GameEventInfo info)
     {
-        if (_sequenceActive &&
-            !_sequencePrepared &&
-            _sequenceIndex >= 0 &&
-            _sequenceIndex < _sequenceRounds.Length &&
+        if (_session.SequenceActive &&
+            !_session.SequencePrepared &&
+            _session.SequenceIndex >= 0 &&
+            _session.SequenceIndex < _session.SequenceRounds.Length &&
             !ReplayPrefetchActive())
         {
-            PrefetchRoundReplays(_sequenceManifestPath, _sequenceRounds[_sequenceIndex]);
+            PrefetchRoundReplays(_session.SequenceManifestPath, _session.SequenceRounds[_session.SequenceIndex]);
         }
         else if (IsPlayoffPlanReady())
         {

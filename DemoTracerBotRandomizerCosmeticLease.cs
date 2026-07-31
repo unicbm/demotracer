@@ -168,7 +168,7 @@ public sealed partial class DemoTracerPlugin
 
     private bool SyncBotRandomizerCosmeticLease(bool announce)
     {
-        if (_loadedReplays.Count == 0)
+        if (_session.LoadedReplays.Count == 0)
         {
             ReleaseBotRandomizerCosmeticLease("no_replay_identity_claims");
             return true;
@@ -264,7 +264,7 @@ public sealed partial class DemoTracerPlugin
     private BotRandomizerCosmeticWriteClaim[] BuildBotRandomizerCosmeticWriteClaims()
     {
         var claims = new List<BotRandomizerCosmeticWriteClaim>();
-        foreach (var pair in _loadedReplays.OrderBy(pair => pair.Key))
+        foreach (var pair in _session.LoadedReplays.OrderBy(pair => pair.Key))
         {
             var slot = pair.Key;
             var replay = pair.Value;
@@ -491,12 +491,12 @@ public sealed partial class DemoTracerPlugin
     {
         foreach (var slot in slots.Distinct())
         {
-            _rebuiltInventorySlots.Remove(slot);
-            _loadoutSyncedSlots.Remove(slot);
-            _cosmeticSyncedSlots.Remove(slot);
+            _session.RebuiltInventorySlots.Remove(slot);
+            _session.LoadoutSyncedSlots.Remove(slot);
+            _session.CosmeticSyncedSlots.Remove(slot);
             ScheduleCosmeticNextFrame(() =>
             {
-                if (!_loadedReplays.TryGetValue(slot, out var replay) ||
+                if (!_session.LoadedReplays.TryGetValue(slot, out var replay) ||
                     !_botRandomizerLease.TryGet(slot, replay.SteamId, out _))
                 {
                     return;

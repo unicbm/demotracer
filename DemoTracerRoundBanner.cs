@@ -23,7 +23,7 @@ public sealed partial class DemoTracerPlugin
 
     private void TryStartDtrRoundBanner(string evidenceLabel)
     {
-        if (!_roundBannerEnabled || _roundBannerShownThisRound || _loadedSlots.Count == 0)
+        if (!_roundBannerEnabled || _roundBannerShownThisRound || _session.LoadedSlots.Count == 0)
             return;
 
         _roundBannerShownThisRound = true;
@@ -47,7 +47,7 @@ public sealed partial class DemoTracerPlugin
         var playback = _roundBannerPlayback;
         if (playback == null)
             return;
-        if (_loadedSlots.Count == 0)
+        if (_session.LoadedSlots.Count == 0)
         {
             _roundBannerPlayback = null;
             return;

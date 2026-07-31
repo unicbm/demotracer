@@ -403,7 +403,7 @@ public sealed partial class DemoTracerPlugin
         public string? Name { get; set; }
     }
 
-    private static bool TryReadManifest(
+    private bool TryReadManifest(
         string manifestPath,
         out ConversionManifest manifest,
         out string error)
@@ -521,21 +521,6 @@ public sealed partial class DemoTracerPlugin
     }
 
     private static bool ManifestContainsSourceRound(
-        string manifestPath,
-        int sourceRound,
-        out string error)
-    {
-        error = string.Empty;
-        if (!TryReadManifest(manifestPath, out var manifest, out var readError))
-        {
-            error = $"[DTR ERR] failed to read manifest: {readError}";
-            return false;
-        }
-
-        return ManifestContainsSourceRound(manifest, sourceRound, out error);
-    }
-
-    private static bool ManifestContainsSourceRound(
         ConversionManifest manifest,
         int sourceRound,
         out string error)
@@ -598,7 +583,7 @@ public sealed partial class DemoTracerPlugin
         return true;
     }
 
-    private static string ResolveReadableManifestPath(string manifestPath)
+    private string ResolveReadableManifestPath(string manifestPath)
     {
         if (string.IsNullOrWhiteSpace(manifestPath))
             throw new FileNotFoundException("manifest path is empty", manifestPath);
@@ -630,7 +615,7 @@ public sealed partial class DemoTracerPlugin
         throw new FileNotFoundException("manifest file not found", string.IsNullOrEmpty(first) ? manifestPath : first);
     }
 
-    private static IEnumerable<string> CandidateGameDirectories()
+    private IEnumerable<string> CandidateGameDirectories()
     {
         foreach (var root in CandidatePathRoots())
         {
@@ -659,9 +644,9 @@ public sealed partial class DemoTracerPlugin
         }
     }
 
-    private static IEnumerable<string> CandidatePathRoots()
+    private IEnumerable<string> CandidatePathRoots()
     {
-        yield return _moduleDirectoryForPathResolution;
+        yield return ModuleDirectory;
         yield return AppContext.BaseDirectory;
         yield return Directory.GetCurrentDirectory();
     }

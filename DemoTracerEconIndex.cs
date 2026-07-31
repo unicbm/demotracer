@@ -16,7 +16,7 @@ public sealed partial class DemoTracerPlugin
     private readonly HashSet<uint> _validKeychainIds = new();
     private readonly HashSet<uint> _validMusicKitIds = new();
     private readonly HashSet<uint> _validScoreboardFlairItemDefs = new();
-    private static ReplayEquipmentCatalog ReplayEquipment = LoadAdjacentReplayEquipment();
+    private ReplayEquipmentCatalog _replayEquipment = ReplayEquipmentCatalog.Empty;
     private bool _cs2LibEconIndexLoaded;
     private string _cs2LibEconIndexVersion = "unknown";
 
@@ -39,10 +39,10 @@ public sealed partial class DemoTracerPlugin
             _cs2LibEconIndexVersion = ReadEconIndexVersion(root);
             if (_cs2LibEconIndexVersion == "unknown")
                 throw new InvalidDataException("econ index is not a recognized @ianlucas/cs2-lib projection");
+            _replayEquipment = ReplayEquipmentCatalog.Parse(root);
             ReadPaintPairs(root, "weapon_paints", _validWeaponCosmeticPaints, normalizeWeaponDefIndex: true);
             ReadPaintPairs(root, "legacy_bodygroup_paints", _legacyCosmeticPaints, normalizeWeaponDefIndex: true);
             ReadUIntSet(root, "paint_kit_ids", _validPaintKits);
-            ReplayEquipment = ParseReplayEquipment(root);
             ReadIntSet(root, "knife_defidx", _validKnifeCosmeticItemDefs);
             ReadIntSet(root, "glove_defidx", _validGloveCosmeticItemDefs);
             ReadUIntSet(root, "agent_defidx", _validAgentCosmeticItemDefs);
@@ -52,11 +52,11 @@ public sealed partial class DemoTracerPlugin
             ReadUIntSet(root, "scoreboard_flair_defidx", _validScoreboardFlairItemDefs);
             _cs2LibEconIndexLoaded = _validWeaponCosmeticPaints.Count > 0 &&
                                      _validPaintKits.Count > 0 &&
-                                     ReplayEquipment.ByClassName.Count > 0 &&
+                                     _replayEquipment.ByClassName.Count > 0 &&
                                      _validStickerIds.Count > 0;
 
             Server.PrintToConsole(
-                $"dtr: loaded cs2-lib econ index version={_cs2LibEconIndexVersion} equipment={ReplayEquipment.ByClassName.Count} weapon_paints={_validWeaponCosmeticPaints.Count} legacy_bodygroups={_legacyCosmeticPaints.Count} paints={_validPaintKits.Count} stickers={_validStickerIds.Count} charms={_validKeychainIds.Count} music={_validMusicKitIds.Count} flair={_validScoreboardFlairItemDefs.Count}");
+                $"dtr: loaded cs2-lib econ index version={_cs2LibEconIndexVersion} equipment={_replayEquipment.ByClassName.Count} weapon_paints={_validWeaponCosmeticPaints.Count} legacy_bodygroups={_legacyCosmeticPaints.Count} paints={_validPaintKits.Count} stickers={_validStickerIds.Count} charms={_validKeychainIds.Count} music={_validMusicKitIds.Count} flair={_validScoreboardFlairItemDefs.Count}");
         }
         catch (Exception ex)
         {
@@ -77,7 +77,7 @@ public sealed partial class DemoTracerPlugin
         _validMusicKitIds.Clear();
         _validScoreboardFlairItemDefs.Clear();
         _legacyCosmeticPaints.Clear();
-        ReplayEquipment = ReplayEquipmentCatalog.Empty;
+        _replayEquipment = ReplayEquipmentCatalog.Empty;
         _cs2LibEconIndexLoaded = false;
         _cs2LibEconIndexVersion = "unknown";
     }
@@ -96,7 +96,7 @@ public sealed partial class DemoTracerPlugin
         return "unknown";
     }
 
-    private static void ReadPaintPairs(
+    private void ReadPaintPairs(
         JsonElement root,
         string propertyName,
         HashSet<(int WeaponDefIndex, uint PaintKit)> output,
@@ -116,68 +116,6 @@ public sealed partial class DemoTracerPlugin
 
             output.Add((normalizeWeaponDefIndex ? NormalizeWeaponDefIndex(weaponDefIndex) : weaponDefIndex, paintKit));
         }
-    }
-
-    private static ReplayEquipmentCatalog LoadAdjacentReplayEquipment()
-    {
-        try
-        {
-            var assemblyDirectory = Path.GetDirectoryName(typeof(DemoTracerPlugin).Assembly.Location);
-            var path = Path.Combine(assemblyDirectory ?? string.Empty, Cs2LibEconIndexFileName);
-            if (!File.Exists(path))
-                return ReplayEquipmentCatalog.Empty;
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
-            return ParseReplayEquipment(document.RootElement);
-        }
-        catch
-        {
-            return ReplayEquipmentCatalog.Empty;
-        }
-    }
-
-    private static ReplayEquipmentCatalog ParseReplayEquipment(JsonElement root)
-    {
-        if (!root.TryGetProperty("replay_equipment", out var values) ||
-            values.ValueKind != JsonValueKind.Array)
-        {
-            throw new InvalidDataException("econ index is missing replay_equipment");
-        }
-
-        var byClassName = new Dictionary<string, ReplayEquipmentDefinition>(
-            StringComparer.OrdinalIgnoreCase);
-        var byDefIndex = new Dictionary<int, ReplayEquipmentDefinition>();
-        foreach (var value in values.EnumerateArray())
-        {
-            if (!TryReadIntProperty(value, "weapon_defidx", out var weaponDefIndex) ||
-                !value.TryGetProperty("class_name", out var classNameValue) ||
-                classNameValue.ValueKind != JsonValueKind.String ||
-                !value.TryGetProperty("replay_slot", out var replaySlotValue) ||
-                replaySlotValue.ValueKind != JsonValueKind.String)
-            {
-                throw new InvalidDataException("econ index contains invalid replay equipment");
-            }
-
-            var className = classNameValue.GetString();
-            var replaySlot = replaySlotValue.GetString() switch
-            {
-                "primary" => ReplayWeaponSlot.Primary,
-                "secondary" => ReplayWeaponSlot.Secondary,
-                "utility" => ReplayWeaponSlot.Utility,
-                "c4" => ReplayWeaponSlot.C4,
-                "taser" => ReplayWeaponSlot.Taser,
-                "knife" => ReplayWeaponSlot.Knife,
-                _ => ReplayWeaponSlot.Other
-            };
-            var definition = new ReplayEquipmentDefinition(weaponDefIndex, className ?? string.Empty, replaySlot);
-            if (string.IsNullOrWhiteSpace(className) ||
-                replaySlot == ReplayWeaponSlot.Other ||
-                !byClassName.TryAdd(className, definition) ||
-                !byDefIndex.TryAdd(weaponDefIndex, definition))
-            {
-                throw new InvalidDataException("econ index contains duplicate or unsupported replay equipment");
-            }
-        }
-        return new ReplayEquipmentCatalog(byClassName, byDefIndex);
     }
 
     private static void ReadIntSet(JsonElement root, string propertyName, HashSet<int> output)
@@ -277,17 +215,4 @@ public sealed partial class DemoTracerPlugin
     private bool IsKnownScoreboardFlairItemDefIndex(uint itemDefIndex)
         => itemDefIndex == 0 || _validScoreboardFlairItemDefs.Contains(itemDefIndex);
 
-    private readonly record struct ReplayEquipmentDefinition(
-        int WeaponDefIndex,
-        string ClassName,
-        ReplayWeaponSlot Slot);
-
-    private sealed record ReplayEquipmentCatalog(
-        IReadOnlyDictionary<string, ReplayEquipmentDefinition> ByClassName,
-        IReadOnlyDictionary<int, ReplayEquipmentDefinition> ByDefIndex)
-    {
-        public static ReplayEquipmentCatalog Empty { get; } = new(
-            new Dictionary<string, ReplayEquipmentDefinition>(StringComparer.OrdinalIgnoreCase),
-            new Dictionary<int, ReplayEquipmentDefinition>());
-    }
 }

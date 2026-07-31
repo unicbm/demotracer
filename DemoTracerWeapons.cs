@@ -3,29 +3,7 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
-    internal enum WeaponSlotReplacementAction
-    {
-        TargetReady,
-        WaitForClear,
-        GrantTarget,
-        PreserveExisting
-    }
-
-    internal static WeaponSlotReplacementAction DecideWeaponSlotReplacement(
-        bool targetPresent,
-        bool anySlotWeapon,
-        int clearWaitFramesRemaining)
-    {
-        if (targetPresent)
-            return WeaponSlotReplacementAction.TargetReady;
-        if (!anySlotWeapon)
-            return WeaponSlotReplacementAction.GrantTarget;
-        return clearWaitFramesRemaining > 0
-            ? WeaponSlotReplacementAction.WaitForClear
-            : WeaponSlotReplacementAction.PreserveExisting;
-    }
-
-    private static ReplayLoadoutSnapshot NormalizeReplayLoadout(ReplayLoadoutSnapshot loadout)
+    private ReplayLoadoutSnapshot NormalizeReplayLoadout(ReplayLoadoutSnapshot loadout)
     {
         return new ReplayLoadoutSnapshot
         {
@@ -39,7 +17,7 @@ public sealed partial class DemoTracerPlugin
         };
     }
 
-    private static Dictionary<string, int> BuildLoadoutItemCounts(ReplayLoadoutSnapshot loadout)
+    private Dictionary<string, int> BuildLoadoutItemCounts(ReplayLoadoutSnapshot loadout)
     {
         var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var def in loadout.WeaponDefIndices ?? Array.Empty<int>())
@@ -78,10 +56,6 @@ public sealed partial class DemoTracerPlugin
         return false;
     }
 
-    internal static bool CanDropAndKillReplayWeapon(string className)
-        => !WeaponClassMatches(className, "weapon_knife") &&
-           GetReplayWeaponSlot(className) != ReplayWeaponSlot.Knife;
-
     private static string NormalizeWeaponClassName(string className)
     {
         return className switch
@@ -92,15 +66,15 @@ public sealed partial class DemoTracerPlugin
         };
     }
 
-    private static ReplayWeaponSlot GetReplayWeaponSlot(string className)
+    private ReplayWeaponSlot GetReplayWeaponSlot(string className)
     {
         className = NormalizeWeaponClassName(className);
-        return ReplayEquipment.ByClassName.TryGetValue(className, out var definition)
+        return _replayEquipment.ByClassName.TryGetValue(className, out var definition)
             ? definition.Slot
             : ReplayWeaponSlot.Other;
     }
 
-    private static int GetReplayLockTarget(int weaponDefIndex)
+    private int GetReplayLockTarget(int weaponDefIndex)
     {
         if (!TryGetWeaponClassByDefIndex(weaponDefIndex, out var className))
             return 0;
@@ -114,22 +88,17 @@ public sealed partial class DemoTracerPlugin
         };
     }
 
-    private static bool IsSlotReplaceableWeaponDef(int weaponDefIndex)
+    private bool IsSlotReplaceableWeaponDef(int weaponDefIndex)
     {
         if (!TryGetWeaponClassByDefIndex(weaponDefIndex, out var className))
             return false;
         return GetReplayWeaponSlot(className) is ReplayWeaponSlot.Primary or ReplayWeaponSlot.Secondary;
     }
 
-    private static int NormalizeWeaponDefIndex(int weaponDefIndex)
-    {
-        if (ReplayEquipment.ByDefIndex.TryGetValue(weaponDefIndex, out var definition) &&
-            definition.Slot == ReplayWeaponSlot.Knife)
-            return WeaponDefIndex("weapon_knife");
-        return weaponDefIndex;
-    }
+    private int NormalizeWeaponDefIndex(int weaponDefIndex)
+        => _replayEquipment.NormalizeWeaponDefIndex(weaponDefIndex);
 
-    private static int[] NormalizePreloadWeaponDefs(IEnumerable<int> weaponDefIndices)
+    private int[] NormalizePreloadWeaponDefs(IEnumerable<int> weaponDefIndices)
     {
         var seen = new HashSet<int>();
         var outDefs = new List<int>();
@@ -142,7 +111,7 @@ public sealed partial class DemoTracerPlugin
         return outDefs.ToArray();
     }
 
-    private static int[] BuildReplayPreloadWeaponDefs(
+    private int[] BuildReplayPreloadWeaponDefs(
         IReadOnlyList<int>? manifestPreloadWeaponDefIndices,
         int[] scannedPreloadWeaponDefIndices,
         ReplayLoadoutSnapshot normalizedLoadout,
@@ -167,10 +136,10 @@ public sealed partial class DemoTracerPlugin
             .ToArray();
     }
 
-    private static bool IsKnownWeaponDefIndex(int weaponDefIndex)
+    private bool IsKnownWeaponDefIndex(int weaponDefIndex)
         => TryGetWeaponClassByDefIndex(weaponDefIndex, out _);
 
-    private static bool IsPreloadWeaponDefIndex(int weaponDefIndex)
+    private bool IsPreloadWeaponDefIndex(int weaponDefIndex)
     {
         if (!IsKnownWeaponDefIndex(weaponDefIndex))
             return false;
@@ -183,7 +152,7 @@ public sealed partial class DemoTracerPlugin
             and not ReplayWeaponSlot.Taser;
     }
 
-    private static bool IsLoadoutWeaponDefIndex(int weaponDefIndex)
+    private bool IsLoadoutWeaponDefIndex(int weaponDefIndex)
     {
         if (!IsKnownWeaponDefIndex(weaponDefIndex))
             return false;
@@ -195,7 +164,7 @@ public sealed partial class DemoTracerPlugin
             and not ReplayWeaponSlot.C4;
     }
 
-    private static bool IsUtilityWeaponDefIndex(int weaponDefIndex)
+    private bool IsUtilityWeaponDefIndex(int weaponDefIndex)
     {
         if (!TryGetWeaponClassByDefIndex(weaponDefIndex, out var className))
             return false;
@@ -203,18 +172,18 @@ public sealed partial class DemoTracerPlugin
     }
 
 
-    private static int WeaponDefIndex(string className)
+    private int WeaponDefIndex(string className)
     {
-        return ReplayEquipment.ByClassName.TryGetValue(
+        return _replayEquipment.ByClassName.TryGetValue(
             NormalizeWeaponClassName(className),
             out var definition)
             ? definition.WeaponDefIndex
             : -1;
     }
 
-    private static bool TryGetWeaponClassByDefIndex(int weaponDefIndex, out string className)
+    private bool TryGetWeaponClassByDefIndex(int weaponDefIndex, out string className)
     {
-        if (ReplayEquipment.ByDefIndex.TryGetValue(
+        if (_replayEquipment.ByDefIndex.TryGetValue(
                 NormalizeWeaponDefIndex(weaponDefIndex),
                 out var definition))
         {
@@ -274,7 +243,7 @@ public sealed partial class DemoTracerPlugin
         };
     }
 
-    private static bool TryBuildWeaponPlan(
+    private bool TryBuildWeaponPlan(
         IReadOnlyList<int> weaponDefIndices,
         out int firstWeaponDefIndex,
         out int[] preloadWeaponDefIndices)

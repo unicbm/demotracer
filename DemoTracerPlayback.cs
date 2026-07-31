@@ -10,18 +10,6 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin
 {
     private bool _playoffEnabled;
-    private bool _playoffPreparePending;
-    private bool _playoffPendingCanLoad;
-    private int _playoffPrepareToken;
-    private int _playoffPendingTRound = -1;
-    private int _playoffPendingCtRound = -1;
-    private string _playoffPendingReason = string.Empty;
-    private string _playoffPendingPrepareReason = string.Empty;
-    private bool _playoffPrepared;
-    private int _playoffPreparedTRound = -1;
-    private int _playoffPreparedCtRound = -1;
-    private string _playoffPreparedLabel = string.Empty;
-    private int _playoffRoundIndex;
 
     [ConsoleCommand("dtr_go", "dtr_go <seq|round> ...")]
     [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
@@ -82,7 +70,7 @@ public sealed partial class DemoTracerPlugin
 
         command.ReplyToCommand(
             $"[DTR OK] playoff={FormatOnOff(_playoffEnabled)} plan={FormatPlayoffPlanStatus()}");
-        if (enabled && string.IsNullOrWhiteSpace(_sequenceManifestPath))
+        if (enabled && string.IsNullOrWhiteSpace(_session.SequenceManifestPath))
         {
             command.ReplyToCommand(
                 "[DTR HINT] playoff is enabled and will attach to the next manifest sequence.");
@@ -186,19 +174,19 @@ public sealed partial class DemoTracerPlugin
         StopAndUnloadLoaded();
         CancelReplayPrefetch();
         ResetPlayoffProgress();
-        _sequenceManifestPath = manifestPath;
-        _sequenceRounds = rounds;
-        _sequenceIndex = Array.IndexOf(rounds, startRound);
-        _sequenceActive = _sequenceIndex >= 0;
-        _sequencePrepared = false;
-        _sequencePreparedRound = -1;
-        _sequencePreparePollToken++;
+        _session.SequenceManifestPath = manifestPath;
+        _session.SequenceRounds = rounds;
+        _session.SequenceIndex = Array.IndexOf(rounds, startRound);
+        _session.SequenceActive = _session.SequenceIndex >= 0;
+        _session.SequencePrepared = false;
+        _session.SequencePreparedRound = -1;
+        _session.SequencePreparePollToken++;
         InvalidateFreezePreroll();
-        _armed = false;
-        _armedPrepared = false;
-        _armedPreparePollToken++;
-        _armedManifestPath = string.Empty;
-        _armedSourceRound = -1;
+        _session.Armed = false;
+        _session.ArmedPrepared = false;
+        _session.ArmedPreparePollToken++;
+        _session.ArmedManifestPath = string.Empty;
+        _session.ArmedSourceRound = -1;
         PrefetchRoundReplays(manifestPath, manifest, startRound, stableManifestStamp);
 
         command.ReplyToCommand(
@@ -206,7 +194,7 @@ public sealed partial class DemoTracerPlugin
                 ? $"[DTR OK] Planned SEQUENCE. manifest=\"{manifestPath}\"; from_source_round={startRound}; restart=now."
                 : $"[DTR OK] Armed SEQUENCE. manifest=\"{manifestPath}\"; from_source_round={startRound}; waiting for next round_start.");
         command.ReplyToCommand(
-            $"[DTR OK] Sequence has {rounds.Length - _sequenceIndex} round(s) remaining from source_round={startRound}.");
+            $"[DTR OK] Sequence has {rounds.Length - _session.SequenceIndex} round(s) remaining from source_round={startRound}.");
         IssueRestartIfRequested(command, restart);
     }
 
@@ -271,22 +259,22 @@ public sealed partial class DemoTracerPlugin
         ActivatePendingReplayRetentionPriority();
         StopAndUnloadLoaded();
         CancelReplayPrefetch();
-        _sequenceActive = false;
-        _sequenceManifestPath = string.Empty;
-        _sequenceRounds = [];
-        _sequenceIndex = 0;
-        _sequencePrepared = false;
-        _sequencePreparedRound = -1;
-        _sequencePreparePollToken++;
+        _session.SequenceActive = false;
+        _session.SequenceManifestPath = string.Empty;
+        _session.SequenceRounds = [];
+        _session.SequenceIndex = 0;
+        _session.SequencePrepared = false;
+        _session.SequencePreparedRound = -1;
+        _session.SequencePreparePollToken++;
         ResetPlayoffProgress();
         InvalidateFreezePreroll();
-        _armed = true;
-        _armedLoop = loop;
-        _armedPrepared = false;
-        _armedPreparePollToken++;
-        _armedManifestPath = manifestPath;
-        _armedSourceRound = round;
-        _armedLabel = $"source_round={round} manifest={manifestPath}";
+        _session.Armed = true;
+        _session.ArmedLoop = loop;
+        _session.ArmedPrepared = false;
+        _session.ArmedPreparePollToken++;
+        _session.ArmedManifestPath = manifestPath;
+        _session.ArmedSourceRound = round;
+        _session.ArmedLabel = $"source_round={round} manifest={manifestPath}";
         PrefetchRoundReplays(manifestPath, manifest, round, stableManifestStamp);
         reply(
             restart
@@ -300,17 +288,17 @@ public sealed partial class DemoTracerPlugin
         string reason,
         bool pollIfPending = true)
     {
-        if (_sequenceIndex < 0 || _sequenceIndex >= _sequenceRounds.Length)
+        if (_session.SequenceIndex < 0 || _session.SequenceIndex >= _session.SequenceRounds.Length)
         {
-            _sequenceActive = false;
+            _session.SequenceActive = false;
             Server.PrintToConsole("dtr: sequence complete");
             return false;
         }
 
-        if (_sequencePrepared)
+        if (_session.SequencePrepared)
             return true;
 
-        var round = _sequenceRounds[_sequenceIndex];
+        var round = _session.SequenceRounds[_session.SequenceIndex];
         if (!ReplayPrefetchReady())
         {
             if (pollIfPending)
@@ -320,11 +308,11 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
-        var load = LoadRound(_sequenceManifestPath, round);
+        var load = LoadRound(_session.SequenceManifestPath, round);
         if (!load.Ok)
         {
-            _sequencePrepared = false;
-            _sequencePreparedRound = -1;
+            _session.SequencePrepared = false;
+            _session.SequencePreparedRound = -1;
             Server.PrintToConsole(
                 $"[DTR WARN] sequence source round {round} could not be prepared on {reason}; " +
                 $"keeping it armed for the next round_start: {load.Message}");
@@ -332,8 +320,8 @@ public sealed partial class DemoTracerPlugin
         }
 
         PreloadLoadedReplays();
-        _sequencePrepared = true;
-        _sequencePreparedRound = round;
+        _session.SequencePrepared = true;
+        _session.SequencePreparedRound = round;
         TryStartDtrRoundBanner($"sequence_r{round}");
         Server.PrintToConsole($"dtr: prepared sequence round {round} on {reason}: {load.Message}");
         return true;
@@ -341,17 +329,17 @@ public sealed partial class DemoTracerPlugin
 
     private void PollPendingSequencePreparation(int round, string reason)
     {
-        var token = ++_sequencePreparePollToken;
+        var token = ++_session.SequencePreparePollToken;
         void Poll()
         {
             Server.NextFrame(() =>
             {
-                if (token != _sequencePreparePollToken ||
-                    !_sequenceActive ||
-                    _sequencePrepared ||
-                    _sequenceIndex < 0 ||
-                    _sequenceIndex >= _sequenceRounds.Length ||
-                    _sequenceRounds[_sequenceIndex] != round)
+                if (token != _session.SequencePreparePollToken ||
+                    !_session.SequenceActive ||
+                    _session.SequencePrepared ||
+                    _session.SequenceIndex < 0 ||
+                    _session.SequenceIndex >= _session.SequenceRounds.Length ||
+                    _session.SequenceRounds[_session.SequenceIndex] != round)
                 {
                     return;
                 }
@@ -383,22 +371,22 @@ public sealed partial class DemoTracerPlugin
         string reason,
         bool pollIfPending = true)
     {
-        if (!_armed)
+        if (!_session.Armed)
             return false;
-        if (_armedPrepared)
+        if (_session.ArmedPrepared)
             return true;
-        if (string.IsNullOrWhiteSpace(_armedManifestPath) || _armedSourceRound < 0)
+        if (string.IsNullOrWhiteSpace(_session.ArmedManifestPath) || _session.ArmedSourceRound < 0)
         {
-            _armed = false;
-            _armedPrepared = false;
+            _session.Armed = false;
+            _session.ArmedPrepared = false;
             Server.PrintToConsole("[DTR ERR] single-round plan is missing manifest/source_round");
             return false;
         }
 
-        var manifestPath = _armedManifestPath;
-        var sourceRound = _armedSourceRound;
-        var loop = _armedLoop;
-        var label = _armedLabel;
+        var manifestPath = _session.ArmedManifestPath;
+        var sourceRound = _session.ArmedSourceRound;
+        var loop = _session.ArmedLoop;
+        var label = _session.ArmedLabel;
         if (!ReplayPrefetchReady())
         {
             if (pollIfPending)
@@ -411,20 +399,20 @@ public sealed partial class DemoTracerPlugin
         var load = LoadRound(manifestPath, sourceRound);
         if (!load.Ok)
         {
-            _armed = false;
-            _armedPrepared = false;
-            _armedManifestPath = string.Empty;
-            _armedSourceRound = -1;
+            _session.Armed = false;
+            _session.ArmedPrepared = false;
+            _session.ArmedManifestPath = string.Empty;
+            _session.ArmedSourceRound = -1;
             Server.PrintToConsole($"[DTR ERR] single source_round={sourceRound} failed while preparing on {reason}: {load.Message}");
             return false;
         }
 
-        _armed = true;
-        _armedPrepared = true;
-        _armedManifestPath = manifestPath;
-        _armedSourceRound = sourceRound;
-        _armedLoop = loop;
-        _armedLabel = label;
+        _session.Armed = true;
+        _session.ArmedPrepared = true;
+        _session.ArmedManifestPath = manifestPath;
+        _session.ArmedSourceRound = sourceRound;
+        _session.ArmedLoop = loop;
+        _session.ArmedLabel = label;
         PreloadLoadedReplays();
         TryStartDtrRoundBanner($"single_r{sourceRound}");
         Server.PrintToConsole($"[DTR OK] round_start: loaded SINGLE source_round={sourceRound} on {reason}: {load.Message}");
@@ -436,16 +424,16 @@ public sealed partial class DemoTracerPlugin
         int sourceRound,
         string reason)
     {
-        var token = ++_armedPreparePollToken;
+        var token = ++_session.ArmedPreparePollToken;
         void Poll()
         {
             Server.NextFrame(() =>
             {
-                if (token != _armedPreparePollToken ||
-                    !_armed ||
-                    _armedPrepared ||
-                    _armedSourceRound != sourceRound ||
-                    !_armedManifestPath.Equals(
+                if (token != _session.ArmedPreparePollToken ||
+                    !_session.Armed ||
+                    _session.ArmedPrepared ||
+                    _session.ArmedSourceRound != sourceRound ||
+                    !_session.ArmedManifestPath.Equals(
                         manifestPath,
                         StringComparison.OrdinalIgnoreCase))
                 {
@@ -464,7 +452,7 @@ public sealed partial class DemoTracerPlugin
                         $"{reason} prefetch ready",
                         pollIfPending: false))
                 {
-                    ScheduleFreezePrerollStart(_armedLabel);
+                    ScheduleFreezePrerollStart(_session.ArmedLabel);
                 }
             });
         }
@@ -474,10 +462,10 @@ public sealed partial class DemoTracerPlugin
 
     private void StartPreparedSequenceRound()
     {
-        if (!_sequencePrepared)
+        if (!_session.SequencePrepared)
         {
-            var pendingRound = _sequenceIndex >= 0 && _sequenceIndex < _sequenceRounds.Length
-                ? _sequenceRounds[_sequenceIndex]
+            var pendingRound = _session.SequenceIndex >= 0 && _session.SequenceIndex < _session.SequenceRounds.Length
+                ? _session.SequenceRounds[_session.SequenceIndex]
                 : -1;
             Server.PrintToConsole(
                 $"[DTR WARN] sequence source round {pendingRound} was not prepared by round_freeze_end; " +
@@ -485,16 +473,16 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        var round = _sequencePreparedRound;
+        var round = _session.SequencePreparedRound;
         var play = StartLoaded(loop: false);
         Server.PrintToConsole($"dtr: sequence round {round} start on round_freeze_end: {play}");
 
-        _sequencePrepared = false;
-        _sequencePreparedRound = -1;
-        _sequenceIndex++;
-        if (_sequenceIndex >= _sequenceRounds.Length)
+        _session.SequencePrepared = false;
+        _session.SequencePreparedRound = -1;
+        _session.SequenceIndex++;
+        if (_session.SequenceIndex >= _session.SequenceRounds.Length)
         {
-            _sequenceActive = false;
+            _session.SequenceActive = false;
             Server.PrintToConsole(
                 _playoffEnabled
                     ? "dtr: sequence complete; playoff continuation is armed"
@@ -506,22 +494,22 @@ public sealed partial class DemoTracerPlugin
             // Waiting until round_end leaves only the post-round/freeze window,
             // which is too short for some long v8 replay sets and can let the
             // next round enter freeze time without buy suppression or pre-roll.
-            PrefetchRoundReplays(_sequenceManifestPath, _sequenceRounds[_sequenceIndex]);
+            PrefetchRoundReplays(_session.SequenceManifestPath, _session.SequenceRounds[_session.SequenceIndex]);
         }
     }
 
     private void StopSequenceState()
     {
-        var hadSequencePrefetch = _sequenceActive || _sequencePrepared ||
-                                  _playoffPreparePending || _playoffPrepared;
+        var hadSequencePrefetch = _session.SequenceActive || _session.SequencePrepared ||
+                                  _session.PlayoffPreparePending || _session.PlayoffPrepared;
         CancelPlayoffPreparation(unloadPrepared: true);
-        _sequenceActive = false;
-        _sequenceManifestPath = string.Empty;
-        _sequenceRounds = [];
-        _sequenceIndex = 0;
-        _sequencePrepared = false;
-        _sequencePreparedRound = -1;
-        _sequencePreparePollToken++;
+        _session.SequenceActive = false;
+        _session.SequenceManifestPath = string.Empty;
+        _session.SequenceRounds = [];
+        _session.SequenceIndex = 0;
+        _session.SequencePrepared = false;
+        _session.SequencePreparedRound = -1;
+        _session.SequencePreparePollToken++;
         ResetPlayoffProgress();
         InvalidateFreezePreroll();
         if (hadSequencePrefetch)
@@ -556,24 +544,24 @@ public sealed partial class DemoTracerPlugin
     private bool IsPlayoffPlanReady()
     {
         return _playoffEnabled &&
-               !_sequenceActive &&
-               !string.IsNullOrWhiteSpace(_sequenceManifestPath) &&
-               _sequenceRounds.Length > 0 &&
-               _sequenceIndex >= _sequenceRounds.Length;
+               !_session.SequenceActive &&
+               !string.IsNullOrWhiteSpace(_session.SequenceManifestPath) &&
+               _session.SequenceRounds.Length > 0 &&
+               _session.SequenceIndex >= _session.SequenceRounds.Length;
     }
 
     private bool HasPlayoffSchedulingState()
-        => IsPlayoffPlanReady() || _playoffPreparePending || _playoffPrepared;
+        => IsPlayoffPlanReady() || _session.PlayoffPreparePending || _session.PlayoffPrepared;
 
     private string FormatPlayoffPlanStatus()
     {
-        if (_playoffPrepared)
-            return $"prepared:T=r{_playoffPreparedTRound},CT=r{_playoffPreparedCtRound}";
-        if (_playoffPreparePending)
-            return $"decoding:T=r{_playoffPendingTRound},CT=r{_playoffPendingCtRound}";
+        if (_session.PlayoffPrepared)
+            return $"prepared:T=r{_session.PlayoffPreparedTRound},CT=r{_session.PlayoffPreparedCtRound}";
+        if (_session.PlayoffPreparePending)
+            return $"decoding:T=r{_session.PlayoffPendingTRound},CT=r{_session.PlayoffPendingCtRound}";
         if (IsPlayoffPlanReady())
-            return $"ready:extra_round={_playoffRoundIndex + 1}";
-        if (_sequenceActive && _playoffEnabled)
+            return $"ready:extra_round={_session.PlayoffRoundIndex + 1}";
+        if (_session.SequenceActive && _playoffEnabled)
             return "waiting_for_sequence_end";
         return "none";
     }
@@ -581,21 +569,21 @@ public sealed partial class DemoTracerPlugin
     private void ResetPlayoffProgress()
     {
         ClearPlayoffPendingPreparation(cancelDecode: true);
-        _playoffPrepared = false;
-        _playoffPreparedTRound = -1;
-        _playoffPreparedCtRound = -1;
-        _playoffPreparedLabel = string.Empty;
-        _playoffRoundIndex = 0;
+        _session.PlayoffPrepared = false;
+        _session.PlayoffPreparedTRound = -1;
+        _session.PlayoffPreparedCtRound = -1;
+        _session.PlayoffPreparedLabel = string.Empty;
+        _session.PlayoffRoundIndex = 0;
     }
 
     private void CancelPlayoffPreparation(bool unloadPrepared)
     {
-        var hadPrepared = _playoffPrepared;
+        var hadPrepared = _session.PlayoffPrepared;
         ClearPlayoffPendingPreparation(cancelDecode: true);
-        _playoffPrepared = false;
-        _playoffPreparedTRound = -1;
-        _playoffPreparedCtRound = -1;
-        _playoffPreparedLabel = string.Empty;
+        _session.PlayoffPrepared = false;
+        _session.PlayoffPreparedTRound = -1;
+        _session.PlayoffPreparedCtRound = -1;
+        _session.PlayoffPreparedLabel = string.Empty;
         if (!unloadPrepared || !hadPrepared)
             return;
 
@@ -605,14 +593,14 @@ public sealed partial class DemoTracerPlugin
 
     private void ClearPlayoffPendingPreparation(bool cancelDecode)
     {
-        var wasPending = _playoffPreparePending;
-        _playoffPreparePending = false;
-        _playoffPendingCanLoad = false;
-        _playoffPrepareToken++;
-        _playoffPendingTRound = -1;
-        _playoffPendingCtRound = -1;
-        _playoffPendingReason = string.Empty;
-        _playoffPendingPrepareReason = string.Empty;
+        var wasPending = _session.PlayoffPreparePending;
+        _session.PlayoffPreparePending = false;
+        _session.PlayoffPendingCanLoad = false;
+        _session.PlayoffPrepareToken++;
+        _session.PlayoffPendingTRound = -1;
+        _session.PlayoffPendingCtRound = -1;
+        _session.PlayoffPendingReason = string.Empty;
+        _session.PlayoffPendingPrepareReason = string.Empty;
         if (cancelDecode && wasPending)
             FinishReplayPrefetchRound();
     }
@@ -621,14 +609,14 @@ public sealed partial class DemoTracerPlugin
     {
         if (!IsPlayoffPlanReady())
             return false;
-        if (_playoffPrepared)
+        if (_session.PlayoffPrepared)
             return true;
-        if (_playoffPreparePending)
+        if (_session.PlayoffPreparePending)
         {
             if (!allowLoad)
                 return false;
 
-            _playoffPendingCanLoad = true;
+            _session.PlayoffPendingCanLoad = true;
             if (ReplayPrefetchReady())
             {
                 return CompletePendingPlayoffPreparation(
@@ -636,22 +624,22 @@ public sealed partial class DemoTracerPlugin
                     scheduleFreezePreroll: false);
             }
 
-            PollPendingPlayoffPreparation(_playoffPrepareToken);
+            PollPendingPlayoffPreparation(_session.PlayoffPrepareToken);
             return false;
         }
 
-        var manifestPath = ResolveReadableManifestPath(_sequenceManifestPath);
+        var manifestPath = ResolveReadableManifestPath(_session.SequenceManifestPath);
         if (!TryGetPrefetchedManifest(manifestPath, out var manifest) &&
             !TryReadManifest(manifestPath, out manifest, out var readError))
         {
             Server.PrintToConsole(
-                $"dtr: playoff skipped extra round {_playoffRoundIndex + 1}: failed to read manifest: {readError}");
+                $"dtr: playoff skipped extra round {_session.PlayoffRoundIndex + 1}: failed to read manifest: {readError}");
             return false;
         }
         if (!CurrentMapMatchesManifest(manifest.Map, out var currentMap))
         {
             Server.PrintToConsole(
-                $"dtr: playoff skipped extra round {_playoffRoundIndex + 1}: map mismatch server={currentMap} manifest={manifest.Map}");
+                $"dtr: playoff skipped extra round {_session.PlayoffRoundIndex + 1}: map mismatch server={currentMap} manifest={manifest.Map}");
             return false;
         }
 
@@ -667,13 +655,13 @@ public sealed partial class DemoTracerPlugin
         {
             var rosterError = !string.IsNullOrWhiteSpace(tRosterError) ? tRosterError : ctRosterError;
             Server.PrintToConsole(
-                $"dtr: playoff skipped extra round {_playoffRoundIndex + 1}: {rosterError}");
+                $"dtr: playoff skipped extra round {_session.PlayoffRoundIndex + 1}: {rosterError}");
             return false;
         }
         if (tSteamIds.Count == 0 && ctSteamIds.Count == 0)
         {
             Server.PrintToConsole(
-                $"dtr: playoff skipped extra round {_playoffRoundIndex + 1}: no replay bot targets");
+                $"dtr: playoff skipped extra round {_session.PlayoffRoundIndex + 1}: no replay bot targets");
             return false;
         }
 
@@ -695,7 +683,7 @@ public sealed partial class DemoTracerPlugin
         {
             var chooseError = !string.IsNullOrWhiteSpace(tChooseError) ? tChooseError : ctChooseError;
             Server.PrintToConsole(
-                $"dtr: playoff skipped extra round {_playoffRoundIndex + 1}: {chooseError}");
+                $"dtr: playoff skipped extra round {_session.PlayoffRoundIndex + 1}: {chooseError}");
             return false;
         }
 
@@ -706,18 +694,18 @@ public sealed partial class DemoTracerPlugin
             ctRound,
             tSteamIds,
             ctSteamIds);
-        _playoffPreparePending = true;
-        _playoffPendingCanLoad = allowLoad;
-        _playoffPendingTRound = tRound;
-        _playoffPendingCtRound = ctRound;
-        _playoffPendingReason =
+        _session.PlayoffPreparePending = true;
+        _session.PlayoffPendingCanLoad = allowLoad;
+        _session.PlayoffPendingTRound = tRound;
+        _session.PlayoffPendingCtRound = ctRound;
+        _session.PlayoffPendingReason =
             $"T=r{tRound} from {tCandidateCount} full-buy candidate(s), " +
             $"CT=r{ctRound} from {ctCandidateCount} full-buy candidate(s)";
-        _playoffPendingPrepareReason = prepareReason;
-        var token = ++_playoffPrepareToken;
+        _session.PlayoffPendingPrepareReason = prepareReason;
+        var token = ++_session.PlayoffPrepareToken;
         Server.PrintToConsole(
-            $"dtr: playoff extra round {_playoffRoundIndex + 1} selected on {prepareReason}; " +
-            $"{_playoffPendingReason}; decoding replay data off-thread");
+            $"dtr: playoff extra round {_session.PlayoffRoundIndex + 1} selected on {prepareReason}; " +
+            $"{_session.PlayoffPendingReason}; decoding replay data off-thread");
         if (allowLoad)
             PollPendingPlayoffPreparation(token);
         return false;
@@ -734,7 +722,7 @@ public sealed partial class DemoTracerPlugin
         foreach (var bot in targets)
         {
             ulong steamId = 0;
-            if (_loadedReplays.TryGetValue(bot.Slot, out var loaded))
+            if (_session.LoadedReplays.TryGetValue(bot.Slot, out var loaded))
                 steamId = loaded.SteamId;
             else if (_retainedBotHiderPresentation.TryGetValue(bot.Slot, out var retained))
                 steamId = retained.SteamId;
@@ -813,9 +801,9 @@ public sealed partial class DemoTracerPlugin
     {
         Server.NextFrame(() =>
         {
-            if (!_playoffPreparePending || token != _playoffPrepareToken)
+            if (!_session.PlayoffPreparePending || token != _session.PlayoffPrepareToken)
                 return;
-            if (!_playoffPendingCanLoad)
+            if (!_session.PlayoffPendingCanLoad)
                 return;
             if (!ReplayPrefetchReady())
             {
@@ -833,65 +821,65 @@ public sealed partial class DemoTracerPlugin
         bool waitForDecode,
         bool scheduleFreezePreroll)
     {
-        if (!_playoffPreparePending)
-            return _playoffPrepared;
+        if (!_session.PlayoffPreparePending)
+            return _session.PlayoffPrepared;
         if (!waitForDecode && !ReplayPrefetchReady())
             return false;
 
-        var tRound = _playoffPendingTRound;
-        var ctRound = _playoffPendingCtRound;
-        var reason = _playoffPendingReason;
-        var prepareReason = _playoffPendingPrepareReason;
+        var tRound = _session.PlayoffPendingTRound;
+        var ctRound = _session.PlayoffPendingCtRound;
+        var reason = _session.PlayoffPendingReason;
+        var prepareReason = _session.PlayoffPendingPrepareReason;
         ClearPlayoffPendingPreparation(cancelDecode: false);
         if (!IsPlayoffPlanReady())
             return false;
 
-        var load = LoadPlayoffRound(_sequenceManifestPath, tRound, ctRound);
+        var load = LoadPlayoffRound(_session.SequenceManifestPath, tRound, ctRound);
         if (!load.Ok)
         {
             Server.PrintToConsole(
-                $"dtr: playoff failed extra round {_playoffRoundIndex + 1}: {load.Message}");
+                $"dtr: playoff failed extra round {_session.PlayoffRoundIndex + 1}: {load.Message}");
             return false;
         }
 
         PreloadLoadedReplays();
-        _playoffPrepared = true;
-        _playoffPreparedTRound = tRound;
-        _playoffPreparedCtRound = ctRound;
-        _playoffPreparedLabel = $"{reason}; {load.Message}";
+        _session.PlayoffPrepared = true;
+        _session.PlayoffPreparedTRound = tRound;
+        _session.PlayoffPreparedCtRound = ctRound;
+        _session.PlayoffPreparedLabel = $"{reason}; {load.Message}";
         TryStartDtrRoundBanner($"playoff_t{tRound}_ct{ctRound}");
         Server.PrintToConsole(
-            $"dtr: prepared playoff extra round {_playoffRoundIndex + 1} on {prepareReason} -> {_playoffPreparedLabel}");
+            $"dtr: prepared playoff extra round {_session.PlayoffRoundIndex + 1} on {prepareReason} -> {_session.PlayoffPreparedLabel}");
         if (scheduleFreezePreroll &&
             TryReadFreezePhaseRemaining(out var freezeRemaining, out _) &&
             freezeRemaining > 0.0f)
         {
-            ScheduleFreezePrerollStart($"playoff extra round {_playoffRoundIndex + 1}");
+            ScheduleFreezePrerollStart($"playoff extra round {_session.PlayoffRoundIndex + 1}");
         }
         return true;
     }
 
     private void StartPreparedPlayoffRound()
     {
-        var extraRound = _playoffRoundIndex + 1;
-        if (!_playoffPrepared)
+        var extraRound = _session.PlayoffRoundIndex + 1;
+        if (!_session.PlayoffPrepared)
         {
             Server.PrintToConsole(
                 $"dtr: playoff skipped start for extra round {extraRound}: replay prefetch was not ready by round_freeze_end");
             ClearPlayoffPendingPreparation(cancelDecode: true);
-            _playoffRoundIndex++;
+            _session.PlayoffRoundIndex++;
             return;
         }
 
-        var label = _playoffPreparedLabel;
+        var label = _session.PlayoffPreparedLabel;
         var play = StartLoaded(loop: false);
         Server.PrintToConsole(
             $"dtr: playoff extra round {extraRound} start on round_freeze_end -> {label}; {play}");
-        _playoffRoundIndex++;
-        _playoffPrepared = false;
-        _playoffPreparedTRound = -1;
-        _playoffPreparedCtRound = -1;
-        _playoffPreparedLabel = string.Empty;
+        _session.PlayoffRoundIndex++;
+        _session.PlayoffPrepared = false;
+        _session.PlayoffPreparedTRound = -1;
+        _session.PlayoffPreparedCtRound = -1;
+        _session.PlayoffPreparedLabel = string.Empty;
         ReleaseUnusedWarmReplayBuffers();
     }
 
@@ -1001,9 +989,9 @@ public sealed partial class DemoTracerPlugin
         if (!TryParseSlotAt(command, slotArg, out var slot))
             return;
         var loop = command.ArgCount > slotArg + 1 && command.GetArg(slotArg + 1) != "0";
-        if (_loadedReplays.TryGetValue(slot, out var replay))
+        if (_session.LoadedReplays.TryGetValue(slot, out var replay))
             PreloadReplayWeaponsForSlot(slot, replay);
-        _lastEnsuredWeaponDef.Remove(slot);
+        _session.LastEnsuredWeaponDef.Remove(slot);
 
         if (!IsReplaySlotStillSafe(slot))
         {
@@ -1150,11 +1138,11 @@ public sealed partial class DemoTracerPlugin
     private List<DtrKickCandidate> BuildKickCandidates(TickPlayerSnapshot snapshot)
     {
         var slots = new SortedSet<int>();
-        foreach (var slot in _loadedSlots)
+        foreach (var slot in _session.LoadedSlots)
             slots.Add(slot);
-        foreach (var slot in _loadedReplays.Keys)
+        foreach (var slot in _session.LoadedReplays.Keys)
             slots.Add(slot);
-        foreach (var slot in _demoTracerOwnedSlots)
+        foreach (var slot in _session.DemoTracerOwnedSlots)
             slots.Add(slot);
         foreach (var slot in _retainedBotHiderPresentation.Keys)
             slots.Add(slot);
@@ -1177,7 +1165,7 @@ public sealed partial class DemoTracerPlugin
                 continue;
             }
 
-            _loadedReplays.TryGetValue(slot, out var replay);
+            _session.LoadedReplays.TryGetValue(slot, out var replay);
             _retainedBotHiderPresentation.TryGetValue(slot, out var retained);
             var replayPlayerName = !string.IsNullOrWhiteSpace(replay.PlayerName)
                 ? replay.PlayerName
@@ -1265,7 +1253,7 @@ public sealed partial class DemoTracerPlugin
         stopped = BotControllerNative.StopReplay(candidate.Slot);
         unloaded = BotControllerNative.UnloadReplay(candidate.Slot);
         ReleaseReplaySlot(candidate.Slot, reason);
-        _loadedSlots.Remove(candidate.Slot);
+        _session.LoadedSlots.Remove(candidate.Slot);
         ForgetRetainedBotHiderPresentation(candidate.Slot);
         ForgetLoadedReplayMetadata(candidate.Slot);
         return true;
@@ -1309,7 +1297,7 @@ public sealed partial class DemoTracerPlugin
         if (ok || hadRetainedPresentation)
         {
             StopVoiceTestPlayback("unload", printSummary: false);
-            _loadedSlots.Remove(slot);
+            _session.LoadedSlots.Remove(slot);
             ReleaseReplaySlot(slot, "unload");
             ForgetRetainedBotHiderPresentation(slot);
             ForgetLoadedReplayMetadata(slot);

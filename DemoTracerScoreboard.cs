@@ -53,7 +53,7 @@ public sealed partial class DemoTracerPlugin
 
     private void ResetScoreboardAlignState(bool resetCounters = false)
     {
-        _scoreboardSyncedSlots.Clear();
+        _session.ScoreboardSyncedSlots.Clear();
         if (resetCounters)
         {
             _scoreboardAppliedCount = 0;
@@ -65,7 +65,7 @@ public sealed partial class DemoTracerPlugin
         => $"scoreboard_evidence={CountLoadedScoreboardEvidence()} scoreboard_applied={_scoreboardAppliedCount} scoreboard_skipped={_scoreboardSkippedCount}";
 
     private int CountLoadedScoreboardEvidence()
-        => _loadedReplays.Values.Count(replay => HasScoreboardEvidence(replay.Scoreboard));
+        => _session.LoadedReplays.Values.Count(replay => HasScoreboardEvidence(replay.Scoreboard));
 
     private void ApplyLoadedReplayScoreboards()
     {
@@ -73,11 +73,11 @@ public sealed partial class DemoTracerPlugin
             return;
 
         ApplyLoadedRoundScoreboard();
-        foreach (var slot in _loadedSlots)
+        foreach (var slot in _session.LoadedSlots)
         {
-            if (_scoreboardSyncedSlots.Contains(slot))
+            if (_session.ScoreboardSyncedSlots.Contains(slot))
                 continue;
-            if (!_loadedReplays.TryGetValue(slot, out var replay))
+            if (!_session.LoadedReplays.TryGetValue(slot, out var replay))
                 continue;
             ApplyReplayPlayerScoreboardForSlot(slot, replay.Scoreboard);
         }
@@ -88,7 +88,7 @@ public sealed partial class DemoTracerPlugin
         if (!ManagedSchemaWritesAllowed() || !_scoreboardAlignEnabled)
             return;
 
-        var scoreboard = _loadedRoundScoreboard;
+        var scoreboard = _session.LoadedRoundScoreboard;
         if (scoreboard == null)
             return;
 
@@ -141,7 +141,7 @@ public sealed partial class DemoTracerPlugin
 
         if (!HasScoreboardEvidence(scoreboard))
         {
-            _scoreboardSyncedSlots.Add(slot);
+            _session.ScoreboardSyncedSlots.Add(slot);
             return;
         }
 
@@ -189,7 +189,7 @@ public sealed partial class DemoTracerPlugin
                 TrySetScoreboardStateChanged(player, "CCSPlayerController", "m_pActionTrackingServices");
             }
 
-            _scoreboardSyncedSlots.Add(slot);
+            _session.ScoreboardSyncedSlots.Add(slot);
             _scoreboardAppliedCount++;
             Server.PrintToConsole(
                 $"dtr: match scoreboard applied slot={slot} player={player.PlayerName} color={(colorApplied ? scoreboard.PlayerColor : "-")} score={FormatScoreboardValue(scoreboard.Score)} k={FormatScoreboardValue(scoreboard.Kills)} d={FormatScoreboardValue(scoreboard.Deaths)} a={FormatScoreboardValue(scoreboard.Assists)} mvp={FormatScoreboardValue(scoreboard.MVPs)}");

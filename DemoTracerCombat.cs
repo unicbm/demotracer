@@ -18,7 +18,7 @@ public sealed partial class DemoTracerPlugin
         var stopped = 0;
         var slots = (!forceAll && !_handoffAllSlots && triggerSlot >= 0)
             ? [triggerSlot]
-            : _loadedSlots.ToArray();
+            : _session.LoadedSlots.ToArray();
         foreach (var slot in slots)
         {
             if (!BotControllerNative.GetReplayState(slot).Playing)
@@ -84,19 +84,19 @@ public sealed partial class DemoTracerPlugin
 
     private void PruneExpiredBulletHandoffState()
     {
-        if (_pendingBulletHits.Count == 0 && _pendingBulletDamages.Count == 0)
+        if (_session.PendingBulletHits.Count == 0 && _session.PendingBulletDamages.Count == 0)
             return;
 
-        foreach (var (slot, hit) in _pendingBulletHits.ToArray())
+        foreach (var (slot, hit) in _session.PendingBulletHits.ToArray())
         {
             if (!IsFreshBulletHandoffEvent(hit.Time))
-                _pendingBulletHits.Remove(slot);
+                _session.PendingBulletHits.Remove(slot);
         }
 
-        foreach (var (slot, damage) in _pendingBulletDamages.ToArray())
+        foreach (var (slot, damage) in _session.PendingBulletDamages.ToArray())
         {
             if (!IsFreshBulletHandoffEvent(damage.Time))
-                _pendingBulletDamages.Remove(slot);
+                _session.PendingBulletDamages.Remove(slot);
         }
     }
 
@@ -110,7 +110,7 @@ public sealed partial class DemoTracerPlugin
 
     private bool ReplayHasPassedHandoffGrace(int slot)
     {
-        return !_replayStartedAt.TryGetValue(slot, out var startedAt) ||
+        return !_session.ReplayStartedAt.TryGetValue(slot, out var startedAt) ||
                Server.CurrentTime - startedAt >= HandoffGraceSeconds;
     }
 
@@ -252,7 +252,7 @@ public sealed partial class DemoTracerPlugin
         // Never consume a visibility result captured before this replay took
         // ownership. Update/Upkeep may shadow-run for perception, but only a
         // fresh, currently visible live enemy is allowed to trigger handoff.
-        if (!_replayPerceptionBaselineSerial.TryGetValue(slot, out var baselineSerial) ||
+        if (!_session.ReplayPerceptionBaselineSerial.TryGetValue(slot, out var baselineSerial) ||
             !BotControllerNative.TryGetNativePerceptionState(slot, out var state))
             return true;
 
@@ -292,7 +292,7 @@ public sealed partial class DemoTracerPlugin
             !HasLivePawn(bot) ||
             !TryGetPawnOrigin(bot, out var botOrigin))
         {
-            _pendingThreat360.Remove(slot);
+            _session.PendingThreat360.Remove(slot);
             return false;
         }
 
@@ -327,31 +327,31 @@ public sealed partial class DemoTracerPlugin
 
         if (bestEnemySlot < 0)
         {
-            _pendingThreat360.Remove(slot);
+            _session.PendingThreat360.Remove(slot);
             return false;
         }
 
         var distance = MathF.Sqrt(bestDistanceSq);
         if (distance <= MathF.Min(HandoffThreat360ImmediateRange, _handoffThreat360Range))
         {
-            _pendingThreat360.Remove(slot);
+            _session.PendingThreat360.Remove(slot);
             contactReason = FormatThreat360Reason(bestEnemySlot, distance, immediate: true);
             contactSlot = bestEnemySlot;
             return true;
         }
 
         var now = Server.CurrentTime;
-        if (!_pendingThreat360.TryGetValue(slot, out var pending) ||
+        if (!_session.PendingThreat360.TryGetValue(slot, out var pending) ||
             pending.EnemySlot != bestEnemySlot)
         {
-            _pendingThreat360[slot] = new PendingThreat360(bestEnemySlot, now);
+            _session.PendingThreat360[slot] = new PendingThreat360(bestEnemySlot, now);
             return false;
         }
 
         if (now - pending.FirstSeenAt < HandoffThreat360HoldSeconds)
             return false;
 
-        _pendingThreat360.Remove(slot);
+        _session.PendingThreat360.Remove(slot);
         contactReason = FormatThreat360Reason(bestEnemySlot, distance, immediate: false);
         contactSlot = bestEnemySlot;
         return true;
@@ -369,7 +369,7 @@ public sealed partial class DemoTracerPlugin
             !HasLivePawn(bot) ||
             !TryGetPawnOrigin(bot, out var botOrigin))
         {
-            _pendingThreat360.Remove(slot);
+            _session.PendingThreat360.Remove(slot);
             return false;
         }
 
@@ -404,31 +404,31 @@ public sealed partial class DemoTracerPlugin
 
         if (bestEnemySlot < 0)
         {
-            _pendingThreat360.Remove(slot);
+            _session.PendingThreat360.Remove(slot);
             return false;
         }
 
         var distance = MathF.Sqrt(bestDistanceSq);
         if (distance <= MathF.Min(HandoffThreat360ImmediateRange, _handoffThreat360Range))
         {
-            _pendingThreat360.Remove(slot);
+            _session.PendingThreat360.Remove(slot);
             contactReason = FormatThreat360Reason(bestEnemySlot, distance, immediate: true);
             contactSlot = bestEnemySlot;
             return true;
         }
 
         var now = Server.CurrentTime;
-        if (!_pendingThreat360.TryGetValue(slot, out var pending) ||
+        if (!_session.PendingThreat360.TryGetValue(slot, out var pending) ||
             pending.EnemySlot != bestEnemySlot)
         {
-            _pendingThreat360[slot] = new PendingThreat360(bestEnemySlot, now);
+            _session.PendingThreat360[slot] = new PendingThreat360(bestEnemySlot, now);
             return false;
         }
 
         if (now - pending.FirstSeenAt < HandoffThreat360HoldSeconds)
             return false;
 
-        _pendingThreat360.Remove(slot);
+        _session.PendingThreat360.Remove(slot);
         contactReason = FormatThreat360Reason(bestEnemySlot, distance, immediate: false);
         contactSlot = bestEnemySlot;
         return true;
@@ -438,7 +438,7 @@ public sealed partial class DemoTracerPlugin
     {
         if (enemy is not { IsValid: true } || enemy.Slot < 0)
             return false;
-        if (_loadedSlots.Contains(enemy.Slot) || IsReplaySlotPlaying(enemy.Slot))
+        if (_session.LoadedSlots.Contains(enemy.Slot) || IsReplaySlotPlaying(enemy.Slot))
             return false;
         if (_botHiderBridge.IsManagedBot(enemy.Slot))
             return false;
@@ -452,7 +452,7 @@ public sealed partial class DemoTracerPlugin
     {
         if (enemy is not { IsValid: true } || enemy.Slot < 0)
             return false;
-        if (_loadedSlots.Contains(enemy.Slot) || _lastPlayingSlots.Contains(enemy.Slot))
+        if (_session.LoadedSlots.Contains(enemy.Slot) || _session.LastPlayingSlots.Contains(enemy.Slot))
             return false;
         if (_botHiderBridge.IsManagedBot(enemy.Slot))
             return false;
