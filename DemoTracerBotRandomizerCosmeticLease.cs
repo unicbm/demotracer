@@ -16,6 +16,12 @@ internal enum DemoTracerCosmeticWriteField
     WeaponKeychain
 }
 
+internal enum MissingAgentEvidenceRecovery
+{
+    PreserveCurrentModel,
+    ApplyCapturedModel
+}
+
 internal sealed record DemoTracerBotRandomizerWeaponEvidence(
     int WeaponDefinitionIndex,
     bool Paint,

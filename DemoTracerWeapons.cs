@@ -78,6 +78,10 @@ public sealed partial class DemoTracerPlugin
         return false;
     }
 
+    internal static bool CanDropAndKillReplayWeapon(string className)
+        => !WeaponClassMatches(className, "weapon_knife") &&
+           GetReplayWeaponSlot(className) != ReplayWeaponSlot.Knife;
+
     private static string NormalizeWeaponClassName(string className)
     {
         return className switch

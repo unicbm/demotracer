@@ -27,7 +27,6 @@ public sealed partial class DemoTracerPlugin
     private readonly Dictionary<int, AppliedKnifeCosmeticBirth> _appliedKnifeCosmeticBirths = new();
     private readonly Dictionary<int, PendingKnifeEntityRefresh> _pendingKnifeEntityRefreshes = new();
     private readonly Dictionary<int, NativeAgentModelCapture> _nativeAgentModels = new();
-    private readonly Dictionary<int, NativeAgentRespawnAttempt> _nativeAgentRespawnAttempts = new();
     private readonly HashSet<int> _knifeEntityRefreshUnavailableWarnings = new();
     private bool _cosmeticGiveNamedItemHooked;
     private int _nextCosmeticHeartbeatToken;
@@ -375,14 +374,10 @@ public sealed partial class DemoTracerPlugin
             pawn.EntityHandle.Raw,
             player.Team,
             modelPath);
-        _nativeAgentRespawnAttempts.Remove(slot);
     }
 
     private void ResetNativeAgentModelCaptures()
-    {
-        _nativeAgentModels.Clear();
-        _nativeAgentRespawnAttempts.Clear();
-    }
+        => _nativeAgentModels.Clear();
 
     private static bool IsWeaponCosmeticDefIndex(int weaponDefIndex)
         => IsWeaponCosmeticCategory(weaponDefIndex);
@@ -534,6 +529,9 @@ public sealed partial class DemoTracerPlugin
             }
         }
 
+        // Knife cosmetics are applied in place. Never rebuild a knife by
+        // dropping it first: an asynchronous replacement failure leaves the
+        // bot without slot 3 and corrupts every later weapon-switch replay.
         if (replay.Cosmetics.Knife is { } knifeCosmetic)
         {
             var appliedKnife = false;
@@ -559,11 +557,9 @@ public sealed partial class DemoTracerPlugin
                 ScheduleReplayKnifeCosmeticRetry(slot, knifeCosmetic, framesRemaining: appliedKnife ? 2 : 4);
             else
                 ScheduleKnifeCosmeticRetry(slot, knifeCosmetic, replay.SteamId, framesRemaining: appliedKnife ? 2 : 4);
-            ScheduleReplayKnifeEntityRefresh(slot, knifeCosmetic);
         }
         else
         {
-            var defaultKnife = BuildDefaultKnifeCosmetic(player);
             if (TryFindReplayKnife(pawn, out var knife) &&
                 TryClearKnifeCosmetic(player, knife, replay.SteamId))
             {
@@ -571,7 +567,6 @@ public sealed partial class DemoTracerPlugin
             }
             else
                 skipped++;
-            ScheduleReplayKnifeEntityRefresh(slot, defaultKnife);
         }
 
         if (replay.Cosmetics.Glove is { } gloveCosmetic)
@@ -812,7 +807,7 @@ public sealed partial class DemoTracerPlugin
         var pawn = player?.PlayerPawn.Value;
         if (player is not { IsValid: true, PawnIsAlive: true } ||
             pawn is not { IsValid: true } ||
-            !TryResolveDesiredReplayKnifeCosmetic(player, replay, out var currentCosmetic) ||
+            replay.Cosmetics.Knife is not { } currentCosmetic ||
             KnifeCosmeticFingerprint.From(currentCosmetic) != pending.Fingerprint)
         {
             CancelKnifeEntityRefresh(slot, pending);
@@ -1132,17 +1127,6 @@ public sealed partial class DemoTracerPlugin
 
     private static string DefaultKnifeClassNameForTeam(CsTeam team)
         => team == CsTeam.Terrorist ? "weapon_knife_t" : "weapon_knife";
-
-    private static bool TryResolveDesiredReplayKnifeCosmetic(
-        CCSPlayerController player,
-        LoadedReplay replay,
-        out ReplayItemCosmetic cosmetic)
-    {
-        cosmetic = replay.Cosmetics.Knife is { } evidence
-            ? evidence
-            : BuildDefaultKnifeCosmetic(player);
-        return true;
-    }
 
     private void ScheduleKnifeCosmeticRetry(
         int slot,
@@ -1878,103 +1862,49 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
-        if (player.UserId is int userId &&
+        if (player.UserId is not int userId)
+            return true;
+
+        var hasMatchingCapture =
             _nativeAgentModels.TryGetValue(slot, out var native) &&
             native.UserId == userId &&
             native.PawnEntityHandle == pawn.EntityHandle.Raw &&
-            native.Team == player.Team)
+            native.Team == player.Team;
+        if (ResolveMissingAgentEvidenceRecovery(hasMatchingCapture) ==
+            MissingAgentEvidenceRecovery.PreserveCurrentModel)
         {
-            var mutationGeneration = CurrentReplayMutationGeneration(slot);
-            ApplyAgentModel(pawn, native.ModelPath);
-            ScheduleCosmeticNextFrame(() => ApplyAgentModelForSlot(
+            // The active Agent write lease already prevents BotRandomizer from
+            // changing this pawn. If spawn-time model evidence was not ready,
+            // preserving the live pawn is safer than respawning it and losing
+            // its engine-owned inventory.
+            return true;
+        }
+
+        var mutationGeneration = CurrentReplayMutationGeneration(slot);
+        ApplyAgentModel(pawn, native.ModelPath);
+        ScheduleCosmeticNextFrame(() => ApplyAgentModelForSlot(
+            slot,
+            userId,
+            mutationGeneration,
+            replaySteamId,
+            native.ModelPath));
+        AddTimer(
+            0.20f,
+            () => ApplyAgentModelForSlot(
                 slot,
                 userId,
                 mutationGeneration,
                 replaySteamId,
-                native.ModelPath));
-            AddTimer(
-                0.20f,
-                () => ApplyAgentModelForSlot(
-                    slot,
-                    userId,
-                    mutationGeneration,
-                    replaySteamId,
-                    native.ModelPath),
-                TimerFlags.STOP_ON_MAPCHANGE);
-            return true;
-        }
-
-        return TryScheduleNativeAgentRespawn(player, pawn, replaySteamId);
-    }
-
-    private bool TryScheduleNativeAgentRespawn(
-        CCSPlayerController player,
-        CCSPlayerPawn pawn,
-        ulong replaySteamId)
-    {
-        var slot = player.Slot;
-        if (player.UserId is not int userId ||
-            IsReplaySlotPlaying(slot) ||
-            !TryReadFreezePhaseRemaining(out var freezeRemaining, out _) ||
-            freezeRemaining < KnifeEntityRefreshMinFreezeSeconds)
-        {
-            return false;
-        }
-
-        var replayGeneration = CurrentReplayIdentityGeneration(slot);
-        var attempt = new NativeAgentRespawnAttempt(pawn.EntityHandle.Raw, replayGeneration);
-        if (_nativeAgentRespawnAttempts.TryGetValue(slot, out var existing) &&
-            existing.ReplayGeneration == replayGeneration)
-        {
-            return false;
-        }
-        _nativeAgentRespawnAttempts[slot] = attempt;
-
-        ScheduleCosmeticNextFrame(() =>
-        {
-            if (!_nativeAgentRespawnAttempts.TryGetValue(slot, out var current) ||
-                current != attempt ||
-                !IsReplayIdentityGenerationCurrent(slot, replayGeneration) ||
-                !_loadedReplays.TryGetValue(slot, out var replay) ||
-                replay.SteamId != replaySteamId ||
-                !TryValidateBotRandomizerClaim(
-                    slot,
-                    replaySteamId,
-                    DemoTracerCosmeticWriteField.Agent) ||
-                IsReplaySlotPlaying(slot) ||
-                !TryReadFreezePhaseRemaining(out var remaining, out _) ||
-                remaining < KnifeEntityRefreshMinFreezeSeconds)
-            {
-                return;
-            }
-
-            var currentPlayer = Utilities.GetPlayerFromSlot(slot);
-            var currentPawn = currentPlayer?.PlayerPawn.Value;
-            if (currentPlayer is not { IsValid: true, PawnIsAlive: true } ||
-                currentPlayer.UserId != userId ||
-                currentPawn is not { IsValid: true } ||
-                currentPawn.EntityHandle.Raw != attempt.PawnEntityHandle)
-            {
-                return;
-            }
-
-            try
-            {
-                currentPlayer.Respawn();
-                _loadoutSyncedSlots.Remove(slot);
-                _rebuiltInventorySlots.Remove(slot);
-                _cosmeticSyncedSlots.Remove(slot);
-                Server.PrintToConsole(
-                    $"dtr: respawned replay bot during freeze to recover native agent model slot={slot}");
-            }
-            catch (Exception ex)
-            {
-                Server.PrintToConsole(
-                    $"dtr: native agent model recovery respawn failed slot={slot}: {ex.Message}");
-            }
-        });
+                native.ModelPath),
+            TimerFlags.STOP_ON_MAPCHANGE);
         return true;
     }
+
+    internal static MissingAgentEvidenceRecovery ResolveMissingAgentEvidenceRecovery(
+        bool hasMatchingNativeModelCapture)
+        => hasMatchingNativeModelCapture
+            ? MissingAgentEvidenceRecovery.ApplyCapturedModel
+            : MissingAgentEvidenceRecovery.PreserveCurrentModel;
 
     private void ApplyAgentModelForSlot(
         int slot,
@@ -3047,10 +2977,6 @@ public sealed partial class DemoTracerPlugin
         uint PawnEntityHandle,
         CsTeam Team,
         string ModelPath);
-
-    private readonly record struct NativeAgentRespawnAttempt(
-        uint PawnEntityHandle,
-        long ReplayGeneration);
 
     private readonly record struct AppliedGloveCosmetic(
         nint PawnHandle,

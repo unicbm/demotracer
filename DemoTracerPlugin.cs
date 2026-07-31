@@ -251,7 +251,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         _pendingKnifeEntityRefreshes.Remove(playerSlot);
         _knifeEntityRefreshUnavailableWarnings.Remove(playerSlot);
         _nativeAgentModels.Remove(playerSlot);
-        _nativeAgentRespawnAttempts.Remove(playerSlot);
         _ = SyncBotRandomizerCosmeticLease(announce: false);
 
         if (!HasReplayLifecycleState(includeNative: true))
@@ -5323,7 +5322,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         _appliedGloveCosmetics.Remove(slot);
         _gloveCosmeticTokens.Remove(slot);
         _pendingKnifeEntityRefreshes.Remove(slot);
-        _nativeAgentRespawnAttempts.Remove(slot);
         _scoreboardSyncedSlots.Remove(slot);
         _ = SyncBotHiderPresentationLease(announce: false);
         _ = SyncBotRandomizerCosmeticLease(announce: false);
@@ -5961,6 +5959,12 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         var weaponEntityHandle = weapon.EntityHandle.Raw;
         if (weaponEntityHandle == Utilities.InvalidEHandleIndex)
             return false;
+        if (!CanDropAndKillReplayWeapon(weaponName))
+        {
+            Server.PrintToConsole(
+                $"dtr: refused destructive replay knife removal slot={player.Slot} item={weaponName} reason={reason}");
+            return false;
+        }
         if (!TrySelectWeapon(player, pawn, weapon))
             return false;
 
