@@ -88,7 +88,7 @@ add_custom_command(
     VERBATIM
 )
 
-set(NLOHMANN_JSON_INCLUDE "${CMAKE_SOURCE_DIR}/third_party")
+set(NLOHMANN_JSON_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../third_party")
 
 set(SDK_SOURCES
     ${HL2SDK}/public/tier0/memoverride.cpp
