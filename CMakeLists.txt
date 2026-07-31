@@ -172,7 +172,7 @@ target_include_directories(BotController PRIVATE
     src/BotController
     src/BotRecorder
     src/VoiceSender
-    ${CMAKE_SOURCE_DIR}/third_party
+    ${CMAKE_CURRENT_SOURCE_DIR}/../third_party
     ${GENERATED_DIR}
     ${HL2SDK}/thirdparty/protobuf-3.21.8/src
     ${MMS}/core ${MMS}/core/sourcehook ${MMS}/core/sourcemm
