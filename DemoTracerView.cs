@@ -126,27 +126,6 @@ public sealed partial class DemoTracerPlugin
             EnsureBotHiderPresentationLease();
     }
 
-    private Dictionary<uint, int> BuildReplayPawnSlotMap(TickPlayerSnapshot playerSnapshot)
-    {
-        var replayPawnSlots = new Dictionary<uint, int>();
-        foreach (var slot in _loadedSlots)
-        {
-            if (slot is < 0 or >= MaxPlayerSlots || !_lastPlayingSlots.Contains(slot))
-                continue;
-
-            if (!playerSnapshot.TryGetSlot(slot, out var replayController) ||
-                replayController is not { IsValid: true })
-            {
-                continue;
-            }
-
-            if (replayController.PlayerPawn is { IsValid: true, Value.IsValid: true } replayPawn)
-                replayPawnSlots[replayPawn.Value.Index] = slot;
-        }
-
-        return replayPawnSlots;
-    }
-
     private void UpdateReplayBotViewmodels(TickPlayerSnapshot playerSnapshot)
     {
         if (_loadedSlots.Count == 0)

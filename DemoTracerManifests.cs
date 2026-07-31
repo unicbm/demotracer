@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Text.Json.Serialization;
 using System.Text.Json;
 
@@ -552,26 +551,6 @@ public sealed partial class DemoTracerPlugin
 
         error = $"[DTR ERR] source_round={sourceRound} was not found in manifest. [DTR HINT] Available source rounds: {string.Join(", ", rounds)}.";
         return false;
-    }
-
-    private static string ReadMaybeBrotliText(string path)
-    {
-        if (!path.EndsWith(".br", StringComparison.OrdinalIgnoreCase))
-            return File.ReadAllText(path);
-
-        using var input = File.OpenRead(path);
-        try
-        {
-            using var brotli = new BrotliStream(input, CompressionMode.Decompress);
-            using var reader = new StreamReader(brotli);
-            return reader.ReadToEnd();
-        }
-        catch (InvalidDataException ex)
-        {
-            throw new InvalidDataException(
-                $"manifest Brotli payload is invalid: {path} ({ex.Message})",
-                ex);
-        }
     }
 
     private static bool TryResolveChildPathUnderRoot(

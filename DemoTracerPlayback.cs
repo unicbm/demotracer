@@ -296,26 +296,6 @@ public sealed partial class DemoTracerPlugin
         IssueRestartIfRequested(restart, reply);
     }
 
-    private static string StripOuterQuotes(string value)
-    {
-        value = value.Trim();
-        return value.Length >= 2 && value[0] == '"' && value[^1] == '"'
-            ? value[1..^1]
-            : value;
-    }
-
-    private static bool ParseLoopArgument(string value)
-    {
-        var normalized = value.Trim();
-        if (normalized.StartsWith("loop:", StringComparison.OrdinalIgnoreCase))
-            normalized = normalized["loop:".Length..];
-
-        return !normalized.Equals("0", StringComparison.OrdinalIgnoreCase) &&
-               !normalized.Equals("off", StringComparison.OrdinalIgnoreCase) &&
-               !normalized.Equals("false", StringComparison.OrdinalIgnoreCase) &&
-               !normalized.Equals("no", StringComparison.OrdinalIgnoreCase);
-    }
-
     private bool PrepareNextSequenceRound(
         string reason,
         bool pollIfPending = true)
