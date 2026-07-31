@@ -1,3 +1,9 @@
+/*---------------------------------------------------------------------------------------------
+ * Copyright (c) 2026 unicbm. All rights reserved.
+ * Licensed under the GNU Affero General Public License v3.0 only.
+ * See LICENSE in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
 use crate::export::{
     glove_econ_seed_index, inventory_item_cosmetic_evidence, knife_econ_paint_index,
     matching_active_econ_knife_paint, matching_econ_glove_seed, valid_knife_item_def_index,

@@ -1,3 +1,9 @@
+/*---------------------------------------------------------------------------------------------
+ * Copyright (c) 2026 unicbm. All rights reserved.
+ * Licensed under the GNU Affero General Public License v3.0 only.
+ * See LICENSE in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
 // CS2 preview payload layout and checksum behavior are based on
 // ianlucas/cs2-lib-inspect. See third_party/cs2-lib-inspect/README.vendor.md.
 use crate::model::{
