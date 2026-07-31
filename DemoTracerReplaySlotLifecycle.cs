@@ -1,0 +1,207 @@
+using CounterStrikeSharp.API.Core.Attributes.Registration;
+using CounterStrikeSharp.API.Core.Capabilities;
+using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Modules.Commands;
+using CounterStrikeSharp.API.Modules.Cvars;
+using CounterStrikeSharp.API.Modules.Memory;
+using CounterStrikeSharp.API.Modules.Timers;
+using CounterStrikeSharp.API.Modules.Utils;
+using CounterStrikeSharp.API;
+using DemoTracerApi;
+using DemoTracerBotHiderApi;
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+
+namespace DemoTracer;
+
+public sealed partial class DemoTracerPlugin
+{
+    private void StopOneSlot(CommandInfo command, int slot, string reason)
+    {
+        StopVoiceTestPlayback(reason, printSummary: false);
+        var ok = BotControllerNative.StopReplay(slot);
+        ReleaseReplaySlot(slot, reason);
+        command.ReplyToCommand(ok
+            ? $"[DTR OK] stopped slot {slot}"
+            : $"[DTR ERR] failed to stop slot {slot}");
+    }
+
+    private static void IssueRestartIfRequested(CommandInfo command, bool restart)
+    {
+        if (!restart)
+            return;
+
+        Server.ExecuteCommand("mp_restartgame 1");
+        command.ReplyToCommand("[DTR OK] Issued \"mp_restartgame 1\". Waiting for next round_start.");
+    }
+
+    private static void IssueRestartIfRequested(bool restart, Action<string> reply)
+    {
+        if (!restart)
+            return;
+
+        Server.ExecuteCommand("mp_restartgame 1");
+        reply("[DTR OK] Issued \"mp_restartgame 1\". Waiting for next round_start.");
+    }
+
+    private void MarkReplayStarted(int slot)
+    {
+        _retainedReplayViewmodelSlots.Remove(slot);
+        _session.LastPlayingSlots.Add(slot);
+        _session.ReplayStartedAt[slot] = Server.CurrentTime;
+        _session.ReplayPerceptionBaselineSerial[slot] =
+            BotControllerNative.TryGetNativePerceptionState(slot, out var perception)
+                ? perception.UpdateSerial
+                : 0u;
+        _session.ProjectileAlignNextBySlot[slot] = 0;
+        _session.ReplayHifiEventNextBySlot[slot] = 0;
+    }
+
+    private void ReleaseReplaySlot(
+        int slot,
+        string reason,
+        ReplayReleaseKind releaseKind = ReplayReleaseKind.Immediate)
+    {
+        InvalidateReplayMusicKitRepair(slot);
+        InvalidateReplayMutationGeneration(slot);
+        _session.FreezePrerollSlots.Remove(slot);
+        _session.ResumedFreezePrerollSlots.Remove(slot);
+        var retainedViewmodel = (releaseKind is ReplayReleaseKind.Handoff or ReplayReleaseKind.Finished) &&
+                                RetainReplayBotViewmodelForRound(slot);
+        if (!retainedViewmodel)
+            RestoreReplayBotViewmodel(slot);
+        _session.LastPlayingSlots.Remove(slot);
+        _session.ReplayStartedAt.Remove(slot);
+        _session.ReplayPerceptionBaselineSerial.Remove(slot);
+        _session.LastEnsuredWeaponDef.Remove(slot);
+        _session.LastReplayWeaponDef.Remove(slot);
+        _session.LastLockedWeaponTarget.Remove(slot);
+        ClearPendingWeaponSlotReplacementsForSlot(slot);
+        _session.ActiveWeaponCosmetics.Remove(slot);
+        _session.ProjectileAlignNextBySlot.Remove(slot);
+        _session.ReplayHifiEventNextBySlot.Remove(slot);
+        _session.DemoTracerOwnedSlots.Remove(slot);
+        _session.RebuiltInventorySlots.Remove(slot);
+        _session.LoadoutSyncedSlots.Remove(slot);
+        _session.BalanceSyncedSlots.Remove(slot);
+        _session.PendingBulletHits.Remove(slot);
+        _session.PendingBulletDamages.Remove(slot);
+        _session.PendingThreat360.Remove(slot);
+        _session.CosmeticSyncedSlots.Remove(slot);
+        _cosmeticHeartbeatTokens.Remove(slot);
+        BotControllerNative.ClearBuyPlan(slot);
+        BotControllerNative.UnlockReplayControl(slot);
+        BotControllerNative.UnlockWeaponSlot(slot);
+        ClearReplayPovSlot(slot);
+        ScheduleLoadedReplayCosmeticRepairForSlot(slot);
+        if (releaseKind == ReplayReleaseKind.Handoff &&
+            IsReplaySlotStillSafe(slot) &&
+            HasLivePawn(Utilities.GetPlayerFromSlot(slot)) &&
+            !BotControllerNative.RequestEquipBestWeapon(slot))
+        {
+            Server.PrintToConsole(
+                $"dtr: handoff best-weapon request unavailable slot={slot}");
+        }
+        Server.PrintToConsole(
+            $"dtr: released slot={slot} reason={reason} viewmodel={(retainedViewmodel ? "retained_round" : "released")}");
+    }
+
+    private bool HasActiveReplaySlots()
+    {
+        foreach (var slot in _session.LoadedSlots)
+        {
+            if (BotControllerNative.GetReplayState(slot).Playing)
+                return true;
+        }
+        return false;
+    }
+
+    private bool HasAnyNativeActiveReplaySlot()
+    {
+        if (HasActiveReplaySlots())
+            return true;
+
+        foreach (var slot in NativeReplaySlots())
+        {
+            var state = BotControllerNative.GetReplayState(slot);
+            if (state.Playing || state.Total > 0)
+                return true;
+        }
+        return false;
+    }
+
+    private bool CheckReplayStartGates(Action<string> reply, bool stopCurrentForOverride)
+    {
+        if (IsWarmupPeriod())
+        {
+            reply("[DTR ERR] 热身阶段无法进行回放");
+            return false;
+        }
+
+        if (!stopCurrentForOverride || !HasAnyNativeActiveReplaySlot())
+            return true;
+
+        reply("[DTR WARN] 会STOP当前所有DTR并override");
+        StopAndUnloadLoaded();
+        StopSequenceState();
+        return true;
+    }
+
+    private bool IsReplaySlotBusy(int slot)
+    {
+        if (slot < 0)
+            return false;
+        if (_session.LoadedSlots.Contains(slot) ||
+            _session.LoadedReplays.ContainsKey(slot))
+        {
+            return true;
+        }
+
+        var state = BotControllerNative.GetReplayState(slot);
+        return state.Playing || state.Total > 0;
+    }
+
+    private bool IsDemoTracerBot(int slot)
+    {
+        if (slot < 0)
+            return false;
+
+        if (_session.DemoTracerOwnedSlots.Contains(slot))
+        {
+            return true;
+        }
+
+        if (_session.Plan.Armed || _session.Plan.ArmedPrepared || _session.Plan.SequenceActive)
+        {
+            var player = Utilities.GetPlayerFromSlot(slot);
+            if (player is { IsValid: true } && IsReplayTargetBot(player))
+                return true;
+        }
+
+        var state = BotControllerNative.GetReplayState(slot);
+        return state.Playing;
+    }
+
+    private bool TryGetBotCosmeticState(int slot, out DemoTracerBotCosmeticState state)
+    {
+        state = new DemoTracerBotCosmeticState();
+        if (slot < 0)
+            return false;
+
+        state.IsDemoTracerBot = IsDemoTracerBot(slot);
+        state.IsSlotBusy = IsReplaySlotBusy(slot);
+        state.CosmeticWriterEnabled = AnyCosmeticFeatureEnabled();
+        state.HasCosmeticEvidence =
+            _session.LoadedReplays.TryGetValue(slot, out var replay) &&
+            HasCosmeticEvidence(replay.Cosmetics) &&
+            IsReplaySlotStillSafe(slot);
+        state.ShouldDeferInventoryWrites =
+            state.IsDemoTracerBot &&
+            state.HasCosmeticEvidence &&
+            state.CosmeticWriterEnabled;
+        return state.IsDemoTracerBot || state.IsSlotBusy || state.HasCosmeticEvidence;
+    }
+
+}

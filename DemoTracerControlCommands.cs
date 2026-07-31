@@ -1110,14 +1110,14 @@ public sealed partial class DemoTracerPlugin
         if (command.ArgCount < 2)
         {
             TryReadFreezeTimeConVar(out var freezeTime, out var freezeReason);
-            var plan = _session.SequenceActive
-                ? _session.SequenceIndex < _session.SequenceRounds.Length
-                    ? $"sequence from_source_round={_session.SequenceRounds[_session.SequenceIndex]} prepared={_session.SequencePrepared}:{_session.SequencePreparedRound}"
+            var plan = _session.Plan.SequenceActive
+                ? _session.Plan.SequenceIndex < _session.Plan.SequenceRounds.Length
+                    ? $"sequence from_source_round={_session.Plan.SequenceRounds[_session.Plan.SequenceIndex]} prepared={_session.Plan.SequencePrepared}:{_session.Plan.SequencePreparedRound}"
                     : "sequence complete"
                 : HasPlayoffSchedulingState()
                     ? $"playoff {FormatPlayoffPlanStatus()}"
-                : _session.Armed
-                    ? $"single source_round={_session.ArmedSourceRound} prepared={_session.ArmedPrepared}"
+                : _session.Plan.Armed
+                    ? $"single source_round={_session.Plan.ArmedSourceRound} prepared={_session.Plan.ArmedPrepared}"
                     : "none";
             command.ReplyToCommand(
                 $"[DTR OK] status plan={plan} loaded_slots={_session.LoadedSlots.Count} settings identity={ReplayIdentityModeName()} weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_ticks={FormatProjectileAlignTicks()} molotov_point={FormatMolotovPointAlignMode(_molotovPointAlignMode)}:{_molotovPointAlignLeadTicks} cosmetics={FormatOnOff(_cosmeticAlignEnabled)} agents={FormatOnOff(_cosmeticAgentsEnabled)} stickers={FormatOnOff(_stickerAlignEnabled)} charms={FormatOnOff(_charmAlignEnabled)} preserve_native={FormatOnOff(_preserveNativeBotCosmetics)} crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand_desired={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)} scoreboard={FormatOnOff(_scoreboardAlignEnabled)} handoff={FormatHandoffMode(_handoffMode)}:{(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} allow_partial={FormatOnOff(_partialReplayEnabled)} playoff={FormatOnOff(_playoffEnabled)}:{FormatPlayoffPlanStatus()} {FormatVoiceAutoStatusInline()} {FormatChatAutoStatusInline()} mp_freezetime={(float.IsFinite(freezeTime) ? freezeTime.ToString("F2", CultureInfo.InvariantCulture) : "unknown")} {(string.IsNullOrEmpty(freezeReason) ? "" : freezeReason)} {FormatCosmeticStatusCounts()} {FormatCrosshairStatusCounts()} {FormatViewmodelStatusCounts()} {FormatScoreboardStatusCounts()}");
@@ -1128,8 +1128,8 @@ public sealed partial class DemoTracerPlugin
         if (!TryParseSlotAt(command, slotArg, out var slot))
             return;
         var state = BotControllerNative.GetReplayState(slot);
-        var sequence = _session.SequenceActive && _session.SequenceIndex < _session.SequenceRounds.Length
-            ? $" sequence_next={_session.SequenceRounds[_session.SequenceIndex]}"
+        var sequence = _session.Plan.SequenceActive && _session.Plan.SequenceIndex < _session.Plan.SequenceRounds.Length
+            ? $" sequence_next={_session.Plan.SequenceRounds[_session.Plan.SequenceIndex]}"
             : string.Empty;
         var playoff = _playoffEnabled
             ? $" playoff={FormatPlayoffPlanStatus()}"

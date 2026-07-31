@@ -37,7 +37,7 @@ public sealed partial class DemoTracerPlugin
 
         command.ReplyToCommand(
             $"[DTR OK] playoff={FormatOnOff(_playoffEnabled)} plan={FormatPlayoffPlanStatus()}");
-        if (enabled && string.IsNullOrWhiteSpace(_session.SequenceManifestPath))
+        if (enabled && string.IsNullOrWhiteSpace(_session.Plan.SequenceManifestPath))
         {
             command.ReplyToCommand(
                 "[DTR HINT] playoff is enabled and will attach to the next manifest sequence.");
@@ -74,24 +74,24 @@ public sealed partial class DemoTracerPlugin
     private bool IsPlayoffPlanReady()
     {
         return _playoffEnabled &&
-               !_session.SequenceActive &&
-               !string.IsNullOrWhiteSpace(_session.SequenceManifestPath) &&
-               _session.SequenceRounds.Length > 0 &&
-               _session.SequenceIndex >= _session.SequenceRounds.Length;
+               !_session.Plan.SequenceActive &&
+               !string.IsNullOrWhiteSpace(_session.Plan.SequenceManifestPath) &&
+               _session.Plan.SequenceRounds.Length > 0 &&
+               _session.Plan.SequenceIndex >= _session.Plan.SequenceRounds.Length;
     }
 
     private bool HasPlayoffSchedulingState()
-        => IsPlayoffPlanReady() || _session.PlayoffPreparePending || _session.PlayoffPrepared;
+        => IsPlayoffPlanReady() || _session.Plan.PlayoffPreparePending || _session.Plan.PlayoffPrepared;
 
     private string FormatPlayoffPlanStatus()
     {
-        if (_session.PlayoffPrepared)
-            return $"prepared:T=r{_session.PlayoffPreparedTRound},CT=r{_session.PlayoffPreparedCtRound}";
-        if (_session.PlayoffPreparePending)
-            return $"decoding:T=r{_session.PlayoffPendingTRound},CT=r{_session.PlayoffPendingCtRound}";
+        if (_session.Plan.PlayoffPrepared)
+            return $"prepared:T=r{_session.Plan.PlayoffPreparedTRound},CT=r{_session.Plan.PlayoffPreparedCtRound}";
+        if (_session.Plan.PlayoffPreparePending)
+            return $"decoding:T=r{_session.Plan.PlayoffPendingTRound},CT=r{_session.Plan.PlayoffPendingCtRound}";
         if (IsPlayoffPlanReady())
-            return $"ready:extra_round={_session.PlayoffRoundIndex + 1}";
-        if (_session.SequenceActive && _playoffEnabled)
+            return $"ready:extra_round={_session.Plan.PlayoffRoundIndex + 1}";
+        if (_session.Plan.SequenceActive && _playoffEnabled)
             return "waiting_for_sequence_end";
         return "none";
     }
@@ -99,21 +99,13 @@ public sealed partial class DemoTracerPlugin
     private void ResetPlayoffProgress()
     {
         ClearPlayoffPendingPreparation(cancelDecode: true);
-        _session.PlayoffPrepared = false;
-        _session.PlayoffPreparedTRound = -1;
-        _session.PlayoffPreparedCtRound = -1;
-        _session.PlayoffPreparedLabel = string.Empty;
-        _session.PlayoffRoundIndex = 0;
+        _session.Plan.ClearPlayoffPrepared(resetRoundIndex: true);
     }
 
     private void CancelPlayoffPreparation(bool unloadPrepared)
     {
-        var hadPrepared = _session.PlayoffPrepared;
         ClearPlayoffPendingPreparation(cancelDecode: true);
-        _session.PlayoffPrepared = false;
-        _session.PlayoffPreparedTRound = -1;
-        _session.PlayoffPreparedCtRound = -1;
-        _session.PlayoffPreparedLabel = string.Empty;
+        var hadPrepared = _session.Plan.ClearPlayoffPrepared(resetRoundIndex: false);
         if (!unloadPrepared || !hadPrepared)
             return;
 
@@ -123,14 +115,7 @@ public sealed partial class DemoTracerPlugin
 
     private void ClearPlayoffPendingPreparation(bool cancelDecode)
     {
-        var wasPending = _session.PlayoffPreparePending;
-        _session.PlayoffPreparePending = false;
-        _session.PlayoffPendingCanLoad = false;
-        _session.PlayoffPrepareToken++;
-        _session.PlayoffPendingTRound = -1;
-        _session.PlayoffPendingCtRound = -1;
-        _session.PlayoffPendingReason = string.Empty;
-        _session.PlayoffPendingPrepareReason = string.Empty;
+        var wasPending = _session.Plan.ClearPlayoffPending();
         if (cancelDecode && wasPending)
             FinishReplayPrefetchRound();
     }
@@ -139,14 +124,14 @@ public sealed partial class DemoTracerPlugin
     {
         if (!IsPlayoffPlanReady())
             return false;
-        if (_session.PlayoffPrepared)
+        if (_session.Plan.PlayoffPrepared)
             return true;
-        if (_session.PlayoffPreparePending)
+        if (_session.Plan.PlayoffPreparePending)
         {
             if (!allowLoad)
                 return false;
 
-            _session.PlayoffPendingCanLoad = true;
+            _session.Plan.PlayoffPendingCanLoad = true;
             if (ReplayPrefetchReady())
             {
                 return CompletePendingPlayoffPreparation(
@@ -154,22 +139,22 @@ public sealed partial class DemoTracerPlugin
                     scheduleFreezePreroll: false);
             }
 
-            PollPendingPlayoffPreparation(_session.PlayoffPrepareToken);
+            PollPendingPlayoffPreparation(_session.Plan.PlayoffPrepareToken);
             return false;
         }
 
-        var manifestPath = ResolveReadableManifestPath(_session.SequenceManifestPath);
+        var manifestPath = ResolveReadableManifestPath(_session.Plan.SequenceManifestPath);
         if (!TryGetPrefetchedManifest(manifestPath, out var manifest) &&
             !TryReadManifest(manifestPath, out manifest, out var readError))
         {
             Server.PrintToConsole(
-                $"dtr: playoff skipped extra round {_session.PlayoffRoundIndex + 1}: failed to read manifest: {readError}");
+                $"dtr: playoff skipped extra round {_session.Plan.PlayoffRoundIndex + 1}: failed to read manifest: {readError}");
             return false;
         }
         if (!CurrentMapMatchesManifest(manifest.Map, out var currentMap))
         {
             Server.PrintToConsole(
-                $"dtr: playoff skipped extra round {_session.PlayoffRoundIndex + 1}: map mismatch server={currentMap} manifest={manifest.Map}");
+                $"dtr: playoff skipped extra round {_session.Plan.PlayoffRoundIndex + 1}: map mismatch server={currentMap} manifest={manifest.Map}");
             return false;
         }
 
@@ -185,13 +170,13 @@ public sealed partial class DemoTracerPlugin
         {
             var rosterError = !string.IsNullOrWhiteSpace(tRosterError) ? tRosterError : ctRosterError;
             Server.PrintToConsole(
-                $"dtr: playoff skipped extra round {_session.PlayoffRoundIndex + 1}: {rosterError}");
+                $"dtr: playoff skipped extra round {_session.Plan.PlayoffRoundIndex + 1}: {rosterError}");
             return false;
         }
         if (tSteamIds.Count == 0 && ctSteamIds.Count == 0)
         {
             Server.PrintToConsole(
-                $"dtr: playoff skipped extra round {_session.PlayoffRoundIndex + 1}: no replay bot targets");
+                $"dtr: playoff skipped extra round {_session.Plan.PlayoffRoundIndex + 1}: no replay bot targets");
             return false;
         }
 
@@ -213,7 +198,7 @@ public sealed partial class DemoTracerPlugin
         {
             var chooseError = !string.IsNullOrWhiteSpace(tChooseError) ? tChooseError : ctChooseError;
             Server.PrintToConsole(
-                $"dtr: playoff skipped extra round {_session.PlayoffRoundIndex + 1}: {chooseError}");
+                $"dtr: playoff skipped extra round {_session.Plan.PlayoffRoundIndex + 1}: {chooseError}");
             return false;
         }
 
@@ -224,18 +209,18 @@ public sealed partial class DemoTracerPlugin
             ctRound,
             tSteamIds,
             ctSteamIds);
-        _session.PlayoffPreparePending = true;
-        _session.PlayoffPendingCanLoad = allowLoad;
-        _session.PlayoffPendingTRound = tRound;
-        _session.PlayoffPendingCtRound = ctRound;
-        _session.PlayoffPendingReason =
+        _session.Plan.PlayoffPreparePending = true;
+        _session.Plan.PlayoffPendingCanLoad = allowLoad;
+        _session.Plan.PlayoffPendingTRound = tRound;
+        _session.Plan.PlayoffPendingCtRound = ctRound;
+        _session.Plan.PlayoffPendingReason =
             $"T=r{tRound} from {tCandidateCount} full-buy candidate(s), " +
             $"CT=r{ctRound} from {ctCandidateCount} full-buy candidate(s)";
-        _session.PlayoffPendingPrepareReason = prepareReason;
-        var token = ++_session.PlayoffPrepareToken;
+        _session.Plan.PlayoffPendingPrepareReason = prepareReason;
+        var token = ++_session.Plan.PlayoffPrepareToken;
         Server.PrintToConsole(
-            $"dtr: playoff extra round {_session.PlayoffRoundIndex + 1} selected on {prepareReason}; " +
-            $"{_session.PlayoffPendingReason}; decoding replay data off-thread");
+            $"dtr: playoff extra round {_session.Plan.PlayoffRoundIndex + 1} selected on {prepareReason}; " +
+            $"{_session.Plan.PlayoffPendingReason}; decoding replay data off-thread");
         if (allowLoad)
             PollPendingPlayoffPreparation(token);
         return false;
@@ -317,9 +302,9 @@ public sealed partial class DemoTracerPlugin
     {
         Server.NextFrame(() =>
         {
-            if (!_session.PlayoffPreparePending || token != _session.PlayoffPrepareToken)
+            if (!_session.Plan.PlayoffPreparePending || token != _session.Plan.PlayoffPrepareToken)
                 return;
-            if (!_session.PlayoffPendingCanLoad)
+            if (!_session.Plan.PlayoffPendingCanLoad)
                 return;
             if (!ReplayPrefetchReady())
             {
@@ -337,65 +322,62 @@ public sealed partial class DemoTracerPlugin
         bool waitForDecode,
         bool scheduleFreezePreroll)
     {
-        if (!_session.PlayoffPreparePending)
-            return _session.PlayoffPrepared;
+        if (!_session.Plan.PlayoffPreparePending)
+            return _session.Plan.PlayoffPrepared;
         if (!waitForDecode && !ReplayPrefetchReady())
             return false;
 
-        var tRound = _session.PlayoffPendingTRound;
-        var ctRound = _session.PlayoffPendingCtRound;
-        var reason = _session.PlayoffPendingReason;
-        var prepareReason = _session.PlayoffPendingPrepareReason;
+        var tRound = _session.Plan.PlayoffPendingTRound;
+        var ctRound = _session.Plan.PlayoffPendingCtRound;
+        var reason = _session.Plan.PlayoffPendingReason;
+        var prepareReason = _session.Plan.PlayoffPendingPrepareReason;
         ClearPlayoffPendingPreparation(cancelDecode: false);
         if (!IsPlayoffPlanReady())
             return false;
 
-        var load = LoadPlayoffRound(_session.SequenceManifestPath, tRound, ctRound);
+        var load = LoadPlayoffRound(_session.Plan.SequenceManifestPath, tRound, ctRound);
         if (!load.Ok)
         {
             Server.PrintToConsole(
-                $"dtr: playoff failed extra round {_session.PlayoffRoundIndex + 1}: {load.Message}");
+                $"dtr: playoff failed extra round {_session.Plan.PlayoffRoundIndex + 1}: {load.Message}");
             return false;
         }
 
         PreloadLoadedReplays();
-        _session.PlayoffPrepared = true;
-        _session.PlayoffPreparedTRound = tRound;
-        _session.PlayoffPreparedCtRound = ctRound;
-        _session.PlayoffPreparedLabel = $"{reason}; {load.Message}";
+        _session.Plan.PlayoffPrepared = true;
+        _session.Plan.PlayoffPreparedTRound = tRound;
+        _session.Plan.PlayoffPreparedCtRound = ctRound;
+        _session.Plan.PlayoffPreparedLabel = $"{reason}; {load.Message}";
         TryStartDtrRoundBanner($"playoff_t{tRound}_ct{ctRound}");
         Server.PrintToConsole(
-            $"dtr: prepared playoff extra round {_session.PlayoffRoundIndex + 1} on {prepareReason} -> {_session.PlayoffPreparedLabel}");
+            $"dtr: prepared playoff extra round {_session.Plan.PlayoffRoundIndex + 1} on {prepareReason} -> {_session.Plan.PlayoffPreparedLabel}");
         if (scheduleFreezePreroll &&
             TryReadFreezePhaseRemaining(out var freezeRemaining, out _) &&
             freezeRemaining > 0.0f)
         {
-            ScheduleFreezePrerollStart($"playoff extra round {_session.PlayoffRoundIndex + 1}");
+            ScheduleFreezePrerollStart($"playoff extra round {_session.Plan.PlayoffRoundIndex + 1}");
         }
         return true;
     }
 
     private void StartPreparedPlayoffRound()
     {
-        var extraRound = _session.PlayoffRoundIndex + 1;
-        if (!_session.PlayoffPrepared)
+        var extraRound = _session.Plan.PlayoffRoundIndex + 1;
+        if (!_session.Plan.PlayoffPrepared)
         {
             Server.PrintToConsole(
                 $"dtr: playoff skipped start for extra round {extraRound}: replay prefetch was not ready by round_freeze_end");
             ClearPlayoffPendingPreparation(cancelDecode: true);
-            _session.PlayoffRoundIndex++;
+            _session.Plan.PlayoffRoundIndex++;
             return;
         }
 
-        var label = _session.PlayoffPreparedLabel;
+        var label = _session.Plan.PlayoffPreparedLabel;
         var play = StartLoaded(loop: false);
         Server.PrintToConsole(
             $"dtr: playoff extra round {extraRound} start on round_freeze_end -> {label}; {play}");
-        _session.PlayoffRoundIndex++;
-        _session.PlayoffPrepared = false;
-        _session.PlayoffPreparedTRound = -1;
-        _session.PlayoffPreparedCtRound = -1;
-        _session.PlayoffPreparedLabel = string.Empty;
+        _session.Plan.PlayoffRoundIndex++;
+        _session.Plan.ClearPlayoffPrepared(resetRoundIndex: false);
         ReleaseUnusedWarmReplayBuffers();
     }
 }

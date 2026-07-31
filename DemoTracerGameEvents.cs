@@ -28,27 +28,27 @@ public sealed partial class DemoTracerPlugin
             if (StopReplayStateForRoundBoundary("round_start"))
                 Server.PrintToConsole("[DTR WARN] round_start stopped stale DTR replay state");
 
-            if ((_session.SequenceActive || _session.Armed || HasPlayoffSchedulingState()) && IsWarmupPeriod())
+            if ((_session.Plan.SequenceActive || _session.Plan.Armed || HasPlayoffSchedulingState()) && IsWarmupPeriod())
             {
                 Server.PrintToConsole("[DTR ERR] 热身阶段无法进行回放");
                 StopAllState("warmup_block");
                 return HookResult.Continue;
             }
 
-            if (_session.SequenceActive)
+            if (_session.Plan.SequenceActive)
             {
                 if (PrepareNextSequenceRound("round_start"))
-                    ScheduleFreezePrerollStart($"sequence round {_session.SequencePreparedRound}");
+                    ScheduleFreezePrerollStart($"sequence round {_session.Plan.SequencePreparedRound}");
             }
             else if (IsPlayoffPlanReady())
             {
                 if (PrepareNextPlayoffRound("round_start"))
-                    ScheduleFreezePrerollStart($"playoff extra round {_session.PlayoffRoundIndex + 1}");
+                    ScheduleFreezePrerollStart($"playoff extra round {_session.Plan.PlayoffRoundIndex + 1}");
             }
-            else if (_session.Armed)
+            else if (_session.Plan.Armed)
             {
                 if (PrepareArmedRound("round_start"))
-                    ScheduleFreezePrerollStart(_session.ArmedLabel);
+                    ScheduleFreezePrerollStart(_session.Plan.ArmedLabel);
             }
             Server.NextFrame(ScheduleLoadedReplayMusicKitRepairs);
 
@@ -65,17 +65,17 @@ public sealed partial class DemoTracerPlugin
     {
         InvalidateFreezePreroll();
 
-        if ((_session.SequenceActive || _session.Armed || HasPlayoffSchedulingState()) && IsWarmupPeriod())
+        if ((_session.Plan.SequenceActive || _session.Plan.Armed || HasPlayoffSchedulingState()) && IsWarmupPeriod())
         {
             Server.PrintToConsole("[DTR ERR] 热身阶段无法进行回放");
             StopAllState("warmup_block");
             return HookResult.Continue;
         }
 
-        var resumeLoop = !_session.SequenceActive &&
+        var resumeLoop = !_session.Plan.SequenceActive &&
                          !HasPlayoffSchedulingState() &&
-                         _session.Armed &&
-                         _session.ArmedLoop;
+                         _session.Plan.Armed &&
+                         _session.Plan.ArmedLoop;
         ResumeFreezePrerollReplays(resumeLoop);
 
         var missingFreezePrerollSlots = MissingFreezePrerollResumeSlots();
@@ -86,7 +86,7 @@ public sealed partial class DemoTracerPlugin
                 $"retrying affected slots from their live replay index slots={string.Join(",", missingFreezePrerollSlots)}");
         }
 
-        if (_session.SequenceActive)
+        if (_session.Plan.SequenceActive)
         {
             Server.NextFrame(StartPreparedSequenceRound);
             return HookResult.Continue;
@@ -98,18 +98,17 @@ public sealed partial class DemoTracerPlugin
             return HookResult.Continue;
         }
 
-        if (!_session.Armed)
+        if (!_session.Plan.Armed)
             return HookResult.Continue;
-        if (!_session.ArmedPrepared)
+        if (!_session.Plan.ArmedPrepared)
         {
-            Server.PrintToConsole($"[DTR WARN] armed round is waiting for the next full round_start: {_session.ArmedLabel}");
+            Server.PrintToConsole($"[DTR WARN] armed round is waiting for the next full round_start: {_session.Plan.ArmedLabel}");
             return HookResult.Continue;
         }
 
-        var loop = _session.ArmedLoop;
-        var label = _session.ArmedLabel;
-        _session.Armed = false;
-        _session.ArmedPrepared = false;
+        var loop = _session.Plan.ArmedLoop;
+        var label = _session.Plan.ArmedLabel;
+        _session.Plan.ClearArmed();
         Server.NextFrame(() =>
         {
             var message = StartLoaded(loop, ReplayStartAnchor.Live, null);

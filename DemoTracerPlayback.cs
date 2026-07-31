@@ -134,19 +134,15 @@ public sealed partial class DemoTracerPlugin
         StopAndUnloadLoaded();
         CancelReplayPrefetch();
         ResetPlayoffProgress();
-        _session.SequenceManifestPath = manifestPath;
-        _session.SequenceRounds = rounds;
-        _session.SequenceIndex = Array.IndexOf(rounds, startRound);
-        _session.SequenceActive = _session.SequenceIndex >= 0;
-        _session.SequencePrepared = false;
-        _session.SequencePreparedRound = -1;
-        _session.SequencePreparePollToken++;
+        _session.Plan.SequenceManifestPath = manifestPath;
+        _session.Plan.SequenceRounds = rounds;
+        _session.Plan.SequenceIndex = Array.IndexOf(rounds, startRound);
+        _session.Plan.SequenceActive = _session.Plan.SequenceIndex >= 0;
+        _session.Plan.SequencePrepared = false;
+        _session.Plan.SequencePreparedRound = -1;
+        _session.Plan.SequencePreparePollToken++;
         InvalidateFreezePreroll();
-        _session.Armed = false;
-        _session.ArmedPrepared = false;
-        _session.ArmedPreparePollToken++;
-        _session.ArmedManifestPath = string.Empty;
-        _session.ArmedSourceRound = -1;
+        _session.Plan.ClearArmed();
         PrefetchRoundReplays(manifestPath, manifest, startRound, stableManifestStamp);
 
         command.ReplyToCommand(
@@ -154,7 +150,7 @@ public sealed partial class DemoTracerPlugin
                 ? $"[DTR OK] Planned SEQUENCE. manifest=\"{manifestPath}\"; from_source_round={startRound}; restart=now."
                 : $"[DTR OK] Armed SEQUENCE. manifest=\"{manifestPath}\"; from_source_round={startRound}; waiting for next round_start.");
         command.ReplyToCommand(
-            $"[DTR OK] Sequence has {rounds.Length - _session.SequenceIndex} round(s) remaining from source_round={startRound}.");
+            $"[DTR OK] Sequence has {rounds.Length - _session.Plan.SequenceIndex} round(s) remaining from source_round={startRound}.");
         IssueRestartIfRequested(command, restart);
     }
 
@@ -219,22 +215,16 @@ public sealed partial class DemoTracerPlugin
         ActivatePendingReplayRetentionPriority();
         StopAndUnloadLoaded();
         CancelReplayPrefetch();
-        _session.SequenceActive = false;
-        _session.SequenceManifestPath = string.Empty;
-        _session.SequenceRounds = [];
-        _session.SequenceIndex = 0;
-        _session.SequencePrepared = false;
-        _session.SequencePreparedRound = -1;
-        _session.SequencePreparePollToken++;
+        _session.Plan.ClearSequence();
         ResetPlayoffProgress();
         InvalidateFreezePreroll();
-        _session.Armed = true;
-        _session.ArmedLoop = loop;
-        _session.ArmedPrepared = false;
-        _session.ArmedPreparePollToken++;
-        _session.ArmedManifestPath = manifestPath;
-        _session.ArmedSourceRound = round;
-        _session.ArmedLabel = $"source_round={round} manifest={manifestPath}";
+        _session.Plan.Armed = true;
+        _session.Plan.ArmedLoop = loop;
+        _session.Plan.ArmedPrepared = false;
+        _session.Plan.ArmedPreparePollToken++;
+        _session.Plan.ArmedManifestPath = manifestPath;
+        _session.Plan.ArmedSourceRound = round;
+        _session.Plan.ArmedLabel = $"source_round={round} manifest={manifestPath}";
         PrefetchRoundReplays(manifestPath, manifest, round, stableManifestStamp);
         reply(
             restart
@@ -248,17 +238,17 @@ public sealed partial class DemoTracerPlugin
         string reason,
         bool pollIfPending = true)
     {
-        if (_session.SequenceIndex < 0 || _session.SequenceIndex >= _session.SequenceRounds.Length)
+        if (_session.Plan.SequenceIndex < 0 || _session.Plan.SequenceIndex >= _session.Plan.SequenceRounds.Length)
         {
-            _session.SequenceActive = false;
+            _session.Plan.SequenceActive = false;
             Server.PrintToConsole("dtr: sequence complete");
             return false;
         }
 
-        if (_session.SequencePrepared)
+        if (_session.Plan.SequencePrepared)
             return true;
 
-        var round = _session.SequenceRounds[_session.SequenceIndex];
+        var round = _session.Plan.SequenceRounds[_session.Plan.SequenceIndex];
         if (!ReplayPrefetchReady())
         {
             if (pollIfPending)
@@ -268,11 +258,11 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
-        var load = LoadRound(_session.SequenceManifestPath, round);
+        var load = LoadRound(_session.Plan.SequenceManifestPath, round);
         if (!load.Ok)
         {
-            _session.SequencePrepared = false;
-            _session.SequencePreparedRound = -1;
+            _session.Plan.SequencePrepared = false;
+            _session.Plan.SequencePreparedRound = -1;
             Server.PrintToConsole(
                 $"[DTR WARN] sequence source round {round} could not be prepared on {reason}; " +
                 $"keeping it armed for the next round_start: {load.Message}");
@@ -280,8 +270,8 @@ public sealed partial class DemoTracerPlugin
         }
 
         PreloadLoadedReplays();
-        _session.SequencePrepared = true;
-        _session.SequencePreparedRound = round;
+        _session.Plan.SequencePrepared = true;
+        _session.Plan.SequencePreparedRound = round;
         TryStartDtrRoundBanner($"sequence_r{round}");
         Server.PrintToConsole($"dtr: prepared sequence round {round} on {reason}: {load.Message}");
         return true;
@@ -289,17 +279,17 @@ public sealed partial class DemoTracerPlugin
 
     private void PollPendingSequencePreparation(int round, string reason)
     {
-        var token = ++_session.SequencePreparePollToken;
+        var token = ++_session.Plan.SequencePreparePollToken;
         void Poll()
         {
             Server.NextFrame(() =>
             {
-                if (token != _session.SequencePreparePollToken ||
-                    !_session.SequenceActive ||
-                    _session.SequencePrepared ||
-                    _session.SequenceIndex < 0 ||
-                    _session.SequenceIndex >= _session.SequenceRounds.Length ||
-                    _session.SequenceRounds[_session.SequenceIndex] != round)
+                if (token != _session.Plan.SequencePreparePollToken ||
+                    !_session.Plan.SequenceActive ||
+                    _session.Plan.SequencePrepared ||
+                    _session.Plan.SequenceIndex < 0 ||
+                    _session.Plan.SequenceIndex >= _session.Plan.SequenceRounds.Length ||
+                    _session.Plan.SequenceRounds[_session.Plan.SequenceIndex] != round)
                 {
                     return;
                 }
@@ -331,22 +321,21 @@ public sealed partial class DemoTracerPlugin
         string reason,
         bool pollIfPending = true)
     {
-        if (!_session.Armed)
+        if (!_session.Plan.Armed)
             return false;
-        if (_session.ArmedPrepared)
+        if (_session.Plan.ArmedPrepared)
             return true;
-        if (string.IsNullOrWhiteSpace(_session.ArmedManifestPath) || _session.ArmedSourceRound < 0)
+        if (string.IsNullOrWhiteSpace(_session.Plan.ArmedManifestPath) || _session.Plan.ArmedSourceRound < 0)
         {
-            _session.Armed = false;
-            _session.ArmedPrepared = false;
+            _session.Plan.ClearArmed();
             Server.PrintToConsole("[DTR ERR] single-round plan is missing manifest/source_round");
             return false;
         }
 
-        var manifestPath = _session.ArmedManifestPath;
-        var sourceRound = _session.ArmedSourceRound;
-        var loop = _session.ArmedLoop;
-        var label = _session.ArmedLabel;
+        var manifestPath = _session.Plan.ArmedManifestPath;
+        var sourceRound = _session.Plan.ArmedSourceRound;
+        var loop = _session.Plan.ArmedLoop;
+        var label = _session.Plan.ArmedLabel;
         if (!ReplayPrefetchReady())
         {
             if (pollIfPending)
@@ -359,20 +348,17 @@ public sealed partial class DemoTracerPlugin
         var load = LoadRound(manifestPath, sourceRound);
         if (!load.Ok)
         {
-            _session.Armed = false;
-            _session.ArmedPrepared = false;
-            _session.ArmedManifestPath = string.Empty;
-            _session.ArmedSourceRound = -1;
+            _session.Plan.ClearArmed();
             Server.PrintToConsole($"[DTR ERR] single source_round={sourceRound} failed while preparing on {reason}: {load.Message}");
             return false;
         }
 
-        _session.Armed = true;
-        _session.ArmedPrepared = true;
-        _session.ArmedManifestPath = manifestPath;
-        _session.ArmedSourceRound = sourceRound;
-        _session.ArmedLoop = loop;
-        _session.ArmedLabel = label;
+        _session.Plan.Armed = true;
+        _session.Plan.ArmedPrepared = true;
+        _session.Plan.ArmedManifestPath = manifestPath;
+        _session.Plan.ArmedSourceRound = sourceRound;
+        _session.Plan.ArmedLoop = loop;
+        _session.Plan.ArmedLabel = label;
         PreloadLoadedReplays();
         TryStartDtrRoundBanner($"single_r{sourceRound}");
         Server.PrintToConsole($"[DTR OK] round_start: loaded SINGLE source_round={sourceRound} on {reason}: {load.Message}");
@@ -384,16 +370,16 @@ public sealed partial class DemoTracerPlugin
         int sourceRound,
         string reason)
     {
-        var token = ++_session.ArmedPreparePollToken;
+        var token = ++_session.Plan.ArmedPreparePollToken;
         void Poll()
         {
             Server.NextFrame(() =>
             {
-                if (token != _session.ArmedPreparePollToken ||
-                    !_session.Armed ||
-                    _session.ArmedPrepared ||
-                    _session.ArmedSourceRound != sourceRound ||
-                    !_session.ArmedManifestPath.Equals(
+                if (token != _session.Plan.ArmedPreparePollToken ||
+                    !_session.Plan.Armed ||
+                    _session.Plan.ArmedPrepared ||
+                    _session.Plan.ArmedSourceRound != sourceRound ||
+                    !_session.Plan.ArmedManifestPath.Equals(
                         manifestPath,
                         StringComparison.OrdinalIgnoreCase))
                 {
@@ -412,7 +398,7 @@ public sealed partial class DemoTracerPlugin
                         $"{reason} prefetch ready",
                         pollIfPending: false))
                 {
-                    ScheduleFreezePrerollStart(_session.ArmedLabel);
+                    ScheduleFreezePrerollStart(_session.Plan.ArmedLabel);
                 }
             });
         }
@@ -422,10 +408,10 @@ public sealed partial class DemoTracerPlugin
 
     private void StartPreparedSequenceRound()
     {
-        if (!_session.SequencePrepared)
+        if (!_session.Plan.SequencePrepared)
         {
-            var pendingRound = _session.SequenceIndex >= 0 && _session.SequenceIndex < _session.SequenceRounds.Length
-                ? _session.SequenceRounds[_session.SequenceIndex]
+            var pendingRound = _session.Plan.SequenceIndex >= 0 && _session.Plan.SequenceIndex < _session.Plan.SequenceRounds.Length
+                ? _session.Plan.SequenceRounds[_session.Plan.SequenceIndex]
                 : -1;
             Server.PrintToConsole(
                 $"[DTR WARN] sequence source round {pendingRound} was not prepared by round_freeze_end; " +
@@ -433,16 +419,16 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        var round = _session.SequencePreparedRound;
+        var round = _session.Plan.SequencePreparedRound;
         var play = StartLoaded(loop: false);
         Server.PrintToConsole($"dtr: sequence round {round} start on round_freeze_end: {play}");
 
-        _session.SequencePrepared = false;
-        _session.SequencePreparedRound = -1;
-        _session.SequenceIndex++;
-        if (_session.SequenceIndex >= _session.SequenceRounds.Length)
+        _session.Plan.SequencePrepared = false;
+        _session.Plan.SequencePreparedRound = -1;
+        _session.Plan.SequenceIndex++;
+        if (_session.Plan.SequenceIndex >= _session.Plan.SequenceRounds.Length)
         {
-            _session.SequenceActive = false;
+            _session.Plan.SequenceActive = false;
             Server.PrintToConsole(
                 _playoffEnabled
                     ? "dtr: sequence complete; playoff continuation is armed"
@@ -454,22 +440,16 @@ public sealed partial class DemoTracerPlugin
             // Waiting until round_end leaves only the post-round/freeze window,
             // which is too short for some long v8 replay sets and can let the
             // next round enter freeze time without buy suppression or pre-roll.
-            PrefetchRoundReplays(_session.SequenceManifestPath, _session.SequenceRounds[_session.SequenceIndex]);
+            PrefetchRoundReplays(_session.Plan.SequenceManifestPath, _session.Plan.SequenceRounds[_session.Plan.SequenceIndex]);
         }
     }
 
     private void StopSequenceState()
     {
-        var hadSequencePrefetch = _session.SequenceActive || _session.SequencePrepared ||
-                                  _session.PlayoffPreparePending || _session.PlayoffPrepared;
+        var hadSequencePrefetch = _session.Plan.SequenceActive || _session.Plan.SequencePrepared ||
+                                  _session.Plan.PlayoffPreparePending || _session.Plan.PlayoffPrepared;
         CancelPlayoffPreparation(unloadPrepared: true);
-        _session.SequenceActive = false;
-        _session.SequenceManifestPath = string.Empty;
-        _session.SequenceRounds = [];
-        _session.SequenceIndex = 0;
-        _session.SequencePrepared = false;
-        _session.SequencePreparedRound = -1;
-        _session.SequencePreparePollToken++;
+        _session.Plan.ClearSequence();
         ResetPlayoffProgress();
         InvalidateFreezePreroll();
         if (hadSequencePrefetch)
