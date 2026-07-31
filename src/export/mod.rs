@@ -3045,6 +3045,7 @@ struct RawCs2LibEconIndex {
     weapon_paints: Vec<RawPaintPair>,
     paint_kit_ids: Vec<u32>,
     replay_equipment_defidx: Vec<i32>,
+    replay_equipment: Vec<RawReplayEquipment>,
     knife_defidx: Vec<i32>,
     glove_defidx: Vec<i32>,
     agent_defidx: Vec<u32>,
@@ -3061,12 +3062,33 @@ struct RawPaintPair {
     rarity: Option<u32>,
 }
 
+#[derive(Debug, Deserialize)]
+struct RawReplayEquipment {
+    weapon_defidx: i32,
+    class_name: String,
+    replay_slot: ReplayEquipmentSlot,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum ReplayEquipmentSlot {
+    Primary,
+    Secondary,
+    Utility,
+    C4,
+    Taser,
+    Knife,
+}
+
 #[derive(Debug)]
 struct Cs2LibEconIndex {
     weapon_paints: BTreeSet<(i32, u32)>,
     weapon_paint_rarities: BTreeMap<(i32, u32), u32>,
     paint_kit_ids: BTreeSet<u32>,
     replay_equipment_defidx: BTreeSet<i32>,
+    replay_equipment_by_class: BTreeMap<String, i32>,
+    replay_equipment_class_by_defidx: BTreeMap<i32, String>,
+    replay_equipment_slot_by_defidx: BTreeMap<i32, ReplayEquipmentSlot>,
     knife_defidx: BTreeSet<i32>,
     glove_defidx: BTreeSet<i32>,
     agent_defidx: BTreeSet<u32>,
@@ -3085,6 +3107,45 @@ fn cs2_lib_econ_index() -> &'static Cs2LibEconIndex {
         )))
         .expect("embedded cs2-lib-econ-index.v1.json must be valid JSON");
         let knife_defidx = raw.knife_defidx.into_iter().collect::<BTreeSet<_>>();
+        let replay_equipment_defidx = raw
+            .replay_equipment_defidx
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let mut replay_equipment_by_class = BTreeMap::new();
+        let mut replay_equipment_class_by_defidx = BTreeMap::new();
+        let mut replay_equipment_slot_by_defidx = BTreeMap::new();
+        for item in raw.replay_equipment {
+            assert!(
+                replay_equipment_defidx.contains(&item.weapon_defidx),
+                "cs2-lib replay equipment mapping contains an unknown defindex"
+            );
+            assert!(
+                replay_equipment_by_class
+                    .insert(item.class_name.clone(), item.weapon_defidx)
+                    .is_none(),
+                "cs2-lib replay equipment mapping contains a duplicate class"
+            );
+            assert!(
+                replay_equipment_class_by_defidx
+                    .insert(item.weapon_defidx, item.class_name)
+                    .is_none(),
+                "cs2-lib replay equipment mapping contains a duplicate defindex"
+            );
+            assert!(
+                replay_equipment_slot_by_defidx
+                    .insert(item.weapon_defidx, item.replay_slot)
+                    .is_none(),
+                "cs2-lib replay equipment mapping contains a duplicate slot defindex"
+            );
+        }
+        assert_eq!(
+            replay_equipment_class_by_defidx.len(),
+            replay_equipment_defidx.len(),
+            "cs2-lib replay equipment mapping must cover every replay defindex"
+        );
+        let default_knife_defidx = *replay_equipment_by_class
+            .get("weapon_knife")
+            .expect("cs2-lib replay equipment mapping must contain weapon_knife");
         let mut weapon_paints = BTreeSet::new();
         let mut weapon_paint_rarities = BTreeMap::new();
         for pair in raw.weapon_paints {
@@ -3092,7 +3153,11 @@ fn cs2_lib_econ_index() -> &'static Cs2LibEconIndex {
                 continue;
             }
             let key = (
-                normalize_weapon_def_index_with_knives(pair.weapon_defidx, &knife_defidx),
+                normalize_weapon_def_index_with_knives(
+                    pair.weapon_defidx,
+                    &knife_defidx,
+                    default_knife_defidx,
+                ),
                 pair.paint_kit,
             );
             weapon_paints.insert(key);
@@ -3108,7 +3173,10 @@ fn cs2_lib_econ_index() -> &'static Cs2LibEconIndex {
                 .into_iter()
                 .filter(|value| *value > 0)
                 .collect(),
-            replay_equipment_defidx: raw.replay_equipment_defidx.into_iter().collect(),
+            replay_equipment_defidx,
+            replay_equipment_by_class,
+            replay_equipment_class_by_defidx,
+            replay_equipment_slot_by_defidx,
             knife_defidx,
             glove_defidx: raw.glove_defidx.into_iter().collect(),
             agent_defidx: raw.agent_defidx.into_iter().collect(),
@@ -3164,12 +3232,24 @@ fn observed_glove_spec(
 }
 
 fn normalize_weapon_def_index(def: i32) -> i32 {
-    normalize_weapon_def_index_with_knives(def, &cs2_lib_econ_index().knife_defidx)
+    let index = cs2_lib_econ_index();
+    normalize_weapon_def_index_with_knives(
+        def,
+        &index.knife_defidx,
+        *index
+            .replay_equipment_by_class
+            .get("weapon_knife")
+            .expect("cs2-lib replay equipment mapping must contain weapon_knife"),
+    )
 }
 
-fn normalize_weapon_def_index_with_knives(def: i32, knife_defidx: &BTreeSet<i32>) -> i32 {
+fn normalize_weapon_def_index_with_knives(
+    def: i32,
+    knife_defidx: &BTreeSet<i32>,
+    default_knife_defidx: i32,
+) -> i32 {
     if knife_defidx.contains(&def) {
-        42
+        default_knife_defidx
     } else {
         def
     }
@@ -3186,11 +3266,23 @@ fn is_known_weapon_def_index(def: i32) -> bool {
 }
 
 fn is_replay_equipment_event_def(def: i32) -> bool {
-    matches!(normalize_weapon_def_index(def), 43 | 44 | 45 | 46 | 47 | 48)
+    cs2_lib_econ_index()
+        .replay_equipment_slot_by_defidx
+        .get(&normalize_weapon_def_index(def))
+        == Some(&ReplayEquipmentSlot::Utility)
 }
 
 fn is_weapon_cosmetic_def_index(def: i32) -> bool {
-    is_known_weapon_def_index(def) && !matches!(def, 42 | 43 | 44 | 45 | 46 | 47 | 48 | 49)
+    matches!(
+        cs2_lib_econ_index()
+            .replay_equipment_slot_by_defidx
+            .get(&normalize_weapon_def_index(def)),
+        Some(
+            ReplayEquipmentSlot::Primary
+                | ReplayEquipmentSlot::Secondary
+                | ReplayEquipmentSlot::Taser
+        )
+    )
 }
 
 fn is_knife_cosmetic_def_index(def: i32) -> bool {
@@ -3198,101 +3290,18 @@ fn is_knife_cosmetic_def_index(def: i32) -> bool {
 }
 
 fn weapon_def_index_from_item_name(item_name: &str) -> Option<i32> {
-    match normalize_item_event_name(item_name).as_str() {
-        "weapon_deagle" => Some(1),
-        "weapon_elite" => Some(2),
-        "weapon_fiveseven" => Some(3),
-        "weapon_glock" => Some(4),
-        "weapon_ak47" => Some(7),
-        "weapon_aug" => Some(8),
-        "weapon_awp" => Some(9),
-        "weapon_famas" => Some(10),
-        "weapon_g3sg1" => Some(11),
-        "weapon_galilar" => Some(13),
-        "weapon_m249" => Some(14),
-        "weapon_m4a1" => Some(16),
-        "weapon_mac10" => Some(17),
-        "weapon_p90" => Some(19),
-        "weapon_mp5sd" => Some(23),
-        "weapon_ump45" => Some(24),
-        "weapon_xm1014" => Some(25),
-        "weapon_bizon" => Some(26),
-        "weapon_mag7" => Some(27),
-        "weapon_negev" => Some(28),
-        "weapon_sawedoff" => Some(29),
-        "weapon_tec9" => Some(30),
-        "weapon_taser" => Some(31),
-        "weapon_hkp2000" => Some(32),
-        "weapon_mp7" => Some(33),
-        "weapon_mp9" => Some(34),
-        "weapon_nova" => Some(35),
-        "weapon_p250" => Some(36),
-        "weapon_scar20" => Some(38),
-        "weapon_sg556" => Some(39),
-        "weapon_ssg08" => Some(40),
-        "weapon_knife" => Some(42),
-        "weapon_flashbang" => Some(43),
-        "weapon_hegrenade" => Some(44),
-        "weapon_smokegrenade" => Some(45),
-        "weapon_molotov" => Some(46),
-        "weapon_decoy" => Some(47),
-        "weapon_incgrenade" => Some(48),
-        "weapon_c4" => Some(49),
-        "weapon_m4a1_silencer" => Some(60),
-        "weapon_usp_silencer" => Some(61),
-        "weapon_cz75a" => Some(63),
-        "weapon_revolver" => Some(64),
-        _ => None,
-    }
+    cs2_lib_econ_index()
+        .replay_equipment_by_class
+        .get(&normalize_item_event_name(item_name))
+        .copied()
+        .map(normalize_weapon_def_index)
 }
 
 fn weapon_item_name(def: i32) -> Option<&'static str> {
-    match normalize_weapon_def_index(def) {
-        1 => Some("weapon_deagle"),
-        2 => Some("weapon_elite"),
-        3 => Some("weapon_fiveseven"),
-        4 => Some("weapon_glock"),
-        7 => Some("weapon_ak47"),
-        8 => Some("weapon_aug"),
-        9 => Some("weapon_awp"),
-        10 => Some("weapon_famas"),
-        11 => Some("weapon_g3sg1"),
-        13 => Some("weapon_galilar"),
-        14 => Some("weapon_m249"),
-        16 => Some("weapon_m4a1"),
-        17 => Some("weapon_mac10"),
-        19 => Some("weapon_p90"),
-        23 => Some("weapon_mp5sd"),
-        24 => Some("weapon_ump45"),
-        25 => Some("weapon_xm1014"),
-        26 => Some("weapon_bizon"),
-        27 => Some("weapon_mag7"),
-        28 => Some("weapon_negev"),
-        29 => Some("weapon_sawedoff"),
-        30 => Some("weapon_tec9"),
-        31 => Some("weapon_taser"),
-        32 => Some("weapon_hkp2000"),
-        33 => Some("weapon_mp7"),
-        34 => Some("weapon_mp9"),
-        35 => Some("weapon_nova"),
-        36 => Some("weapon_p250"),
-        38 => Some("weapon_scar20"),
-        39 => Some("weapon_sg556"),
-        40 => Some("weapon_ssg08"),
-        42 => Some("weapon_knife"),
-        43 => Some("weapon_flashbang"),
-        44 => Some("weapon_hegrenade"),
-        45 => Some("weapon_smokegrenade"),
-        46 => Some("weapon_molotov"),
-        47 => Some("weapon_decoy"),
-        48 => Some("weapon_incgrenade"),
-        49 => Some("weapon_c4"),
-        60 => Some("weapon_m4a1_silencer"),
-        61 => Some("weapon_usp_silencer"),
-        63 => Some("weapon_cz75a"),
-        64 => Some("weapon_revolver"),
-        _ => None,
-    }
+    cs2_lib_econ_index()
+        .replay_equipment_class_by_defidx
+        .get(&normalize_weapon_def_index(def))
+        .map(String::as_str)
 }
 
 fn normalize_item_event_name(item_name: &str) -> String {
