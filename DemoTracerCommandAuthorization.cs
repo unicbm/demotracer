@@ -11,6 +11,7 @@ internal static class DemoTracerCommandCallerPolicy
     internal static bool CanExecute(
         bool serverConsole,
         bool isBot,
+        int playerSlot,
         string? remoteAddress,
         bool isDedicatedServer)
     {
@@ -20,7 +21,10 @@ internal static class DemoTracerCommandCallerPolicy
         if (isBot || isDedicatedServer)
             return false;
 
-        return IsLoopbackAddress(remoteAddress);
+        // The listen-server host is always client slot 0. Its address is not
+        // reliably exposed as loopback when CS2 routes the local connection
+        // through Steam networking, so the address alone cannot authenticate it.
+        return playerSlot == 0 || IsLoopbackAddress(remoteAddress);
     }
 
     internal static bool IsLoopbackAddress(string? remoteAddress)
@@ -89,6 +93,7 @@ public sealed partial class DemoTracerPlugin
             if (DemoTracerCommandCallerPolicy.CanExecute(
                     serverConsole: player == null,
                     isBot: player?.IsBot ?? false,
+                    playerSlot: player?.Slot ?? -1,
                     remoteAddress: player?.IpAddress,
                     isDedicatedServer: _isDedicatedServer))
             {

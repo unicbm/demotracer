@@ -247,10 +247,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         ClearReplayCrosshairPresentationEntry(playerSlot);
         _appliedGloveCosmetics.Remove(playerSlot);
         _gloveCosmeticTokens.Remove(playerSlot);
-        _appliedKnifeCosmeticBirths.Remove(playerSlot);
-        _pendingKnifeEntityRefreshes.Remove(playerSlot);
-        _knifeEntityRefreshUnavailableWarnings.Remove(playerSlot);
-        _nativeAgentModels.Remove(playerSlot);
         _ = SyncBotRandomizerCosmeticLease(announce: false);
 
         if (!HasReplayLifecycleState(includeNative: true))
@@ -1619,7 +1615,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     {
         if (@event.Userid is { IsValid: true } player)
         {
-            CaptureNativeAgentModelForSpawn(player);
             var spawnedSlot = player.Slot;
             var spawnedUserId = player.UserId;
             if (_retainedReplayViewmodelSlots.Contains(player.Slot) &&
@@ -2765,8 +2760,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
 
     private void OnEntityDeleted(CEntityInstance entity)
     {
-        ForgetKnifeCosmeticBirthForEntity(entity);
-
         if (!_mapActive || _lifecycleResetInProgress)
             return;
 
@@ -4906,7 +4899,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
             _loadoutSyncedSlots.Clear();
             _balanceSyncedSlots.Clear();
             ResetCosmeticAlignState(resetCounters: true);
-            ResetNativeAgentModelCaptures();
             ResetStickerAlignState(resetCounters: true);
             ResetCharmAlignState(resetCounters: true);
             ResetCrosshairAlignState(resetCounters: true);
@@ -5321,7 +5313,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         _activeWeaponCosmetics.Remove(slot);
         _appliedGloveCosmetics.Remove(slot);
         _gloveCosmeticTokens.Remove(slot);
-        _pendingKnifeEntityRefreshes.Remove(slot);
         _scoreboardSyncedSlots.Remove(slot);
         _ = SyncBotHiderPresentationLease(announce: false);
         _ = SyncBotRandomizerCosmeticLease(announce: false);
@@ -5397,7 +5388,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
             metadata.PlayStartTickIndex,
             metadata.RoundStartOrigin,
             retentionRank);
-        _pendingKnifeEntityRefreshes.Remove(slot);
         InvalidateReplayMusicKitRepair(slot);
         ClearPendingWeaponSlotReplacementsForSlot(slot);
         InvalidateReplayMutationGeneration(slot);

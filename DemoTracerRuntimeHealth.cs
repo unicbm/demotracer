@@ -1,3 +1,4 @@
+using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using DemoTracerBotHiderApi;
 using System.Text;
@@ -156,8 +157,127 @@ public sealed partial class DemoTracerPlugin
                 StickersEnabled: _stickerAlignEnabled,
                 CharmsEnabled: _charmAlignEnabled,
                 PreserveNativeEnabled: _preserveNativeBotCosmetics),
+            ReplayWeapons: BuildRuntimeReplayWeaponHealth(),
             LoadedCssPluginDirectories: DiscoverLoadedCssPluginDirectories());
     }
+
+    private RuntimeReplayWeaponHealth[] BuildRuntimeReplayWeaponHealth()
+    {
+        var snapshots = new List<RuntimeReplayWeaponHealth>();
+        foreach (var slot in _loadedSlots.Distinct().Order())
+        {
+            try
+            {
+                var replayState = BotControllerNative.GetReplayState(slot);
+                var player = Utilities.GetPlayerFromSlot(slot);
+                var pawn = player?.PlayerPawn.Value;
+                var weaponServices = pawn?.WeaponServices;
+                var activeHandle = weaponServices?.ActiveWeapon.Raw
+                                   ?? Utilities.InvalidEHandleIndex;
+                var activeWeapon = weaponServices?.ActiveWeapon.Value;
+                var activeClassName = activeWeapon is { IsValid: true }
+                    ? activeWeapon.DesignerName
+                    : null;
+                var inventory = new List<RuntimeReplayInventoryWeaponHealth>();
+                if (weaponServices != null)
+                {
+                    foreach (var handle in weaponServices.MyWeapons)
+                    {
+                        var weapon = handle.Value;
+                        if (weapon is not { IsValid: true })
+                            continue;
+
+                        var weaponHandle = weapon.EntityHandle.Raw;
+                        inventory.Add(new RuntimeReplayInventoryWeaponHealth(
+                            Handle: FormatEntityHandle(weaponHandle),
+                            ClassName: weapon.DesignerName,
+                            DefIndex: WeaponDefIndex(weapon.DesignerName),
+                            Slot: GetReplayWeaponSlot(weapon.DesignerName).ToString(),
+                            Active: weaponHandle == activeHandle));
+                    }
+                }
+
+                int? cachedReplayDefIndex = _lastReplayWeaponDef.TryGetValue(
+                    slot,
+                    out var cachedDefIndex)
+                    ? cachedDefIndex
+                    : null;
+                int? lockedTarget = _lastLockedWeaponTarget.TryGetValue(
+                    slot,
+                    out var target)
+                    ? target
+                    : null;
+                RuntimeReplayCosmeticClaimHealth? cosmeticClaim = null;
+                if (_loadedReplays.TryGetValue(slot, out var replay) &&
+                    _botRandomizerLease.TryGet(
+                        slot,
+                        replay.SteamId,
+                        out var claim))
+                {
+                    cosmeticClaim = new RuntimeReplayCosmeticClaimHealth(
+                        Agent: claim.Agent,
+                        Knife: claim.Knife,
+                        Gloves: claim.Gloves,
+                        MusicKit: claim.MusicKit,
+                        WeaponCount: claim.Weapons.Count);
+                }
+
+                snapshots.Add(new RuntimeReplayWeaponHealth(
+                    Slot: slot,
+                    UserId: player?.UserId,
+                    Alive: player is { IsValid: true, PawnIsAlive: true },
+                    PawnHandle: pawn is { IsValid: true }
+                        ? FormatEntityHandle(pawn.EntityHandle.Raw)
+                        : null,
+                    ActiveHandle: FormatEntityHandle(activeHandle),
+                    ActiveClassName: activeClassName,
+                    ActiveManagedDefIndex: activeClassName != null
+                        ? WeaponDefIndex(activeClassName)
+                        : -1,
+                    ActiveNativeDefIndex: BotControllerNative.BotActiveWeaponDef(slot),
+                    ReplayPlaying: replayState.Playing,
+                    ReplayCursor: replayState.Cursor,
+                    ReplayDefIndex: replayState.WeaponDefIndex,
+                    CachedReplayDefIndex: cachedReplayDefIndex,
+                    LockedTarget: lockedTarget,
+                    LoadoutSynced: _loadoutSyncedSlots.Contains(slot),
+                    PendingSlotReplacements: _pendingWeaponSlotReplacements.Keys.Count(
+                        key => key.PlayerSlot == slot),
+                    CosmeticClaim: cosmeticClaim,
+                    Inventory: inventory.ToArray(),
+                    Error: null));
+            }
+            catch (Exception ex)
+            {
+                snapshots.Add(new RuntimeReplayWeaponHealth(
+                    Slot: slot,
+                    UserId: null,
+                    Alive: false,
+                    PawnHandle: null,
+                    ActiveHandle: null,
+                    ActiveClassName: null,
+                    ActiveManagedDefIndex: -1,
+                    ActiveNativeDefIndex: -1,
+                    ReplayPlaying: false,
+                    ReplayCursor: -1,
+                    ReplayDefIndex: -1,
+                    CachedReplayDefIndex: null,
+                    LockedTarget: null,
+                    LoadoutSynced: false,
+                    PendingSlotReplacements: 0,
+                    CosmeticClaim: null,
+                    Inventory: [],
+                    Error: ex.GetType().Name));
+            }
+        }
+
+        return snapshots.ToArray();
+    }
+
+    private static string FormatEntityHandle(uint value)
+        => value == Utilities.InvalidEHandleIndex
+            ? "invalid"
+            : $"0x{value:X8}";
 
     private string[] DiscoverLoadedCssPluginDirectories()
     {
@@ -268,6 +388,7 @@ public sealed partial class DemoTracerPlugin
         RuntimeBotControllerHealth BotController,
         RuntimeBotHiderHealth BotHider,
         RuntimeCosmeticAlignmentHealth Cosmetics,
+        RuntimeReplayWeaponHealth[] ReplayWeapons,
         string[] LoadedCssPluginDirectories);
 
     private sealed record RuntimeBotControllerHealth(
@@ -299,4 +420,38 @@ public sealed partial class DemoTracerPlugin
         bool StickersEnabled,
         bool CharmsEnabled,
         bool PreserveNativeEnabled);
+
+    private sealed record RuntimeReplayWeaponHealth(
+        int Slot,
+        int? UserId,
+        bool Alive,
+        string? PawnHandle,
+        string? ActiveHandle,
+        string? ActiveClassName,
+        int ActiveManagedDefIndex,
+        int ActiveNativeDefIndex,
+        bool ReplayPlaying,
+        int ReplayCursor,
+        int ReplayDefIndex,
+        int? CachedReplayDefIndex,
+        int? LockedTarget,
+        bool LoadoutSynced,
+        int PendingSlotReplacements,
+        RuntimeReplayCosmeticClaimHealth? CosmeticClaim,
+        RuntimeReplayInventoryWeaponHealth[] Inventory,
+        string? Error);
+
+    private sealed record RuntimeReplayCosmeticClaimHealth(
+        bool Agent,
+        bool Knife,
+        bool Gloves,
+        bool MusicKit,
+        int WeaponCount);
+
+    private sealed record RuntimeReplayInventoryWeaponHealth(
+        string Handle,
+        string ClassName,
+        int DefIndex,
+        string Slot,
+        bool Active);
 }

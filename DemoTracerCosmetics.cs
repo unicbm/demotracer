@@ -14,9 +14,6 @@ public sealed partial class DemoTracerPlugin
 {
     private const int CosmeticHeartbeatAttempts = 12;
     private const float CosmeticHeartbeatIntervalSeconds = 0.10f;
-    private const int KnifeEntityRefreshFreezeWaitFrames = 8;
-    private const int KnifeEntityRestoreAttempts = 3;
-    private const float KnifeEntityRefreshMinFreezeSeconds = 0.25f;
     private const string AttributeSetterWindowsSignature = "40 53 55 41 56 48 81 EC 90 00 00 00";
     private const string AttributeSetterLinuxSignature = "55 48 89 E5 41 57 41 56 49 89 FE 41 55 41 54 53 48 89 F3 48 83 EC ? F3 0F 11 85";
     private static readonly Lazy<MemoryFunctionVoid<nint, string, float>?> AttributeSetter = new(CreateAttributeSetter);
@@ -24,14 +21,9 @@ public sealed partial class DemoTracerPlugin
     private readonly Dictionary<int, int> _cosmeticHeartbeatTokens = new();
     private readonly Dictionary<int, AppliedGloveCosmetic> _appliedGloveCosmetics = new();
     private readonly Dictionary<int, int> _gloveCosmeticTokens = new();
-    private readonly Dictionary<int, AppliedKnifeCosmeticBirth> _appliedKnifeCosmeticBirths = new();
-    private readonly Dictionary<int, PendingKnifeEntityRefresh> _pendingKnifeEntityRefreshes = new();
-    private readonly Dictionary<int, NativeAgentModelCapture> _nativeAgentModels = new();
-    private readonly HashSet<int> _knifeEntityRefreshUnavailableWarnings = new();
     private bool _cosmeticGiveNamedItemHooked;
     private int _nextCosmeticHeartbeatToken;
     private int _nextGloveCosmeticToken;
-    private int _nextKnifeEntityRefreshToken;
     private long _cosmeticLifecycleGeneration;
 
     private void HookCosmeticGiveNamedItem()
@@ -327,58 +319,6 @@ public sealed partial class DemoTracerPlugin
         return path;
     }
 
-    private static string? NormalizeNativeAgentModelPath(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-        var path = value.Trim().Replace('/', '\\').ToLowerInvariant();
-        if (path.Length is < 24 or > 192 ||
-            !path.StartsWith("characters\\models\\", StringComparison.Ordinal) ||
-            !path.EndsWith(".vmdl", StringComparison.Ordinal) ||
-            path.Contains("..", StringComparison.Ordinal) ||
-            path.Contains(':', StringComparison.Ordinal) ||
-            path.Contains('\0'))
-        {
-            return null;
-        }
-
-        foreach (var ch in path)
-        {
-            if (!char.IsAsciiLetterOrDigit(ch) && ch is not ('_' or '\\' or '.' or '-'))
-                return null;
-        }
-        return path;
-    }
-
-    private void CaptureNativeAgentModelForSpawn(CCSPlayerController player)
-    {
-        var slot = player.Slot;
-        _nativeAgentModels.Remove(slot);
-        if (player is not { IsValid: true, IsBot: true } ||
-            player.UserId is not int userId ||
-            player.Team is not (CsTeam.Terrorist or CsTeam.CounterTerrorist))
-        {
-            return;
-        }
-
-        var pawn = player.PlayerPawn.Value;
-        if (pawn is not { IsValid: true } ||
-            NormalizeNativeAgentModelPath(
-                pawn.CBodyComponent?.SceneNode?.GetSkeletonInstance().ModelState.ModelName) is not { } modelPath)
-        {
-            return;
-        }
-
-        _nativeAgentModels[slot] = new NativeAgentModelCapture(
-            userId,
-            pawn.EntityHandle.Raw,
-            player.Team,
-            modelPath);
-    }
-
-    private void ResetNativeAgentModelCaptures()
-        => _nativeAgentModels.Clear();
-
     private static bool IsWeaponCosmeticDefIndex(int weaponDefIndex)
         => IsWeaponCosmeticCategory(weaponDefIndex);
 
@@ -401,9 +341,6 @@ public sealed partial class DemoTracerPlugin
         _activeWeaponCosmetics.Clear();
         _appliedGloveCosmetics.Clear();
         _gloveCosmeticTokens.Clear();
-        _appliedKnifeCosmeticBirths.Clear();
-        _pendingKnifeEntityRefreshes.Clear();
-        _knifeEntityRefreshUnavailableWarnings.Clear();
         if (resetCounters)
         {
             _cosmeticAppliedCount = 0;
@@ -507,10 +444,6 @@ public sealed partial class DemoTracerPlugin
             else
                 skipped++;
         }
-        else if (TryRestoreNativeAgentModel(player, pawn, replay.SteamId))
-            applied++;
-        else
-            skipped++;
 
         if (_weaponAlignEnabled && WeaponCosmeticFeatureEnabled())
         {
@@ -558,17 +491,6 @@ public sealed partial class DemoTracerPlugin
             else
                 ScheduleKnifeCosmeticRetry(slot, knifeCosmetic, replay.SteamId, framesRemaining: appliedKnife ? 2 : 4);
         }
-        else
-        {
-            if (TryFindReplayKnife(pawn, out var knife) &&
-                TryClearKnifeCosmetic(player, knife, replay.SteamId))
-            {
-                applied++;
-            }
-            else
-                skipped++;
-        }
-
         if (replay.Cosmetics.Glove is { } gloveCosmetic)
         {
             if (TryApplyGloveCosmetic(player, pawn, gloveCosmetic, replay.SteamId, out var changed))
@@ -579,13 +501,6 @@ public sealed partial class DemoTracerPlugin
             else
                 skipped++;
         }
-        else if (TryClearGloveCosmetic(player, pawn, replay.SteamId, out var gloveChanged))
-        {
-            if (gloveChanged)
-                applied++;
-        }
-        else
-            skipped++;
 
         _cosmeticAppliedCount += applied;
         _cosmeticSkippedCount += skipped;
@@ -724,409 +639,6 @@ public sealed partial class DemoTracerPlugin
             ScheduleReplayKnifeCosmeticRetry(slot, cosmetic, framesRemaining - 1);
         });
     }
-
-    private void ScheduleReplayKnifeEntityRefresh(int slot, ReplayItemCosmetic cosmetic)
-    {
-        // On the first physical round the default knife can predate replay
-        // evidence. Late econ writes fix HUD/animations but not the initialized
-        // model/material, so rebuild that one stale entity during freeze only.
-        if (!_cosmeticGiveNamedItemHooked)
-        {
-            if (_knifeEntityRefreshUnavailableWarnings.Add(slot))
-            {
-                Server.PrintToConsole(
-                    $"dtr: knife entity refresh unavailable slot={slot}: GiveNamedItem hook is not installed");
-            }
-            return;
-        }
-
-        var fingerprint = KnifeCosmeticFingerprint.From(cosmetic);
-        var replayGeneration = CurrentReplayIdentityGeneration(slot);
-        if (!_loadedReplays.TryGetValue(slot, out var replay) ||
-            !HasActiveBotRandomizerClaim(
-                slot,
-                replay.SteamId,
-                DemoTracerCosmeticWriteField.Knife))
-        {
-            return;
-        }
-        var player = Utilities.GetPlayerFromSlot(slot);
-        var pawn = player?.PlayerPawn.Value;
-        if (player is { IsValid: true, PawnIsAlive: true } &&
-            pawn is { IsValid: true } &&
-            TryFindReplayKnife(pawn, out var knife) &&
-            IsKnifeCosmeticBirthCurrent(slot, knife, fingerprint))
-        {
-            _pendingKnifeEntityRefreshes.Remove(slot);
-            return;
-        }
-
-        if (_pendingKnifeEntityRefreshes.TryGetValue(slot, out var existing) &&
-            existing.Fingerprint == fingerprint &&
-            existing.ReplayGeneration == replayGeneration)
-        {
-            return;
-        }
-
-        var pending = new PendingKnifeEntityRefresh(
-            ++_nextKnifeEntityRefreshToken,
-            fingerprint,
-            replayGeneration,
-            CloneItemCosmetic(cosmetic));
-        _pendingKnifeEntityRefreshes[slot] = pending;
-        Server.NextFrame(
-            () => TryBeginReplayKnifeEntityRefresh(
-                slot,
-                pending,
-                KnifeEntityRefreshFreezeWaitFrames));
-    }
-
-    private void TryBeginReplayKnifeEntityRefresh(
-        int slot,
-        PendingKnifeEntityRefresh pending,
-        int freezeWaitFramesRemaining)
-    {
-        if (!IsKnifeEntityRefreshPending(slot, pending))
-            return;
-
-        if (!_cosmeticGiveNamedItemHooked ||
-            !_loadedReplays.TryGetValue(slot, out var replay) ||
-            !TryValidateBotRandomizerClaim(
-                slot,
-                replay.SteamId,
-                DemoTracerCosmeticWriteField.Knife) ||
-            !IsReplayIdentityGenerationCurrent(slot, pending.ReplayGeneration) ||
-            IsReplaySlotPlaying(slot) ||
-            !IsReplaySlotStillSafe(slot))
-        {
-            CancelKnifeEntityRefresh(slot, pending);
-            return;
-        }
-
-        var player = Utilities.GetPlayerFromSlot(slot);
-        var pawn = player?.PlayerPawn.Value;
-        if (player is not { IsValid: true, PawnIsAlive: true } ||
-            pawn is not { IsValid: true } ||
-            replay.Cosmetics.Knife is not { } currentCosmetic ||
-            KnifeCosmeticFingerprint.From(currentCosmetic) != pending.Fingerprint)
-        {
-            CancelKnifeEntityRefresh(slot, pending);
-            return;
-        }
-
-        if (!TryFindReplayKnife(pawn, out var knife))
-        {
-            RetryKnifeEntityRefreshDuringFreeze(
-                slot,
-                pending,
-                freezeWaitFramesRemaining,
-                "knife entity was not found");
-            return;
-        }
-
-        if (IsKnifeCosmeticBirthCurrent(slot, knife, pending.Fingerprint))
-        {
-            CancelKnifeEntityRefresh(slot, pending);
-            return;
-        }
-
-        if (!TryReadFreezePhaseRemaining(out var freezeRemaining, out var freezeReason) ||
-            freezeRemaining < KnifeEntityRefreshMinFreezeSeconds)
-        {
-            var reason = string.IsNullOrWhiteSpace(freezeReason)
-                ? $"freeze period has only {freezeRemaining:0.000}s remaining"
-                : freezeReason;
-            RetryKnifeEntityRefreshDuringFreeze(
-                slot,
-                pending,
-                freezeWaitFramesRemaining,
-                reason);
-            return;
-        }
-
-        var controllerEntityHandle = player.EntityHandle.Raw;
-        var pawnEntityHandle = pawn.EntityHandle.Raw;
-        var oldKnifeEntityHandle = knife.EntityHandle.Raw;
-        if (!DropAndKillReplayWeapon(player, pawn, knife, "cosmetic_birth_refresh"))
-        {
-            CancelKnifeEntityRefresh(slot, pending);
-            Server.PrintToConsole($"dtr: knife entity refresh failed slot={slot}: could not drop the stale knife");
-            return;
-        }
-
-        Server.PrintToConsole(
-            $"dtr: refreshing stale knife entity during freeze slot={slot} handle=0x{oldKnifeEntityHandle:X}");
-        ScheduleReplayKnifeEntityRestore(
-            slot,
-            pending,
-            controllerEntityHandle,
-            pawnEntityHandle,
-            oldKnifeEntityHandle);
-    }
-
-    private void RetryKnifeEntityRefreshDuringFreeze(
-        int slot,
-        PendingKnifeEntityRefresh pending,
-        int framesRemaining,
-        string reason)
-    {
-        if (framesRemaining > 0)
-        {
-            Server.NextFrame(
-                () => TryBeginReplayKnifeEntityRefresh(slot, pending, framesRemaining - 1));
-            return;
-        }
-
-        CancelKnifeEntityRefresh(slot, pending);
-        Server.PrintToConsole($"dtr: knife entity refresh skipped slot={slot}: {reason}");
-    }
-
-    private void ScheduleReplayKnifeEntityRestore(
-        int slot,
-        PendingKnifeEntityRefresh pending,
-        uint controllerEntityHandle,
-        uint pawnEntityHandle,
-        uint oldKnifeEntityHandle)
-    {
-        // Drop cleanup runs two frames later. Give the replacement only after
-        // the old full entity handle has had a frame to leave the inventory.
-        Server.NextFrame(() => Server.NextFrame(() => Server.NextFrame(() =>
-            RestoreReplayKnifeEntity(
-                slot,
-                pending,
-                controllerEntityHandle,
-                pawnEntityHandle,
-                oldKnifeEntityHandle,
-                KnifeEntityRestoreAttempts,
-                replacementIssued: false))));
-    }
-
-    private void RestoreReplayKnifeEntity(
-        int slot,
-        PendingKnifeEntityRefresh pending,
-        uint controllerEntityHandle,
-        uint pawnEntityHandle,
-        uint oldKnifeEntityHandle,
-        int attemptsRemaining,
-        bool replacementIssued)
-    {
-        // Once the stale knife is dropped, restoring a default knife is recovery
-        // debt even if replay ownership changes. Exact controller and pawn handles
-        // prevent a recycled slot from receiving it; the GiveNamedItem hook alone
-        // decides whether current replay evidence may be applied.
-        var player = Utilities.GetPlayerFromSlot(slot);
-        var pawn = player?.PlayerPawn.Value;
-        if (player is not { IsValid: true, PawnIsAlive: true } ||
-            player.EntityHandle.Raw != controllerEntityHandle ||
-            pawn is not { IsValid: true } ||
-            pawn.EntityHandle.Raw != pawnEntityHandle)
-        {
-            CancelKnifeEntityRefresh(slot, pending);
-            return;
-        }
-
-        if (TryFindReplayKnife(pawn, out var knife))
-        {
-            if (knife.EntityHandle.Raw == oldKnifeEntityHandle)
-            {
-                RetryReplayKnifeEntityRestore(
-                    slot,
-                    pending,
-                    controllerEntityHandle,
-                    pawnEntityHandle,
-                    oldKnifeEntityHandle,
-                    attemptsRemaining,
-                    replacementIssued,
-                    "stale knife handle is still present");
-                return;
-            }
-
-            if (_loadedReplays.TryGetValue(slot, out var replay) &&
-                IsReplayIdentityGenerationCurrent(slot, pending.ReplayGeneration) &&
-                TryValidateBotRandomizerClaim(
-                    slot,
-                    replay.SteamId,
-                    DemoTracerCosmeticWriteField.Knife))
-            {
-                var applied = replay.Cosmetics.Knife is { } knifeCosmetic
-                    ? TryApplyItemCosmetic(
-                        player,
-                        knife,
-                        knifeCosmetic,
-                        replay.SteamId,
-                        DemoTracerCosmeticWriteField.Knife,
-                        allowSubclassChange: true,
-                        applyPaint: true,
-                        applyCustomName: _cosmeticNamesEnabled)
-                    : TryClearKnifeCosmetic(player, knife, replay.SteamId);
-                if (applied)
-                    RememberKnifeCosmeticBirth(slot, knife, pending.DesiredCosmetic);
-            }
-            CancelKnifeEntityRefresh(slot, pending);
-            if (IsReplaySlotStillSafe(slot) &&
-                !IsReplaySlotPlaying(slot) &&
-                _replayIdentityGenerationBySlot.TryGetValue(slot, out var currentGeneration))
-            {
-                Server.NextFrame(
-                    () => RestoreReplayStartWeaponAfterKnifeRefresh(
-                        slot,
-                        currentGeneration));
-            }
-            return;
-        }
-
-        if (attemptsRemaining <= 0)
-        {
-            CancelKnifeEntityRefresh(slot, pending);
-            Server.PrintToConsole($"dtr: knife entity restore failed slot={slot}: replacement did not appear");
-            return;
-        }
-
-        if (replacementIssued)
-        {
-            Server.NextFrame(() => RestoreReplayKnifeEntity(
-                slot,
-                pending,
-                controllerEntityHandle,
-                pawnEntityHandle,
-                oldKnifeEntityHandle,
-                attemptsRemaining - 1,
-                replacementIssued: true));
-            return;
-        }
-
-        var defaultKnife = DefaultKnifeClassNameForPlayer(player);
-        if (TryGiveNamedItem(player, defaultKnife))
-        {
-            Server.NextFrame(() => RestoreReplayKnifeEntity(
-                slot,
-                pending,
-                controllerEntityHandle,
-                pawnEntityHandle,
-                oldKnifeEntityHandle,
-                attemptsRemaining,
-                replacementIssued: true));
-            return;
-        }
-
-        RetryReplayKnifeEntityRestore(
-            slot,
-            pending,
-            controllerEntityHandle,
-            pawnEntityHandle,
-            oldKnifeEntityHandle,
-            attemptsRemaining,
-            replacementIssued: false,
-            $"GiveNamedItem({defaultKnife}) failed");
-    }
-
-    private void RetryReplayKnifeEntityRestore(
-        int slot,
-        PendingKnifeEntityRefresh pending,
-        uint controllerEntityHandle,
-        uint pawnEntityHandle,
-        uint oldKnifeEntityHandle,
-        int attemptsRemaining,
-        bool replacementIssued,
-        string reason)
-    {
-        if (attemptsRemaining > 1)
-        {
-            Server.NextFrame(() => RestoreReplayKnifeEntity(
-                slot,
-                pending,
-                controllerEntityHandle,
-                pawnEntityHandle,
-                oldKnifeEntityHandle,
-                attemptsRemaining - 1,
-                replacementIssued));
-            return;
-        }
-
-        CancelKnifeEntityRefresh(slot, pending);
-        Server.PrintToConsole($"dtr: knife entity restore failed slot={slot}: {reason}");
-    }
-
-    private void RestoreReplayStartWeaponAfterKnifeRefresh(int slot, long replayGeneration)
-    {
-        if (!_weaponAlignEnabled ||
-            !IsReplayIdentityGenerationCurrent(slot, replayGeneration) ||
-            !_loadedReplays.TryGetValue(slot, out var replay) ||
-            !IsReplaySlotStillSafe(slot) ||
-            IsReplaySlotPlaying(slot))
-        {
-            return;
-        }
-
-        ApplyReplayWeaponPreset(
-            slot,
-            ChooseStartWeaponDef(replay),
-            allowSlotReplacement: true,
-            force: true);
-    }
-
-    private bool IsKnifeEntityRefreshPending(int slot, PendingKnifeEntityRefresh pending)
-        => _pendingKnifeEntityRefreshes.TryGetValue(slot, out var current) && current == pending;
-
-    private void CancelKnifeEntityRefresh(int slot, PendingKnifeEntityRefresh pending)
-    {
-        if (IsKnifeEntityRefreshPending(slot, pending))
-            _pendingKnifeEntityRefreshes.Remove(slot);
-    }
-
-    private bool IsKnifeCosmeticBirthCurrent(
-        int slot,
-        CBasePlayerWeapon knife,
-        KnifeCosmeticFingerprint fingerprint)
-        => _appliedKnifeCosmeticBirths.TryGetValue(slot, out var applied) &&
-           applied.WeaponEntityHandle == knife.EntityHandle.Raw &&
-           applied.Fingerprint == fingerprint;
-
-    private void RememberKnifeCosmeticBirth(
-        int slot,
-        CBasePlayerWeapon knife,
-        ReplayItemCosmetic cosmetic)
-    {
-        var fingerprint = KnifeCosmeticFingerprint.From(cosmetic);
-        _appliedKnifeCosmeticBirths[slot] = new AppliedKnifeCosmeticBirth(
-            knife.EntityHandle.Raw,
-            fingerprint);
-        if (_pendingKnifeEntityRefreshes.TryGetValue(slot, out var pending) &&
-            pending.Fingerprint == fingerprint &&
-            IsReplayIdentityGenerationCurrent(slot, pending.ReplayGeneration))
-        {
-            _pendingKnifeEntityRefreshes.Remove(slot);
-        }
-    }
-
-    private void ForgetKnifeCosmeticBirthForEntity(CEntityInstance entity)
-    {
-        uint entityHandle;
-        try
-        {
-            entityHandle = entity.EntityHandle.Raw;
-        }
-        catch
-        {
-            return;
-        }
-        if (entityHandle == uint.MaxValue)
-            return;
-
-        foreach (var slot in _appliedKnifeCosmeticBirths
-                     .Where(entry => entry.Value.WeaponEntityHandle == entityHandle)
-                     .Select(entry => entry.Key)
-                     .ToArray())
-        {
-            _appliedKnifeCosmeticBirths.Remove(slot);
-        }
-    }
-
-    private static string DefaultKnifeClassNameForPlayer(CCSPlayerController player)
-        => DefaultKnifeClassNameForTeam(player.Team);
-
-    private static string DefaultKnifeClassNameForTeam(CsTeam team)
-        => team == CsTeam.Terrorist ? "weapon_knife_t" : "weapon_knife";
 
     private void ScheduleKnifeCosmeticRetry(
         int slot,
@@ -1337,8 +849,7 @@ public sealed partial class DemoTracerPlugin
                 ScheduleGivenWeaponCosmeticNextFrame(
                     slot,
                     weaponEntityHandle,
-                    countResult: true,
-                    recordKnifeBirth: true);
+                    countResult: true);
             }
         }
         catch (Exception ex)
@@ -1352,8 +863,7 @@ public sealed partial class DemoTracerPlugin
     private void ScheduleGivenWeaponCosmeticNextFrame(
         int slot,
         uint weaponEntityHandle,
-        bool countResult,
-        bool recordKnifeBirth = false)
+        bool countResult)
     {
         ScheduleCosmeticNextFrame(() =>
         {
@@ -1366,8 +876,7 @@ public sealed partial class DemoTracerPlugin
                 slot,
                 player,
                 weapon,
-                countResult,
-                recordKnifeBirth);
+                countResult);
         });
     }
 
@@ -1444,8 +953,7 @@ public sealed partial class DemoTracerPlugin
         int slot,
         CCSPlayerController player,
         CBasePlayerWeapon weapon,
-        bool countResult,
-        bool recordKnifeBirth = false)
+        bool countResult)
     {
         if (!IsReplaySlotStillSafe(slot))
         {
@@ -1456,6 +964,7 @@ public sealed partial class DemoTracerPlugin
         if (IsKnifeCosmeticDefIndex(weaponDefIndex))
         {
             if (!_loadedReplays.TryGetValue(slot, out var replay) ||
+                replay.Cosmetics.Knife is not { } desiredKnife ||
                 !HasActiveBotRandomizerClaim(
                     slot,
                     replay.SteamId,
@@ -1464,28 +973,20 @@ public sealed partial class DemoTracerPlugin
                 return false;
             }
 
-            var desiredKnife = replay.Cosmetics.Knife ?? BuildDefaultKnifeCosmetic(player);
-            var knifeOk = replay.Cosmetics.Knife != null
-                ? TryApplyItemCosmetic(
-                    player,
-                    weapon,
-                    desiredKnife,
-                    replay.SteamId,
-                    DemoTracerCosmeticWriteField.Knife,
-                    allowSubclassChange: true,
-                    applyPaint: true,
-                    applyCustomName: _cosmeticNamesEnabled)
-                : TryClearKnifeCosmetic(player, weapon, replay.SteamId);
-            if (knifeOk && recordKnifeBirth)
-                RememberKnifeCosmeticBirth(slot, weapon, desiredKnife);
-            if (replay.Cosmetics.Knife != null)
-            {
-                ScheduleKnifeCosmeticRetry(
-                    slot,
-                    desiredKnife,
-                    replay.SteamId,
-                    framesRemaining: knifeOk ? 3 : 8);
-            }
+            var knifeOk = TryApplyItemCosmetic(
+                player,
+                weapon,
+                desiredKnife,
+                replay.SteamId,
+                DemoTracerCosmeticWriteField.Knife,
+                allowSubclassChange: true,
+                applyPaint: true,
+                applyCustomName: _cosmeticNamesEnabled);
+            ScheduleKnifeCosmeticRetry(
+                slot,
+                desiredKnife,
+                replay.SteamId,
+                framesRemaining: knifeOk ? 3 : 8);
             if (countResult)
             {
                 if (knifeOk)
@@ -1581,27 +1082,24 @@ public sealed partial class DemoTracerPlugin
                 if (isReplayKnifeCosmetic)
                 {
                     if (_loadedReplays.TryGetValue(slot, out var replay) &&
+                        replay.Cosmetics.Knife is { } replayKnifeCosmetic &&
                         HasActiveBotRandomizerClaim(
                             slot,
                             replay.SteamId,
                             DemoTracerCosmeticWriteField.Knife))
                     {
                         replaySteamId = replay.SteamId;
-                        knifeCosmetic = replay.Cosmetics.Knife ?? BuildDefaultKnifeCosmetic(player);
+                        knifeCosmetic = replayKnifeCosmetic;
                         attempted = true;
-                        applied = replay.Cosmetics.Knife != null
-                            ? TryApplyItemCosmetic(
-                                player,
-                                weapon,
-                                knifeCosmetic,
-                                replaySteamId,
-                                DemoTracerCosmeticWriteField.Knife,
-                                allowSubclassChange: true,
-                                applyPaint: true,
-                                applyCustomName: _cosmeticNamesEnabled)
-                            : TryClearKnifeCosmetic(player, weapon, replaySteamId);
-                        if (applied)
-                            RememberKnifeCosmeticBirth(slot, weapon, knifeCosmetic);
+                        applied = TryApplyItemCosmetic(
+                            player,
+                            weapon,
+                            knifeCosmetic,
+                            replaySteamId,
+                            DemoTracerCosmeticWriteField.Knife,
+                            allowSubclassChange: true,
+                            applyPaint: true,
+                            applyCustomName: _cosmeticNamesEnabled);
                     }
                 }
                 else if (IsReplaySlotPlaying(slot) &&
@@ -1642,25 +1140,21 @@ public sealed partial class DemoTracerPlugin
                     if (isReplayKnifeCosmetic)
                     {
                         if (_loadedReplays.TryGetValue(slot, out var replay) &&
+                            replay.Cosmetics.Knife is { } desiredKnife &&
                             HasActiveBotRandomizerClaim(
                                 slot,
                                 replay.SteamId,
                                 DemoTracerCosmeticWriteField.Knife))
                         {
-                            var desiredKnife = replay.Cosmetics.Knife ?? BuildDefaultKnifeCosmetic(retryPlayer);
-                            var retryApplied = replay.Cosmetics.Knife != null
-                                ? TryApplyItemCosmetic(
-                                    retryPlayer,
-                                    retryWeapon,
-                                    desiredKnife,
-                                    replay.SteamId,
-                                    DemoTracerCosmeticWriteField.Knife,
-                                    allowSubclassChange: true,
-                                    applyPaint: true,
-                                    applyCustomName: _cosmeticNamesEnabled)
-                                : TryClearKnifeCosmetic(retryPlayer, retryWeapon, replay.SteamId);
-                            if (retryApplied)
-                                RememberKnifeCosmeticBirth(slot, retryWeapon, desiredKnife);
+                            _ = TryApplyItemCosmetic(
+                                retryPlayer,
+                                retryWeapon,
+                                desiredKnife,
+                                replay.SteamId,
+                                DemoTracerCosmeticWriteField.Knife,
+                                allowSubclassChange: true,
+                                applyPaint: true,
+                                applyCustomName: _cosmeticNamesEnabled);
                         }
                     }
                     else if (GivenItemCosmeticFeatureEnabled() &&
@@ -1846,65 +1340,6 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
     }
-
-    private bool TryRestoreNativeAgentModel(
-        CCSPlayerController player,
-        CCSPlayerPawn pawn,
-        ulong replaySteamId)
-    {
-        var slot = player.Slot;
-        if (!IsReplaySlotStillSafe(slot) ||
-            !TryValidateBotRandomizerClaim(
-                slot,
-                replaySteamId,
-                DemoTracerCosmeticWriteField.Agent))
-        {
-            return false;
-        }
-
-        if (player.UserId is not int userId)
-            return true;
-
-        var hasMatchingCapture =
-            _nativeAgentModels.TryGetValue(slot, out var native) &&
-            native.UserId == userId &&
-            native.PawnEntityHandle == pawn.EntityHandle.Raw &&
-            native.Team == player.Team;
-        if (ResolveMissingAgentEvidenceRecovery(hasMatchingCapture) ==
-            MissingAgentEvidenceRecovery.PreserveCurrentModel)
-        {
-            // The active Agent write lease already prevents BotRandomizer from
-            // changing this pawn. If spawn-time model evidence was not ready,
-            // preserving the live pawn is safer than respawning it and losing
-            // its engine-owned inventory.
-            return true;
-        }
-
-        var mutationGeneration = CurrentReplayMutationGeneration(slot);
-        ApplyAgentModel(pawn, native.ModelPath);
-        ScheduleCosmeticNextFrame(() => ApplyAgentModelForSlot(
-            slot,
-            userId,
-            mutationGeneration,
-            replaySteamId,
-            native.ModelPath));
-        AddTimer(
-            0.20f,
-            () => ApplyAgentModelForSlot(
-                slot,
-                userId,
-                mutationGeneration,
-                replaySteamId,
-                native.ModelPath),
-            TimerFlags.STOP_ON_MAPCHANGE);
-        return true;
-    }
-
-    internal static MissingAgentEvidenceRecovery ResolveMissingAgentEvidenceRecovery(
-        bool hasMatchingNativeModelCapture)
-        => hasMatchingNativeModelCapture
-            ? MissingAgentEvidenceRecovery.ApplyCapturedModel
-            : MissingAgentEvidenceRecovery.PreserveCurrentModel;
 
     private void ApplyAgentModelForSlot(
         int slot,
@@ -2128,197 +1563,6 @@ public sealed partial class DemoTracerPlugin
         Utilities.SetStateChanged(weapon, "CEconEntity", "m_AttributeManager");
     }
 
-    private static ReplayItemCosmetic BuildDefaultKnifeCosmetic(CCSPlayerController player)
-        => new()
-        {
-            ItemDefIndex = DefaultKnifeDefIndexForTeam(player.Team),
-            PaintKit = 0,
-            Seed = 0,
-            Wear = 0.0f
-        };
-
-    internal static int DefaultKnifeDefIndexForTeam(CsTeam team)
-        => WeaponDefIndex(DefaultKnifeClassNameForTeam(team));
-
-    private bool TryClearKnifeCosmetic(
-        CCSPlayerController player,
-        CBasePlayerWeapon knife,
-        ulong replaySteamId)
-    {
-        var slot = player.Slot;
-        try
-        {
-            if (player.UserId is not int userId ||
-                !TryValidateBotRandomizerClaim(
-                    slot,
-                    replaySteamId,
-                    DemoTracerCosmeticWriteField.Knife))
-            {
-                return false;
-            }
-
-            var mutationGeneration = CurrentReplayMutationGeneration(slot);
-            ClearKnifeEconItem(player, knife);
-            AddTimer(
-                0.10f,
-                () => ClearKnifeCosmeticForSlot(
-                    slot,
-                    userId,
-                    mutationGeneration,
-                    replaySteamId),
-                TimerFlags.STOP_ON_MAPCHANGE);
-            AddTimer(
-                0.25f,
-                () => ClearKnifeCosmeticForSlot(
-                    slot,
-                    userId,
-                    mutationGeneration,
-                    replaySteamId),
-                TimerFlags.STOP_ON_MAPCHANGE);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Server.PrintToConsole($"dtr: knife cosmetic clear failed slot={player.Slot}: {ex.Message}");
-            return false;
-        }
-    }
-
-    private void ClearKnifeCosmeticForSlot(
-        int slot,
-        int userId,
-        long mutationGeneration,
-        ulong replaySteamId)
-    {
-        try
-        {
-            if (!IsReplaySlotStillSafe(slot) ||
-                !IsReplayMutationGenerationCurrent(slot, mutationGeneration) ||
-                !TryValidateBotRandomizerClaim(
-                    slot,
-                    replaySteamId,
-                    DemoTracerCosmeticWriteField.Knife))
-            {
-                return;
-            }
-
-            var player = Utilities.GetPlayerFromSlot(slot);
-            var pawn = player?.PlayerPawn.Value;
-            if (player is not { IsValid: true, PawnIsAlive: true } ||
-                player.UserId != userId ||
-                pawn is not { IsValid: true })
-            {
-                return;
-            }
-
-            if (TryFindReplayKnife(pawn, out var knife))
-                ClearKnifeEconItem(player, knife);
-        }
-        catch (Exception ex)
-        {
-            Server.PrintToConsole($"dtr: knife cosmetic delayed clear failed slot={slot}: {ex.Message}");
-        }
-    }
-
-    private static void ClearKnifeEconItem(
-        CCSPlayerController player,
-        CBasePlayerWeapon knife)
-    {
-        var item = knife.AttributeManager.Item;
-        var defaultDef = DefaultKnifeDefIndexForTeam(player.Team);
-        knife.AcceptInput("ChangeSubclass", value: defaultDef.ToString(CultureInfo.InvariantCulture));
-        item.ItemDefinitionIndex = (ushort)defaultDef;
-        item.EntityQuality = 0;
-        item.AccountID = AccountIdForReplayPlayer(player, replaySteamId: null);
-        SetReplayEconItemId(item, 0);
-        item.CustomName = string.Empty;
-        item.AttributeList.Attributes.RemoveAll();
-        item.NetworkedDynamicAttributes.Attributes.RemoveAll();
-        knife.FallbackPaintKit = 0;
-        knife.FallbackSeed = 0;
-        knife.FallbackWear = 0.0f;
-        knife.FallbackStatTrak = 0;
-        TrySetOriginalOwnerXuid(knife, null);
-        MarkWeaponPaintStateChanged(knife);
-        Utilities.SetStateChanged(knife, "CEconEntity", "m_nFallbackStatTrak");
-        Utilities.SetStateChanged(knife, "CEconEntity", "m_AttributeManager");
-        knife.AcceptInput("SetBodygroup", value: "body,0");
-    }
-
-    private bool TryClearGloveCosmetic(
-        CCSPlayerController player,
-        CCSPlayerPawn pawn,
-        ulong replaySteamId,
-        out bool changed)
-    {
-        changed = false;
-        try
-        {
-            var slot = player.Slot;
-            if (!TryValidateBotRandomizerClaim(
-                    slot,
-                    replaySteamId,
-                    DemoTracerCosmeticWriteField.Gloves))
-            {
-                return false;
-            }
-
-            var token = ++_nextGloveCosmeticToken;
-            _gloveCosmeticTokens[slot] = token;
-            if (IsGloveEconItemCleared(pawn))
-            {
-                _appliedGloveCosmetics.Remove(slot);
-                return true;
-            }
-
-            ClearGloveEconItem(pawn);
-            _appliedGloveCosmetics.Remove(slot);
-            changed = true;
-            AddTimer(
-                0.10f,
-                () => ClearGloveCosmeticForSlot(slot, replaySteamId, token),
-                TimerFlags.STOP_ON_MAPCHANGE);
-            AddTimer(
-                0.25f,
-                () => ClearGloveCosmeticForSlot(slot, replaySteamId, token),
-                TimerFlags.STOP_ON_MAPCHANGE);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Server.PrintToConsole($"dtr: glove cosmetic clear failed slot={player.Slot}: {ex.Message}");
-            return false;
-        }
-    }
-
-    private void ClearGloveCosmeticForSlot(int slot, ulong replaySteamId, int token)
-    {
-        try
-        {
-            if (!_gloveCosmeticTokens.TryGetValue(slot, out var activeToken) ||
-                activeToken != token ||
-                !IsReplaySlotStillSafe(slot) ||
-                !TryValidateBotRandomizerClaim(
-                    slot,
-                    replaySteamId,
-                    DemoTracerCosmeticWriteField.Gloves))
-            {
-                return;
-            }
-
-            var player = Utilities.GetPlayerFromSlot(slot);
-            var pawn = player?.PlayerPawn.Value;
-            if (player is not { IsValid: true, PawnIsAlive: true } || pawn is not { IsValid: true })
-                return;
-
-            _ = TryClearGloveCosmetic(player, pawn, replaySteamId, out _);
-        }
-        catch (Exception ex)
-        {
-            Server.PrintToConsole($"dtr: glove cosmetic delayed clear failed slot={slot}: {ex.Message}");
-        }
-    }
-
     private bool TryApplyGloveCosmetic(
         CCSPlayerController player,
         CCSPlayerPawn pawn,
@@ -2481,30 +1725,6 @@ public sealed partial class DemoTracerPlugin
         MarkGloveCosmeticStateChanged(pawn);
         pawn.AcceptInput("SetBodygroup", value: "first_or_third_person,0");
         return true;
-    }
-
-    private static bool IsGloveEconItemCleared(CCSPlayerPawn pawn)
-    {
-        var item = pawn.EconGloves;
-        return item.ItemDefinitionIndex == 0 &&
-               item.AccountID == 0 &&
-               !item.Initialized &&
-               item.ItemID == 0;
-    }
-
-    private static void ClearGloveEconItem(CCSPlayerPawn pawn)
-    {
-        var item = pawn.EconGloves;
-        item.ItemDefinitionIndex = 0;
-        item.AccountID = 0;
-        item.Initialized = false;
-        item.EntityQuality = 0;
-        item.CustomName = string.Empty;
-        SetReplayEconItemId(item, 0);
-        item.NetworkedDynamicAttributes.Attributes.RemoveAll();
-        item.AttributeList.Attributes.RemoveAll();
-        MarkGloveCosmeticStateChanged(pawn);
-        pawn.AcceptInput("SetBodygroup", value: "first_or_third_person,0");
     }
 
     private const ulong SteamId64AccountBase = 76_561_197_960_265_728;
@@ -2945,38 +2165,6 @@ public sealed partial class DemoTracerPlugin
                 HasCosmeticSeedEvidence(cosmetic.SeedKnown),
                 BitConverter.SingleToInt32Bits(cosmetic.Wear));
     }
-
-    private readonly record struct KnifeCosmeticFingerprint(
-        int ItemDefinitionIndex,
-        uint PaintKit,
-        uint Seed,
-        bool SeedKnown,
-        int WearBits)
-    {
-        public static KnifeCosmeticFingerprint From(ReplayItemCosmetic cosmetic)
-            => new(
-                cosmetic.ItemDefIndex ?? -1,
-                cosmetic.PaintKit,
-                cosmetic.Seed,
-                HasCosmeticSeedEvidence(cosmetic.SeedKnown),
-                BitConverter.SingleToInt32Bits(cosmetic.Wear));
-    }
-
-    private readonly record struct AppliedKnifeCosmeticBirth(
-        uint WeaponEntityHandle,
-        KnifeCosmeticFingerprint Fingerprint);
-
-    private readonly record struct PendingKnifeEntityRefresh(
-        int Token,
-        KnifeCosmeticFingerprint Fingerprint,
-        long ReplayGeneration,
-        ReplayItemCosmetic DesiredCosmetic);
-
-    private readonly record struct NativeAgentModelCapture(
-        int UserId,
-        uint PawnEntityHandle,
-        CsTeam Team,
-        string ModelPath);
 
     private readonly record struct AppliedGloveCosmetic(
         nint PawnHandle,

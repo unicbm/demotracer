@@ -16,12 +16,6 @@ internal enum DemoTracerCosmeticWriteField
     WeaponKeychain
 }
 
-internal enum MissingAgentEvidenceRecovery
-{
-    PreserveCurrentModel,
-    ApplyCapturedModel
-}
-
 internal sealed record DemoTracerBotRandomizerWeaponEvidence(
     int WeaponDefinitionIndex,
     bool Paint,
@@ -30,6 +24,9 @@ internal sealed record DemoTracerBotRandomizerWeaponEvidence(
     bool? PaintUsesLegacyModel);
 
 internal sealed record DemoTracerBotRandomizerClaimEvidence(
+    bool Agent,
+    bool Knife,
+    bool Gloves,
     bool MusicKit,
     IReadOnlyList<DemoTracerBotRandomizerWeaponEvidence> Weapons);
 
@@ -314,6 +311,17 @@ public sealed partial class DemoTracerPlugin
         }
 
         return new DemoTracerBotRandomizerClaimEvidence(
+            Agent: _cosmeticAlignEnabled &&
+                   _cosmeticAgentsEnabled &&
+                   replay.Cosmetics.Agent != null,
+            Knife: _cosmeticAlignEnabled &&
+                   _weaponAlignEnabled &&
+                   _cosmeticKnivesEnabled &&
+                   replay.Cosmetics.Knife != null,
+            Gloves: _cosmeticAlignEnabled &&
+                    _weaponAlignEnabled &&
+                    _cosmeticGlovesEnabled &&
+                    replay.Cosmetics.Glove != null,
             MusicKit: ReplayMusicKitAlignmentAllowed(replay.MusicKitId),
             Weapons: weapons);
     }
@@ -344,17 +352,26 @@ public sealed partial class DemoTracerPlugin
                 PaintUsesLegacyModel = weapon.Paint ? weapon.PaintUsesLegacyModel : null
             })
             .ToArray();
+        if (!evidence.Agent &&
+            !evidence.Knife &&
+            !evidence.Gloves &&
+            !evidence.MusicKit &&
+            weapons.Length == 0)
+        {
+            return null;
+        }
+
         return new BotRandomizerCosmeticWriteClaim
         {
             Slot = slot,
             Incarnation = incarnation,
             SubjectSteamId = subjectSteamId,
-            // These are identity-level claims for every authenticated replay
-            // slot. Null normalized evidence is applied as the native/default
-            // state by DemoTracer.
-            Agent = true,
-            Knife = true,
-            Gloves = true,
+            // A lease itself makes BotRandomizer re-run its restoration pass.
+            // Keep every field positive-evidence-only so an absent cosmetic
+            // cannot trigger competing entity writes during replay setup.
+            Agent = evidence.Agent,
+            Knife = evidence.Knife,
+            Gloves = evidence.Gloves,
             MusicKit = evidence.MusicKit,
             Weapons = weapons
         };

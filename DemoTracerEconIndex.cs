@@ -16,7 +16,7 @@ public sealed partial class DemoTracerPlugin
     private readonly HashSet<uint> _validKeychainIds = new();
     private readonly HashSet<uint> _validMusicKitIds = new();
     private readonly HashSet<uint> _validScoreboardFlairItemDefs = new();
-    private static readonly ReplayEquipmentCatalog ReplayEquipment = LoadAdjacentReplayEquipment();
+    private static ReplayEquipmentCatalog ReplayEquipment = LoadAdjacentReplayEquipment();
     private bool _cs2LibEconIndexLoaded;
     private string _cs2LibEconIndexVersion = "unknown";
 
@@ -42,7 +42,7 @@ public sealed partial class DemoTracerPlugin
             ReadPaintPairs(root, "weapon_paints", _validWeaponCosmeticPaints, normalizeWeaponDefIndex: true);
             ReadPaintPairs(root, "legacy_bodygroup_paints", _legacyCosmeticPaints, normalizeWeaponDefIndex: true);
             ReadUIntSet(root, "paint_kit_ids", _validPaintKits);
-            ValidateReplayEquipment(root);
+            ReplayEquipment = ParseReplayEquipment(root);
             ReadIntSet(root, "knife_defidx", _validKnifeCosmeticItemDefs);
             ReadIntSet(root, "glove_defidx", _validGloveCosmeticItemDefs);
             ReadUIntSet(root, "agent_defidx", _validAgentCosmeticItemDefs);
@@ -77,6 +77,7 @@ public sealed partial class DemoTracerPlugin
         _validMusicKitIds.Clear();
         _validScoreboardFlairItemDefs.Clear();
         _legacyCosmeticPaints.Clear();
+        ReplayEquipment = ReplayEquipmentCatalog.Empty;
         _cs2LibEconIndexLoaded = false;
         _cs2LibEconIndexVersion = "unknown";
     }
@@ -131,20 +132,6 @@ public sealed partial class DemoTracerPlugin
         catch
         {
             return ReplayEquipmentCatalog.Empty;
-        }
-    }
-
-    private static void ValidateReplayEquipment(JsonElement root)
-    {
-        var runtime = ParseReplayEquipment(root);
-        if (runtime.ByClassName.Count != ReplayEquipment.ByClassName.Count ||
-            runtime.ByDefIndex.Count != ReplayEquipment.ByDefIndex.Count ||
-            runtime.ByClassName.Any(entry =>
-                !ReplayEquipment.ByClassName.TryGetValue(entry.Key, out var bundled) ||
-                bundled != entry.Value))
-        {
-            throw new InvalidDataException(
-                "runtime replay equipment does not match the adjacent cs2-lib projection");
         }
     }
 
