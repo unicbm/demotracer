@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace DemoTracerBotHiderApi;
 
 public static class DemoTracerBotHiderContract
@@ -6,6 +8,23 @@ public static class DemoTracerBotHiderContract
     public const string Capability = "demotracer:bot-hider:v1";
     public const string DemoTracerOwner = "demotracer";
     public const int MaxPlayerNameUtf8Bytes = 31;
+    public const int MaxCrosshairCodeUtf8Bytes = 63;
+
+    public static bool TryNormalizeCrosshairCode(string? source, out string? normalized)
+    {
+        if (source == null)
+        {
+            normalized = null;
+            return true;
+        }
+
+        normalized = source.Trim();
+        if (Encoding.UTF8.GetByteCount(normalized) <= MaxCrosshairCodeUtf8Bytes)
+            return true;
+
+        normalized = null;
+        return false;
+    }
 }
 
 public interface IBotHiderApi

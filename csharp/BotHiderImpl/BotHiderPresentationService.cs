@@ -10,7 +10,6 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
 {
     private const int MaxSlots = 64;
     private const int MaxOwnerLength = 64;
-    private const int MaxCrosshairBytes = 63;
     private static readonly Version MaxVerifiedManagedSchemaPatch = new(1, 41, 7, 3);
     private static readonly Lazy<(bool Allowed, string Patch)> ManagedSchemaRuntime =
         new(DetectManagedSchemaRuntime);
@@ -402,8 +401,9 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
                 return false;
             }
 
-            var crosshair = requested.CrosshairCode?.Trim();
-            if (crosshair != null && Encoding.UTF8.GetByteCount(crosshair) > MaxCrosshairBytes)
+            if (!DemoTracerBotHiderContract.TryNormalizeCrosshairCode(
+                    requested.CrosshairCode,
+                    out var crosshair))
             {
                 reason = $"invalid_crosshair:{requested.Slot}";
                 return false;
@@ -802,7 +802,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
                 (requested.SteamId.HasValue && player.SteamID != requested.SteamId.Value) ||
                 player.Ping != checked((uint)Math.Max(_applied[requested.Slot]!.Value.Ping, 0)) ||
                 (requested.ScoreboardFlair.HasValue &&
-                 !ScoreboardFlairMatches(player, requested.ScoreboardFlair.Value)))
+                 !ScoreboardFlairMatches(player, requested.ScoreboardFlair.Value)) ||
+                !RequestedCrosshairMatches(requested.CrosshairCode, player.CrosshairCodes))
             {
                 reason = $"controller_presentation_not_applied:{requested.Slot}";
                 return false;
@@ -812,6 +813,10 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         reason = string.Empty;
         return true;
     }
+
+    internal static bool RequestedCrosshairMatches(string? requested, string? actual)
+        => requested == null ||
+           string.Equals(actual ?? string.Empty, requested, StringComparison.Ordinal);
 
     private BotHiderPresentationLeaseResult Success(PresentationLease lease)
     {
