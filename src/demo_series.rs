@@ -5,7 +5,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 use crate::demo_reader::{
-    demo_content_sha256, is_supported_demo_path, read_demo_with_options, ReadDemoOptions,
+    demo_content_sha256, is_supported_demo_path, read_demo_with_options,
+    read_demo_with_options_and_cancel, ReadDemoOptions,
 };
 use crate::model::{
     ParsedAvatarOverride, ParsedDemo, ParsedEconItem, ParsedGameEvent, ParsedPlayerTick,
@@ -15,6 +16,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::time::SystemTime;
 
 const SERIES_HASH_DOMAIN: &[u8] = b"cs2-demotracer-segment-set-v1\0";
@@ -216,6 +218,19 @@ pub fn read_demo_source_with_options(
         .parts
         .iter()
         .map(|part| read_demo_with_options(&part.path, options))
+        .collect::<Result<Vec<_>>>()?;
+    merge_parsed_demo_parts(source, parts)
+}
+
+pub fn read_demo_source_with_options_and_cancel(
+    source: &DemoSourceSet,
+    options: ReadDemoOptions,
+    cancelled: &AtomicBool,
+) -> Result<ParsedDemo> {
+    let parts = source
+        .parts
+        .iter()
+        .map(|part| read_demo_with_options_and_cancel(&part.path, options, Some(cancelled)))
         .collect::<Result<Vec<_>>>()?;
     merge_parsed_demo_parts(source, parts)
 }

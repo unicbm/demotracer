@@ -439,6 +439,7 @@ mod demoparser_impl {
     };
     use rayon::prelude::*;
     use std::collections::{BTreeMap, BTreeSet};
+    use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
 
     const COSMETIC_PLAYER_PROPS: &[&str] = &[
@@ -927,8 +928,16 @@ mod demoparser_impl {
     }
 
     pub fn read_demo_with_options(path: &Path, options: ReadDemoOptions) -> Result<ParsedDemo> {
+        read_demo_with_options_and_cancel(path, options, None)
+    }
+
+    pub fn read_demo_with_options_and_cancel(
+        path: &Path,
+        options: ReadDemoOptions,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<ParsedDemo> {
         let input = load_demo_input(path)?;
-        read_loaded_demo_with_options(&input, options)
+        read_loaded_demo_with_options_and_cancel(&input, options, cancelled)
     }
 
     pub fn read_demo_bytes(bytes: &[u8], stem: &str, display_path: &str) -> Result<ParsedDemo> {
@@ -939,7 +948,21 @@ mod demoparser_impl {
         input: &LoadedDemoInput,
         options: ReadDemoOptions,
     ) -> Result<ParsedDemo> {
-        read_demo_bytes_with_options(&input.bytes, &input.stem, &input.display_path, options)
+        read_loaded_demo_with_options_and_cancel(input, options, None)
+    }
+
+    pub fn read_loaded_demo_with_options_and_cancel(
+        input: &LoadedDemoInput,
+        options: ReadDemoOptions,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<ParsedDemo> {
+        read_demo_bytes_with_options_and_cancel(
+            &input.bytes,
+            &input.stem,
+            &input.display_path,
+            options,
+            cancelled,
+        )
     }
 
     pub fn read_demo_bytes_with_options(
@@ -947,6 +970,16 @@ mod demoparser_impl {
         stem: &str,
         display_path: &str,
         options: ReadDemoOptions,
+    ) -> Result<ParsedDemo> {
+        read_demo_bytes_with_options_and_cancel(bytes, stem, display_path, options, None)
+    }
+
+    pub fn read_demo_bytes_with_options_and_cancel(
+        bytes: &[u8],
+        stem: &str,
+        display_path: &str,
+        options: ReadDemoOptions,
+        cancelled: Option<&AtomicBool>,
     ) -> Result<ParsedDemo> {
         let wanted_props = vec![
             "X",
@@ -1096,6 +1129,7 @@ mod demoparser_impl {
             order_by_steamid: false,
             list_props: false,
             fallback_bytes: None,
+            cancelled,
         };
         let (mut output, single_threaded_overlay) =
             parse_demo_channels(bytes, settings).map_err(|e| Error::Parser(format!("{e:?}")))?;
@@ -1348,6 +1382,7 @@ mod demoparser_impl {
             )
             .collect::<Vec<_>>();
 
+        repair_short_global_tick_gaps(&mut rows);
         let tick_rate = estimate_tick_rate(&rows).unwrap_or(64.0);
         let mut round_freeze_end_ticks = output
             .game_events
@@ -1526,6 +1561,7 @@ mod demoparser_impl {
             order_by_steamid: false,
             list_props: false,
             fallback_bytes: None,
+            cancelled: None,
         };
         let mut parser = Parser::new(settings, ParsingMode::ForceSingleThreaded);
         let output = parser
@@ -2029,6 +2065,148 @@ mod demoparser_impl {
         (seconds * tick_rate).round() as i32
     }
 
+    const MAX_REPAIRABLE_GLOBAL_GAP_TICKS: i32 = 8;
+
+    /// Some GOTV demos omit a short run of complete entity snapshot ticks even
+    /// though the surrounding ticks and later game state are valid. Fill only
+    /// those unambiguous global holes, capped at 125 ms for a 64-tick demo.
+    /// Per-player holes, lifecycle changes, and longer gaps remain untouched so
+    /// replay synthesis can still fail closed instead of inventing an unsafe
+    /// trajectory.
+    fn repair_short_global_tick_gaps(rows: &mut Vec<ParsedPlayerTick>) -> usize {
+        if rows.len() < 2 {
+            return 0;
+        }
+
+        let global_ticks = rows
+            .iter()
+            .map(|row| row.tick)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let missing_tick_ranges = global_ticks
+            .windows(2)
+            .filter_map(|pair| {
+                let missing_count = pair[1].saturating_sub(pair[0]).saturating_sub(1);
+                (1..=MAX_REPAIRABLE_GLOBAL_GAP_TICKS)
+                    .contains(&missing_count)
+                    .then_some((pair[0], pair[1]))
+            })
+            .collect::<Vec<_>>();
+        if missing_tick_ranges.is_empty() {
+            return 0;
+        }
+
+        let mut row_index = BTreeMap::new();
+        let mut ambiguous = BTreeSet::new();
+        for (index, row) in rows.iter().enumerate() {
+            if row.steam_id == 0 {
+                continue;
+            }
+            let key = (row.tick, row.steam_id);
+            if row_index.insert(key, index).is_some() {
+                ambiguous.insert(key);
+            }
+        }
+
+        let mut additions = Vec::new();
+        for (before_tick, after_tick) in missing_tick_ranges {
+            let steam_ids = row_index
+                .range((before_tick, 0)..=(before_tick, u64::MAX))
+                .map(|((_tick, steam_id), _index)| *steam_id)
+                .collect::<BTreeSet<_>>();
+            for steam_id in steam_ids {
+                let before_key = (before_tick, steam_id);
+                let after_key = (after_tick, steam_id);
+                if ambiguous.contains(&before_key) || ambiguous.contains(&after_key) {
+                    continue;
+                }
+                let (Some(&before_index), Some(&after_index)) =
+                    (row_index.get(&before_key), row_index.get(&after_key))
+                else {
+                    continue;
+                };
+                let before = &rows[before_index];
+                let after = &rows[after_index];
+                if !stable_across_missing_tick(before, after) {
+                    continue;
+                }
+                for missing_tick in before_tick + 1..after_tick {
+                    additions.push(interpolate_missing_tick(before, after, missing_tick));
+                }
+            }
+        }
+
+        let repaired = additions.len();
+        rows.extend(additions);
+        rows.sort_by_key(|row| (row.round, row.tick, row.steam_id));
+        repaired
+    }
+
+    fn stable_across_missing_tick(before: &ParsedPlayerTick, after: &ParsedPlayerTick) -> bool {
+        before.steam_id == after.steam_id
+            && before.round == after.round
+            && before.team_num == after.team_num
+            && before.is_alive == after.is_alive
+            && before.round_in_progress == after.round_in_progress
+            && before.is_freeze_period == after.is_freeze_period
+            && before.player_user_id == after.player_user_id
+            && before.player_entity_id == after.player_entity_id
+    }
+
+    fn interpolate_missing_tick(
+        before: &ParsedPlayerTick,
+        after: &ParsedPlayerTick,
+        tick: i32,
+    ) -> ParsedPlayerTick {
+        let mut row = before.clone();
+        row.tick = tick;
+        let tick_fraction = (tick - before.tick) as f32 / (after.tick - before.tick) as f32;
+        row.origin = lerp_vec3(before.origin, after.origin, tick_fraction);
+        row.velocity = lerp_vec3(before.velocity, after.velocity, tick_fraction);
+        row.pitch = lerp_angle(before.pitch, after.pitch, tick_fraction);
+        row.yaw = lerp_angle(before.yaw, after.yaw, tick_fraction);
+        row.game_time = match (before.game_time, after.game_time) {
+            (Some(before), Some(after)) if before.is_finite() && after.is_finite() => {
+                Some(before + (after - before) * tick_fraction)
+            }
+            _ => before.game_time,
+        };
+        row.duck_amount = lerp_option(before.duck_amount, after.duck_amount, tick_fraction);
+        row.duck_speed = lerp_option(before.duck_speed, after.duck_speed, tick_fraction);
+        row.ladder_normal = match (before.ladder_normal, after.ladder_normal) {
+            (Some(before), Some(after)) => Some(lerp_vec3(before, after, tick_fraction)),
+            _ => before.ladder_normal,
+        };
+        // A missing packet provides no defensible subtick timing. Keep the
+        // previous command state but do not replay its subtick edges twice.
+        row.subtick_moves.clear();
+        row.subtick_button_truncated = 0;
+        row
+    }
+
+    fn lerp_vec3(before: [f32; 3], after: [f32; 3], fraction: f32) -> [f32; 3] {
+        [
+            before[0] + (after[0] - before[0]) * fraction,
+            before[1] + (after[1] - before[1]) * fraction,
+            before[2] + (after[2] - before[2]) * fraction,
+        ]
+    }
+
+    fn lerp_angle(before: f32, after: f32, fraction: f32) -> f32 {
+        let delta = (after - before + 180.0).rem_euclid(360.0) - 180.0;
+        before + delta * fraction
+    }
+
+    fn lerp_option(before: Option<f32>, after: Option<f32>, fraction: f32) -> Option<f32> {
+        match (before, after) {
+            (Some(before), Some(after)) if before.is_finite() && after.is_finite() => {
+                Some(before + (after - before) * fraction)
+            }
+            _ => before,
+        }
+    }
+
     fn repair_round_phase_after_events(
         rows: &mut [ParsedPlayerTick],
         freeze_end_ticks: &[i32],
@@ -2470,6 +2648,22 @@ mod demoparser_impl {
     #[cfg(test)]
     mod tests {
         use super::*;
+        use std::sync::atomic::AtomicBool;
+
+        #[test]
+        fn cancelled_read_stops_before_touching_demo_bytes() {
+            let cancelled = AtomicBool::new(true);
+            let error = read_demo_bytes_with_options_and_cancel(
+                &[],
+                "cancelled",
+                "cancelled.dem",
+                ReadDemoOptions::default(),
+                Some(&cancelled),
+            )
+            .unwrap_err();
+
+            assert!(matches!(error, Error::Parser(message) if message == "Cancelled"));
+        }
 
         #[test]
         fn demo_version_headers_are_trimmed_and_optional() {
@@ -2629,6 +2823,96 @@ mod demoparser_impl {
         }
 
         #[test]
+        fn global_single_tick_gap_is_interpolated_for_stable_players() {
+            let mut rows = vec![
+                gap_row(70, 10, 0.0),
+                gap_row(90, 10, 20.0),
+                gap_row(70, 12, 4.0),
+                gap_row(90, 12, 24.0),
+            ];
+            rows[0].yaw = 179.0;
+            rows[2].yaw = -179.0;
+
+            assert_eq!(repair_short_global_tick_gaps(&mut rows), 2);
+            let repaired = rows
+                .iter()
+                .find(|row| row.steam_id == 70 && row.tick == 11)
+                .unwrap();
+            assert_eq!(repaired.origin, [2.0, 1.0, 2.0]);
+            assert_eq!(repaired.velocity, [3.0, 4.0, 5.0]);
+            assert_eq!(repaired.game_time, Some(11.0));
+            assert_eq!(repaired.yaw, 180.0);
+            assert!(repaired.subtick_moves.is_empty());
+        }
+
+        #[test]
+        fn short_global_tick_gap_is_linearly_interpolated() {
+            let mut rows = vec![
+                gap_row(70, 10, 0.0),
+                gap_row(90, 10, 20.0),
+                gap_row(70, 15, 10.0),
+                gap_row(90, 15, 30.0),
+            ];
+            rows[0].yaw = 170.0;
+            rows[2].yaw = -170.0;
+
+            assert_eq!(repair_short_global_tick_gaps(&mut rows), 8);
+            let repaired = rows
+                .iter()
+                .find(|row| row.steam_id == 70 && row.tick == 12)
+                .unwrap();
+            assert_eq!(repaired.origin, [4.0, 1.0, 2.0]);
+            assert_eq!(repaired.game_time, Some(12.0));
+            assert_eq!(repaired.yaw, 178.0);
+            assert!(repaired.subtick_moves.is_empty());
+            assert!((11..15).all(|tick| rows
+                .iter()
+                .any(|row| row.steam_id == 90 && row.tick == tick)));
+        }
+
+        #[test]
+        fn long_global_tick_gap_remains_rejected() {
+            let mut rows = vec![
+                gap_row(70, 10, 0.0),
+                gap_row(90, 10, 20.0),
+                gap_row(70, 20, 10.0),
+                gap_row(90, 20, 30.0),
+            ];
+
+            assert_eq!(repair_short_global_tick_gaps(&mut rows), 0);
+            assert!(!rows.iter().any(|row| (11..20).contains(&row.tick)));
+        }
+
+        #[test]
+        fn player_only_gap_is_not_treated_as_a_global_packet_hole() {
+            let mut rows = vec![
+                gap_row(70, 10, 0.0),
+                gap_row(90, 10, 20.0),
+                gap_row(90, 11, 22.0),
+                gap_row(70, 12, 4.0),
+                gap_row(90, 12, 24.0),
+            ];
+
+            assert_eq!(repair_short_global_tick_gaps(&mut rows), 0);
+            assert!(!rows.iter().any(|row| row.steam_id == 70 && row.tick == 11));
+        }
+
+        #[test]
+        fn global_gap_does_not_invent_a_player_lifecycle_transition() {
+            let mut rows = vec![
+                gap_row(70, 10, 0.0),
+                gap_row(90, 10, 20.0),
+                gap_row(70, 12, 4.0),
+                gap_row(90, 12, 24.0),
+            ];
+            rows[2].is_alive = false;
+
+            assert_eq!(repair_short_global_tick_gaps(&mut rows), 1);
+            assert!(!rows.iter().any(|row| row.steam_id == 70 && row.tick == 11));
+            assert!(rows.iter().any(|row| row.steam_id == 90 && row.tick == 11));
+        }
+
+        #[test]
         fn freeze_end_event_repairs_sticky_freeze_period_rows() {
             let mut rows = vec![
                 row(1, 90, true),
@@ -2711,6 +2995,23 @@ mod demoparser_impl {
             }
         }
 
+        fn gap_row(steam_id: u64, tick: i32, x: f32) -> ParsedPlayerTick {
+            ParsedPlayerTick {
+                tick,
+                steam_id,
+                team_num: 2,
+                is_alive: true,
+                round: 1,
+                round_in_progress: true,
+                origin: [x, 1.0, 2.0],
+                velocity: [3.0, 4.0, 5.0],
+                game_time: Some(tick as f32),
+                player_user_id: Some(steam_id as i32),
+                player_entity_id: Some(steam_id as i32),
+                ..ParsedPlayerTick::default()
+            }
+        }
+
         fn i32_column(values: &[Option<i32>]) -> PropColumn {
             PropColumn {
                 data: Some(VarVec::I32(values.to_vec())),
@@ -2741,11 +3042,17 @@ pub use demoparser_impl::read_demo_bytes;
 #[cfg(feature = "demoparser")]
 pub use demoparser_impl::read_demo_bytes_with_options;
 #[cfg(feature = "demoparser")]
+pub use demoparser_impl::read_demo_bytes_with_options_and_cancel;
+#[cfg(feature = "demoparser")]
 pub use demoparser_impl::read_demo_header_map_bytes;
 #[cfg(feature = "demoparser")]
 pub use demoparser_impl::read_demo_with_options;
 #[cfg(feature = "demoparser")]
+pub use demoparser_impl::read_demo_with_options_and_cancel;
+#[cfg(feature = "demoparser")]
 pub use demoparser_impl::read_loaded_demo_with_options;
+#[cfg(feature = "demoparser")]
+pub use demoparser_impl::read_loaded_demo_with_options_and_cancel;
 
 #[cfg(not(feature = "demoparser"))]
 pub fn read_demo(_path: &Path) -> Result<ParsedDemo> {
