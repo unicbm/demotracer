@@ -12,6 +12,7 @@ namespace DemoTracer;
 internal enum ReplaySlotWorkKind
 {
     Reconcile,
+    LoadoutRetry,
     MusicKitRepair,
 }
 
@@ -103,13 +104,23 @@ public sealed partial class DemoTracerPlugin
             if (!_session.LoadedReplays.TryGetValue(context.Slot, out var replay))
                 return;
 
-            if (!IsReplaySlotPlaying(context.Slot))
-            {
-                ApplyReplayLoadoutForSlot(context.Slot, replay);
-                PreloadReplayWeaponsForSlot(context.Slot, replay);
-            }
+            // A player_spawn invalidates the old pawn even if native replay
+            // state still says Playing. Rebuild the new pawn before relying on
+            // the playing marker; the per-slot sync flags make lease-only
+            // reconciliations no-ops.
+            ApplyReplayLoadoutForSlot(context.Slot, replay);
+            PreloadReplayWeaponsForSlot(context.Slot, replay);
             if (!TryAlignLoadedReplayCosmeticsForSlot(context.Slot, replay))
                 QueueLoadedReplayCosmeticAlignmentForSlot(context.Slot);
+        });
+    }
+
+    private void ScheduleReplayLoadoutRetry(int slot, int retriesRemaining)
+    {
+        ScheduleReplaySlotNextFrame(slot, ReplaySlotWorkKind.LoadoutRetry, context =>
+        {
+            if (_session.LoadedReplays.TryGetValue(context.Slot, out var replay))
+                ApplyReplayLoadoutForSlot(context.Slot, replay, retriesRemaining);
         });
     }
 

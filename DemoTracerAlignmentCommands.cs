@@ -521,7 +521,7 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        _session.PendingWeaponSlotReplacements.Clear();
+        ClearAllPendingWeaponSlotReplacements("weapon_alignment_disabled");
         _session.RebuiltInventorySlots.Clear();
         _session.LastReplayWeaponDef.Clear();
         _session.LastLockedWeaponTarget.Clear();

@@ -463,6 +463,6 @@ public sealed partial class DemoTracerPlugin
 
         var pawn = player.PlayerPawn.Value;
         foreach (var weapon in GetReplayWeaponsByClass(pawn, "weapon_c4").ToArray())
-            RemoveAndKillReplayWeapon(player, pawn, weapon, reason);
+            RemoveReplayWeaponForReplacement(player, pawn, weapon, reason);
     }
 }

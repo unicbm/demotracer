@@ -67,6 +67,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private const int WeaponSlotReplacementClearWaitFrames = 8;
     private const int WeaponSlotReplacementGrantWaitFrames = 4;
     private const int WeaponSlotReplacementFallbackWaitFrames = 4;
+    private const int ReplayLoadoutSlotRetryFrames = 8;
     private const float PlayerHullWidth = 32.0f;
     private const float PlayerHullHeight = 72.0f;
     private const string AvatarOverrideCacheDirectoryName = "avatar-cache";

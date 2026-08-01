@@ -14,6 +14,13 @@ internal enum WeaponSlotReplacementAction
     PreserveExisting
 }
 
+internal enum ReplayWeaponSlotSyncStatus
+{
+    Complete,
+    Pending,
+    RetryRequired
+}
+
 internal static class ReplayWeaponReplacementPolicy
 {
     internal static WeaponSlotReplacementAction Decide(
@@ -30,10 +37,28 @@ internal static class ReplayWeaponReplacementPolicy
             : WeaponSlotReplacementAction.PreserveExisting;
     }
 
-    internal static bool CanRemoveAndKill(string className)
+    internal static bool CanRemoveForReplacement(string className)
     {
         var normalized = className.Trim();
         return !normalized.StartsWith("weapon_knife", StringComparison.OrdinalIgnoreCase) &&
                !normalized.Equals("weapon_bayonet", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool ShouldRestoreFallback(
+        bool samePlayer,
+        bool samePawn,
+        bool targetPresent,
+        bool anySlotWeapon)
+        => samePlayer && samePawn && !targetPresent && !anySlotWeapon;
+
+    internal static string EmptySlotFallbackItem(
+        ReplayWeaponSlot slot,
+        bool counterTerrorist,
+        string targetItem)
+    {
+        if (slot != ReplayWeaponSlot.Secondary)
+            return targetItem;
+
+        return counterTerrorist ? "weapon_hkp2000" : "weapon_glock";
     }
 }

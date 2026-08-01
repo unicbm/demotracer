@@ -214,7 +214,7 @@ public sealed partial class DemoTracerPlugin
         _session.LastEnsuredWeaponDef.Clear();
         _session.LastReplayWeaponDef.Clear();
         _session.LastLockedWeaponTarget.Clear();
-        _session.PendingWeaponSlotReplacements.Clear();
+        ClearAllPendingWeaponSlotReplacements("replay_execution_stopped");
         _session.ProjectileAlignNextBySlot.Clear();
         _session.PendingProjectileAlign.Clear();
         BotControllerNative.ClearProjectileBirthAlign();

@@ -24,7 +24,10 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
-    private void ApplyReplayLoadoutForSlot(int slot, LoadedReplay replay)
+    private void ApplyReplayLoadoutForSlot(
+        int slot,
+        LoadedReplay replay,
+        int slotRetryFramesRemaining = ReplayLoadoutSlotRetryFrames)
     {
         if (!CanWriteReplaySlot(slot) ||
             !_weaponAlignEnabled ||
@@ -44,15 +47,14 @@ public sealed partial class DemoTracerPlugin
         ApplyReplayArmorAndKit(player, pawn, replay.Loadout);
 
         var targetItems = BuildLoadoutItemCounts(replay.Loadout);
-        var deferredWeaponSync = false;
-        deferredWeaponSync |= SyncTargetWeaponSlot(
+        var primarySync = SyncTargetWeaponSlot(
             player,
             targetItems,
             ReplayWeaponSlot.Primary,
             itemName => GetReplayWeaponSlot(itemName) == ReplayWeaponSlot.Primary,
             playerUserId,
             replayWriteEpoch);
-        deferredWeaponSync |= SyncTargetWeaponSlot(
+        var secondarySync = SyncTargetWeaponSlot(
             player,
             targetItems,
             ReplayWeaponSlot.Secondary,
@@ -67,18 +69,39 @@ public sealed partial class DemoTracerPlugin
                 and not ReplayWeaponSlot.Knife
                 and not ReplayWeaponSlot.C4);
 
-        if (deferredWeaponSync)
+        var pendingWeaponSync = primarySync == ReplayWeaponSlotSyncStatus.Pending ||
+                                secondarySync == ReplayWeaponSlotSyncStatus.Pending;
+        var retryWeaponSync = primarySync == ReplayWeaponSlotSyncStatus.RetryRequired ||
+                              secondarySync == ReplayWeaponSlotSyncStatus.RetryRequired;
+        if (pendingWeaponSync)
         {
             Server.NextFrame(() => Server.NextFrame(() =>
                 ApplyReplayWeaponPresetIfCurrent(slot, playerUserId, replayWriteEpoch)));
         }
-        else
+        else if (!retryWeaponSync)
         {
             ApplyReplayWeaponPreset(slot, ChooseStartWeaponDef(replay), true, true);
         }
 
-        if (!_session.PendingWeaponSlotReplacements.Keys.Any(key => key.PlayerSlot == slot))
+        if (retryWeaponSync && !pendingWeaponSync)
+        {
+            if (slotRetryFramesRemaining > 0)
+            {
+                ScheduleReplayLoadoutRetry(slot, slotRetryFramesRemaining - 1);
+            }
+            else
+            {
+                Server.PrintToConsole(
+                    $"[DTR WARN] replay loadout slot grant did not settle slot={slot}");
+            }
+        }
+
+        if (!pendingWeaponSync &&
+            !retryWeaponSync &&
+            !_session.PendingWeaponSlotReplacements.Keys.Any(key => key.PlayerSlot == slot))
+        {
             _session.LoadoutSyncedSlots.Add(slot);
+        }
     }
 
     private void ApplyReplayWeaponPresetIfCurrent(
@@ -179,7 +202,7 @@ public sealed partial class DemoTracerPlugin
         }
     }
 
-    private bool SyncTargetWeaponSlot(
+    private ReplayWeaponSlotSyncStatus SyncTargetWeaponSlot(
         CCSPlayerController player,
         Dictionary<string, int> targetItems,
         ReplayWeaponSlot slot,
@@ -193,24 +216,54 @@ public sealed partial class DemoTracerPlugin
         {
             if (targetItem != null)
                 TryGiveNamedItem(player, targetItem);
-            return false;
+            return targetItem == null
+                ? ReplayWeaponSlotSyncStatus.Complete
+                : ReplayWeaponSlotSyncStatus.RetryRequired;
         }
 
         if (targetItem != null && HasReplayWeapon(pawn, targetItem))
-            return false;
+            return ReplayWeaponSlotSyncStatus.Complete;
+
+        var pendingKey = (player.Slot, slot);
+        if (_session.PendingWeaponSlotReplacements.TryGetValue(pendingKey, out var existing))
+        {
+            if (existing.PlayerUserId == playerUserId &&
+                existing.PawnEntityHandle == pawn.EntityHandle.Raw &&
+                existing.ReplayWriteEpoch == replayWriteEpoch &&
+                existing.TargetItem.Equals(targetItem, StringComparison.OrdinalIgnoreCase))
+            {
+                return ReplayWeaponSlotSyncStatus.Pending;
+            }
+
+            CancelPendingWeaponSlotReplacement(existing, "replacement_superseded");
+        }
 
         var currentSlotWeapons = GetWeaponsInReplaySlot(pawn, slot).ToList();
         if (targetItem == null)
         {
             var extraWeapon = currentSlotWeapons.FirstOrDefault();
-            return extraWeapon != null &&
-                   RemoveAndKillReplayWeapon(player, pawn, extraWeapon, "extra_loadout_slot");
+            if (extraWeapon == null)
+                return ReplayWeaponSlotSyncStatus.Complete;
+
+            _ = RemoveReplayWeaponForReplacement(
+                player,
+                pawn,
+                extraWeapon,
+                "extra_loadout_slot");
+            return ReplayWeaponSlotSyncStatus.RetryRequired;
         }
 
         if (currentSlotWeapons.Count == 0)
         {
-            TryGiveNamedItem(player, targetItem);
-            return false;
+            return BeginEmptyWeaponSlotGrant(
+                player,
+                pawn,
+                targetItem,
+                slot,
+                playerUserId,
+                replayWriteEpoch)
+                ? ReplayWeaponSlotSyncStatus.Pending
+                : ReplayWeaponSlotSyncStatus.RetryRequired;
         }
 
         var fallbackItem = currentSlotWeapons
@@ -221,10 +274,10 @@ public sealed partial class DemoTracerPlugin
                 NormalizeWeaponClassName(weapon.DesignerName),
                 targetItem));
         if (fallbackItem == null || weaponToDrop == null)
-            return false;
+            return ReplayWeaponSlotSyncStatus.RetryRequired;
         if (player.UserId != playerUserId ||
             !IsReplayWriteEpochCurrent(player.Slot, replayWriteEpoch))
-            return false;
+            return ReplayWeaponSlotSyncStatus.RetryRequired;
 
         return BeginWeaponSlotReplacement(
             player,
@@ -235,262 +288,9 @@ public sealed partial class DemoTracerPlugin
             slot,
             playerUserId,
             replayWriteEpoch,
-            "replace_loadout_slot");
-    }
-
-    private bool BeginWeaponSlotReplacement(
-        CCSPlayerController player,
-        CCSPlayerPawn pawn,
-        CBasePlayerWeapon weaponToDrop,
-        string targetItem,
-        string fallbackItem,
-        ReplayWeaponSlot weaponSlot,
-        int playerUserId,
-        long replayWriteEpoch,
-        string reason)
-    {
-        var key = (player.Slot, weaponSlot);
-        if (_session.PendingWeaponSlotReplacements.TryGetValue(key, out var existing) &&
-            existing.PlayerUserId == playerUserId &&
-            existing.ReplayWriteEpoch == replayWriteEpoch &&
-            existing.TargetItem.Equals(targetItem, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        if (!RemoveAndKillReplayWeapon(player, pawn, weaponToDrop, reason))
-            return false;
-
-        var pending = new PendingWeaponSlotReplacement(
-            player.Slot,
-            playerUserId,
-            replayWriteEpoch,
-            targetItem,
-            fallbackItem,
-            weaponSlot);
-        _session.PendingWeaponSlotReplacements[key] = pending;
-        _session.LastEnsuredWeaponDef.Remove(player.Slot);
-        _session.LastReplayWeaponDef.Remove(player.Slot);
-        Server.NextFrame(() => CompleteWeaponSlotReplacement(
-            pending,
-            WeaponSlotReplacementClearWaitFrames));
-        return true;
-    }
-
-    private void CompleteWeaponSlotReplacement(
-        PendingWeaponSlotReplacement pending,
-        int clearWaitFramesRemaining)
-    {
-        if (!TryGetPendingWeaponSlotReplacementPawn(pending, out var player, out var pawn))
-            return;
-
-        var targetPresent = HasReplayWeapon(pawn, pending.TargetItem);
-        var anySlotWeapon = GetWeaponsInReplaySlot(pawn, pending.WeaponSlot).Any();
-        switch (ReplayWeaponReplacementPolicy.Decide(
-                    targetPresent,
-                    anySlotWeapon,
-                    clearWaitFramesRemaining))
-        {
-            case WeaponSlotReplacementAction.TargetReady:
-                FinishWeaponSlotReplacement(pending, success: true, "target_ready");
-                return;
-
-            case WeaponSlotReplacementAction.WaitForClear:
-                Server.NextFrame(() => CompleteWeaponSlotReplacement(
-                    pending,
-                    clearWaitFramesRemaining - 1));
-                return;
-
-            case WeaponSlotReplacementAction.PreserveExisting:
-                Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
-                    pending,
-                    WeaponSlotReplacementFallbackWaitFrames,
-                    fallbackGrantIssued: false,
-                    "slot_clear_timeout"));
-                return;
-
-            case WeaponSlotReplacementAction.GrantTarget:
-                var targetGrantIssued = TryGiveNamedItem(player, pending.TargetItem);
-                Server.NextFrame(() => VerifyTargetWeaponReplacement(
-                    pending,
-                    WeaponSlotReplacementGrantWaitFrames,
-                    targetGrantIssued));
-                return;
-        }
-    }
-
-    private void VerifyTargetWeaponReplacement(
-        PendingWeaponSlotReplacement pending,
-        int grantWaitFramesRemaining,
-        bool targetGrantIssued)
-    {
-        if (!TryGetPendingWeaponSlotReplacementPawn(pending, out var player, out var pawn))
-            return;
-
-        if (HasReplayWeapon(pawn, pending.TargetItem))
-        {
-            FinishWeaponSlotReplacement(pending, success: true, "target_granted");
-            return;
-        }
-
-        if (GetWeaponsInReplaySlot(pawn, pending.WeaponSlot).Any())
-        {
-            FinishWeaponSlotReplacement(pending, success: false, "target_grant_conflict");
-            return;
-        }
-
-        if (grantWaitFramesRemaining > 0)
-        {
-            if (!targetGrantIssued)
-                targetGrantIssued = TryGiveNamedItem(player, pending.TargetItem);
-            Server.NextFrame(() => VerifyTargetWeaponReplacement(
-                pending,
-                grantWaitFramesRemaining - 1,
-                targetGrantIssued));
-            return;
-        }
-
-        var fallbackGrantIssued = TryGiveNamedItem(player, pending.FallbackItem);
-        Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
-            pending,
-            WeaponSlotReplacementFallbackWaitFrames,
-            fallbackGrantIssued,
-            "target_grant_timeout"));
-    }
-
-    private void VerifyFallbackWeaponIfNeeded(
-        PendingWeaponSlotReplacement pending,
-        int fallbackWaitFramesRemaining,
-        bool fallbackGrantIssued,
-        string failureReason)
-    {
-        if (!TryGetPendingWeaponSlotReplacementPawn(pending, out var player, out var pawn))
-            return;
-
-        if (HasReplayWeapon(pawn, pending.TargetItem))
-        {
-            FinishWeaponSlotReplacement(pending, success: true, "target_granted_late");
-            return;
-        }
-
-        if (GetWeaponsInReplaySlot(pawn, pending.WeaponSlot).Any())
-        {
-            if (fallbackWaitFramesRemaining > 0)
-            {
-                Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
-                    pending,
-                    fallbackWaitFramesRemaining - 1,
-                    fallbackGrantIssued,
-                    failureReason));
-                return;
-            }
-
-            FinishWeaponSlotReplacement(pending, success: false, $"{failureReason}_weapon_preserved");
-            return;
-        }
-
-        if (!fallbackGrantIssued)
-            fallbackGrantIssued = TryGiveNamedItem(player, pending.FallbackItem);
-        if (fallbackWaitFramesRemaining > 0)
-        {
-            Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
-                pending,
-                fallbackWaitFramesRemaining - 1,
-                fallbackGrantIssued,
-                failureReason));
-            return;
-        }
-
-        FinishWeaponSlotReplacement(pending, success: false, $"{failureReason}_fallback_failed");
-    }
-
-    private bool TryGetPendingWeaponSlotReplacementPawn(
-        PendingWeaponSlotReplacement pending,
-        out CCSPlayerController player,
-        out CCSPlayerPawn pawn)
-    {
-        var key = (pending.PlayerSlot, pending.WeaponSlot);
-        var currentPlayer = Utilities.GetPlayerFromSlot(pending.PlayerSlot);
-        var currentPawn = currentPlayer?.PlayerPawn.Value;
-        if (!_session.PendingWeaponSlotReplacements.TryGetValue(key, out var current) ||
-            current != pending ||
-            !IsReplayWriteEpochCurrent(
-                pending.PlayerSlot,
-                pending.ReplayWriteEpoch) ||
-            currentPlayer is not { IsValid: true, PawnIsAlive: true } ||
-            currentPlayer.UserId != pending.PlayerUserId ||
-            currentPawn is not { IsValid: true } ||
-            currentPawn.WeaponServices == null)
-        {
-            if (_session.PendingWeaponSlotReplacements.TryGetValue(key, out current) && current == pending)
-                _session.PendingWeaponSlotReplacements.Remove(key);
-            player = null!;
-            pawn = null!;
-            return false;
-        }
-
-        player = currentPlayer;
-        pawn = currentPawn;
-        return true;
-    }
-
-    private void FinishWeaponSlotReplacement(
-        PendingWeaponSlotReplacement pending,
-        bool success,
-        string reason)
-    {
-        var key = (pending.PlayerSlot, pending.WeaponSlot);
-        if (_session.PendingWeaponSlotReplacements.TryGetValue(key, out var current) && current == pending)
-            _session.PendingWeaponSlotReplacements.Remove(key);
-
-        _session.LastEnsuredWeaponDef.Remove(pending.PlayerSlot);
-        _session.LastReplayWeaponDef.Remove(pending.PlayerSlot);
-        if (success)
-        {
-            Server.PrintToConsole(
-                $"dtr: replaced slot={pending.PlayerSlot} item={pending.TargetItem} reason={reason}");
-            if (!_session.PendingWeaponSlotReplacements.Keys.Any(
-                    key => key.PlayerSlot == pending.PlayerSlot))
-            {
-                Server.NextFrame(() => FinalizeReplayLoadoutSyncIfCurrent(pending));
-            }
-            return;
-        }
-
-        _session.RebuiltInventorySlots.Remove(pending.PlayerSlot);
-        _session.LoadoutSyncedSlots.Remove(pending.PlayerSlot);
-        Server.PrintToConsole(
-            $"[DTR WARN] weapon slot replacement incomplete slot={pending.PlayerSlot} " +
-            $"target={pending.TargetItem} fallback={pending.FallbackItem} reason={reason}");
-    }
-
-    private void FinalizeReplayLoadoutSyncIfCurrent(PendingWeaponSlotReplacement pending)
-    {
-        var player = Utilities.GetPlayerFromSlot(pending.PlayerSlot);
-        if (!IsReplayWriteEpochCurrent(
-                pending.PlayerSlot,
-                pending.ReplayWriteEpoch) ||
-            player is not { IsValid: true, PawnIsAlive: true } ||
-            player.UserId != pending.PlayerUserId ||
-            _session.PendingWeaponSlotReplacements.Keys.Any(
-                key => key.PlayerSlot == pending.PlayerSlot) ||
-            !_session.LoadedReplays.TryGetValue(pending.PlayerSlot, out var replay))
-        {
-            return;
-        }
-
-        _session.LoadoutSyncedSlots.Remove(pending.PlayerSlot);
-        ApplyReplayLoadoutForSlot(pending.PlayerSlot, replay);
-    }
-
-    private void ClearPendingWeaponSlotReplacementsForSlot(int slot)
-    {
-        foreach (var key in _session.PendingWeaponSlotReplacements.Keys
-                     .Where(key => key.PlayerSlot == slot)
-                     .ToArray())
-        {
-            _session.PendingWeaponSlotReplacements.Remove(key);
-        }
+            "replace_loadout_slot")
+            ? ReplayWeaponSlotSyncStatus.Pending
+            : ReplayWeaponSlotSyncStatus.RetryRequired;
     }
 
     private void GiveMissingLoadoutItems(
