@@ -60,16 +60,9 @@ public sealed partial class DemoTracerPlugin
         _session.LoadedSlots.Clear();
         _session.DemoTracerOwnedSlots.Clear();
         _session.LoadedReplays.Clear();
-        _session.LastEnsuredWeaponDef.Clear();
-        _session.LastReplayWeaponDef.Clear();
-        _session.LastLockedWeaponTarget.Clear();
-        _session.PendingWeaponSlotReplacements.Clear();
-        _session.ProjectileAlignNextBySlot.Clear();
         _session.ReplayIdentityGenerationBySlot.Clear();
         _session.ReplayMutationGenerationBySlot.Clear();
-        _session.PendingProjectileAlign.Clear();
-        BotControllerNative.ClearProjectileBirthAlign();
-        _session.RebuiltInventorySlots.Clear();
+        ClearStoppedReplayExecutionState();
         _session.LoadoutSyncedSlots.Clear();
         _session.BalanceSyncedSlots.Clear();
         ResetCosmeticAlignState(resetCounters: true);
@@ -79,13 +72,6 @@ public sealed partial class DemoTracerPlugin
         ResetViewmodelAlignState(resetCounters: true);
         ResetScoreboardAlignState(resetCounters: true);
         _session.LoadedRoundScoreboard = null;
-        _session.LastPlayingSlots.Clear();
-        _session.ReplayStartedAt.Clear();
-        _session.ReplayPerceptionBaselineSerial.Clear();
-        _session.PendingBulletHits.Clear();
-        _session.PendingBulletDamages.Clear();
-        _session.PendingThreat360.Clear();
-        _session.SafeC4Aligned = false;
         if (clearArmedPlan)
         {
             _session.Plan.ClearArmed();
@@ -155,17 +141,10 @@ public sealed partial class DemoTracerPlugin
             _session.LoadedReplays.Clear();
             ClearReplayRetentionPriority(clearPending: true);
             ClearRetainedBotHiderPresentation();
-            _session.LastEnsuredWeaponDef.Clear();
-            _session.LastReplayWeaponDef.Clear();
-            _session.LastLockedWeaponTarget.Clear();
-            _session.PendingWeaponSlotReplacements.Clear();
-            _session.ProjectileAlignNextBySlot.Clear();
             _session.ReplayHifiEventNextBySlot.Clear();
             _session.ReplayIdentityGenerationBySlot.Clear();
             _session.ReplayMutationGenerationBySlot.Clear();
-            _session.PendingProjectileAlign.Clear();
-            BotControllerNative.ClearProjectileBirthAlign();
-            _session.RebuiltInventorySlots.Clear();
+            ClearStoppedReplayExecutionState();
             _session.LoadoutSyncedSlots.Clear();
             _session.BalanceSyncedSlots.Clear();
             ResetCosmeticAlignState(resetCounters: true);
@@ -175,13 +154,6 @@ public sealed partial class DemoTracerPlugin
             ResetViewmodelAlignState(resetCounters: true);
             ResetScoreboardAlignState(resetCounters: true);
             _session.LoadedRoundScoreboard = null;
-            _session.LastPlayingSlots.Clear();
-            _session.ReplayStartedAt.Clear();
-            _session.ReplayPerceptionBaselineSerial.Clear();
-            _session.PendingBulletHits.Clear();
-            _session.PendingBulletDamages.Clear();
-            _session.PendingThreat360.Clear();
-            _session.SafeC4Aligned = false;
 
             _session.Plan.ClearArmed();
             StopSequenceState();
@@ -238,6 +210,14 @@ public sealed partial class DemoTracerPlugin
             BotControllerNative.StopReplay(slot);
             ReleaseReplaySlot(slot, reason);
         }
+        ClearStoppedReplayExecutionState();
+        ClearReplayCrosshairPresentation();
+        RestoreAllReplayBotViewmodels();
+        SetReplayPovMask(0);
+    }
+
+    private void ClearStoppedReplayExecutionState()
+    {
         _session.LastEnsuredWeaponDef.Clear();
         _session.LastReplayWeaponDef.Clear();
         _session.LastLockedWeaponTarget.Clear();
@@ -246,8 +226,6 @@ public sealed partial class DemoTracerPlugin
         _session.PendingProjectileAlign.Clear();
         BotControllerNative.ClearProjectileBirthAlign();
         _session.RebuiltInventorySlots.Clear();
-        ClearReplayCrosshairPresentation();
-        RestoreAllReplayBotViewmodels();
         _session.LastPlayingSlots.Clear();
         _session.ReplayStartedAt.Clear();
         _session.ReplayPerceptionBaselineSerial.Clear();
@@ -255,7 +233,6 @@ public sealed partial class DemoTracerPlugin
         _session.PendingBulletDamages.Clear();
         _session.PendingThreat360.Clear();
         _session.SafeC4Aligned = false;
-        SetReplayPovMask(0);
     }
 
     private void ReleaseUnusedWarmReplayBuffers()
@@ -311,6 +288,7 @@ public sealed partial class DemoTracerPlugin
 
             BotControllerNative.UnloadReplay(slot);
             BotControllerNative.ClearBuyPlan(slot);
+            BotControllerNative.UnlockReplayControl(slot);
             BotControllerNative.UnlockWeaponSlot(slot);
             ClearReplayPovSlot(slot);
             Server.PrintToConsole($"dtr: stopped native replay slot={slot} reason={reason}");

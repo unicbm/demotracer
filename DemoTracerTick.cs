@@ -34,7 +34,6 @@ public sealed partial class DemoTracerPlugin
         if (_session.LoadedSlots.Count == 0)
         {
             SetReplayPovMask(0);
-            ClearReplayCrosshairPresentation();
             RestoreAllReplayBotViewmodels();
             return;
         }
@@ -42,7 +41,6 @@ public sealed partial class DemoTracerPlugin
         if (_session.LastPlayingSlots.Count == 0)
         {
             SetReplayPovMask(0);
-            UpdateReplayCrosshairPresentation();
             RestoreNonRetainedReplayBotViewmodels();
             return;
         }
@@ -75,14 +73,12 @@ public sealed partial class DemoTracerPlugin
         if (activeSlotCount == 0)
         {
             SetReplayPovMask(0);
-            UpdateReplayCrosshairPresentation();
             RestoreNonRetainedReplayBotViewmodels();
             return;
         }
 
         var playerSnapshot = BuildTickPlayerSnapshot();
         UpdateReplayPovMask(playerSnapshot);
-        UpdateReplayCrosshairPresentation();
         UpdateReplayBotViewmodels(playerSnapshot);
 
         for (var activeIndex = 0; activeIndex < activeSlotCount; activeIndex++)

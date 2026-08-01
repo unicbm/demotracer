@@ -110,11 +110,6 @@ public sealed partial class DemoTracerPlugin
     private int CountLoadedViewmodelEvidence()
         => _session.LoadedReplays.Values.Count(replay => HasViewmodelEvidence(replay.View));
 
-    private void UpdateReplayCrosshairPresentation()
-    {
-        EnsureBotHiderPresentationLease();
-    }
-
     private bool RefreshReplayCrosshairPresentation()
     {
         return SyncBotHiderPresentationLease(announce: false);
