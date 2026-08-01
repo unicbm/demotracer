@@ -274,7 +274,7 @@ public sealed partial class DemoTracerPlugin
         {
             var slot = pair.Key;
             var replay = pair.Value;
-            if (!IsReplaySlotStillSafe(slot) ||
+            if (!CanWriteReplaySlot(slot) ||
                 !HasActiveBotHiderReplayIdentity(slot, replay.SteamId) ||
                 !_botRandomizerBridge.TryGetManagedBot(slot, out var managed))
             {
@@ -417,7 +417,8 @@ public sealed partial class DemoTracerPlugin
         DemoTracerCosmeticWriteField field,
         int weaponDefinitionIndex = 0)
     {
-        if (!_botRandomizerLease.TryGet(slot, subjectSteamId, out var claim) ||
+        if (!CanWriteReplaySlot(slot) ||
+            !_botRandomizerLease.TryGet(slot, subjectSteamId, out var claim) ||
             !claim.Allows(field, weaponDefinitionIndex))
         {
             return false;
@@ -497,19 +498,29 @@ public sealed partial class DemoTracerPlugin
     {
         foreach (var slot in slots.Distinct())
         {
-            _session.RebuiltInventorySlots.Remove(slot);
-            _session.LoadoutSyncedSlots.Remove(slot);
+            if (!IsReplaySlotPlaying(slot))
+            {
+                _session.RebuiltInventorySlots.Remove(slot);
+                _session.LoadoutSyncedSlots.Remove(slot);
+            }
             InvalidateLoadedReplayCosmeticAlignmentForSlot(slot);
             ScheduleCosmeticNextFrame(() =>
             {
-                if (!_session.LoadedReplays.TryGetValue(slot, out var replay) ||
+                if (!CanWriteReplaySlot(slot) ||
+                    !_session.LoadedReplays.TryGetValue(slot, out var replay) ||
                     !_botRandomizerLease.TryGet(slot, replay.SteamId, out _))
                 {
                     return;
                 }
 
-                ApplyReplayLoadoutForSlot(slot, replay);
-                PreloadReplayWeaponsForSlot(slot, replay);
+                // Lease replacement can occur because another replay slot was
+                // handed off. Never rebuild a surviving slot's live inventory
+                // while native playback is active; only restore cosmetics.
+                if (!IsReplaySlotPlaying(slot))
+                {
+                    ApplyReplayLoadoutForSlot(slot, replay);
+                    PreloadReplayWeaponsForSlot(slot, replay);
+                }
                 if (ReplayMusicKitAlignmentAllowed(replay.MusicKitId))
                     _ = ApplyReplayMusicKitForSlot(slot, replay.MusicKitId);
                 if (!TryAlignLoadedReplayCosmeticsForSlot(slot, replay))

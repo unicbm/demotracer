@@ -70,6 +70,7 @@ public sealed partial class DemoTracerPlugin
                 ReleaseReplaySlot(slot, "unsafe_start_target");
                 continue;
             }
+            _session.DemoTracerOwnedSlots.Add(slot);
 
             if (_session.LoadedReplays.TryGetValue(slot, out var replay))
             {
@@ -86,6 +87,10 @@ public sealed partial class DemoTracerPlugin
             {
                 MarkReplayStarted(slot);
                 ok++;
+            }
+            else
+            {
+                ReleaseReplaySlot(slot, "start_failed");
             }
         }
         var voice = TryStartLoadedAutoVoicePlayback(anchor, freezeTimeSeconds, ok);

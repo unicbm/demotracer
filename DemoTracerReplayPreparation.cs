@@ -32,6 +32,12 @@ public sealed partial class DemoTracerPlugin
 
     private void PreloadLoadedReplays()
     {
+        foreach (var slot in _session.LoadedSlots)
+        {
+            if (IsReplaySlotStillSafe(slot))
+                _session.DemoTracerOwnedSlots.Add(slot);
+        }
+
         // Establish round-start positions before any later freeze-time replay
         // scheduling can leave partial-roster bots at native spawn points.
         ScheduleInitialRoundSpawnAssignment();
@@ -400,7 +406,7 @@ public sealed partial class DemoTracerPlugin
 
         var targetSlot = targetOwner.Value.Slot;
         var targetSteamId = targetOwner.Value.SteamId;
-        if (targetSlot < 0 || !IsReplaySlotStillSafe(targetSlot))
+        if (targetSlot < 0 || !CanWriteReplaySlot(targetSlot))
             return;
         var firstAlignment = !_session.SafeC4Aligned;
 
@@ -409,8 +415,12 @@ public sealed partial class DemoTracerPlugin
         // authoritative owner, so purge every other player rather than only bots.
         foreach (var candidate in FindTeamPlayers())
         {
-            if (candidate.Slot == targetSlot)
+            if (candidate.Slot == targetSlot ||
+                (_session.LoadedReplays.ContainsKey(candidate.Slot) &&
+                 !_session.DemoTracerOwnedSlots.Contains(candidate.Slot)))
+            {
                 continue;
+            }
             RemoveC4FromPlayer(candidate, "safe_c4_owner_align");
         }
 
@@ -454,7 +464,8 @@ public sealed partial class DemoTracerPlugin
     {
         foreach (var slot in _session.LoadedSlots)
         {
-            if (!_session.LoadedReplays.TryGetValue(slot, out var replay))
+            if (!CanWriteReplaySlot(slot) ||
+                !_session.LoadedReplays.TryGetValue(slot, out var replay))
                 continue;
 
             var replayEvent = replay.HifiEvents.FirstOrDefault(predicate);
@@ -476,6 +487,6 @@ public sealed partial class DemoTracerPlugin
 
         var pawn = player.PlayerPawn.Value;
         foreach (var weapon in GetReplayWeaponsByClass(pawn, "weapon_c4").ToArray())
-            DropAndKillReplayWeapon(player, pawn, weapon, reason);
+            RemoveAndKillReplayWeapon(player, pawn, weapon, reason);
     }
 }

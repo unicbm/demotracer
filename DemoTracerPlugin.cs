@@ -121,6 +121,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     {
         RegisterControlCommandAuthorization();
         RegisterReplayRetentionJoinHook();
+        RegisterReplayBuySuppressionHooks();
         LoadRuntimeConfig(message => Server.PrintToConsole(message), announceMissing: true);
         if (!ManagedSchemaWritesAllowed())
         {
@@ -157,6 +158,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     public override void Unload(bool hotReload)
     {
         StopRuntimeHealthHeartbeat();
+        UnregisterReplayBuySuppressionHooks();
         UnregisterReplayRetentionJoinHook();
         UnhookCosmeticGiveNamedItem();
         ClearReplayStateForLifecycle(hotReload ? "plugin_reload" : "plugin_unload");

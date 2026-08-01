@@ -65,6 +65,9 @@ public sealed partial class DemoTracerPlugin
         _session.ReplayHifiEventNextBySlot[slot] = 0;
     }
 
+    private bool CanWriteReplaySlot(int slot)
+        => _session.DemoTracerOwnedSlots.Contains(slot) && IsReplaySlotStillSafe(slot);
+
     private void ReleaseReplaySlot(
         int slot,
         string reason,
@@ -72,6 +75,7 @@ public sealed partial class DemoTracerPlugin
     {
         InvalidateReplayMusicKitRepair(slot);
         InvalidateReplayMutationGeneration(slot);
+        CancelPendingProjectileAlignForSlot(slot, reason);
         _cosmeticAlignmentTracker.CancelPending(slot);
         _session.FreezePrerollSlots.Remove(slot);
         _session.ResumedFreezePrerollSlots.Remove(slot);
@@ -98,6 +102,11 @@ public sealed partial class DemoTracerPlugin
         _session.PendingBulletHits.Remove(slot);
         _session.PendingBulletDamages.Remove(slot);
         _session.PendingThreat360.Remove(slot);
+        // Native projectile birth align is a global queue without per-slot
+        // cancellation. Handoff prioritizes the ownership boundary over a
+        // possible in-flight alignment on another surviving replay slot.
+        if (releaseKind == ReplayReleaseKind.Handoff || !HasActiveReplaySlots())
+            BotControllerNative.ClearProjectileBirthAlign();
         BotControllerNative.ClearBuyPlan(slot);
         BotControllerNative.UnlockReplayControl(slot);
         BotControllerNative.UnlockWeaponSlot(slot);
@@ -110,6 +119,7 @@ public sealed partial class DemoTracerPlugin
             Server.PrintToConsole(
                 $"dtr: handoff best-weapon request unavailable slot={slot}");
         }
+        _ = SyncBotRandomizerCosmeticLease(announce: false);
         Server.PrintToConsole(
             $"dtr: released slot={slot} reason={reason} viewmodel={(retainedViewmodel ? "retained_round" : "released")}");
     }

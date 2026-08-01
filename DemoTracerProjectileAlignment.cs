@@ -139,6 +139,12 @@ public sealed partial class DemoTracerPlugin
             var pending = entry.Value;
             try
             {
+                if (pending.Matched && !CanWriteReplaySlot(pending.Slot))
+                {
+                    FinishProjectileAlign(entry.Key, pending, "replay_released");
+                    continue;
+                }
+
                 var projectile = new CBaseCSGrenadeProjectile(pending.Handle);
                 if (!projectile.IsValid)
                 {
@@ -207,6 +213,31 @@ public sealed partial class DemoTracerPlugin
             }
         }
         _session.PendingProjectileAlignTickScratch.Clear();
+    }
+
+    private void CancelPendingProjectileAlignForSlot(int slot, string reason)
+    {
+        foreach (var entry in _session.PendingProjectileAlign.ToArray())
+        {
+            var pending = entry.Value;
+            var belongsToSlot = pending.Matched && pending.Slot == slot;
+            if (!belongsToSlot && !pending.Matched)
+            {
+                try
+                {
+                    var projectile = new CBaseCSGrenadeProjectile(pending.Handle);
+                    belongsToSlot = projectile.IsValid &&
+                                    TryGetProjectileThrowerSlot(projectile, out var throwerSlot) &&
+                                    throwerSlot == slot;
+                }
+                catch
+                {
+                }
+            }
+
+            if (belongsToSlot)
+                FinishProjectileAlign(entry.Key, pending, $"replay_released:{reason}");
+        }
     }
 
     private bool TryResolveAndApplyProjectileAlign(

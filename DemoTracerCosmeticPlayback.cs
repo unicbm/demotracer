@@ -22,7 +22,7 @@ public sealed partial class DemoTracerPlugin
 
     private bool TryAlignLoadedReplayCosmeticsForSlot(int slot, LoadedReplay replay)
     {
-        if (!IsReplaySlotStillSafe(slot))
+        if (!CanWriteReplaySlot(slot))
             return false;
 
         var player = Utilities.GetPlayerFromSlot(slot);
@@ -115,7 +115,9 @@ public sealed partial class DemoTracerPlugin
         int slot,
         int attemptsRemaining = ReplayCosmeticAlignmentAttemptLimit)
     {
-        if (attemptsRemaining <= 0 || !_session.LoadedReplays.ContainsKey(slot))
+        if (attemptsRemaining <= 0 ||
+            !CanWriteReplaySlot(slot) ||
+            !_session.LoadedReplays.ContainsKey(slot))
             return;
 
         var token = _cosmeticAlignmentTracker.Queue(slot);
@@ -193,7 +195,8 @@ public sealed partial class DemoTracerPlugin
         bool countResult,
         TickPlayerSnapshot? playerSnapshot = null)
     {
-        if (!WeaponCosmeticFeatureEnabled() ||
+        if (!CanWriteReplaySlot(slot) ||
+            !WeaponCosmeticFeatureEnabled() ||
             !_session.LoadedReplays.TryGetValue(slot, out var replay) ||
             !HasCosmeticEvidence(replay.Cosmetics))
         {
@@ -323,7 +326,7 @@ public sealed partial class DemoTracerPlugin
     {
         player = null!;
         weapon = null!;
-        if (!IsReplaySlotStillSafe(slot))
+        if (!CanWriteReplaySlot(slot))
             return false;
 
         var candidatePlayer = Utilities.GetPlayerFromSlot(slot);
@@ -364,7 +367,7 @@ public sealed partial class DemoTracerPlugin
         foreach (var candidate in candidates)
         {
             var candidateSlot = candidate.Slot;
-            if (!IsReplaySlotStillSafe(candidateSlot))
+            if (!CanWriteReplaySlot(candidateSlot))
                 continue;
 
             var pawn = candidate?.PlayerPawn.Value;
@@ -390,7 +393,7 @@ public sealed partial class DemoTracerPlugin
         CBasePlayerWeapon weapon,
         bool countResult)
     {
-        if (!IsReplaySlotStillSafe(slot))
+        if (!CanWriteReplaySlot(slot))
         {
             return false;
         }

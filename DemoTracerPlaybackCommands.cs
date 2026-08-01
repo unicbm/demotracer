@@ -120,11 +120,6 @@ public sealed partial class DemoTracerPlugin
         var slotArg = mode == "slot" ? 2 : 1;
         if (!TryParseSlotAt(command, slotArg, out var slot))
             return;
-        var loop = command.ArgCount > slotArg + 1 && command.GetArg(slotArg + 1) != "0";
-        if (_session.LoadedReplays.TryGetValue(slot, out var replay))
-            PreloadReplayWeaponsForSlot(slot, replay);
-        _session.LastEnsuredWeaponDef.Remove(slot);
-
         if (!IsReplaySlotStillSafe(slot))
         {
             command.ReplyToCommand($"dtr: refused to play slot {slot}: not a safe bot target");
@@ -133,10 +128,20 @@ public sealed partial class DemoTracerPlugin
         if (!CheckReplayStartGates(message => command.ReplyToCommand(message), stopCurrentForOverride: false))
             return;
 
+        var loop = command.ArgCount > slotArg + 1 && command.GetArg(slotArg + 1) != "0";
+        _session.DemoTracerOwnedSlots.Add(slot);
+        if (_session.LoadedReplays.TryGetValue(slot, out var replay))
+            PreloadReplayWeaponsForSlot(slot, replay);
+        _session.LastEnsuredWeaponDef.Remove(slot);
+
         var ok = StartReplayForSlot(slot, loop);
         if (ok)
         {
             MarkReplayStarted(slot);
+        }
+        else
+        {
+            ReleaseReplaySlot(slot, "manual_start_failed");
         }
         var state = ok ? default : BotControllerNative.GetReplayState(slot);
         command.ReplyToCommand(ok

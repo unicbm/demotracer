@@ -26,7 +26,10 @@ public sealed partial class DemoTracerPlugin
 {
     private void ApplyReplayLoadoutForSlot(int slot, LoadedReplay replay)
     {
-        if (!_weaponAlignEnabled || !replay.HasLoadout || _session.LoadoutSyncedSlots.Contains(slot))
+        if (!CanWriteReplaySlot(slot) ||
+            !_weaponAlignEnabled ||
+            !replay.HasLoadout ||
+            _session.LoadoutSyncedSlots.Contains(slot))
             return;
 
         var player = Utilities.GetPlayerFromSlot(slot);
@@ -133,7 +136,8 @@ public sealed partial class DemoTracerPlugin
 
     private void ApplyReplayRoundStartBalanceForSlot(int slot, LoadedReplay replay)
     {
-        if (_session.BalanceSyncedSlots.Contains(slot) ||
+        if (!CanWriteReplaySlot(slot) ||
+            _session.BalanceSyncedSlots.Contains(slot) ||
             !ReplayRuntimePolicy.TryResolveRoundStartBalance(
                 _balanceAlignEnabled,
                 ManagedSchemaWritesAllowed(),
@@ -200,7 +204,7 @@ public sealed partial class DemoTracerPlugin
         {
             var extraWeapon = currentSlotWeapons.FirstOrDefault();
             return extraWeapon != null &&
-                   DropAndKillReplayWeapon(player, pawn, extraWeapon, "extra_loadout_slot");
+                   RemoveAndKillReplayWeapon(player, pawn, extraWeapon, "extra_loadout_slot");
         }
 
         if (currentSlotWeapons.Count == 0)
@@ -254,7 +258,7 @@ public sealed partial class DemoTracerPlugin
             return true;
         }
 
-        if (!DropAndKillReplayWeapon(player, pawn, weaponToDrop, reason))
+        if (!RemoveAndKillReplayWeapon(player, pawn, weaponToDrop, reason))
             return false;
 
         var pending = new PendingWeaponSlotReplacement(

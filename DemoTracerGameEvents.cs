@@ -139,10 +139,12 @@ public sealed partial class DemoTracerPlugin
             _session.LoadoutSyncedSlots.Remove(spawnedSlot);
             _session.RebuiltInventorySlots.Remove(spawnedSlot);
             InvalidateLoadedReplayCosmeticAlignmentForSlot(player.Slot);
-            QueueLoadedReplayCosmeticAlignmentForSlot(player.Slot);
+            if (_session.DemoTracerOwnedSlots.Contains(player.Slot))
+                QueueLoadedReplayCosmeticAlignmentForSlot(player.Slot);
             if (_session.LoadedSlots.Count > 0)
             {
-                if (_session.LoadedReplays.ContainsKey(player.Slot))
+                if (_session.DemoTracerOwnedSlots.Contains(player.Slot) &&
+                    _session.LoadedReplays.ContainsKey(player.Slot))
                 {
                     // Establish the replay identity and its Agent/Knife/Gloves
                     // writer lease in the spawn event itself. BotRandomizer's
@@ -160,6 +162,7 @@ public sealed partial class DemoTracerPlugin
                             spawnedUserId is not int expectedUserId ||
                             Utilities.GetPlayerFromSlot(spawnedSlot) is not { IsValid: true } currentPlayer ||
                             currentPlayer.UserId != expectedUserId ||
+                            !CanWriteReplaySlot(spawnedSlot) ||
                             !_session.LoadedReplays.TryGetValue(spawnedSlot, out var replay))
                         {
                             return;

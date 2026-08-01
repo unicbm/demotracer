@@ -30,7 +30,7 @@ internal static class ReplayWeaponReplacementPolicy
             : WeaponSlotReplacementAction.PreserveExisting;
     }
 
-    internal static bool CanDropAndKill(string className)
+    internal static bool CanRemoveAndKill(string className)
     {
         var normalized = className.Trim();
         return !normalized.StartsWith("weapon_knife", StringComparison.OrdinalIgnoreCase) &&

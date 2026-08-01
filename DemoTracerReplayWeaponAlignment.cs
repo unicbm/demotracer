@@ -26,7 +26,7 @@ public sealed partial class DemoTracerPlugin
 {
     private void PreloadReplayWeaponsForSlot(int slot, LoadedReplay replay)
     {
-        if (_session.RebuiltInventorySlots.Contains(slot))
+        if (!CanWriteReplaySlot(slot) || _session.RebuiltInventorySlots.Contains(slot))
             return;
 
         var rebuilt = true;
@@ -55,6 +55,9 @@ public sealed partial class DemoTracerPlugin
         bool allowSlotReplacement,
         bool force)
     {
+        if (!CanWriteReplaySlot(slot))
+            return;
+
         var player = Utilities.GetPlayerFromSlot(slot);
         if (player is not { IsValid: true, PawnIsAlive: true })
             return;
