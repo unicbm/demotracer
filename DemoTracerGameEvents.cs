@@ -131,19 +131,19 @@ public sealed partial class DemoTracerPlugin
             var spawnedSlot = player.Slot;
             var spawnedUserId = player.UserId;
             if (_retainedReplayViewmodelSlots.Contains(player.Slot) &&
-                !_session.LastPlayingSlots.Contains(player.Slot))
+                !_session.ReplaySlots.IsPlaying(player.Slot))
             {
                 RestoreReplayBotViewmodel(player.Slot);
             }
-            InvalidateReplayMutationGeneration(spawnedSlot);
+            InvalidateReplayWriteEpoch(spawnedSlot);
             _session.LoadoutSyncedSlots.Remove(spawnedSlot);
             _session.RebuiltInventorySlots.Remove(spawnedSlot);
             InvalidateLoadedReplayCosmeticAlignmentForSlot(player.Slot);
-            if (_session.DemoTracerOwnedSlots.Contains(player.Slot))
+            if (_session.ReplaySlots.IsOwned(player.Slot))
                 QueueLoadedReplayCosmeticAlignmentForSlot(player.Slot);
             if (_session.LoadedSlots.Count > 0)
             {
-                if (_session.DemoTracerOwnedSlots.Contains(player.Slot) &&
+                if (_session.ReplaySlots.IsOwned(player.Slot) &&
                     _session.LoadedReplays.ContainsKey(player.Slot))
                 {
                     // Establish the replay identity and its Agent/Knife/Gloves

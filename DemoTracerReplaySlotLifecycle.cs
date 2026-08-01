@@ -55,7 +55,7 @@ public sealed partial class DemoTracerPlugin
     private void MarkReplayStarted(int slot)
     {
         _retainedReplayViewmodelSlots.Remove(slot);
-        _session.LastPlayingSlots.Add(slot);
+        _session.ReplaySlots.MarkPlaying(slot);
         _session.ReplayStartedAt[slot] = Server.CurrentTime;
         _session.ReplayPerceptionBaselineSerial[slot] =
             BotControllerNative.TryGetNativePerceptionState(slot, out var perception)
@@ -66,7 +66,7 @@ public sealed partial class DemoTracerPlugin
     }
 
     private bool CanWriteReplaySlot(int slot)
-        => _session.DemoTracerOwnedSlots.Contains(slot) && IsReplaySlotStillSafe(slot);
+        => _session.ReplaySlots.IsOwned(slot) && IsReplaySlotStillSafe(slot);
 
     private void ReleaseReplaySlot(
         int slot,
@@ -74,7 +74,8 @@ public sealed partial class DemoTracerPlugin
         ReplayReleaseKind releaseKind = ReplayReleaseKind.Immediate)
     {
         InvalidateReplayMusicKitRepair(slot);
-        InvalidateReplayMutationGeneration(slot);
+        _session.ReplaySlots.Release(slot);
+        ClearPendingWeaponSlotReplacementsForSlot(slot);
         CancelPendingProjectileAlignForSlot(slot, reason);
         _cosmeticAlignmentTracker.CancelPending(slot);
         _session.FreezePrerollSlots.Remove(slot);
@@ -83,16 +84,13 @@ public sealed partial class DemoTracerPlugin
                                 RetainReplayBotViewmodelForRound(slot);
         if (!retainedViewmodel)
             RestoreReplayBotViewmodel(slot);
-        _session.LastPlayingSlots.Remove(slot);
         _session.ReplayStartedAt.Remove(slot);
         _session.ReplayPerceptionBaselineSerial.Remove(slot);
         _session.LastEnsuredWeaponDef.Remove(slot);
         _session.LastReplayWeaponDef.Remove(slot);
         _session.LastLockedWeaponTarget.Remove(slot);
-        ClearPendingWeaponSlotReplacementsForSlot(slot);
         _session.ProjectileAlignNextBySlot.Remove(slot);
         _session.ReplayHifiEventNextBySlot.Remove(slot);
-        _session.DemoTracerOwnedSlots.Remove(slot);
         if (releaseKind == ReplayReleaseKind.Immediate)
         {
             _session.RebuiltInventorySlots.Remove(slot);
@@ -184,7 +182,7 @@ public sealed partial class DemoTracerPlugin
         if (slot < 0)
             return false;
 
-        if (_session.DemoTracerOwnedSlots.Contains(slot))
+        if (_session.ReplaySlots.IsOwned(slot))
         {
             return true;
         }

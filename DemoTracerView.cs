@@ -139,7 +139,7 @@ public sealed partial class DemoTracerPlugin
             ClearReplayLeftHandDesiredLatches();
 
         ulong activeReplaySlotMask = 0;
-        foreach (var slot in _session.LastPlayingSlots)
+        foreach (var slot in _session.ReplaySlots.PlayingSlots)
         {
             if (slot is < 0 or >= MaxPlayerSlots ||
                 !_session.LoadedReplays.TryGetValue(slot, out var replay) ||

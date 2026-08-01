@@ -128,7 +128,7 @@ public sealed partial class DemoTracerPlugin
     private readonly record struct PendingWeaponSlotReplacement(
         int PlayerSlot,
         int PlayerUserId,
-        long ReplayMutationGeneration,
+        long ReplayWriteEpoch,
         string TargetItem,
         string FallbackItem,
         ReplayWeaponSlot WeaponSlot);

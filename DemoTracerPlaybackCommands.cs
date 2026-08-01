@@ -129,7 +129,7 @@ public sealed partial class DemoTracerPlugin
             return;
 
         var loop = command.ArgCount > slotArg + 1 && command.GetArg(slotArg + 1) != "0";
-        _session.DemoTracerOwnedSlots.Add(slot);
+        _session.ReplaySlots.Claim(slot);
         if (_session.LoadedReplays.TryGetValue(slot, out var replay))
             PreloadReplayWeaponsForSlot(slot, replay);
         _session.LastEnsuredWeaponDef.Remove(slot);
@@ -279,8 +279,6 @@ public sealed partial class DemoTracerPlugin
             slots.Add(slot);
         foreach (var slot in _session.LoadedReplays.Keys)
             slots.Add(slot);
-        foreach (var slot in _session.DemoTracerOwnedSlots)
-            slots.Add(slot);
         foreach (var slot in _retainedBotHiderPresentation.Keys)
             slots.Add(slot);
         foreach (var slot in NativeReplaySlots())
@@ -390,7 +388,7 @@ public sealed partial class DemoTracerPlugin
         stopped = BotControllerNative.StopReplay(candidate.Slot);
         unloaded = BotControllerNative.UnloadReplay(candidate.Slot);
         ReleaseReplaySlot(candidate.Slot, reason);
-        _session.LoadedSlots.Remove(candidate.Slot);
+        _session.ReplaySlots.Unload(candidate.Slot);
         ForgetRetainedBotHiderPresentation(candidate.Slot);
         ForgetLoadedReplayMetadata(candidate.Slot);
         return true;
@@ -434,7 +432,7 @@ public sealed partial class DemoTracerPlugin
         if (ok || hadRetainedPresentation)
         {
             StopVoiceTestPlayback("unload", printSummary: false);
-            _session.LoadedSlots.Remove(slot);
+            _session.ReplaySlots.Unload(slot);
             ReleaseReplaySlot(slot, "unload");
             ForgetRetainedBotHiderPresentation(slot);
             ForgetLoadedReplayMetadata(slot);

@@ -202,11 +202,9 @@ public sealed partial class DemoTracerPlugin : BasePlugin
 
     private bool IsDisconnectingReplaySlot(int slot)
     {
-        if (_session.LoadedSlots.Contains(slot) ||
+        if (_session.ReplaySlots.IsLoaded(slot) ||
             _session.WarmReplayBufferSlots.Contains(slot) ||
-            _session.DemoTracerOwnedSlots.Contains(slot) ||
             _session.LoadedReplays.ContainsKey(slot) ||
-            _session.LastPlayingSlots.Contains(slot) ||
             _retainedReplayViewmodelSlots.Contains(slot))
         {
             return true;
@@ -224,7 +222,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         BotControllerNative.UnloadReplay(slot);
         _session.WarmReplayBufferSlots.Remove(slot);
         ReleaseReplaySlot(slot, reason);
-        _session.LoadedSlots.Remove(slot);
+        _session.ReplaySlots.Unload(slot);
         ForgetLoadedReplayMetadata(slot);
     }
 

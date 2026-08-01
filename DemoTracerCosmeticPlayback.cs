@@ -284,7 +284,7 @@ public sealed partial class DemoTracerPlugin
                 ScheduleGivenWeaponCosmeticNextFrame(
                     slot,
                     weaponEntityHandle,
-                    CurrentReplayMutationGeneration(slot),
+                    CurrentReplayWriteEpoch(slot),
                     countResult: true);
             }
         }
@@ -299,12 +299,12 @@ public sealed partial class DemoTracerPlugin
     private void ScheduleGivenWeaponCosmeticNextFrame(
         int slot,
         uint weaponEntityHandle,
-        long mutationGeneration,
+        long writeEpoch,
         bool countResult)
     {
         ScheduleCosmeticNextFrame(() =>
         {
-            if (!IsReplayMutationGenerationCurrent(slot, mutationGeneration) ||
+            if (!IsReplayWriteEpochCurrent(slot, writeEpoch) ||
                 !TryResolveOwnedReplayWeapon(slot, weaponEntityHandle, out var player, out var weapon))
             {
                 return;
@@ -458,9 +458,9 @@ public sealed partial class DemoTracerPlugin
         var weaponEntityHandle = entity.EntityHandle.Raw;
         if (weaponEntityHandle == Utilities.InvalidEHandleIndex)
             return;
-        var mutationGenerations = _session.LoadedSlots
+        var writeEpochs = _session.LoadedSlots
             .Distinct()
-            .ToDictionary(slot => slot, CurrentReplayMutationGeneration);
+            .ToDictionary(slot => slot, CurrentReplayWriteEpoch);
 
         ScheduleCosmeticNextFrame(() =>
         {
@@ -489,8 +489,8 @@ public sealed partial class DemoTracerPlugin
             foreach (var player in candidates)
             {
                 var slot = player.Slot;
-                if (!mutationGenerations.TryGetValue(slot, out var mutationGeneration) ||
-                    !IsReplayMutationGenerationCurrent(slot, mutationGeneration) ||
+                if (!writeEpochs.TryGetValue(slot, out var writeEpoch) ||
+                    !IsReplayWriteEpochCurrent(slot, writeEpoch) ||
                     !IsReplaySlotStillSafe(slot))
                 {
                     continue;

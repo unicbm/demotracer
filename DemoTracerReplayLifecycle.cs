@@ -57,11 +57,9 @@ public sealed partial class DemoTracerPlugin
         if (releaseBuffers)
             ReleaseUnusedWarmReplayBuffers();
         StopUntrackedNativeReplaySlots(trackedSlots, "unload_all");
-        _session.LoadedSlots.Clear();
-        _session.DemoTracerOwnedSlots.Clear();
+        _session.ReplaySlots.Clear();
         _session.LoadedReplays.Clear();
         _session.ReplayIdentityGenerationBySlot.Clear();
-        _session.ReplayMutationGenerationBySlot.Clear();
         ClearStoppedReplayExecutionState();
         _session.LoadoutSyncedSlots.Clear();
         _session.BalanceSyncedSlots.Clear();
@@ -96,10 +94,8 @@ public sealed partial class DemoTracerPlugin
             InvalidateInitialSpawnAssignment();
             ClearFreezePrerollReplayState();
             ClearReplayLeftHandDesiredLatches(forceNative: true);
-            var hadReplayState = _session.LoadedSlots.Count > 0 ||
-                                 _session.DemoTracerOwnedSlots.Count > 0 ||
+            var hadReplayState = _session.ReplaySlots.HasAnyState ||
                                  _session.LoadedReplays.Count > 0 ||
-                                 _session.LastPlayingSlots.Count > 0 ||
                                  _retainedReplayViewmodelSlots.Count > 0 ||
                                  _session.PendingProjectileAlign.Count > 0 ||
                                  _roundBannerPlayback != null ||
@@ -135,15 +131,13 @@ public sealed partial class DemoTracerPlugin
             ClearVoiceClipCache();
             ClearLoadedAutoChat();
 
-            _session.LoadedSlots.Clear();
+            _session.ReplaySlots.Clear();
             _session.WarmReplayBufferSlots.Clear();
-            _session.DemoTracerOwnedSlots.Clear();
             _session.LoadedReplays.Clear();
             ClearReplayRetentionPriority(clearPending: true);
             ClearRetainedBotHiderPresentation();
             _session.ReplayHifiEventNextBySlot.Clear();
             _session.ReplayIdentityGenerationBySlot.Clear();
-            _session.ReplayMutationGenerationBySlot.Clear();
             ClearStoppedReplayExecutionState();
             _session.LoadoutSyncedSlots.Clear();
             _session.BalanceSyncedSlots.Clear();
@@ -169,10 +163,8 @@ public sealed partial class DemoTracerPlugin
 
     private bool HasReplayLifecycleState(bool includeNative = false)
     {
-        if (_session.LoadedSlots.Count > 0 ||
-            _session.DemoTracerOwnedSlots.Count > 0 ||
+        if (_session.ReplaySlots.HasAnyState ||
             _session.LoadedReplays.Count > 0 ||
-            _session.LastPlayingSlots.Count > 0 ||
             _retainedReplayViewmodelSlots.Count > 0 ||
             _session.PendingProjectileAlign.Count > 0 ||
             _session.Plan.Armed ||
@@ -226,7 +218,6 @@ public sealed partial class DemoTracerPlugin
         _session.PendingProjectileAlign.Clear();
         BotControllerNative.ClearProjectileBirthAlign();
         _session.RebuiltInventorySlots.Clear();
-        _session.LastPlayingSlots.Clear();
         _session.ReplayStartedAt.Clear();
         _session.ReplayPerceptionBaselineSerial.Clear();
         _session.PendingBulletHits.Clear();
@@ -256,8 +247,7 @@ public sealed partial class DemoTracerPlugin
 
     private bool StopReplayStateForRoundBoundary(string reason)
     {
-        if (_session.LoadedSlots.Count == 0 &&
-            _session.LastPlayingSlots.Count == 0 &&
+        if (!_session.ReplaySlots.HasAnyState &&
             _retainedReplayViewmodelSlots.Count == 0 &&
             !HasAnyNativeActiveReplaySlot())
             return false;

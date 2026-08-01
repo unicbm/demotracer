@@ -26,9 +26,7 @@ public sealed partial class DemoTracerPlugin
 {
     private void RememberLoadedSlot(int slot)
     {
-        if (!_session.LoadedSlots.Contains(slot))
-            _session.LoadedSlots.Add(slot);
-        _session.DemoTracerOwnedSlots.Add(slot);
+        _session.ReplaySlots.LoadAndClaim(slot);
     }
 
     private long BeginReplayIdentityGeneration(int slot)
@@ -53,23 +51,15 @@ public sealed partial class DemoTracerPlugin
     private void InvalidateReplayIdentityGeneration(int slot)
         => _session.ReplayIdentityGenerationBySlot.Remove(slot);
 
-    private long CurrentReplayMutationGeneration(int slot)
+    private long CurrentReplayWriteEpoch(int slot)
+        => _session.ReplaySlots.CurrentEpoch(slot);
+
+    private bool IsReplayWriteEpochCurrent(int slot, long epoch)
+        => _session.ReplaySlots.IsCurrentEpoch(slot, epoch);
+
+    private void InvalidateReplayWriteEpoch(int slot)
     {
-        if (_session.ReplayMutationGenerationBySlot.TryGetValue(slot, out var generation))
-            return generation;
-
-        generation = ++_session.NextReplayMutationGeneration;
-        _session.ReplayMutationGenerationBySlot[slot] = generation;
-        return generation;
-    }
-
-    private bool IsReplayMutationGenerationCurrent(int slot, long generation)
-        => _session.ReplayMutationGenerationBySlot.TryGetValue(slot, out var current) &&
-           current == generation;
-
-    private void InvalidateReplayMutationGeneration(int slot)
-    {
-        _session.ReplayMutationGenerationBySlot.Remove(slot);
+        _session.ReplaySlots.InvalidateWrites(slot);
         ClearPendingWeaponSlotReplacementsForSlot(slot);
     }
 
@@ -78,12 +68,11 @@ public sealed partial class DemoTracerPlugin
         InvalidateInitialSpawnAssignment();
         RestoreReplayMusicKitForSlot(slot, "forget_replay");
         InvalidateReplayIdentityGeneration(slot);
-        InvalidateReplayMutationGeneration(slot);
+        InvalidateReplayWriteEpoch(slot);
         _session.LoadedReplays.Remove(slot);
         _session.LastEnsuredWeaponDef.Remove(slot);
         _session.LastReplayWeaponDef.Remove(slot);
         _session.LastLockedWeaponTarget.Remove(slot);
-        ClearPendingWeaponSlotReplacementsForSlot(slot);
         _session.ReplayHifiEventNextBySlot.Remove(slot);
         _session.RebuiltInventorySlots.Remove(slot);
         _session.BalanceSyncedSlots.Remove(slot);
@@ -166,7 +155,6 @@ public sealed partial class DemoTracerPlugin
             retentionRank);
         InvalidateReplayMusicKitRepair(slot);
         ClearPendingWeaponSlotReplacementsForSlot(slot);
-        InvalidateReplayMutationGeneration(slot);
         var generation = BeginReplayIdentityGeneration(slot);
         if (_session.ReplayMusicKitBaselines.TryGetValue(slot, out var musicKitBaseline))
         {

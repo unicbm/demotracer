@@ -39,7 +39,7 @@ public sealed partial class DemoTracerPlugin
             pawn.WeaponServices == null ||
             player.UserId is not int playerUserId)
             return;
-        var replayMutationGeneration = CurrentReplayMutationGeneration(slot);
+        var replayWriteEpoch = CurrentReplayWriteEpoch(slot);
 
         ApplyReplayArmorAndKit(player, pawn, replay.Loadout);
 
@@ -51,14 +51,14 @@ public sealed partial class DemoTracerPlugin
             ReplayWeaponSlot.Primary,
             itemName => GetReplayWeaponSlot(itemName) == ReplayWeaponSlot.Primary,
             playerUserId,
-            replayMutationGeneration);
+            replayWriteEpoch);
         deferredWeaponSync |= SyncTargetWeaponSlot(
             player,
             targetItems,
             ReplayWeaponSlot.Secondary,
             itemName => GetReplayWeaponSlot(itemName) == ReplayWeaponSlot.Secondary,
             playerUserId,
-            replayMutationGeneration);
+            replayWriteEpoch);
         GiveMissingLoadoutItems(
             player,
             targetItems,
@@ -70,7 +70,7 @@ public sealed partial class DemoTracerPlugin
         if (deferredWeaponSync)
         {
             Server.NextFrame(() => Server.NextFrame(() =>
-                ApplyReplayWeaponPresetIfCurrent(slot, playerUserId, replayMutationGeneration)));
+                ApplyReplayWeaponPresetIfCurrent(slot, playerUserId, replayWriteEpoch)));
         }
         else
         {
@@ -84,10 +84,10 @@ public sealed partial class DemoTracerPlugin
     private void ApplyReplayWeaponPresetIfCurrent(
         int slot,
         int playerUserId,
-        long replayMutationGeneration)
+        long replayWriteEpoch)
     {
         var player = Utilities.GetPlayerFromSlot(slot);
-        if (!IsReplayMutationGenerationCurrent(slot, replayMutationGeneration) ||
+        if (!IsReplayWriteEpochCurrent(slot, replayWriteEpoch) ||
             player is not { IsValid: true, PawnIsAlive: true } ||
             player.UserId != playerUserId ||
             !_session.LoadedReplays.TryGetValue(slot, out var currentReplay))
@@ -185,7 +185,7 @@ public sealed partial class DemoTracerPlugin
         ReplayWeaponSlot slot,
         Func<string, bool> predicate,
         int playerUserId,
-        long replayMutationGeneration)
+        long replayWriteEpoch)
     {
         var targetItem = BestTargetSlotItem(targetItems, predicate);
         var pawn = player.PlayerPawn.Value;
@@ -223,7 +223,7 @@ public sealed partial class DemoTracerPlugin
         if (fallbackItem == null || weaponToDrop == null)
             return false;
         if (player.UserId != playerUserId ||
-            !IsReplayMutationGenerationCurrent(player.Slot, replayMutationGeneration))
+            !IsReplayWriteEpochCurrent(player.Slot, replayWriteEpoch))
             return false;
 
         return BeginWeaponSlotReplacement(
@@ -234,7 +234,7 @@ public sealed partial class DemoTracerPlugin
             fallbackItem,
             slot,
             playerUserId,
-            replayMutationGeneration,
+            replayWriteEpoch,
             "replace_loadout_slot");
     }
 
@@ -246,13 +246,13 @@ public sealed partial class DemoTracerPlugin
         string fallbackItem,
         ReplayWeaponSlot weaponSlot,
         int playerUserId,
-        long replayMutationGeneration,
+        long replayWriteEpoch,
         string reason)
     {
         var key = (player.Slot, weaponSlot);
         if (_session.PendingWeaponSlotReplacements.TryGetValue(key, out var existing) &&
             existing.PlayerUserId == playerUserId &&
-            existing.ReplayMutationGeneration == replayMutationGeneration &&
+            existing.ReplayWriteEpoch == replayWriteEpoch &&
             existing.TargetItem.Equals(targetItem, StringComparison.OrdinalIgnoreCase))
         {
             return true;
@@ -264,7 +264,7 @@ public sealed partial class DemoTracerPlugin
         var pending = new PendingWeaponSlotReplacement(
             player.Slot,
             playerUserId,
-            replayMutationGeneration,
+            replayWriteEpoch,
             targetItem,
             fallbackItem,
             weaponSlot);
@@ -414,9 +414,9 @@ public sealed partial class DemoTracerPlugin
         var currentPawn = currentPlayer?.PlayerPawn.Value;
         if (!_session.PendingWeaponSlotReplacements.TryGetValue(key, out var current) ||
             current != pending ||
-            !IsReplayMutationGenerationCurrent(
+            !IsReplayWriteEpochCurrent(
                 pending.PlayerSlot,
-                pending.ReplayMutationGeneration) ||
+                pending.ReplayWriteEpoch) ||
             currentPlayer is not { IsValid: true, PawnIsAlive: true } ||
             currentPlayer.UserId != pending.PlayerUserId ||
             currentPawn is not { IsValid: true } ||
@@ -467,9 +467,9 @@ public sealed partial class DemoTracerPlugin
     private void FinalizeReplayLoadoutSyncIfCurrent(PendingWeaponSlotReplacement pending)
     {
         var player = Utilities.GetPlayerFromSlot(pending.PlayerSlot);
-        if (!IsReplayMutationGenerationCurrent(
+        if (!IsReplayWriteEpochCurrent(
                 pending.PlayerSlot,
-                pending.ReplayMutationGeneration) ||
+                pending.ReplayWriteEpoch) ||
             player is not { IsValid: true, PawnIsAlive: true } ||
             player.UserId != pending.PlayerUserId ||
             _session.PendingWeaponSlotReplacements.Keys.Any(

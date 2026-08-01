@@ -38,7 +38,7 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        if (_session.LastPlayingSlots.Count == 0)
+        if (_session.ReplaySlots.PlayingCount == 0)
         {
             SetReplayPovMask(0);
             RestoreNonRetainedReplayBotViewmodels();
@@ -48,7 +48,7 @@ public sealed partial class DemoTracerPlugin
         Span<int> activeSlots = stackalloc int[MaxPlayerSlots];
         Span<ReplayState> activeStates = stackalloc ReplayState[MaxPlayerSlots];
         var trackedSlotCount = 0;
-        foreach (var slot in _session.LastPlayingSlots)
+        foreach (var slot in _session.ReplaySlots.PlayingSlots)
         {
             if (slot is >= 0 and < MaxPlayerSlots)
                 activeSlots[trackedSlotCount++] = slot;
@@ -84,7 +84,7 @@ public sealed partial class DemoTracerPlugin
         for (var activeIndex = 0; activeIndex < activeSlotCount; activeIndex++)
         {
             var slot = activeSlots[activeIndex];
-            if (!_session.LastPlayingSlots.Contains(slot))
+            if (!_session.ReplaySlots.IsPlaying(slot))
                 continue;
             var state = activeStates[activeIndex];
 
@@ -199,14 +199,14 @@ public sealed partial class DemoTracerPlugin
         {
             return;
         }
-        var generation = CurrentReplayMutationGeneration(slot);
+        var writeEpoch = CurrentReplayWriteEpoch(slot);
 
         var targetCount = Math.Max(1, replayEvent.TargetCountAfter ?? 1);
         var sourceTick = replayEvent.Tick;
         Server.NextFrame(() => EnsureReplayUtilityGrant(
             slot,
             userId,
-            generation,
+            writeEpoch,
             className,
             targetCount,
             sourceTick));
@@ -215,14 +215,14 @@ public sealed partial class DemoTracerPlugin
     private void EnsureReplayUtilityGrant(
         int slot,
         int userId,
-        long generation,
+        long writeEpoch,
         string className,
         int targetCount,
         int sourceTick)
     {
         if (!IsReplaySlotStillSafe(slot) ||
             !IsReplaySlotPlaying(slot) ||
-            !IsReplayMutationGenerationCurrent(slot, generation))
+            !IsReplayWriteEpochCurrent(slot, writeEpoch))
             return;
 
         var player = Utilities.GetPlayerFromSlot(slot);
@@ -313,13 +313,13 @@ public sealed partial class DemoTracerPlugin
 
     private ulong BuildReplayPovMask(TickPlayerSnapshot playerSnapshot)
     {
-        if (_session.LoadedSlots.Count == 0 || _session.LastPlayingSlots.Count == 0)
+        if (_session.ReplaySlots.PlayingCount == 0)
             return 0;
 
         Span<uint> replayPawnIndices = stackalloc uint[MaxPlayerSlots];
         Span<int> replaySlots = stackalloc int[MaxPlayerSlots];
         var replayPawnCount = 0;
-        foreach (var slot in _session.LastPlayingSlots)
+        foreach (var slot in _session.ReplaySlots.PlayingSlots)
         {
             if (slot is < 0 or >= MaxPlayerSlots)
                 continue;

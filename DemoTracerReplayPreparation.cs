@@ -35,7 +35,7 @@ public sealed partial class DemoTracerPlugin
         foreach (var slot in _session.LoadedSlots)
         {
             if (IsReplaySlotStillSafe(slot))
-                _session.DemoTracerOwnedSlots.Add(slot);
+                _session.ReplaySlots.Claim(slot);
         }
 
         // Establish round-start positions before any later freeze-time replay
@@ -417,7 +417,7 @@ public sealed partial class DemoTracerPlugin
         {
             if (candidate.Slot == targetSlot ||
                 (_session.LoadedReplays.ContainsKey(candidate.Slot) &&
-                 !_session.DemoTracerOwnedSlots.Contains(candidate.Slot)))
+                 !_session.ReplaySlots.IsOwned(candidate.Slot)))
             {
                 continue;
             }

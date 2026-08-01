@@ -171,7 +171,7 @@ public sealed partial class DemoTracerPlugin
                     fallbackItem,
                     weaponSlot,
                     playerUserId,
-                    CurrentReplayMutationGeneration(slot),
+                    CurrentReplayWriteEpoch(slot),
                     "replace_replay_slot");
                 return false;
             }

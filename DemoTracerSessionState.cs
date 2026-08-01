@@ -14,9 +14,9 @@ public sealed partial class DemoTracerPlugin
 
     private sealed class ReplaySessionState
     {
-        public List<int> LoadedSlots { get; } = [];
+        public ReplaySlotRegistry ReplaySlots { get; } = new();
+        public IReadOnlyList<int> LoadedSlots => ReplaySlots.LoadedSlots;
         public HashSet<int> WarmReplayBufferSlots { get; } = [];
-        public HashSet<int> DemoTracerOwnedSlots { get; } = [];
         public HashSet<int> FreezePrerollSlots { get; } = [];
         public HashSet<int> ResumedFreezePrerollSlots { get; } = [];
         public Dictionary<int, LoadedReplay> LoadedReplays { get; } = [];
@@ -28,14 +28,12 @@ public sealed partial class DemoTracerPlugin
         public Dictionary<int, int> ProjectileAlignNextBySlot { get; } = [];
         public Dictionary<int, int> ReplayHifiEventNextBySlot { get; } = [];
         public Dictionary<int, long> ReplayIdentityGenerationBySlot { get; } = [];
-        public Dictionary<int, long> ReplayMutationGenerationBySlot { get; } = [];
         public Dictionary<uint, PendingProjectileAlign> PendingProjectileAlign { get; } = [];
         public List<KeyValuePair<uint, PendingProjectileAlign>> PendingProjectileAlignTickScratch { get; } = [];
         public Queue<string> ProjectileAlignLog { get; } = [];
         public HashSet<int> RebuiltInventorySlots { get; } = [];
         public HashSet<int> LoadoutSyncedSlots { get; } = [];
         public HashSet<int> BalanceSyncedSlots { get; } = [];
-        public HashSet<int> LastPlayingSlots { get; } = [];
         public Dictionary<int, float> ReplayStartedAt { get; } = [];
         public Dictionary<int, uint> ReplayPerceptionBaselineSerial { get; } = [];
         public Dictionary<int, PendingBulletHit> PendingBulletHits { get; } = [];
@@ -63,7 +61,5 @@ public sealed partial class DemoTracerPlugin
         public ReplayRoundScoreboard? LoadedRoundScoreboard { get; set; }
 
         public long NextReplayIdentityGeneration { get; set; }
-        public long NextReplayMutationGeneration { get; set; }
-
     }
 }

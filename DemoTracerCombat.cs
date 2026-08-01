@@ -444,7 +444,7 @@ public sealed partial class DemoTracerPlugin
     {
         if (enemy is not { IsValid: true } || enemy.Slot < 0)
             return false;
-        if (_session.LoadedSlots.Contains(enemy.Slot) || IsReplaySlotPlaying(enemy.Slot))
+        if (_session.ReplaySlots.IsLoaded(enemy.Slot) || IsReplaySlotPlaying(enemy.Slot))
             return false;
         if (_botHiderBridge.IsManagedBot(enemy.Slot))
             return false;
@@ -458,7 +458,7 @@ public sealed partial class DemoTracerPlugin
     {
         if (enemy is not { IsValid: true } || enemy.Slot < 0)
             return false;
-        if (_session.LoadedSlots.Contains(enemy.Slot) || _session.LastPlayingSlots.Contains(enemy.Slot))
+        if (_session.ReplaySlots.IsLoaded(enemy.Slot))
             return false;
         if (_botHiderBridge.IsManagedBot(enemy.Slot))
             return false;

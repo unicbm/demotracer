@@ -70,7 +70,7 @@ public sealed partial class DemoTracerPlugin
                 ReleaseReplaySlot(slot, "unsafe_start_target");
                 continue;
             }
-            _session.DemoTracerOwnedSlots.Add(slot);
+            _session.ReplaySlots.Claim(slot);
 
             if (_session.LoadedReplays.TryGetValue(slot, out var replay))
             {
@@ -396,7 +396,7 @@ public sealed partial class DemoTracerPlugin
                 // native bot continuing to perceive and warm its state here.
                 _session.FreezePrerollSlots.Add(slot);
                 _session.ResumedFreezePrerollSlots.Remove(slot);
-                _session.DemoTracerOwnedSlots.Add(slot);
+                _session.ReplaySlots.Claim(slot);
                 return true;
             }
 
@@ -411,13 +411,13 @@ public sealed partial class DemoTracerPlugin
             _session.ResumedFreezePrerollSlots.Remove(slot) &&
             BotControllerNative.GetReplayState(slot).Playing)
         {
-            _session.DemoTracerOwnedSlots.Add(slot);
+            _session.ReplaySlots.Claim(slot);
             return true;
         }
         var started = RegisterReplayPawnForSlot(slot) &&
                       BotControllerNative.StartReplayAt(slot, loop, startIndex);
         if (started)
-            _session.DemoTracerOwnedSlots.Add(slot);
+            _session.ReplaySlots.Claim(slot);
         return started;
     }
 

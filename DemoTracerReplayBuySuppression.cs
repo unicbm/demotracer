@@ -35,7 +35,7 @@ public sealed partial class DemoTracerPlugin
         var slot = player.Slot;
         return ShouldSuppressReplayBuyCommand(
             _session.LoadedReplays.ContainsKey(slot),
-            _session.DemoTracerOwnedSlots.Contains(slot),
+            _session.ReplaySlots.IsOwned(slot),
             IsReplaySlotStillSafe(slot))
             ? HookResult.Handled
             : HookResult.Continue;
