@@ -64,7 +64,6 @@ public sealed partial class DemoTracerPlugin
         _session.LastReplayWeaponDef.Clear();
         _session.LastLockedWeaponTarget.Clear();
         _session.PendingWeaponSlotReplacements.Clear();
-        _session.ActiveWeaponCosmetics.Clear();
         _session.ProjectileAlignNextBySlot.Clear();
         _session.ReplayIdentityGenerationBySlot.Clear();
         _session.ReplayMutationGenerationBySlot.Clear();
@@ -243,13 +242,10 @@ public sealed partial class DemoTracerPlugin
         _session.LastReplayWeaponDef.Clear();
         _session.LastLockedWeaponTarget.Clear();
         _session.PendingWeaponSlotReplacements.Clear();
-        _session.ActiveWeaponCosmetics.Clear();
         _session.ProjectileAlignNextBySlot.Clear();
         _session.PendingProjectileAlign.Clear();
         BotControllerNative.ClearProjectileBirthAlign();
         _session.RebuiltInventorySlots.Clear();
-        _session.CosmeticSyncedSlots.Clear();
-        _cosmeticHeartbeatTokens.Clear();
         ClearReplayCrosshairPresentation();
         RestoreAllReplayBotViewmodels();
         _session.LastPlayingSlots.Clear();

@@ -29,22 +29,5 @@ public sealed partial class DemoTracerPlugin
 
         public bool TryGetBotCosmeticState(int slot, out DemoTracerBotCosmeticState state)
             => _plugin.TryGetBotCosmeticState(slot, out state);
-
-        public bool TrySetBotHudCrosshairOverride(
-            int slot,
-            string crosshairCode,
-            out DemoTracerCrosshairOverrideResult result)
-            => _plugin.TrySetBotHudCrosshairOverride(slot, crosshairCode, out result);
-
-        public bool ClearBotHudCrosshairOverride(
-            int slot,
-            out DemoTracerCrosshairOverrideResult result)
-            => _plugin.ClearBotHudCrosshairOverride(slot, out result);
-
-        public void ClearBotHudCrosshairOverrides()
-            => _plugin.ClearBotHudCrosshairOverrides();
-
-        public DemoTracerCrosshairOverrideStatus GetCrosshairOverrideStatus()
-            => _plugin.GetCrosshairOverrideStatus();
     }
 }

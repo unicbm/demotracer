@@ -18,17 +18,16 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
-    private const int CosmeticHeartbeatAttempts = 12;
-    private const float CosmeticHeartbeatIntervalSeconds = 0.10f;
     private const string AttributeSetterWindowsSignature = "40 53 55 41 56 48 81 EC 90 00 00 00";
     private const string AttributeSetterLinuxSignature = "55 48 89 E5 41 57 41 56 49 89 FE 41 55 41 54 53 48 89 F3 48 83 EC ? F3 0F 11 85";
     private static readonly Lazy<MemoryFunctionVoid<nint, string, float>?> AttributeSetter = new(CreateAttributeSetter);
     private readonly HashSet<(int WeaponDefIndex, uint PaintKit)> _legacyCosmeticPaints = new();
-    private readonly Dictionary<int, int> _cosmeticHeartbeatTokens = new();
+    private readonly ReplayCosmeticAlignmentTracker _cosmeticAlignmentTracker = new();
+    private readonly Dictionary<(int Slot, nint EntityHandle), AppliedCosmeticEntityWrite> _appliedWeaponCosmeticWrites = new();
+    private readonly Dictionary<(int Slot, nint EntityHandle), AppliedCosmeticEntityWrite> _appliedKnifeCosmeticWrites = new();
     private readonly Dictionary<int, AppliedGloveCosmetic> _appliedGloveCosmetics = new();
     private readonly Dictionary<int, int> _gloveCosmeticTokens = new();
     private bool _cosmeticGiveNamedItemHooked;
-    private int _nextCosmeticHeartbeatToken;
     private int _nextGloveCosmeticToken;
     private long _cosmeticLifecycleGeneration;
 
@@ -338,7 +337,9 @@ public sealed partial class DemoTracerPlugin
     {
         _cosmeticLifecycleGeneration++;
         _session.CosmeticSyncedSlots.Clear();
-        _cosmeticHeartbeatTokens.Clear();
+        _cosmeticAlignmentTracker.Clear();
+        _appliedWeaponCosmeticWrites.Clear();
+        _appliedKnifeCosmeticWrites.Clear();
         _session.ActiveWeaponCosmetics.Clear();
         _appliedGloveCosmetics.Clear();
         _gloveCosmeticTokens.Clear();

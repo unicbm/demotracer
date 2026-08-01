@@ -135,6 +135,11 @@ public sealed partial class DemoTracerPlugin
 
     private readonly record struct AppliedActiveWeaponCosmetic(int WeaponDefIndex, nint WeaponHandle);
 
+    private readonly record struct AppliedCosmeticEntityWrite(
+        long ReplayIdentityGeneration,
+        ulong ReplaySteamId,
+        object CosmeticSource);
+
     private readonly record struct PendingBulletHit(int AttackerSlot, float Time);
 
     private readonly record struct PendingBulletDamage(int AttackerSlot, int Damage, float Time);

@@ -37,58 +37,13 @@ public sealed partial class DemoTracerPlugin
 
         try
         {
-            if (player.UserId is not int userId)
-                return false;
-            var mutationGeneration = CurrentReplayMutationGeneration(slot);
             ApplyAgentModel(pawn, modelPath);
-            ScheduleCosmeticNextFrame(() => ApplyAgentModelForSlot(
-                slot,
-                userId,
-                mutationGeneration,
-                replaySteamId,
-                modelPath));
-            AddTimer(
-                0.20f,
-                () => ApplyAgentModelForSlot(slot, userId, mutationGeneration, replaySteamId, modelPath),
-                TimerFlags.STOP_ON_MAPCHANGE);
             return true;
         }
         catch (Exception ex)
         {
             Server.PrintToConsole($"dtr: agent model apply failed slot={player.Slot} model={modelPath}: {ex.Message}");
             return false;
-        }
-    }
-
-    private void ApplyAgentModelForSlot(
-        int slot,
-        int userId,
-        long mutationGeneration,
-        ulong replaySteamId,
-        string modelPath)
-    {
-        if (!IsReplaySlotStillSafe(slot) ||
-            !IsReplayMutationGenerationCurrent(slot, mutationGeneration) ||
-            !TryValidateBotRandomizerClaim(
-                slot,
-                replaySteamId,
-                DemoTracerCosmeticWriteField.Agent))
-            return;
-
-        var player = Utilities.GetPlayerFromSlot(slot);
-        var pawn = player?.PlayerPawn.Value;
-        if (player is not { IsValid: true, PawnIsAlive: true } ||
-            player.UserId != userId ||
-            pawn is not { IsValid: true })
-            return;
-
-        try
-        {
-            ApplyAgentModel(pawn, modelPath);
-        }
-        catch (Exception ex)
-        {
-            Server.PrintToConsole($"dtr: agent model delayed apply failed slot={slot} model={modelPath}: {ex.Message}");
         }
     }
 
@@ -112,7 +67,6 @@ public sealed partial class DemoTracerPlugin
         if (!TryGetWeaponClassByDefIndex(cosmetic.WeaponDefIndex, out _))
             return false;
 
-        var appliedItem = false;
         var paintClaimed = HasActiveBotRandomizerClaim(
             player.Slot,
             replaySteamId,
@@ -131,9 +85,18 @@ public sealed partial class DemoTracerPlugin
         if (!paintClaimed && !stickersClaimed && !keychainClaimed)
             return false;
 
-        if (paintClaimed)
+        var writeKey = (player.Slot, weapon.Handle);
+        var writeStamp = new AppliedCosmeticEntityWrite(
+            CurrentReplayIdentityGeneration(player.Slot),
+            replaySteamId,
+            cosmetic);
+        if (_appliedWeaponCosmeticWrites.TryGetValue(writeKey, out var currentWrite) &&
+            currentWrite == writeStamp)
         {
-            appliedItem = TryApplyItemCosmetic(
+            return true;
+        }
+
+        var paintApplied = !paintClaimed || TryApplyItemCosmetic(
                 player,
                 weapon,
                 new ReplayItemCosmetic
@@ -153,24 +116,55 @@ public sealed partial class DemoTracerPlugin
                 allowSubclassChange: false,
                 applyPaint: true,
                 applyCustomName: _cosmeticNamesEnabled);
-            if (!appliedItem)
-            {
-                if (countStickerStats)
-                {
-                    RecordStickerSkipped(cosmetic.Stickers.Count);
-                    RecordCharmSkipped(cosmetic.Charms.Count);
-                }
-                return false;
-            }
+        var stattrakApplied = !paintClaimed ||
+            ApplyWeaponStattrakEvidence(player.Slot, replaySteamId, weapon, cosmetic);
+        var stickersApplied = !stickersClaimed ||
+            ApplyWeaponStickers(player.Slot, replaySteamId, weapon, cosmetic, countStickerStats);
+        var keychainApplied = !keychainClaimed ||
+            ApplyWeaponCharms(player.Slot, replaySteamId, weapon, cosmetic, countStickerStats);
+        var applied = paintApplied && stattrakApplied && stickersApplied && keychainApplied;
+        if (applied)
+            _appliedWeaponCosmeticWrites[writeKey] = writeStamp;
+        return applied;
+    }
+
+    private bool TryApplyKnifeCosmetic(
+        CCSPlayerController player,
+        CBasePlayerWeapon weapon,
+        ReplayItemCosmetic cosmetic,
+        ulong replaySteamId)
+    {
+        if (!TryValidateBotRandomizerClaim(
+                player.Slot,
+                replaySteamId,
+                DemoTracerCosmeticWriteField.Knife))
+        {
+            return false;
         }
 
-        if (paintClaimed)
-            ApplyWeaponStattrakEvidence(player.Slot, replaySteamId, weapon, cosmetic);
-        if (stickersClaimed)
-            ApplyWeaponStickers(player.Slot, replaySteamId, weapon, cosmetic, countStickerStats);
-        if (keychainClaimed)
-            ApplyWeaponCharms(player.Slot, replaySteamId, weapon, cosmetic, countStickerStats);
-        return appliedItem || stickersClaimed || keychainClaimed;
+        var writeKey = (player.Slot, weapon.Handle);
+        var writeStamp = new AppliedCosmeticEntityWrite(
+            CurrentReplayIdentityGeneration(player.Slot),
+            replaySteamId,
+            cosmetic);
+        if (_appliedKnifeCosmeticWrites.TryGetValue(writeKey, out var currentWrite) &&
+            currentWrite == writeStamp)
+        {
+            return true;
+        }
+
+        var applied = TryApplyItemCosmetic(
+            player,
+            weapon,
+            cosmetic,
+            replaySteamId,
+            DemoTracerCosmeticWriteField.Knife,
+            allowSubclassChange: true,
+            applyPaint: true,
+            applyCustomName: _cosmeticNamesEnabled);
+        if (applied)
+            _appliedKnifeCosmeticWrites[writeKey] = writeStamp;
+        return applied;
     }
 
     private bool TryApplyItemCosmetic(
@@ -200,8 +194,12 @@ public sealed partial class DemoTracerPlugin
             var item = weapon.AttributeManager.Item;
             if (cosmetic.ItemDefIndex is { } itemDef)
             {
-                if (allowSubclassChange && IsKnifeCosmeticDefIndex(itemDef))
+                if (allowSubclassChange &&
+                    IsKnifeCosmeticDefIndex(itemDef) &&
+                    item.ItemDefinitionIndex != (ushort)itemDef)
+                {
                     weapon.AcceptInput("ChangeSubclass", value: itemDef.ToString(CultureInfo.InvariantCulture));
+                }
                 item.ItemDefinitionIndex = (ushort)itemDef;
             }
 
@@ -256,21 +254,21 @@ public sealed partial class DemoTracerPlugin
            !definition.ClassName.Equals("weapon_knife", StringComparison.OrdinalIgnoreCase) &&
            !definition.ClassName.Equals("weapon_knife_t", StringComparison.OrdinalIgnoreCase);
 
-    private void ApplyWeaponStattrakEvidence(
+    private bool ApplyWeaponStattrakEvidence(
         int slot,
         ulong replaySteamId,
         CBasePlayerWeapon weapon,
         ReplayWeaponCosmetic cosmetic)
     {
         if (cosmetic.Quality != 9 && cosmetic.StattrakCounter == null)
-            return;
+            return true;
         if (!TryValidateBotRandomizerClaim(
                 slot,
                 replaySteamId,
                 DemoTracerCosmeticWriteField.WeaponPaint,
                 cosmetic.WeaponDefIndex))
         {
-            return;
+            return false;
         }
 
         var item = weapon.AttributeManager.Item;
@@ -280,6 +278,8 @@ public sealed partial class DemoTracerPlugin
         _ = TrySetStattrakAttributes(item.AttributeList.Handle, weapon.FallbackStatTrak);
         Utilities.SetStateChanged(weapon, "CEconEntity", "m_nFallbackStatTrak");
         Utilities.SetStateChanged(weapon, "CEconEntity", "m_AttributeManager");
+        return item.EntityQuality == 9 &&
+            weapon.FallbackStatTrak == (cosmetic.StattrakCounter ?? 0);
     }
 
     private bool TryApplyGloveCosmetic(
@@ -685,7 +685,7 @@ public sealed partial class DemoTracerPlugin
         }
     }
 
-    private void ApplyWeaponStickers(
+    private bool ApplyWeaponStickers(
         int slot,
         ulong replaySteamId,
         CBasePlayerWeapon weapon,
@@ -696,7 +696,7 @@ public sealed partial class DemoTracerPlugin
             !_stickerAlignEnabled ||
             cosmetic.Stickers.Count == 0)
         {
-            return;
+            return false;
         }
         if (!TryValidateBotRandomizerClaim(
                 slot,
@@ -704,14 +704,14 @@ public sealed partial class DemoTracerPlugin
                 DemoTracerCosmeticWriteField.WeaponStickers,
                 cosmetic.WeaponDefIndex))
         {
-            return;
+            return false;
         }
 
         if (AttributeSetter.Value == null)
         {
             if (countStickerStats)
                 RecordStickerSkipped(cosmetic.Stickers.Count);
-            return;
+            return false;
         }
 
         try
@@ -736,12 +736,14 @@ public sealed partial class DemoTracerPlugin
                 _stickerAppliedCount += applied;
                 _stickerSkippedCount += skipped;
             }
+            return skipped == 0;
         }
         catch (Exception ex)
         {
             Server.PrintToConsole($"dtr: sticker apply failed item={weapon.DesignerName}: {ex.Message}");
             if (countStickerStats)
                 RecordStickerSkipped(cosmetic.Stickers.Count);
+            return false;
         }
     }
 
@@ -751,7 +753,7 @@ public sealed partial class DemoTracerPlugin
             _stickerSkippedCount += count;
     }
 
-    private void ApplyWeaponCharms(
+    private bool ApplyWeaponCharms(
         int slot,
         ulong replaySteamId,
         CBasePlayerWeapon weapon,
@@ -762,7 +764,7 @@ public sealed partial class DemoTracerPlugin
             !_charmAlignEnabled ||
             cosmetic.Charms.Count == 0)
         {
-            return;
+            return false;
         }
         if (!TryValidateBotRandomizerClaim(
                 slot,
@@ -770,14 +772,14 @@ public sealed partial class DemoTracerPlugin
                 DemoTracerCosmeticWriteField.WeaponKeychain,
                 cosmetic.WeaponDefIndex))
         {
-            return;
+            return false;
         }
 
         if (AttributeSetter.Value == null)
         {
             if (countCharmStats)
                 RecordCharmSkipped(cosmetic.Charms.Count);
-            return;
+            return false;
         }
 
         try
@@ -802,12 +804,14 @@ public sealed partial class DemoTracerPlugin
                 _charmAppliedCount += applied;
                 _charmSkippedCount += skipped;
             }
+            return skipped == 0;
         }
         catch (Exception ex)
         {
             Server.PrintToConsole($"dtr: charm apply failed item={weapon.DesignerName}: {ex.Message}");
             if (countCharmStats)
                 RecordCharmSkipped(cosmetic.Charms.Count);
+            return false;
         }
     }
 

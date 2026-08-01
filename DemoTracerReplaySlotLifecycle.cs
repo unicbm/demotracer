@@ -72,6 +72,7 @@ public sealed partial class DemoTracerPlugin
     {
         InvalidateReplayMusicKitRepair(slot);
         InvalidateReplayMutationGeneration(slot);
+        _cosmeticAlignmentTracker.CancelPending(slot);
         _session.FreezePrerollSlots.Remove(slot);
         _session.ResumedFreezePrerollSlots.Remove(slot);
         var retainedViewmodel = (releaseKind is ReplayReleaseKind.Handoff or ReplayReleaseKind.Finished) &&
@@ -85,23 +86,22 @@ public sealed partial class DemoTracerPlugin
         _session.LastReplayWeaponDef.Remove(slot);
         _session.LastLockedWeaponTarget.Remove(slot);
         ClearPendingWeaponSlotReplacementsForSlot(slot);
-        _session.ActiveWeaponCosmetics.Remove(slot);
         _session.ProjectileAlignNextBySlot.Remove(slot);
         _session.ReplayHifiEventNextBySlot.Remove(slot);
         _session.DemoTracerOwnedSlots.Remove(slot);
-        _session.RebuiltInventorySlots.Remove(slot);
-        _session.LoadoutSyncedSlots.Remove(slot);
-        _session.BalanceSyncedSlots.Remove(slot);
+        if (releaseKind == ReplayReleaseKind.Immediate)
+        {
+            _session.RebuiltInventorySlots.Remove(slot);
+            _session.LoadoutSyncedSlots.Remove(slot);
+            _session.BalanceSyncedSlots.Remove(slot);
+        }
         _session.PendingBulletHits.Remove(slot);
         _session.PendingBulletDamages.Remove(slot);
         _session.PendingThreat360.Remove(slot);
-        _session.CosmeticSyncedSlots.Remove(slot);
-        _cosmeticHeartbeatTokens.Remove(slot);
         BotControllerNative.ClearBuyPlan(slot);
         BotControllerNative.UnlockReplayControl(slot);
         BotControllerNative.UnlockWeaponSlot(slot);
         ClearReplayPovSlot(slot);
-        ScheduleLoadedReplayCosmeticRepairForSlot(slot);
         if (releaseKind == ReplayReleaseKind.Handoff &&
             IsReplaySlotStillSafe(slot) &&
             HasLivePawn(Utilities.GetPlayerFromSlot(slot)) &&

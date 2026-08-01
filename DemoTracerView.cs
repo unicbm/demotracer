@@ -6,6 +6,7 @@
 
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
+using DemoTracerBotHiderApi;
 
 namespace DemoTracer;
 
@@ -31,7 +32,15 @@ public sealed partial class DemoTracerPlugin
     }
 
     private static string? NormalizeCrosshairCode(string? code)
-        => DemoTracerCrosshairCode.Normalize(code);
+    {
+        if (!DemoTracerBotHiderContract.TryNormalizeCrosshairCode(code, out var normalized) ||
+            string.IsNullOrWhiteSpace(normalized))
+        {
+            return null;
+        }
+
+        return normalized;
+    }
 
     private static bool HasCrosshairEvidence(ReplayView view)
         => !string.IsNullOrWhiteSpace(view.CrosshairCode);
@@ -74,11 +83,8 @@ public sealed partial class DemoTracerPlugin
 
     private void ResetCrosshairAlignState(bool resetCounters = false)
     {
-        if (resetCounters)
-            _companionCrosshairOverrides.Clear();
         if (_session.LoadedSlots.Count == 0 &&
-            _retainedBotHiderPresentation.Count == 0 &&
-            _companionCrosshairOverrides.Count == 0)
+            _retainedBotHiderPresentation.Count == 0)
             ReleaseBotHiderPresentationLease("crosshair_reset");
         else
             _ = SyncBotHiderPresentationLease(announce: false);
@@ -116,18 +122,13 @@ public sealed partial class DemoTracerPlugin
 
     private void ClearReplayCrosshairPresentationEntry(int slot)
     {
-        _companionCrosshairOverrides.Remove(slot);
         _ = SyncBotHiderPresentationLease(announce: false);
     }
 
     private void ClearReplayCrosshairPresentation()
     {
-        var changed = _companionCrosshairOverrides.Count > 0;
-        _companionCrosshairOverrides.Clear();
         if (_session.LoadedSlots.Count == 0 && _retainedBotHiderPresentation.Count == 0)
             ReleaseBotHiderPresentationLease("crosshair_clear_all");
-        else if (changed)
-            _ = SyncBotHiderPresentationLease(announce: false);
         else
             EnsureBotHiderPresentationLease();
     }

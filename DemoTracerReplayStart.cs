@@ -785,17 +785,13 @@ public sealed partial class DemoTracerPlugin
 
             try
             {
+                InvalidateLoadedReplayCosmeticAlignmentForSlot(slot);
                 player.Respawn();
                 _session.LoadoutSyncedSlots.Remove(slot);
                 _session.RebuiltInventorySlots.Remove(slot);
                 _session.LastEnsuredWeaponDef.Remove(slot);
                 _session.LastReplayWeaponDef.Remove(slot);
                 _session.LastLockedWeaponTarget.Remove(slot);
-                _session.CosmeticSyncedSlots.Remove(slot);
-                _cosmeticHeartbeatTokens.Remove(slot);
-                _session.ActiveWeaponCosmetics.Remove(slot);
-                _appliedGloveCosmetics.Remove(slot);
-                _gloveCosmeticTokens.Remove(slot);
                 respawned++;
             }
             catch (Exception ex)

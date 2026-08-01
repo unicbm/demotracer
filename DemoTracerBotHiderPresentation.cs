@@ -16,7 +16,6 @@ public sealed partial class DemoTracerPlugin
 {
     private const float BotHiderLeaseHeartbeatSeconds = 1.0f;
     private const float BotHiderLeaseRetrySeconds = 1.0f;
-    private readonly Dictionary<int, string> _companionCrosshairOverrides = new();
     private readonly Dictionary<int, BotHiderPresentationEvidence> _retainedBotHiderPresentation = new();
     private readonly Dictionary<int, ulong> _activeBotHiderReplaySteamIds = new();
     private string _botHiderPresentationLeaseToken = string.Empty;
@@ -47,8 +46,7 @@ public sealed partial class DemoTracerPlugin
             return;
 
         if (_session.LoadedSlots.Count == 0 &&
-            _retainedBotHiderPresentation.Count == 0 &&
-            _companionCrosshairOverrides.Count == 0)
+            _retainedBotHiderPresentation.Count == 0)
         {
             ReleaseBotHiderPresentationLease("no_overrides");
             return;
@@ -188,9 +186,6 @@ public sealed partial class DemoTracerPlugin
 
     private bool WantsBotHiderPresentationLease()
     {
-        if (_companionCrosshairOverrides.Count > 0)
-            return true;
-
         foreach (var slot in _session.LoadedSlots)
         {
             if (!_session.LoadedReplays.TryGetValue(slot, out var replay))
@@ -251,24 +246,6 @@ public sealed partial class DemoTracerPlugin
                 AddBotHiderPresentationOverride(bySlot, evidence);
         }
 
-        foreach (var pair in _companionCrosshairOverrides.ToArray())
-        {
-            var slot = pair.Key;
-            if (bySlot.ContainsKey(slot) ||
-                !IsReplaySlotStillSafe(slot) ||
-                !_botHiderBridge.TryGetManagedSlot(slot, out var managed))
-            {
-                continue;
-            }
-
-            bySlot[slot] = new BotHiderPresentationOverride
-            {
-                Slot = slot,
-                Incarnation = managed.Incarnation,
-                CrosshairCode = pair.Value
-            };
-        }
-
         var requests = bySlot.Values.OrderBy(request => request.Slot).ToArray();
         var signatureBuilder = new StringBuilder();
         var provider = _botHiderBridge.GetProviderInfo();
@@ -309,11 +286,9 @@ public sealed partial class DemoTracerPlugin
         uint? flair = ReplayIdentityShouldApplyScoreboardFlair() && evidence.ScoreboardFlair != null
             ? evidence.ScoreboardFlair.ItemDefIndex
             : null;
-        string? crosshair = null;
-        if (_companionCrosshairOverrides.TryGetValue(slot, out var companionCrosshair))
-            crosshair = companionCrosshair;
-        else if (_crosshairAlignEnabled && HasCrosshairEvidence(evidence.View))
-            crosshair = evidence.View.CrosshairCode;
+        var crosshair = _crosshairAlignEnabled && HasCrosshairEvidence(evidence.View)
+            ? evidence.View.CrosshairCode
+            : null;
 
         if (playerName == null && !steamId.HasValue && !flair.HasValue && crosshair == null)
             return;
@@ -487,7 +462,7 @@ public sealed partial class DemoTracerPlugin
 
     private int CountActiveBotHiderCrosshairOverrides()
     {
-        var slots = new HashSet<int>(_companionCrosshairOverrides.Keys);
+        var slots = new HashSet<int>();
         if (_crosshairAlignEnabled)
         {
             foreach (var pair in _session.LoadedReplays)

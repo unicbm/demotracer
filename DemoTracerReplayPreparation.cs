@@ -63,8 +63,11 @@ public sealed partial class DemoTracerPlugin
             {
                 if (!IsReplaySlotStillSafe(slot))
                     continue;
-                if (_session.LoadedReplays.TryGetValue(slot, out var replay) && !_session.CosmeticSyncedSlots.Contains(slot))
-                    ApplyLoadedReplayCosmeticsForSlot(slot, replay);
+                if (_session.LoadedReplays.TryGetValue(slot, out var replay))
+                {
+                    if (!TryAlignLoadedReplayCosmeticsForSlot(slot, replay))
+                        QueueLoadedReplayCosmeticAlignmentForSlot(slot);
+                }
             }
         }
 
@@ -143,7 +146,7 @@ public sealed partial class DemoTracerPlugin
         var repairToken = ++_session.NextReplayMusicKitRepairToken;
         _session.ReplayMusicKitRepairTokens[slot] = repairToken;
 
-        void ReconcileWhileCurrent(bool finalAttempt)
+        void ReconcileWhileCurrent()
         {
             try
             {
@@ -162,8 +165,7 @@ public sealed partial class DemoTracerPlugin
             }
             finally
             {
-                if (finalAttempt &&
-                    _session.ReplayMusicKitRepairTokens.TryGetValue(slot, out var currentToken) &&
+                if (_session.ReplayMusicKitRepairTokens.TryGetValue(slot, out var currentToken) &&
                     currentToken == repairToken)
                 {
                     _session.ReplayMusicKitRepairTokens.Remove(slot);
@@ -171,14 +173,10 @@ public sealed partial class DemoTracerPlugin
             }
         }
 
-        // BotRandomizer publishes its stable per-bot kit on its spawn NextFrame.
-        // Re-resolve the same slot/user/generation and reconcile once afterwards;
-        // this avoids both callback-order races and the old repeated write storm.
-        Server.NextFrame(() => ReconcileWhileCurrent(finalAttempt: false));
-        AddTimer(
-            ReplayMusicKitReconcileDelaySeconds,
-            () => ReconcileWhileCurrent(finalAttempt: true),
-            TimerFlags.STOP_ON_MAPCHANGE);
+        // The cosmetic writer lease is established in the spawn callback. One
+        // coalesced next-frame reconciliation runs after all spawn handlers;
+        // ownership must prevent later writers from fighting this state.
+        Server.NextFrame(ReconcileWhileCurrent);
     }
 
     private bool ApplyReplayMusicKit(

@@ -386,7 +386,7 @@ public sealed partial class DemoTracerPlugin
         BotControllerNative.SetReplayNativeFovOverride(_handoffThreat360Enabled);
         if (_replayIdentityMode != ReplayIdentityMode.Avatar)
             Server.ExecuteCommand("sv_reliableavatardata false");
-        if (_session.LoadedSlots.Count > 0 || _companionCrosshairOverrides.Count > 0)
+        if (_session.LoadedSlots.Count > 0 || _retainedBotHiderPresentation.Count > 0)
             _ = SyncBotHiderPresentationLease(announce: false);
         _ = SyncBotRandomizerCosmeticLease(announce: false);
     }

@@ -53,7 +53,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private const int ProjectileAlignDefaultTotalWrites = 1;
     private const int ProjectileAlignUntilDelete = -1;
     private const int ProjectileAlignMaxTotalWrites = 512;
-    private const float ReplayMusicKitReconcileDelaySeconds = 0.10f;
     private const int ProjectileAlignLogMaxEntries = 128;
     private const float FireProjectileAlignMaxInitialPositionDistance = 128.0f;
     private const int MolotovPointAlignDefaultLeadTicks = 1;

@@ -135,7 +135,11 @@ public sealed partial class DemoTracerPlugin
             {
                 RestoreReplayBotViewmodel(player.Slot);
             }
-            ScheduleLoadedReplayCosmeticRepairForSlot(player.Slot);
+            InvalidateReplayMutationGeneration(spawnedSlot);
+            _session.LoadoutSyncedSlots.Remove(spawnedSlot);
+            _session.RebuiltInventorySlots.Remove(spawnedSlot);
+            InvalidateLoadedReplayCosmeticAlignmentForSlot(player.Slot);
+            QueueLoadedReplayCosmeticAlignmentForSlot(player.Slot);
             if (_session.LoadedSlots.Count > 0)
             {
                 if (_session.LoadedReplays.ContainsKey(player.Slot))

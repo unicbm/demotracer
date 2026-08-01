@@ -88,11 +88,7 @@ public sealed partial class DemoTracerPlugin
         _session.RebuiltInventorySlots.Remove(slot);
         _session.BalanceSyncedSlots.Remove(slot);
         InvalidateReplayMusicKitRepair(slot);
-        _session.CosmeticSyncedSlots.Remove(slot);
-        _cosmeticHeartbeatTokens.Remove(slot);
-        _session.ActiveWeaponCosmetics.Remove(slot);
-        _appliedGloveCosmetics.Remove(slot);
-        _gloveCosmeticTokens.Remove(slot);
+        InvalidateLoadedReplayCosmeticAlignmentForSlot(slot);
         _session.ScoreboardSyncedSlots.Remove(slot);
         _ = SyncBotHiderPresentationLease(announce: false);
         _ = SyncBotRandomizerCosmeticLease(announce: false);
@@ -182,14 +178,12 @@ public sealed partial class DemoTracerPlugin
         _session.LastEnsuredWeaponDef.Remove(slot);
         _session.LastReplayWeaponDef.Remove(slot);
         _session.LastLockedWeaponTarget.Remove(slot);
-        _session.ActiveWeaponCosmetics.Remove(slot);
         _session.ProjectileAlignNextBySlot[slot] = 0;
         _session.ReplayHifiEventNextBySlot[slot] = 0;
         _session.RebuiltInventorySlots.Remove(slot);
         _session.LoadoutSyncedSlots.Remove(slot);
         _session.BalanceSyncedSlots.Remove(slot);
-        _session.CosmeticSyncedSlots.Remove(slot);
-        _cosmeticHeartbeatTokens.Remove(slot);
+        InvalidateLoadedReplayCosmeticAlignmentForSlot(slot);
         _session.ScoreboardSyncedSlots.Remove(slot);
         _session.SafeC4Aligned = false;
         if (normalizedMusicKitId <= 0)

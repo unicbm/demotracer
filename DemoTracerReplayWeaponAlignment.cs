@@ -26,19 +26,21 @@ public sealed partial class DemoTracerPlugin
 {
     private void PreloadReplayWeaponsForSlot(int slot, LoadedReplay replay)
     {
-        if (!_session.RebuiltInventorySlots.Contains(slot))
-        {
-            var rebuilt = true;
-            foreach (var def in replay.PreloadWeaponDefIndices)
-                rebuilt &= EnsureReplayWeaponForSlot(
-                    slot,
-                    def,
-                    forceSwitch: false,
-                    allowGive: true,
-                    replaceConflictingSlot: false);
-            if (rebuilt)
-                _session.RebuiltInventorySlots.Add(slot);
-        }
+        if (_session.RebuiltInventorySlots.Contains(slot))
+            return;
+
+        var rebuilt = true;
+        foreach (var def in replay.PreloadWeaponDefIndices)
+            rebuilt &= EnsureReplayWeaponForSlot(
+                slot,
+                def,
+                forceSwitch: false,
+                allowGive: true,
+                replaceConflictingSlot: false);
+        if (!rebuilt)
+            return;
+
+        _session.RebuiltInventorySlots.Add(slot);
 
         ApplyReplayWeaponPreset(
             slot,
@@ -99,7 +101,6 @@ public sealed partial class DemoTracerPlugin
         {
             _session.LastReplayWeaponDef[slot] = normalized;
             ApplyReplayWeaponCosmeticForSlot(slot, normalized);
-            ScheduleActiveReplayWeaponCosmeticNextFrame(slot, normalized);
         }
         else if (!allowSlotReplacement)
         {
@@ -189,7 +190,6 @@ public sealed partial class DemoTracerPlugin
                 _session.LastEnsuredWeaponDef.Remove(slot);
                 return false;
             }
-            ScheduleActiveReplayWeaponCosmeticNextFrame(slot, normalized);
         }
 
         Server.PrintToConsole($"dtr: aligned slot={slot} def={normalized} item={className}");

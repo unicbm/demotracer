@@ -129,8 +129,6 @@ public sealed partial class DemoTracerPlugin
             ApplyActiveReplayWeaponCosmeticForSlot(
                 slot,
                 weaponDefIndex,
-                force: false,
-                scheduleNextFrame: true,
                 playerSnapshot: playerSnapshot);
             if (_session.LastReplayWeaponDef.TryGetValue(slot, out var lastDef) &&
                 lastDef == weaponDefIndex)

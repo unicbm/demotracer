@@ -499,7 +499,7 @@ public sealed partial class DemoTracerPlugin
         {
             _session.RebuiltInventorySlots.Remove(slot);
             _session.LoadoutSyncedSlots.Remove(slot);
-            _session.CosmeticSyncedSlots.Remove(slot);
+            InvalidateLoadedReplayCosmeticAlignmentForSlot(slot);
             ScheduleCosmeticNextFrame(() =>
             {
                 if (!_session.LoadedReplays.TryGetValue(slot, out var replay) ||
@@ -512,7 +512,8 @@ public sealed partial class DemoTracerPlugin
                 PreloadReplayWeaponsForSlot(slot, replay);
                 if (ReplayMusicKitAlignmentAllowed(replay.MusicKitId))
                     _ = ApplyReplayMusicKitForSlot(slot, replay.MusicKitId);
-                ApplyLoadedReplayCosmeticsForSlot(slot, replay);
+                if (!TryAlignLoadedReplayCosmeticsForSlot(slot, replay))
+                    QueueLoadedReplayCosmeticAlignmentForSlot(slot);
             });
         }
     }
