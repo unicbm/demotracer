@@ -73,7 +73,7 @@ public sealed partial class DemoTracerPlugin
         string reason,
         ReplayReleaseKind releaseKind = ReplayReleaseKind.Immediate)
     {
-        InvalidateReplayMusicKitRepair(slot);
+        CancelReplaySlotDeferredWork(slot);
         _session.ReplaySlots.Release(slot);
         ClearPendingWeaponSlotReplacementsForSlot(slot);
         CancelPendingProjectileAlignForSlot(slot, reason);

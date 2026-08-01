@@ -63,6 +63,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private const int ReplayStartHealth = 100;
     private const int StandardTeamSize = 5;
     private const int InitialSpawnAssignmentMaxAttempts = 8;
+    private const float ReplayReadinessPollSeconds = 0.05f;
     private const int WeaponSlotReplacementClearWaitFrames = 8;
     private const int WeaponSlotReplacementGrantWaitFrames = 4;
     private const int WeaponSlotReplacementFallbackWaitFrames = 4;

@@ -7,6 +7,7 @@
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Commands;
+using CounterStrikeSharp.API.Modules.Timers;
 using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API;
 using System.Globalization;
@@ -275,7 +276,7 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
-        PreloadLoadedReplays();
+        PrepareLoadedReplayOwnership();
         _session.Plan.SequencePrepared = true;
         _session.Plan.SequencePreparedRound = round;
         TryStartDtrRoundBanner($"sequence_r{round}");
@@ -288,7 +289,7 @@ public sealed partial class DemoTracerPlugin
         var token = ++_session.Plan.SequencePreparePollToken;
         void Poll()
         {
-            Server.NextFrame(() =>
+            AddTimer(ReplayReadinessPollSeconds, () =>
             {
                 if (token != _session.Plan.SequencePreparePollToken ||
                     !_session.Plan.SequenceActive ||
@@ -317,7 +318,7 @@ public sealed partial class DemoTracerPlugin
                 {
                     ScheduleFreezePrerollStart($"sequence round {round}");
                 }
-            });
+            }, TimerFlags.STOP_ON_MAPCHANGE);
         }
 
         Poll();
@@ -365,7 +366,7 @@ public sealed partial class DemoTracerPlugin
         _session.Plan.ArmedSourceRound = sourceRound;
         _session.Plan.ArmedLoop = loop;
         _session.Plan.ArmedLabel = label;
-        PreloadLoadedReplays();
+        PrepareLoadedReplayOwnership();
         TryStartDtrRoundBanner($"single_r{sourceRound}");
         Server.PrintToConsole($"[DTR OK] round_start: loaded SINGLE source_round={sourceRound} on {reason}: {load.Message}");
         return true;
@@ -379,7 +380,7 @@ public sealed partial class DemoTracerPlugin
         var token = ++_session.Plan.ArmedPreparePollToken;
         void Poll()
         {
-            Server.NextFrame(() =>
+            AddTimer(ReplayReadinessPollSeconds, () =>
             {
                 if (token != _session.Plan.ArmedPreparePollToken ||
                     !_session.Plan.Armed ||
@@ -406,7 +407,7 @@ public sealed partial class DemoTracerPlugin
                 {
                     ScheduleFreezePrerollStart(_session.Plan.ArmedLabel);
                 }
-            });
+            }, TimerFlags.STOP_ON_MAPCHANGE);
         }
 
         Poll();

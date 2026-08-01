@@ -30,7 +30,7 @@ public sealed partial class DemoTracerPlugin
         return StartLoaded(loop);
     }
 
-    private void PreloadLoadedReplays()
+    private void PrepareLoadedReplayOwnership()
     {
         foreach (var slot in _session.LoadedSlots)
         {
@@ -43,6 +43,12 @@ public sealed partial class DemoTracerPlugin
         ScheduleInitialRoundSpawnAssignment();
         _ = SyncBotHiderPresentationLease(announce: false);
         _ = SyncBotRandomizerCosmeticLease(announce: false);
+    }
+
+    private void PreloadLoadedReplays()
+    {
+        PrepareLoadedReplayOwnership();
+        CancelPendingReplaySlotReconciliations();
         ApplyLoadedReplayMusicKits();
         ScheduleLoadedReplayMusicKitRepairs();
 
@@ -79,7 +85,6 @@ public sealed partial class DemoTracerPlugin
 
         ApplyLoadedReplayScoreboards();
         AlignSafeC4OwnerForLoadedReplays();
-        _ = SyncBotHiderPresentationLease(announce: false);
     }
 
     private void ApplyLoadedReplayMusicKits()
@@ -143,46 +148,17 @@ public sealed partial class DemoTracerPlugin
             !ReplayMusicKitAlignmentAllowed(replay.MusicKitId))
             return;
 
-        var player = Utilities.GetPlayerFromSlot(slot);
-        if (player is not { IsValid: true } || player.UserId is not int userId)
-            return;
-
-        var generation = CurrentReplayIdentityGeneration(slot);
         var expectedMusicKitId = replay.MusicKitId;
-        var repairToken = ++_session.NextReplayMusicKitRepairToken;
-        _session.ReplayMusicKitRepairTokens[slot] = repairToken;
-
-        void ReconcileWhileCurrent()
+        ScheduleReplaySlotNextFrame(slot, ReplaySlotWorkKind.MusicKitRepair, context =>
         {
-            try
+            if (!_session.LoadedReplays.TryGetValue(slot, out var current) ||
+                current.MusicKitId != expectedMusicKitId)
             {
-                if (!_session.ReplayMusicKitRepairTokens.TryGetValue(slot, out var currentToken) ||
-                    currentToken != repairToken ||
-                    !IsReplayIdentityGenerationCurrent(slot, generation) ||
-                    !_session.LoadedReplays.TryGetValue(slot, out var current) ||
-                    current.MusicKitId != expectedMusicKitId ||
-                    Utilities.GetPlayerFromSlot(slot) is not { IsValid: true } currentPlayer ||
-                    currentPlayer.UserId != userId)
-                {
-                    return;
-                }
-
-                _ = ApplyReplayMusicKitForSlot(slot, expectedMusicKitId);
+                return;
             }
-            finally
-            {
-                if (_session.ReplayMusicKitRepairTokens.TryGetValue(slot, out var currentToken) &&
-                    currentToken == repairToken)
-                {
-                    _session.ReplayMusicKitRepairTokens.Remove(slot);
-                }
-            }
-        }
 
-        // The cosmetic writer lease is established in the spawn callback. One
-        // coalesced next-frame reconciliation runs after all spawn handlers;
-        // ownership must prevent later writers from fighting this state.
-        Server.NextFrame(ReconcileWhileCurrent);
+            _ = ApplyReplayMusicKitForSlot(context.Slot, expectedMusicKitId);
+        });
     }
 
     private bool ApplyReplayMusicKit(
@@ -318,11 +294,11 @@ public sealed partial class DemoTracerPlugin
         foreach (var slot in _session.ReplayMusicKitBaselines.Keys.ToArray())
             RestoreReplayMusicKitForSlot(slot, reason);
         _session.ReplayMusicKitBaselines.Clear();
-        _session.ReplayMusicKitRepairTokens.Clear();
+        _replaySlotWork.CancelWhere(key => key.Kind == ReplaySlotWorkKind.MusicKitRepair);
     }
 
     private void InvalidateReplayMusicKitRepair(int slot)
-        => _session.ReplayMusicKitRepairTokens.Remove(slot);
+        => _replaySlotWork.Cancel(new ReplaySlotWorkKey(slot, ReplaySlotWorkKind.MusicKitRepair));
 
     private static bool ReplayMusicKitStateMatches(CCSPlayerController player, int expectedMusicKitId)
     {

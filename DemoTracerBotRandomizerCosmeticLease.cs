@@ -150,9 +150,28 @@ public sealed partial class DemoTracerPlugin
     private string _lastBotRandomizerLeaseError = string.Empty;
     private float _nextBotRandomizerLeaseHeartbeatAt;
     private float _nextBotRandomizerLeaseRetryAt;
+    private int _botRandomizerLeaseTransitionDepth;
+
+    private void BeginBotRandomizerCosmeticLeaseTransition()
+    {
+        _botRandomizerLeaseTransitionDepth++;
+    }
+
+    private void EndBotRandomizerCosmeticLeaseTransition()
+    {
+        if (_botRandomizerLeaseTransitionDepth <= 0)
+            return;
+        if (--_botRandomizerLeaseTransitionDepth > 0)
+            return;
+
+        _ = SyncBotRandomizerCosmeticLease(announce: false);
+    }
 
     private void EnsureBotRandomizerCosmeticLease()
     {
+        if (_botRandomizerLeaseTransitionDepth > 0)
+            return;
+
         if (!string.IsNullOrWhiteSpace(_botRandomizerLease.Token) &&
             Server.CurrentTime >= _nextBotRandomizerLeaseHeartbeatAt)
         {
@@ -174,6 +193,9 @@ public sealed partial class DemoTracerPlugin
 
     private bool SyncBotRandomizerCosmeticLease(bool announce)
     {
+        if (_botRandomizerLeaseTransitionDepth > 0)
+            return true;
+
         if (_session.LoadedReplays.Count == 0)
         {
             ReleaseBotRandomizerCosmeticLease("no_replay_identity_claims");
@@ -472,6 +494,9 @@ public sealed partial class DemoTracerPlugin
 
     private void ReleaseBotRandomizerCosmeticLease(string reason)
     {
+        if (_botRandomizerLeaseTransitionDepth > 0)
+            return;
+
         var token = _botRandomizerLease.Token;
         _botRandomizerLease.Invalidate();
         _botRandomizerLeaseSignature = string.Empty;
@@ -504,28 +529,8 @@ public sealed partial class DemoTracerPlugin
                 _session.LoadoutSyncedSlots.Remove(slot);
             }
             InvalidateLoadedReplayCosmeticAlignmentForSlot(slot);
-            ScheduleCosmeticNextFrame(() =>
-            {
-                if (!CanWriteReplaySlot(slot) ||
-                    !_session.LoadedReplays.TryGetValue(slot, out var replay) ||
-                    !_botRandomizerLease.TryGet(slot, replay.SteamId, out _))
-                {
-                    return;
-                }
-
-                // Lease replacement can occur because another replay slot was
-                // handed off. Never rebuild a surviving slot's live inventory
-                // while native playback is active; only restore cosmetics.
-                if (!IsReplaySlotPlaying(slot))
-                {
-                    ApplyReplayLoadoutForSlot(slot, replay);
-                    PreloadReplayWeaponsForSlot(slot, replay);
-                }
-                if (ReplayMusicKitAlignmentAllowed(replay.MusicKitId))
-                    _ = ApplyReplayMusicKitForSlot(slot, replay.MusicKitId);
-                if (!TryAlignLoadedReplayCosmeticsForSlot(slot, replay))
-                    QueueLoadedReplayCosmeticAlignmentForSlot(slot);
-            });
+            ScheduleReplaySlotReconciliation(slot);
+            ScheduleReplayMusicKitRepairForSlot(slot);
         }
     }
 

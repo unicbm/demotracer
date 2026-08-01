@@ -7,6 +7,7 @@
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Commands;
+using CounterStrikeSharp.API.Modules.Timers;
 using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API;
 using System.Globalization;
@@ -306,7 +307,7 @@ public sealed partial class DemoTracerPlugin
 
     private void PollPendingPlayoffPreparation(int token)
     {
-        Server.NextFrame(() =>
+        AddTimer(ReplayReadinessPollSeconds, () =>
         {
             if (!_session.Plan.PlayoffPreparePending || token != _session.Plan.PlayoffPrepareToken)
                 return;
@@ -321,7 +322,7 @@ public sealed partial class DemoTracerPlugin
             _ = CompletePendingPlayoffPreparation(
                 waitForDecode: false,
                 scheduleFreezePreroll: true);
-        });
+        }, TimerFlags.STOP_ON_MAPCHANGE);
     }
 
     private bool CompletePendingPlayoffPreparation(
@@ -349,7 +350,7 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
-        PreloadLoadedReplays();
+        PrepareLoadedReplayOwnership();
         _session.Plan.PlayoffPrepared = true;
         _session.Plan.PlayoffPreparedTRound = tRound;
         _session.Plan.PlayoffPreparedCtRound = ctRound;

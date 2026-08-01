@@ -32,6 +32,7 @@ public sealed partial class DemoTracerPlugin
 
     private void StopAndUnloadLoaded(bool clearArmedPlan, bool releaseBuffers)
     {
+        CancelAllReplayDeferredWork();
         CancelDtrRoundBanner(resetRound: false);
         InvalidateInitialSpawnAssignment();
         var trackedSlots = _session.LoadedSlots.ToHashSet();
@@ -90,6 +91,7 @@ public sealed partial class DemoTracerPlugin
         _lifecycleResetInProgress = true;
         try
         {
+            CancelAllReplayDeferredWork();
             CancelReplayPrefetch();
             InvalidateInitialSpawnAssignment();
             ClearFreezePrerollReplayState();
@@ -111,7 +113,6 @@ public sealed partial class DemoTracerPlugin
             if (reason.StartsWith("map_start:", StringComparison.OrdinalIgnoreCase))
             {
                 _session.ReplayMusicKitBaselines.Clear();
-                _session.ReplayMusicKitRepairTokens.Clear();
             }
             else
             {

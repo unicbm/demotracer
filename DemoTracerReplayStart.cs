@@ -128,14 +128,17 @@ public sealed partial class DemoTracerPlugin
             {
                 _session.InitialSpawnAssignmentScheduled = false;
                 Server.PrintToConsole(
-                    $"[DTR WARN] initial spawn assignment was not ready after {attempts} tick(s): {reason}");
+                    $"[DTR WARN] initial spawn assignment was not ready after {attempts} attempts: {reason}");
                 return;
             }
 
-            Server.NextFrame(TryAssign);
+            AddTimer(
+                ReplayReadinessPollSeconds,
+                TryAssign,
+                TimerFlags.STOP_ON_MAPCHANGE);
         }
 
-        TryAssign();
+        Server.NextFrame(TryAssign);
     }
 
     private bool TryAssignInitialRoundSpawns(out string reason)
@@ -448,6 +451,7 @@ public sealed partial class DemoTracerPlugin
 
         var token = ++_session.FreezePrerollToken;
         var attempts = 0;
+        var replayPreparationApplied = false;
         _session.FreezePrerollStarted = false;
         void TryStart()
         {
@@ -474,11 +478,18 @@ public sealed partial class DemoTracerPlugin
                     Server.PrintToConsole(
                         $"[DTR WARN] freeze pre-roll waiting for replay pawns on {label}: {readinessReason}");
                 }
-                Server.NextFrame(TryStart);
+                AddTimer(
+                    ReplayReadinessPollSeconds,
+                    TryStart,
+                    TimerFlags.STOP_ON_MAPCHANGE);
                 return;
             }
 
-            PreloadLoadedReplays();
+            if (!replayPreparationApplied)
+            {
+                PreloadLoadedReplays();
+                replayPreparationApplied = true;
+            }
             var message = StartLoadedReady(
                 loop: false,
                 ReplayStartAnchor.FreezePreroll,
@@ -491,7 +502,10 @@ public sealed partial class DemoTracerPlugin
                     Server.PrintToConsole(
                         $"[DTR WARN] freeze pre-roll retry {label}: slots={string.Join(",", missingSlots)}; {message}");
                 }
-                Server.NextFrame(TryStart);
+                AddTimer(
+                    ReplayReadinessPollSeconds,
+                    TryStart,
+                    TimerFlags.STOP_ON_MAPCHANGE);
                 return;
             }
 

@@ -27,8 +27,10 @@ public sealed partial class DemoTracerPlugin
     [GameEventHandler]
     public HookResult OnRoundStart(EventRoundStart @event, GameEventInfo info)
     {
+        BeginReplayRoundWorkEpoch();
         ResetDtrRoundBannerForRound();
         BeginBotHiderPresentationTransition();
+        BeginBotRandomizerCosmeticLeaseTransition();
         try
         {
             if (StopReplayStateForRoundBoundary("round_start"))
@@ -56,13 +58,14 @@ public sealed partial class DemoTracerPlugin
                 if (PrepareArmedRound("round_start"))
                     ScheduleFreezePrerollStart(_session.Plan.ArmedLabel);
             }
-            Server.NextFrame(ScheduleLoadedReplayMusicKitRepairs);
-
+            if (_session.LoadedSlots.Count > 0)
+                ScheduleRoundBoundarySpawnReconciliation();
             return HookResult.Continue;
         }
         finally
         {
             EndBotHiderPresentationTransition();
+            EndBotRandomizerCosmeticLeaseTransition();
         }
     }
 
@@ -129,7 +132,6 @@ public sealed partial class DemoTracerPlugin
         if (@event.Userid is { IsValid: true } player)
         {
             var spawnedSlot = player.Slot;
-            var spawnedUserId = player.UserId;
             if (_retainedReplayViewmodelSlots.Contains(player.Slot) &&
                 !_session.ReplaySlots.IsPlaying(player.Slot))
             {
@@ -139,8 +141,6 @@ public sealed partial class DemoTracerPlugin
             _session.LoadoutSyncedSlots.Remove(spawnedSlot);
             _session.RebuiltInventorySlots.Remove(spawnedSlot);
             InvalidateLoadedReplayCosmeticAlignmentForSlot(player.Slot);
-            if (_session.ReplaySlots.IsOwned(player.Slot))
-                QueueLoadedReplayCosmeticAlignmentForSlot(player.Slot);
             if (_session.LoadedSlots.Count > 0)
             {
                 if (_session.ReplaySlots.IsOwned(player.Slot) &&
@@ -155,34 +155,11 @@ public sealed partial class DemoTracerPlugin
                     // pawn each round. Reassert the skip edge at spawn and redo
                     // loadout preparation once the new pawn is fully usable.
                     _ = BotControllerNative.SetBuySkip(spawnedSlot);
-                    var spawnToken = _session.InitialSpawnAssignmentToken;
-                    Server.NextFrame(() =>
-                    {
-                        if (spawnToken != _session.InitialSpawnAssignmentToken ||
-                            spawnedUserId is not int expectedUserId ||
-                            Utilities.GetPlayerFromSlot(spawnedSlot) is not { IsValid: true } currentPlayer ||
-                            currentPlayer.UserId != expectedUserId ||
-                            !CanWriteReplaySlot(spawnedSlot) ||
-                            !_session.LoadedReplays.TryGetValue(spawnedSlot, out var replay))
-                        {
-                            return;
-                        }
-
-                        ApplyReplayLoadoutForSlot(spawnedSlot, replay);
-                        PreloadReplayWeaponsForSlot(spawnedSlot, replay);
-                    });
+                    ScheduleReplaySlotReconciliation(spawnedSlot);
                 }
                 ScheduleReplayMusicKitRepairForSlot(spawnedSlot);
                 ScheduleInitialRoundSpawnAssignment();
-                Server.NextFrame(() => SyncBotHiderPresentationLease(announce: false));
-                AddTimer(
-                    0.05f,
-                    () => AlignSafeC4OwnerForLoadedReplays(forceReconcile: true),
-                    TimerFlags.STOP_ON_MAPCHANGE);
-                AddTimer(
-                    0.20f,
-                    () => AlignSafeC4OwnerForLoadedReplays(forceReconcile: true),
-                    TimerFlags.STOP_ON_MAPCHANGE);
+                ScheduleRoundBoundarySpawnReconciliation();
             }
         }
 

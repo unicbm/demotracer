@@ -37,7 +37,7 @@ public sealed partial class DemoTracerPlugin
         bool steamIdMatch)
     {
         var replayStateReplaced = false;
-        var presentationTransitionStarted = false;
+        var companionLeaseTransitionStarted = false;
         var loadSucceeded = false;
         var selectionLabel = steamIdMatch
             ? $"playoff T=r{tRound}/CT=r{ctRound}"
@@ -110,7 +110,8 @@ public sealed partial class DemoTracerPlugin
             var skippedCt = allCtFiles.Count - ctAssignments.Count;
 
             BeginBotHiderPresentationTransition();
-            presentationTransitionStarted = true;
+            BeginBotRandomizerCosmeticLeaseTransition();
+            companionLeaseTransitionStarted = true;
             StopAndUnloadLoaded(clearArmedPlan: true, releaseBuffers: false);
             replayStateReplaced = true;
             _session.LoadedRoundScoreboard = roundScoreboard;
@@ -167,8 +168,11 @@ public sealed partial class DemoTracerPlugin
             FinishReplayPrefetchRound();
             if (!loadSucceeded)
                 ReleaseUnusedWarmReplayBuffers();
-            if (presentationTransitionStarted)
+            if (companionLeaseTransitionStarted)
+            {
                 EndBotHiderPresentationTransition();
+                EndBotRandomizerCosmeticLeaseTransition();
+            }
         }
     }
 

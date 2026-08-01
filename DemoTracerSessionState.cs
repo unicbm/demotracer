@@ -40,7 +40,6 @@ public sealed partial class DemoTracerPlugin
         public Dictionary<int, PendingBulletDamage> PendingBulletDamages { get; } = [];
         public Dictionary<int, PendingThreat360> PendingThreat360 { get; } = [];
         public Dictionary<int, ReplayMusicKitBaseline> ReplayMusicKitBaselines { get; } = [];
-        public Dictionary<int, long> ReplayMusicKitRepairTokens { get; } = [];
         public HashSet<int> CosmeticSyncedSlots { get; } = [];
         public Dictionary<int, AppliedActiveWeaponCosmetic> ActiveWeaponCosmetics { get; } = [];
         public HashSet<int> ScoreboardSyncedSlots { get; } = [];
@@ -49,7 +48,6 @@ public sealed partial class DemoTracerPlugin
         public HashSet<int> ReplayFailedViewmodelSlots { get; } = [];
         public ReplayPlanState Plan { get; } = new();
 
-        public long NextReplayMusicKitRepairToken { get; set; }
         public bool SafeC4Aligned { get; set; }
         public int InitialSpawnAssignmentToken { get; set; }
         public bool InitialSpawnAssignmentComplete { get; set; }

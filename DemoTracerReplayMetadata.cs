@@ -26,6 +26,7 @@ public sealed partial class DemoTracerPlugin
 {
     private void RememberLoadedSlot(int slot)
     {
+        CancelReplaySlotDeferredWork(slot);
         _session.ReplaySlots.LoadAndClaim(slot);
     }
 
