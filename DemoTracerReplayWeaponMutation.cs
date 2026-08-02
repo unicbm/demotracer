@@ -61,67 +61,39 @@ public sealed partial class DemoTracerPlugin
         if (weapon is { IsValid: true } && PawnOwnsWeapon(pawn, weapon))
         {
             Server.PrintToConsole(
-                $"dtr: exact replay weapon removal is pending slot={player.Slot} " +
+                $"[DTR WARN] exact replay weapon removal was not observed slot={player.Slot} " +
                 $"item={weaponName} reason={reason}");
+            return false;
         }
 
-        // Let the engine publish the inventory detach before destroying the
-        // entity. Immediate destruction can leave the weapon slot unavailable
-        // while GiveNamedItem already appears to have succeeded.
-        ScheduleRemovedReplayWeaponCleanup(
-            player.Slot,
-            weaponEntityHandle,
-            weaponName,
-            reason);
-        return true;
-    }
+        if (weapon is not { IsValid: true })
+            return true;
+        if (weapon.EntityHandle.Raw != weaponEntityHandle ||
+            !WeaponClassMatches(weapon.DesignerName, weaponName))
+        {
+            Server.PrintToConsole(
+                $"[DTR WARN] removed replay weapon identity changed slot={player.Slot} " +
+                $"item={weaponName} reason={reason}");
+            return false;
+        }
 
-    private static void ScheduleRemovedReplayWeaponCleanup(
-        int slot,
-        uint weaponEntityHandle,
-        string weaponName,
-        string reason)
-    {
-        Server.NextFrame(() => Server.NextFrame(() =>
-            CleanupRemovedReplayWeapon(slot, weaponEntityHandle, weaponName, reason)));
-    }
-
-    private static void CleanupRemovedReplayWeapon(
-        int slot,
-        uint weaponEntityHandle,
-        string weaponName,
-        string reason)
-    {
+        // Destroy the detached entity in the same server mutation. Deferring
+        // Kill across network frames can leave a removed weapon published in
+        // PVS while another writer still holds its old viewmodel/entity handle.
+        // The replacement state machine grants the target on a later frame, so
+        // same-frame destruction no longer races GiveNamedItem slot reuse.
         try
         {
-            var weapon = new CHandle<CBasePlayerWeapon>(weaponEntityHandle).Value;
-            if (weapon is not { IsValid: true } ||
-                weapon.EntityHandle.Raw != weaponEntityHandle ||
-                !WeaponClassMatches(weapon.DesignerName, weaponName))
-            {
-                return;
-            }
-
-            var currentlyOwned = Utilities.GetPlayers().Any(candidate =>
-            {
-                if (candidate is not { IsValid: true } ||
-                    candidate.PlayerPawn is not { IsValid: true } pawnHandle)
-                {
-                    return false;
-                }
-
-                var candidatePawn = pawnHandle.Value;
-                return candidatePawn is { IsValid: true } &&
-                       PawnOwnsWeapon(candidatePawn, weapon);
-            });
-            if (!currentlyOwned)
-                weapon.AcceptInput("Kill");
+            weapon.AcceptInput("Kill");
         }
         catch (Exception ex)
         {
             Server.PrintToConsole(
-                $"dtr: failed to clean removed weapon slot={slot} item={weaponName} reason={reason}: {ex.Message}");
+                $"dtr: failed to kill removed weapon slot={player.Slot} item={weaponName} reason={reason}: {ex.Message}");
+            return false;
         }
+
+        return true;
     }
 
     private static bool TryGiveNamedItem(CCSPlayerController player, string itemName)

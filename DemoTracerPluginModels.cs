@@ -134,6 +134,15 @@ public sealed partial class DemoTracerPlugin
         string FallbackItem,
         ReplayWeaponSlot WeaponSlot);
 
+    private readonly record struct PendingReplayKnifeSubclassRepair(
+        int PlayerSlot,
+        int PlayerUserId,
+        uint PawnEntityHandle,
+        uint WeaponEntityHandle,
+        long ReplayWriteEpoch,
+        ulong ReplaySteamId,
+        int ItemDefinitionIndex);
+
     private readonly record struct AppliedActiveWeaponCosmetic(int WeaponDefIndex, nint WeaponHandle);
 
     private readonly record struct AppliedCosmeticEntityWrite(

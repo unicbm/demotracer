@@ -163,9 +163,122 @@ public sealed partial class DemoTracerPlugin
             applyPaint: true,
             applyCustomName: _cosmeticNamesEnabled);
         if (applied)
+        {
             _appliedKnifeCosmeticWrites[writeKey] = writeStamp;
+            ScheduleReplayKnifeSubclassRepair(player, weapon, cosmetic, replaySteamId);
+        }
         return applied;
     }
+
+    private void ScheduleReplayKnifeSubclassRepair(
+        CCSPlayerController player,
+        CBasePlayerWeapon weapon,
+        ReplayItemCosmetic cosmetic,
+        ulong replaySteamId)
+    {
+        if (player.UserId is not int userId ||
+            cosmetic.ItemDefIndex is not int itemDefinitionIndex ||
+            !IsKnifeCosmeticDefIndex(itemDefinitionIndex))
+        {
+            return;
+        }
+
+        var pawn = player.PlayerPawn.Value;
+        if (pawn is not { IsValid: true } ||
+            weapon is not { IsValid: true } ||
+            !PawnOwnsWeapon(pawn, weapon))
+        {
+            return;
+        }
+
+        var pending = new PendingReplayKnifeSubclassRepair(
+            player.Slot,
+            userId,
+            pawn.EntityHandle.Raw,
+            weapon.EntityHandle.Raw,
+            CurrentReplayWriteEpoch(player.Slot),
+            replaySteamId,
+            itemDefinitionIndex);
+        ScheduleCosmeticNextFrame(() => ReassertReplayKnifeSubclass(pending));
+        AddTimer(
+            0.10f,
+            () => ReassertReplayKnifeSubclass(pending),
+            TimerFlags.STOP_ON_MAPCHANGE);
+        AddTimer(
+            0.25f,
+            () => ReassertReplayKnifeSubclass(pending),
+            TimerFlags.STOP_ON_MAPCHANGE);
+    }
+
+    private void ReassertReplayKnifeSubclass(PendingReplayKnifeSubclassRepair pending)
+    {
+        var writeEpochCurrent = IsReplayWriteEpochCurrent(
+            pending.PlayerSlot,
+            pending.ReplayWriteEpoch);
+        var player = Utilities.GetPlayerFromSlot(pending.PlayerSlot);
+        var samePlayer = player is { IsValid: true, PawnIsAlive: true } &&
+                         player.UserId == pending.PlayerUserId;
+        var pawn = player?.PlayerPawn.Value;
+        var samePawn = samePlayer &&
+                       pawn is { IsValid: true } &&
+                       pawn.EntityHandle.Raw == pending.PawnEntityHandle;
+        var weapon = new CHandle<CBasePlayerWeapon>(pending.WeaponEntityHandle).Value;
+        var sameWeapon = weapon is { IsValid: true } &&
+                         weapon.EntityHandle.Raw == pending.WeaponEntityHandle;
+        var ownedKnife = samePawn &&
+                         sameWeapon &&
+                         PawnOwnsWeapon(pawn!, weapon!) &&
+                         GetReplayWeaponSlot(weapon!.DesignerName) == ReplayWeaponSlot.Knife;
+        var activeClaim = HasActiveBotRandomizerClaim(
+            pending.PlayerSlot,
+            pending.ReplaySteamId,
+            DemoTracerCosmeticWriteField.Knife);
+        if (!CanReassertReplayKnifeSubclass(
+                writeEpochCurrent,
+                samePlayer,
+                samePawn,
+                sameWeapon,
+                ownedKnife,
+                activeClaim) ||
+            !TryValidateBotRandomizerClaim(
+                pending.PlayerSlot,
+                pending.ReplaySteamId,
+                DemoTracerCosmeticWriteField.Knife))
+        {
+            return;
+        }
+
+        try
+        {
+            var item = weapon!.AttributeManager.Item;
+            weapon.AcceptInput(
+                "ChangeSubclass",
+                value: pending.ItemDefinitionIndex.ToString(CultureInfo.InvariantCulture));
+            item.ItemDefinitionIndex = (ushort)pending.ItemDefinitionIndex;
+            item.EntityQuality = 3;
+            Utilities.SetStateChanged(weapon, "CEconEntity", "m_AttributeManager");
+        }
+        catch (Exception ex)
+        {
+            Server.PrintToConsole(
+                $"dtr: knife subclass repair failed slot={pending.PlayerSlot} " +
+                $"item={pending.ItemDefinitionIndex}: {ex.Message}");
+        }
+    }
+
+    internal static bool CanReassertReplayKnifeSubclass(
+        bool writeEpochCurrent,
+        bool samePlayer,
+        bool samePawn,
+        bool sameWeapon,
+        bool ownedKnife,
+        bool activeClaim)
+        => writeEpochCurrent &&
+           samePlayer &&
+           samePawn &&
+           sameWeapon &&
+           ownedKnife &&
+           activeClaim;
 
     private bool TryApplyItemCosmetic(
         CCSPlayerController player,
