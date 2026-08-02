@@ -796,14 +796,29 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             }
 
             var player = Utilities.GetPlayerFromSlot(requested.Slot);
-            if (player is not { IsValid: true } ||
-                (requested.PlayerName != null &&
-                 !player.PlayerName.Equals(requested.PlayerName, StringComparison.Ordinal)) ||
-                (requested.SteamId.HasValue && player.SteamID != requested.SteamId.Value) ||
-                player.Ping != checked((uint)Math.Max(_applied[requested.Slot]!.Value.Ping, 0)) ||
-                (requested.ScoreboardFlair.HasValue &&
-                 !ScoreboardFlairMatches(player, requested.ScoreboardFlair.Value)) ||
-                !RequestedCrosshairMatches(requested.CrosshairCode, player.CrosshairCodes))
+            if (player is not { IsValid: true })
+            {
+                reason = $"controller_presentation_not_applied:{requested.Slot}";
+                return false;
+            }
+
+            var playerNameMatches = requested.PlayerName == null ||
+                                    player.PlayerName.Equals(requested.PlayerName, StringComparison.Ordinal);
+            var steamIdMatches = !requested.SteamId.HasValue ||
+                                 player.SteamID == requested.SteamId.Value;
+            var pingMatches = player.Ping ==
+                              checked((uint)Math.Max(_applied[requested.Slot]!.Value.Ping, 0));
+            var scoreboardFlairMatches = !requested.ScoreboardFlair.HasValue ||
+                                         ScoreboardFlairMatches(player, requested.ScoreboardFlair.Value);
+            var crosshairMatches = RequestedCrosshairMatches(
+                requested.CrosshairCode,
+                player.CrosshairCodes);
+            if (!CanCommitSynchronousPresentationLease(
+                    playerNameMatches,
+                    steamIdMatches,
+                    pingMatches,
+                    scoreboardFlairMatches,
+                    crosshairMatches))
             {
                 reason = $"controller_presentation_not_applied:{requested.Slot}";
                 return false;
@@ -817,6 +832,24 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     internal static bool RequestedCrosshairMatches(string? requested, string? actual)
         => requested == null ||
            string.Equals(actual ?? string.Empty, requested, StringComparison.Ordinal);
+
+    internal static bool CanCommitSynchronousPresentationLease(
+        bool playerNameMatches,
+        bool steamIdMatches,
+        bool pingMatches,
+        bool scoreboardFlairMatches,
+        bool crosshairMatches)
+    {
+        // Name and SteamID are the core identity transaction. Crosshair is an
+        // optional, compatibility-gated field that the periodic publisher can
+        // keep repairing; it must never roll an otherwise valid identity lease
+        // back to the bot's base persona.
+        _ = crosshairMatches;
+        return playerNameMatches &&
+               steamIdMatches &&
+               pingMatches &&
+               scoreboardFlairMatches;
+    }
 
     private BotHiderPresentationLeaseResult Success(PresentationLease lease)
     {
