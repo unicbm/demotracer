@@ -105,8 +105,15 @@ public sealed partial class DemoTracerPlugin
             _session.LastReplayWeaponDef[slot] = normalized;
             ApplyReplayWeaponCosmeticForSlot(slot, normalized);
         }
-        else if (!allowSlotReplacement)
+        else if (!allowSlotReplacement &&
+                 TryGetWeaponClassByDefIndex(normalized, out var expectedClassName) &&
+                 player.PlayerPawn.Value is { IsValid: true } pawn &&
+                 ReplayWeaponReplacementPolicy.ShouldCacheFailedSwitch(
+                     HasReplayWeapon(pawn, expectedClassName)))
         {
+            // A native switch can be rejected transiently, but only cache the
+            // replay def when the weapon really exists. Caching a missing gun
+            // permanently suppresses recovery after an asynchronous grant.
             _session.LastReplayWeaponDef[slot] = normalized;
         }
         else

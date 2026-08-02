@@ -153,6 +153,10 @@ public sealed partial class DemoTracerPlugin
             return true;
         }
 
+        var scheduleSubclassRepair = TryCapturePendingKnifeSubclassTransition(
+            weapon,
+            cosmetic,
+            out var initialSubclassId);
         var applied = TryApplyItemCosmetic(
             player,
             weapon,
@@ -165,16 +169,52 @@ public sealed partial class DemoTracerPlugin
         if (applied)
         {
             _appliedKnifeCosmeticWrites[writeKey] = writeStamp;
-            ScheduleReplayKnifeSubclassRepair(player, weapon, cosmetic, replaySteamId);
+            if (scheduleSubclassRepair)
+            {
+                ScheduleReplayKnifeSubclassRepair(
+                    player,
+                    weapon,
+                    cosmetic,
+                    replaySteamId,
+                    initialSubclassId);
+            }
         }
         return applied;
+    }
+
+    private bool TryCapturePendingKnifeSubclassTransition(
+        CBasePlayerWeapon weapon,
+        ReplayItemCosmetic cosmetic,
+        out uint initialSubclassId)
+    {
+        initialSubclassId = 0;
+        if (cosmetic.ItemDefIndex is not int desiredItemDefinitionIndex ||
+            !IsKnifeCosmeticDefIndex(desiredItemDefinitionIndex))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (weapon.AttributeManager.Item.ItemDefinitionIndex == desiredItemDefinitionIndex)
+                return false;
+            initialSubclassId = weapon.SubclassID.Value;
+            return true;
+        }
+        catch
+        {
+            // The initial in-place write is still valid. Without a readable
+            // engine subclass token, do not issue speculative delayed swaps.
+            return false;
+        }
     }
 
     private void ScheduleReplayKnifeSubclassRepair(
         CCSPlayerController player,
         CBasePlayerWeapon weapon,
         ReplayItemCosmetic cosmetic,
-        ulong replaySteamId)
+        ulong replaySteamId,
+        uint initialSubclassId)
     {
         if (player.UserId is not int userId ||
             cosmetic.ItemDefIndex is not int itemDefinitionIndex ||
@@ -198,6 +238,7 @@ public sealed partial class DemoTracerPlugin
             weapon.EntityHandle.Raw,
             CurrentReplayWriteEpoch(player.Slot),
             replaySteamId,
+            initialSubclassId,
             itemDefinitionIndex);
         ScheduleCosmeticNextFrame(() => ReassertReplayKnifeSubclass(pending));
         AddTimer(
@@ -251,6 +292,18 @@ public sealed partial class DemoTracerPlugin
         try
         {
             var item = weapon!.AttributeManager.Item;
+            if (!ShouldReassertReplayKnifeSubclass(
+                    pending.InitialSubclassId,
+                    weapon.SubclassID.Value))
+            {
+                return;
+            }
+
+            // ChangeSubclass also selects the knife's model/animation family.
+            // ItemDefinitionIndex is written synchronously even when the engine
+            // rejects a not-yet-settled subclass transition, so the actual
+            // subclass token is the completion signal. Stop retrying as soon as
+            // that token changes from the pre-write entity state.
             weapon.AcceptInput(
                 "ChangeSubclass",
                 value: pending.ItemDefinitionIndex.ToString(CultureInfo.InvariantCulture));
@@ -279,6 +332,11 @@ public sealed partial class DemoTracerPlugin
            sameWeapon &&
            ownedKnife &&
            activeClaim;
+
+    internal static bool ShouldReassertReplayKnifeSubclass(
+        uint initialSubclassId,
+        uint currentSubclassId)
+        => currentSubclassId == initialSubclassId;
 
     private bool TryApplyItemCosmetic(
         CCSPlayerController player,

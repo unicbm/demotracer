@@ -87,11 +87,11 @@ public sealed partial class DemoTracerPlugin
         _session.LastEnsuredWeaponDef.Remove(player.Slot);
         _session.LastReplayWeaponDef.Remove(player.Slot);
 
-        var targetGrantIssued = TryGiveNamedItem(player, targetItem);
+        _ = TryGiveNamedItem(player, targetItem);
         Server.NextFrame(() => VerifyTargetWeaponReplacement(
             pending,
             WeaponSlotReplacementGrantWaitFrames,
-            targetGrantIssued));
+            WeaponSlotReplacementGrantRetryAttempts));
         return true;
     }
 
@@ -123,16 +123,16 @@ public sealed partial class DemoTracerPlugin
                 Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
                     pending,
                     WeaponSlotReplacementFallbackWaitFrames,
-                    fallbackGrantIssued: false,
-                    "slot_clear_timeout"));
+                    fallbackRetryAttemptsRemaining: 0,
+                    failureReason: "slot_clear_timeout"));
                 return;
 
             case WeaponSlotReplacementAction.GrantTarget:
-                var targetGrantIssued = TryGiveNamedItem(player, pending.TargetItem);
+                _ = TryGiveNamedItem(player, pending.TargetItem);
                 Server.NextFrame(() => VerifyTargetWeaponReplacement(
                     pending,
                     WeaponSlotReplacementGrantWaitFrames,
-                    targetGrantIssued));
+                    WeaponSlotReplacementGrantRetryAttempts));
                 return;
         }
     }
@@ -140,46 +140,61 @@ public sealed partial class DemoTracerPlugin
     private void VerifyTargetWeaponReplacement(
         PendingWeaponSlotReplacement pending,
         int grantWaitFramesRemaining,
-        bool targetGrantIssued)
+        int grantRetryAttemptsRemaining)
     {
         if (!TryGetPendingWeaponSlotReplacementPawn(pending, out var player, out var pawn))
             return;
 
-        if (HasReplayWeapon(pawn, pending.TargetItem))
+        var targetPresent = HasReplayWeapon(pawn, pending.TargetItem);
+        var anySlotWeapon = GetWeaponsInReplaySlot(pawn, pending.WeaponSlot).Any();
+        switch (ReplayWeaponReplacementPolicy.VerifyGrant(
+                    targetPresent,
+                    anySlotWeapon,
+                    grantWaitFramesRemaining,
+                    grantRetryAttemptsRemaining))
         {
-            FinishWeaponSlotReplacement(pending, success: true, "target_granted");
-            return;
-        }
+            case WeaponGrantVerificationAction.TargetReady:
+                FinishWeaponSlotReplacement(pending, success: true, "target_granted");
+                return;
 
-        if (GetWeaponsInReplaySlot(pawn, pending.WeaponSlot).Any())
-        {
-            FinishWeaponSlotReplacement(pending, success: false, "target_grant_conflict");
-            return;
-        }
+            case WeaponGrantVerificationAction.Conflict:
+                FinishWeaponSlotReplacement(pending, success: false, "target_grant_conflict");
+                return;
 
-        if (grantWaitFramesRemaining > 0)
-        {
-            if (!targetGrantIssued)
-                targetGrantIssued = TryGiveNamedItem(player, pending.TargetItem);
-            Server.NextFrame(() => VerifyTargetWeaponReplacement(
-                pending,
-                grantWaitFramesRemaining - 1,
-                targetGrantIssued));
-            return;
-        }
+            case WeaponGrantVerificationAction.WaitForAttachment:
+                Server.NextFrame(() => VerifyTargetWeaponReplacement(
+                    pending,
+                    grantWaitFramesRemaining - 1,
+                    grantRetryAttemptsRemaining));
+                return;
 
-        var fallbackGrantIssued = TryGiveNamedItem(player, pending.FallbackItem);
-        Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
-            pending,
-            WeaponSlotReplacementFallbackWaitFrames,
-            fallbackGrantIssued,
-            "target_grant_timeout"));
+            case WeaponGrantVerificationAction.RetryGrant:
+                // GiveNamedItem can return a non-null entity before CS2 has
+                // actually attached it to the pawn's weapon slot. Observe a
+                // full window first, then issue one bounded retry instead of
+                // creating another pending entity every frame.
+                _ = TryGiveNamedItem(player, pending.TargetItem);
+                Server.NextFrame(() => VerifyTargetWeaponReplacement(
+                    pending,
+                    WeaponSlotReplacementGrantWaitFrames,
+                    grantRetryAttemptsRemaining - 1));
+                return;
+
+            case WeaponGrantVerificationAction.UseFallback:
+                _ = TryGiveNamedItem(player, pending.FallbackItem);
+                Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
+                    pending,
+                    WeaponSlotReplacementFallbackWaitFrames,
+                    WeaponSlotReplacementFallbackRetryAttempts,
+                    "target_grant_timeout"));
+                return;
+        }
     }
 
     private void VerifyFallbackWeaponIfNeeded(
         PendingWeaponSlotReplacement pending,
         int fallbackWaitFramesRemaining,
-        bool fallbackGrantIssued,
+        int fallbackRetryAttemptsRemaining,
         string failureReason)
     {
         if (!TryGetPendingWeaponSlotReplacementPawn(pending, out var player, out var pawn))
@@ -198,7 +213,7 @@ public sealed partial class DemoTracerPlugin
                 Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
                     pending,
                     fallbackWaitFramesRemaining - 1,
-                    fallbackGrantIssued,
+                    fallbackRetryAttemptsRemaining,
                     failureReason));
                 return;
             }
@@ -207,14 +222,23 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        if (!fallbackGrantIssued)
-            fallbackGrantIssued = TryGiveNamedItem(player, pending.FallbackItem);
         if (fallbackWaitFramesRemaining > 0)
         {
             Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
                 pending,
                 fallbackWaitFramesRemaining - 1,
-                fallbackGrantIssued,
+                fallbackRetryAttemptsRemaining,
+                failureReason));
+            return;
+        }
+
+        if (fallbackRetryAttemptsRemaining > 0)
+        {
+            _ = TryGiveNamedItem(player, pending.FallbackItem);
+            Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
+                pending,
+                WeaponSlotReplacementFallbackWaitFrames,
+                fallbackRetryAttemptsRemaining - 1,
                 failureReason));
             return;
         }

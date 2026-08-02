@@ -134,11 +134,17 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        if (!CheckReplayStartGates(message => command.ReplyToCommand(message), stopCurrentForOverride: true))
+        var deferExistingReplayCleanup =
+            ReplayPlanOverridePolicy.DeferExistingReplayCleanupUntilRoundStart(restart);
+        if (!CheckReplayStartGates(
+                message => command.ReplyToCommand(message),
+                stopCurrentForOverride: true,
+                deferStopUntilRoundStart: deferExistingReplayCleanup))
             return;
 
         ActivatePendingReplayRetentionPriority();
-        StopAndUnloadLoaded();
+        if (!deferExistingReplayCleanup)
+            StopAndUnloadLoaded();
         CancelReplayPrefetch();
         ResetPlayoffProgress();
         _session.Plan.SequenceManifestPath = manifestPath;
@@ -216,11 +222,17 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        if (!CheckReplayStartGates(reply, stopCurrentForOverride: true))
+        var deferExistingReplayCleanup =
+            ReplayPlanOverridePolicy.DeferExistingReplayCleanupUntilRoundStart(restart);
+        if (!CheckReplayStartGates(
+                reply,
+                stopCurrentForOverride: true,
+                deferStopUntilRoundStart: deferExistingReplayCleanup))
             return;
 
         ActivatePendingReplayRetentionPriority();
-        StopAndUnloadLoaded();
+        if (!deferExistingReplayCleanup)
+            StopAndUnloadLoaded();
         CancelReplayPrefetch();
         _session.Plan.ClearSequence();
         ResetPlayoffProgress();

@@ -141,6 +141,7 @@ public sealed partial class DemoTracerPlugin
         uint WeaponEntityHandle,
         long ReplayWriteEpoch,
         ulong ReplaySteamId,
+        uint InitialSubclassId,
         int ItemDefinitionIndex);
 
     private readonly record struct AppliedActiveWeaponCosmetic(int WeaponDefIndex, nint WeaponHandle);

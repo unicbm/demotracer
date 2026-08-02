@@ -21,6 +21,22 @@ internal enum ReplayWeaponSlotSyncStatus
     RetryRequired
 }
 
+internal enum WeaponGrantVerificationAction
+{
+    TargetReady,
+    Conflict,
+    WaitForAttachment,
+    RetryGrant,
+    UseFallback
+}
+
+internal enum DetachedWeaponCleanupAction
+{
+    Destroy,
+    Retry,
+    Abandon
+}
+
 internal static class ReplayWeaponReplacementPolicy
 {
     internal static WeaponSlotReplacementAction Decide(
@@ -35,6 +51,54 @@ internal static class ReplayWeaponReplacementPolicy
         return clearWaitFramesRemaining > 0
             ? WeaponSlotReplacementAction.WaitForClear
             : WeaponSlotReplacementAction.PreserveExisting;
+    }
+
+    internal static WeaponGrantVerificationAction VerifyGrant(
+        bool targetPresent,
+        bool anySlotWeapon,
+        int grantWaitFramesRemaining,
+        int grantRetryAttemptsRemaining)
+    {
+        if (targetPresent)
+            return WeaponGrantVerificationAction.TargetReady;
+        if (anySlotWeapon)
+            return WeaponGrantVerificationAction.Conflict;
+        if (grantWaitFramesRemaining > 0)
+            return WeaponGrantVerificationAction.WaitForAttachment;
+        return grantRetryAttemptsRemaining > 0
+            ? WeaponGrantVerificationAction.RetryGrant
+            : WeaponGrantVerificationAction.UseFallback;
+    }
+
+    internal static bool ShouldCacheFailedSwitch(bool targetPresent)
+        => targetPresent;
+
+    internal static DetachedWeaponCleanupAction DecideDetachedWeaponCleanup(
+        bool identityMatches,
+        bool ownedByPawn,
+        bool activeWeaponReference,
+        int framesSinceDetach,
+        int retriesRemaining)
+    {
+        if (!identityMatches)
+            return DetachedWeaponCleanupAction.Abandon;
+
+        // A Randomizer/native GiveNamedItem writer may already have queued the
+        // entity's creation or econ state for this network frame. Never delete
+        // that entity before the frame containing its detach has been flushed.
+        if (framesSinceDetach <= 0)
+        {
+            return retriesRemaining > 0
+                ? DetachedWeaponCleanupAction.Retry
+                : DetachedWeaponCleanupAction.Abandon;
+        }
+
+        if (!ownedByPawn && !activeWeaponReference)
+            return DetachedWeaponCleanupAction.Destroy;
+
+        return retriesRemaining > 0
+            ? DetachedWeaponCleanupAction.Retry
+            : DetachedWeaponCleanupAction.Abandon;
     }
 
     internal static bool CanRemoveForReplacement(string className)

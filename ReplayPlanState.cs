@@ -6,6 +6,12 @@
 
 namespace DemoTracer;
 
+internal static class ReplayPlanOverridePolicy
+{
+    internal static bool DeferExistingReplayCleanupUntilRoundStart(bool restartRequested)
+        => restartRequested;
+}
+
 internal sealed class ReplayPlanState
 {
     public bool Armed { get; set; }

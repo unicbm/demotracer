@@ -146,7 +146,10 @@ public sealed partial class DemoTracerPlugin
         return false;
     }
 
-    private bool CheckReplayStartGates(Action<string> reply, bool stopCurrentForOverride)
+    private bool CheckReplayStartGates(
+        Action<string> reply,
+        bool stopCurrentForOverride,
+        bool deferStopUntilRoundStart = false)
     {
         if (IsWarmupPeriod())
         {
@@ -156,6 +159,15 @@ public sealed partial class DemoTracerPlugin
 
         if (!stopCurrentForOverride || !HasAnyNativeActiveReplaySlot())
             return true;
+
+        if (deferStopUntilRoundStart)
+        {
+            // dtr_go immediately follows this plan update with mp_restartgame.
+            // Keep the current identity/cosmetic ownership intact until the
+            // round_start transition can replace all leases atomically.
+            reply("[DTR WARN] 当前DTR将在round_start被原子替换");
+            return true;
+        }
 
         reply("[DTR WARN] 会STOP当前所有DTR并override");
         StopAndUnloadLoaded();

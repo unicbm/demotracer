@@ -61,9 +61,8 @@ public sealed partial class DemoTracerPlugin
         if (weapon is { IsValid: true } && PawnOwnsWeapon(pawn, weapon))
         {
             Server.PrintToConsole(
-                $"[DTR WARN] exact replay weapon removal was not observed slot={player.Slot} " +
+                $"dtr: exact replay weapon removal is pending slot={player.Slot} " +
                 $"item={weaponName} reason={reason}");
-            return false;
         }
 
         if (weapon is not { IsValid: true })
@@ -77,23 +76,102 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
-        // Destroy the detached entity in the same server mutation. Deferring
-        // Kill across network frames can leave a removed weapon published in
-        // PVS while another writer still holds its old viewmodel/entity handle.
-        // The replacement state machine grants the target on a later frame, so
-        // same-frame destruction no longer races GiveNamedItem slot reuse.
+        // RemovePlayerItem owns the inventory mutation, but deletion must cross
+        // a network-frame boundary. BotRandomizer supplies CEconItemView state in
+        // GiveNamedItem's pre-hook; killing that entity in the same frame can
+        // publish its state after its entity index has already disappeared.
+        ScheduleRemovedReplayWeaponCleanup(
+            player.Slot,
+            weaponEntityHandle,
+            weaponName,
+            reason);
+        return true;
+    }
+
+    private static void ScheduleRemovedReplayWeaponCleanup(
+        int slot,
+        uint weaponEntityHandle,
+        string weaponName,
+        string reason)
+    {
+        Server.NextFrame(() => CleanupRemovedReplayWeapon(
+            slot,
+            weaponEntityHandle,
+            weaponName,
+            reason,
+            framesSinceDetach: 1,
+            retriesRemaining: DetachedWeaponCleanupRetryFrames));
+    }
+
+    private static void CleanupRemovedReplayWeapon(
+        int slot,
+        uint weaponEntityHandle,
+        string weaponName,
+        string reason,
+        int framesSinceDetach,
+        int retriesRemaining)
+    {
         try
         {
-            weapon.AcceptInput("Kill");
+            var weapon = new CHandle<CBasePlayerWeapon>(weaponEntityHandle).Value;
+            var identityMatches = weapon is { IsValid: true } &&
+                                  weapon.EntityHandle.Raw == weaponEntityHandle &&
+                                  WeaponClassMatches(weapon.DesignerName, weaponName);
+            if (!identityMatches)
+                return;
+
+            var ownedByPawn = false;
+            var activeWeaponReference = false;
+            foreach (var candidate in Utilities.GetPlayers())
+            {
+                var candidatePawn = candidate?.PlayerPawn.Value;
+                var weaponServices = candidatePawn?.WeaponServices;
+                if (candidate is not { IsValid: true } ||
+                    candidatePawn is not { IsValid: true } ||
+                    weaponServices == null)
+                {
+                    continue;
+                }
+
+                ownedByPawn |= PawnOwnsWeapon(candidatePawn, weapon!);
+                activeWeaponReference |= weaponServices.ActiveWeapon.Raw == weaponEntityHandle;
+                if (ownedByPawn && activeWeaponReference)
+                    break;
+            }
+
+            switch (ReplayWeaponReplacementPolicy.DecideDetachedWeaponCleanup(
+                        identityMatches,
+                        ownedByPawn,
+                        activeWeaponReference,
+                        framesSinceDetach,
+                        retriesRemaining))
+            {
+                case DetachedWeaponCleanupAction.Destroy:
+                    weapon!.AcceptInput("Kill");
+                    return;
+
+                case DetachedWeaponCleanupAction.Retry:
+                    Server.NextFrame(() => CleanupRemovedReplayWeapon(
+                        slot,
+                        weaponEntityHandle,
+                        weaponName,
+                        reason,
+                        framesSinceDetach + 1,
+                        retriesRemaining - 1));
+                    return;
+
+                case DetachedWeaponCleanupAction.Abandon:
+                    Server.PrintToConsole(
+                        $"[DTR WARN] detached replay weapon remains engine-referenced slot={slot} " +
+                        $"item={weaponName} reason={reason}");
+                    return;
+            }
         }
         catch (Exception ex)
         {
             Server.PrintToConsole(
-                $"dtr: failed to kill removed weapon slot={player.Slot} item={weaponName} reason={reason}: {ex.Message}");
-            return false;
+                $"dtr: failed to clean removed weapon slot={slot} item={weaponName} reason={reason}: {ex.Message}");
         }
-
-        return true;
     }
 
     private static bool TryGiveNamedItem(CCSPlayerController player, string itemName)
