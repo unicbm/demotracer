@@ -80,7 +80,7 @@ public sealed partial class DemoTracerPlugin
         }
         else if (!retryWeaponSync)
         {
-            ApplyReplayWeaponPreset(slot, ChooseStartWeaponDef(replay), true, true);
+            ApplyReplayWeaponPreset(slot, ChooseStartWeaponDef(replay), force: true);
         }
 
         if (retryWeaponSync && !pendingWeaponSync)
@@ -118,7 +118,7 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        ApplyReplayWeaponPreset(slot, ChooseStartWeaponDef(currentReplay), true, true);
+        ApplyReplayWeaponPreset(slot, ChooseStartWeaponDef(currentReplay), force: true);
     }
 
     private static void ApplyReplayArmorAndKit(
@@ -221,8 +221,7 @@ public sealed partial class DemoTracerPlugin
                 : ReplayWeaponSlotSyncStatus.RetryRequired;
         }
 
-        if (targetItem != null && HasReplayWeapon(pawn, targetItem))
-            return ReplayWeaponSlotSyncStatus.Complete;
+        var targetPresent = targetItem != null && HasReplayWeapon(pawn, targetItem);
 
         var pendingKey = (player.Slot, slot);
         if (_session.PendingWeaponSlotReplacements.TryGetValue(pendingKey, out var existing))
@@ -239,58 +238,38 @@ public sealed partial class DemoTracerPlugin
         }
 
         var currentSlotWeapons = GetWeaponsInReplaySlot(pawn, slot).ToList();
-        if (targetItem == null)
+        switch (ReplayWeaponReplacementPolicy.DecideSlotPlanAction(
+                    targetItem != null,
+                    targetPresent,
+                    currentSlotWeapons.Count > 0))
         {
-            var extraWeapon = currentSlotWeapons.FirstOrDefault();
-            if (extraWeapon == null)
+            case ReplayWeaponSlotPlanAction.Complete:
                 return ReplayWeaponSlotSyncStatus.Complete;
 
-            _ = RemoveReplayWeaponForReplacement(
-                player,
-                pawn,
-                extraWeapon,
-                "extra_loadout_slot");
-            return ReplayWeaponSlotSyncStatus.RetryRequired;
+            case ReplayWeaponSlotPlanAction.GrantIntoEmptySlot:
+                return BeginEmptyWeaponSlotGrant(
+                    player,
+                    pawn,
+                    targetItem!,
+                    slot,
+                    playerUserId,
+                    replayWriteEpoch)
+                    ? ReplayWeaponSlotSyncStatus.Pending
+                    : ReplayWeaponSlotSyncStatus.RetryRequired;
+
+            case ReplayWeaponSlotPlanAction.PreserveExisting:
+                // Phase-one safety invariant: DTR evidence may select a
+                // different gun, but preparation must not detach an already
+                // usable primary/secondary before a transactional replacement
+                // implementation can prove that the target is attached.
+                Server.PrintToConsole(
+                    $"dtr: preserved occupied weapon slot={player.Slot}:{slot} " +
+                    $"target={targetItem ?? "none"}");
+                return ReplayWeaponSlotSyncStatus.Complete;
+
+            default:
+                return ReplayWeaponSlotSyncStatus.RetryRequired;
         }
-
-        if (currentSlotWeapons.Count == 0)
-        {
-            return BeginEmptyWeaponSlotGrant(
-                player,
-                pawn,
-                targetItem,
-                slot,
-                playerUserId,
-                replayWriteEpoch)
-                ? ReplayWeaponSlotSyncStatus.Pending
-                : ReplayWeaponSlotSyncStatus.RetryRequired;
-        }
-
-        var fallbackItem = currentSlotWeapons
-            .Select(weapon => NormalizeWeaponClassName(weapon.DesignerName))
-            .FirstOrDefault(itemName => !WeaponClassMatches(itemName, targetItem));
-        var weaponToDrop = currentSlotWeapons
-            .FirstOrDefault(weapon => !WeaponClassMatches(
-                NormalizeWeaponClassName(weapon.DesignerName),
-                targetItem));
-        if (fallbackItem == null || weaponToDrop == null)
-            return ReplayWeaponSlotSyncStatus.RetryRequired;
-        if (player.UserId != playerUserId ||
-            !IsReplayWriteEpochCurrent(player.Slot, replayWriteEpoch))
-            return ReplayWeaponSlotSyncStatus.RetryRequired;
-
-        return BeginWeaponSlotReplacement(
-            player,
-            pawn,
-            weaponToDrop,
-            targetItem,
-            fallbackItem,
-            slot,
-            playerUserId,
-            replayWriteEpoch,
-            "replace_loadout_slot")
-            ? ReplayWeaponSlotSyncStatus.Pending
-            : ReplayWeaponSlotSyncStatus.RetryRequired;
     }
 
     private void GiveMissingLoadoutItems(

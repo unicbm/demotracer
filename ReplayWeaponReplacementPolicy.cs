@@ -6,19 +6,18 @@
 
 namespace DemoTracer;
 
-internal enum WeaponSlotReplacementAction
-{
-    TargetReady,
-    WaitForClear,
-    GrantTarget,
-    PreserveExisting
-}
-
 internal enum ReplayWeaponSlotSyncStatus
 {
     Complete,
     Pending,
     RetryRequired
+}
+
+internal enum ReplayWeaponSlotPlanAction
+{
+    Complete,
+    GrantIntoEmptySlot,
+    PreserveExisting
 }
 
 internal enum WeaponGrantVerificationAction
@@ -28,13 +27,6 @@ internal enum WeaponGrantVerificationAction
     WaitForAttachment,
     RetryGrant,
     UseFallback
-}
-
-internal enum DetachedWeaponCleanupAction
-{
-    Destroy,
-    Retry,
-    Abandon
 }
 
 internal enum SafeC4AlignmentAction
@@ -47,18 +39,18 @@ internal enum SafeC4AlignmentAction
 
 internal static class ReplayWeaponReplacementPolicy
 {
-    internal static WeaponSlotReplacementAction Decide(
+    internal static ReplayWeaponSlotPlanAction DecideSlotPlanAction(
+        bool hasTarget,
         bool targetPresent,
-        bool anySlotWeapon,
-        int clearWaitFramesRemaining)
+        bool anySlotWeapon)
     {
         if (targetPresent)
-            return WeaponSlotReplacementAction.TargetReady;
-        if (!anySlotWeapon)
-            return WeaponSlotReplacementAction.GrantTarget;
-        return clearWaitFramesRemaining > 0
-            ? WeaponSlotReplacementAction.WaitForClear
-            : WeaponSlotReplacementAction.PreserveExisting;
+            return ReplayWeaponSlotPlanAction.Complete;
+        if (anySlotWeapon)
+            return ReplayWeaponSlotPlanAction.PreserveExisting;
+        return hasTarget
+            ? ReplayWeaponSlotPlanAction.GrantIntoEmptySlot
+            : ReplayWeaponSlotPlanAction.Complete;
     }
 
     internal static WeaponGrantVerificationAction VerifyGrant(
@@ -80,42 +72,6 @@ internal static class ReplayWeaponReplacementPolicy
 
     internal static bool ShouldCacheFailedSwitch(bool targetPresent)
         => targetPresent;
-
-    internal static DetachedWeaponCleanupAction DecideDetachedWeaponCleanup(
-        bool identityMatches,
-        bool ownedByPawn,
-        bool activeWeaponReference,
-        int framesSinceDetach,
-        int retriesRemaining)
-    {
-        if (!identityMatches)
-            return DetachedWeaponCleanupAction.Abandon;
-
-        // A Randomizer/native GiveNamedItem writer may already have queued the
-        // entity's creation or econ state for this network frame. Never delete
-        // that entity before the frame containing its detach has been flushed.
-        if (framesSinceDetach <= 0)
-        {
-            return retriesRemaining > 0
-                ? DetachedWeaponCleanupAction.Retry
-                : DetachedWeaponCleanupAction.Abandon;
-        }
-
-        if (!ownedByPawn && !activeWeaponReference)
-            return DetachedWeaponCleanupAction.Destroy;
-
-        return retriesRemaining > 0
-            ? DetachedWeaponCleanupAction.Retry
-            : DetachedWeaponCleanupAction.Abandon;
-    }
-
-    internal static bool CanRemoveForReplacement(string className)
-    {
-        var normalized = className.Trim();
-        return !normalized.StartsWith("weapon_knife", StringComparison.OrdinalIgnoreCase) &&
-               !normalized.Equals("weapon_bayonet", StringComparison.OrdinalIgnoreCase) &&
-               !normalized.Equals("weapon_c4", StringComparison.OrdinalIgnoreCase);
-    }
 
     internal static SafeC4AlignmentAction DecideSafeC4Alignment(
         bool targetHasC4,

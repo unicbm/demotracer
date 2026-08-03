@@ -35,8 +35,7 @@ public sealed partial class DemoTracerPlugin
                 slot,
                 def,
                 forceSwitch: false,
-                allowGive: true,
-                replaceConflictingSlot: false);
+                allowGive: true);
         if (!rebuilt)
             return;
 
@@ -45,14 +44,12 @@ public sealed partial class DemoTracerPlugin
         ApplyReplayWeaponPreset(
             slot,
             ChooseStartWeaponDef(replay),
-            allowSlotReplacement: true,
             force: true);
     }
 
     private void ApplyReplayWeaponPreset(
         int slot,
         int weaponDefIndex,
-        bool allowSlotReplacement,
         bool force)
     {
         if (!CanWriteReplaySlot(slot))
@@ -85,28 +82,12 @@ public sealed partial class DemoTracerPlugin
                 _session.LastLockedWeaponTarget[slot] = target;
         }
 
-        if (allowSlotReplacement && IsSlotReplaceableWeaponDef(normalized))
-        {
-            var ensured = EnsureReplayWeaponForSlot(
-                slot,
-                normalized,
-                forceSwitch: false,
-                allowGive: true,
-                replaceConflictingSlot: true);
-            if (!ensured)
-            {
-                _session.LastReplayWeaponDef.Remove(slot);
-                return;
-            }
-        }
-
         if (BotControllerNative.SwitchBotWeapon(slot, normalized))
         {
             _session.LastReplayWeaponDef[slot] = normalized;
             ApplyReplayWeaponCosmeticForSlot(slot, normalized);
         }
-        else if (!allowSlotReplacement &&
-                 TryGetWeaponClassByDefIndex(normalized, out var expectedClassName) &&
+        else if (TryGetWeaponClassByDefIndex(normalized, out var expectedClassName) &&
                  player.PlayerPawn.Value is { IsValid: true } pawn &&
                  ReplayWeaponReplacementPolicy.ShouldCacheFailedSwitch(
                      HasReplayWeapon(pawn, expectedClassName)))
@@ -142,8 +123,7 @@ public sealed partial class DemoTracerPlugin
         int slot,
         int weaponDefIndex,
         bool forceSwitch,
-        bool allowGive,
-        bool replaceConflictingSlot)
+        bool allowGive)
     {
         var normalized = NormalizeWeaponDefIndex(weaponDefIndex);
         if (normalized < 0)
@@ -155,34 +135,6 @@ public sealed partial class DemoTracerPlugin
         if (player is not { IsValid: true, PawnIsAlive: true } ||
             player.PlayerPawn is not { IsValid: true, Value.IsValid: true })
             return false;
-
-        if (allowGive &&
-            replaceConflictingSlot &&
-            player.UserId is int playerUserId &&
-            TryGetWeaponClassByDefIndex(normalized, out var replacementClassName))
-        {
-            var pawn = player.PlayerPawn.Value;
-            var weaponSlot = GetReplayWeaponSlot(replacementClassName);
-            var conflictingWeapon = GetWeaponsInReplaySlot(pawn, weaponSlot)
-                .FirstOrDefault(weapon => !WeaponClassMatches(
-                    weapon.DesignerName,
-                    replacementClassName));
-            if (conflictingWeapon != null)
-            {
-                var fallbackItem = NormalizeWeaponClassName(conflictingWeapon.DesignerName);
-                _ = BeginWeaponSlotReplacement(
-                    player,
-                    pawn,
-                    conflictingWeapon,
-                    replacementClassName,
-                    fallbackItem,
-                    weaponSlot,
-                    playerUserId,
-                    CurrentReplayWriteEpoch(slot),
-                    "replace_replay_slot");
-                return false;
-            }
-        }
 
         if (!TryEnsureReplayWeapon(
                 player,

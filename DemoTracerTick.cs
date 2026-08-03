@@ -130,7 +130,7 @@ public sealed partial class DemoTracerPlugin
                 lastDef == weaponDefIndex)
                 continue;
 
-            ApplyReplayWeaponPreset(slot, weaponDefIndex, allowSlotReplacement: false, force: false);
+            ApplyReplayWeaponPreset(slot, weaponDefIndex, force: false);
         }
     }
 

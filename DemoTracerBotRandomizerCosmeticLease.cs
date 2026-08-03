@@ -138,6 +138,39 @@ internal sealed class DemoTracerBotRandomizerLeaseSnapshot
         => _claims.TryGetValue(slot, out claim!) &&
            subjectSteamId != 0 &&
            claim.SubjectSteamId == subjectSteamId;
+
+    internal bool TryBuildRetainedApiClaim(
+        int slot,
+        ulong subjectSteamId,
+        out BotRandomizerCosmeticWriteClaim claim)
+    {
+        claim = null!;
+        if (!TryGet(slot, subjectSteamId, out var active))
+            return false;
+
+        claim = new BotRandomizerCosmeticWriteClaim
+        {
+            Slot = active.Slot,
+            Incarnation = active.Incarnation,
+            SubjectSteamId = active.SubjectSteamId,
+            Agent = active.Agent,
+            Knife = active.Knife,
+            Gloves = active.Gloves,
+            MusicKit = active.MusicKit,
+            Weapons = active.Weapons
+                .OrderBy(pair => pair.Key)
+                .Select(pair => new BotRandomizerWeaponWriteClaim
+                {
+                    WeaponDefinitionIndex = pair.Key,
+                    Paint = pair.Value.Paint,
+                    Stickers = pair.Value.Stickers,
+                    Keychain = pair.Value.Keychain,
+                    PaintUsesLegacyModel = pair.Value.PaintUsesLegacyModel
+                })
+                .ToArray()
+        };
+        return true;
+    }
 }
 
 public sealed partial class DemoTracerPlugin
@@ -254,9 +287,18 @@ public sealed partial class DemoTracerPlugin
         if (!result.Ok || string.IsNullOrWhiteSpace(result.LeaseToken))
         {
             // A failed replacement leaves the provider's old lease intact, but
-            // its fields no longer match current evidence. Keep DemoTracer fail
-            // closed until an atomic replacement succeeds.
-            _botRandomizerLease.Invalidate();
+            // its fields no longer match current evidence. Preserve that old
+            // lease as an exclusion fence and keep new writes fail-closed until
+            // an atomic replacement succeeds. Dropping the local token here
+            // would force ReleaseOwner on retry and expose an already aligned
+            // takeover pawn to BotRandomizer.
+            if (!ShouldRetainActiveBotRandomizerLeaseAfterSyncFailure(
+                    !string.IsNullOrWhiteSpace(_botRandomizerLease.Token),
+                    result.Reason))
+            {
+                _botRandomizerLease.Invalidate();
+                _botRandomizerLeaseSignature = string.Empty;
+            }
             _nextBotRandomizerLeaseRetryAt = Server.CurrentTime + BotRandomizerLeaseRetrySeconds;
             ReportBotRandomizerLeaseError(result.Reason, announce);
             return false;
@@ -267,7 +309,7 @@ public sealed partial class DemoTracerPlugin
         _lastBotRandomizerLeaseError = string.Empty;
         _nextBotRandomizerLeaseHeartbeatAt = Server.CurrentTime + BotRandomizerLeaseHeartbeatSeconds;
         _nextBotRandomizerLeaseRetryAt = 0.0f;
-        ScheduleBotRandomizerLeaseInventoryRebuild(result.Slots);
+        ScheduleBotRandomizerLeasePresentationReconciliation(result.Slots);
         if (announce)
         {
             Server.PrintToConsole(
@@ -302,23 +344,43 @@ public sealed partial class DemoTracerPlugin
             // letting BotRandomizer hot-swap the already aligned live pawn back
             // to its random cosmetics. Keep the fence for that exact pawn; its
             // spawn/identity invalidation removes the alignment and releases it.
+            var canWriteReplaySlot = CanWriteReplaySlot(slot);
+            var currentPawnCosmeticsAligned =
+                HasCurrentLoadedReplayCosmeticAlignment(slot, replay);
             if (!ShouldHoldBotRandomizerCosmeticLease(
-                    CanWriteReplaySlot(slot),
-                    HasCurrentLoadedReplayCosmeticAlignment(slot, replay)) ||
-                !HasActiveBotHiderReplayIdentity(slot, replay.SteamId) ||
-                !_botRandomizerBridge.TryGetManagedBot(slot, out var managed))
+                    canWriteReplaySlot,
+                    currentPawnCosmeticsAligned))
             {
                 continue;
             }
 
-            var evidence = BuildBotRandomizerPositiveEvidence(replay);
-            var claim = BuildBotRandomizerWriteClaim(
-                managed.Slot,
-                managed.Incarnation,
-                replay.SteamId,
-                evidence);
-            if (claim != null)
-                claims.Add(claim);
+            if (canWriteReplaySlot &&
+                HasActiveBotHiderReplayIdentity(slot, replay.SteamId) &&
+                _botRandomizerBridge.TryGetManagedBot(slot, out var managed))
+            {
+                var evidence = BuildBotRandomizerPositiveEvidence(replay);
+                var claim = BuildBotRandomizerWriteClaim(
+                    managed.Slot,
+                    managed.Incarnation,
+                    replay.SteamId,
+                    evidence);
+                if (claim != null)
+                    claims.Add(claim);
+                continue;
+            }
+
+            // Human takeover intentionally makes the slot unwritable and may
+            // temporarily hide its bot controller from either provider. Keep
+            // the exact already-authenticated claim in the existing lease;
+            // this path authorizes no DemoTracer writes.
+            if (currentPawnCosmeticsAligned &&
+                _botRandomizerLease.TryBuildRetainedApiClaim(
+                    slot,
+                    replay.SteamId,
+                    out var retained))
+            {
+                claims.Add(retained);
+            }
         }
         return claims.ToArray();
     }
@@ -327,6 +389,12 @@ public sealed partial class DemoTracerPlugin
         bool canWriteReplaySlot,
         bool currentPawnCosmeticsAligned)
         => canWriteReplaySlot || currentPawnCosmeticsAligned;
+
+    internal static bool ShouldRetainActiveBotRandomizerLeaseAfterSyncFailure(
+        bool hadActiveLease,
+        string? reason)
+        => hadActiveLease &&
+           !string.Equals(reason, "lease_not_found", StringComparison.Ordinal);
 
     private DemoTracerBotRandomizerClaimEvidence BuildBotRandomizerPositiveEvidence(LoadedReplay replay)
     {
@@ -407,9 +475,9 @@ public sealed partial class DemoTracerPlugin
             Slot = slot,
             Incarnation = incarnation,
             SubjectSteamId = subjectSteamId,
-            // A lease itself makes BotRandomizer re-run its restoration pass.
-            // Keep every field positive-evidence-only so an absent cosmetic
-            // cannot trigger competing entity writes during replay setup.
+            // Keep every field positive-evidence-only. Omitted fields remain
+            // Randomizer-owned and reconcile only on their next natural pawn
+            // or item lifecycle callback.
             Agent = evidence.Agent,
             Knife = evidence.Knife,
             Gloves = evidence.Gloves,
@@ -532,17 +600,15 @@ public sealed partial class DemoTracerPlugin
         _lastBotRandomizerLeaseError = reason;
     }
 
-    private void ScheduleBotRandomizerLeaseInventoryRebuild(IEnumerable<int> slots)
+    private void ScheduleBotRandomizerLeasePresentationReconciliation(IEnumerable<int> slots)
     {
         foreach (var slot in slots.Distinct())
         {
-            if (!IsReplaySlotPlaying(slot))
-            {
-                _session.RebuiltInventorySlots.Remove(slot);
-                _session.LoadoutSyncedSlots.Remove(slot);
-            }
-            InvalidateLoadedReplayCosmeticAlignmentForSlot(slot);
-            ScheduleReplaySlotReconciliation(slot);
+            // A presentation lease only transfers cosmetic write ownership.
+            // It must never invalidate an already aligned pawn: the slot may
+            // have been handed to a human and therefore be intentionally
+            // unwritable. Queueing is idempotent for an aligned live pawn.
+            QueueLoadedReplayCosmeticAlignmentForSlot(slot);
             ScheduleReplayMusicKitRepairForSlot(slot);
         }
     }

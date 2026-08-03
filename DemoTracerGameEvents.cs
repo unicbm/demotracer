@@ -138,8 +138,11 @@ public sealed partial class DemoTracerPlugin
                 RestoreReplayBotViewmodel(player.Slot);
             }
             InvalidateReplayWriteEpoch(spawnedSlot);
-            _session.LoadoutSyncedSlots.Remove(spawnedSlot);
-            _session.RebuiltInventorySlots.Remove(spawnedSlot);
+            // A normal round spawn already carries the engine-restored weapon
+            // inventory. TrackLoadedReplay clears these preparation flags when
+            // the selected DTR evidence actually changes; clearing them for
+            // every pawn spawn would destructively rebuild an already-correct
+            // loadout and can detach a saved primary such as an AWP.
             InvalidateLoadedReplayCosmeticAlignmentForSlot(player.Slot);
             if (_session.LoadedSlots.Count > 0)
             {
