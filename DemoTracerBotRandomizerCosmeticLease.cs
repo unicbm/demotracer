@@ -296,7 +296,15 @@ public sealed partial class DemoTracerPlugin
         {
             var slot = pair.Key;
             var replay = pair.Value;
-            if (!CanWriteReplaySlot(slot) ||
+            // The provider lease is both write authorization and an exclusion
+            // fence. Releasing replay input ownership (for example, when a
+            // human takes over the bot) must stop DemoTracer writes without
+            // letting BotRandomizer hot-swap the already aligned live pawn back
+            // to its random cosmetics. Keep the fence for that exact pawn; its
+            // spawn/identity invalidation removes the alignment and releases it.
+            if (!ShouldHoldBotRandomizerCosmeticLease(
+                    CanWriteReplaySlot(slot),
+                    HasCurrentLoadedReplayCosmeticAlignment(slot, replay)) ||
                 !HasActiveBotHiderReplayIdentity(slot, replay.SteamId) ||
                 !_botRandomizerBridge.TryGetManagedBot(slot, out var managed))
             {
@@ -314,6 +322,11 @@ public sealed partial class DemoTracerPlugin
         }
         return claims.ToArray();
     }
+
+    internal static bool ShouldHoldBotRandomizerCosmeticLease(
+        bool canWriteReplaySlot,
+        bool currentPawnCosmeticsAligned)
+        => canWriteReplaySlot || currentPawnCosmeticsAligned;
 
     private DemoTracerBotRandomizerClaimEvidence BuildBotRandomizerPositiveEvidence(LoadedReplay replay)
     {

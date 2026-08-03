@@ -37,6 +37,14 @@ internal sealed class ReplayCosmeticAlignmentTracker
     internal bool IsAligned(int slot, ReplayCosmeticPawnIdentity identity)
         => _alignedBySlot.TryGetValue(slot, out var current) && current == identity;
 
+    internal bool HasReplayAlignment(
+        int slot,
+        long replayIdentityGeneration,
+        ulong replaySteamId)
+        => _alignedBySlot.TryGetValue(slot, out var current) &&
+           current.ReplayIdentityGeneration == replayIdentityGeneration &&
+           current.ReplaySteamId == replaySteamId;
+
     internal void CancelPending(int slot)
         => _pendingBySlot.Remove(slot);
 

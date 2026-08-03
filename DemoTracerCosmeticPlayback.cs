@@ -147,6 +147,23 @@ public sealed partial class DemoTracerPlugin
         _gloveCosmeticTokens.Remove(slot);
     }
 
+    private bool HasCurrentLoadedReplayCosmeticAlignment(int slot, LoadedReplay replay)
+    {
+        if (!_session.CosmeticSyncedSlots.Contains(slot) ||
+            !_session.ReplayIdentityGenerationBySlot.TryGetValue(slot, out var generation))
+        {
+            return false;
+        }
+
+        // During a human takeover the original bot controller may no longer
+        // expose the pawn through PlayerPawn, but this is still the same live
+        // cosmetic alignment until spawn/identity invalidation clears it.
+        return _cosmeticAlignmentTracker.HasReplayAlignment(
+            slot,
+            generation,
+            replay.SteamId);
+    }
+
     private bool TryGetWeaponCosmeticForSlot(
         int slot,
         int weaponDefIndex,
