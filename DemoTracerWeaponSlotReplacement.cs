@@ -12,6 +12,59 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
+    private bool BeginCtStarterSidearmReplacement(
+        CCSPlayerController player,
+        CCSPlayerPawn pawn,
+        CBasePlayerWeapon currentWeapon,
+        string targetItem,
+        ReplayWeaponSlot weaponSlot,
+        int playerUserId,
+        long replayWriteEpoch)
+    {
+        var currentItem = NormalizeWeaponClassName(currentWeapon.DesignerName);
+        var currentSlotWeapons = GetWeaponsInReplaySlot(pawn, weaponSlot).ToList();
+        if (player.Team != CsTeam.CounterTerrorist ||
+            player.UserId != playerUserId ||
+            !IsReplayWriteEpochCurrent(player.Slot, replayWriteEpoch) ||
+            currentSlotWeapons.Count != 1 ||
+            currentSlotWeapons[0].EntityHandle.Raw != currentWeapon.EntityHandle.Raw ||
+            !ReplayWeaponReplacementPolicy.IsCtStarterSidearmSwap(
+                weaponSlot,
+                currentItem,
+                targetItem))
+        {
+            return false;
+        }
+
+        var key = (player.Slot, weaponSlot);
+        if (_session.PendingWeaponSlotReplacements.ContainsKey(key))
+            return false;
+        if (!RemoveCtStarterSidearmForReplacement(
+                player,
+                pawn,
+                currentWeapon,
+                targetItem))
+        {
+            return false;
+        }
+
+        var pending = new PendingWeaponSlotReplacement(
+            player.Slot,
+            playerUserId,
+            pawn.EntityHandle.Raw,
+            replayWriteEpoch,
+            targetItem,
+            currentItem,
+            weaponSlot);
+        _session.PendingWeaponSlotReplacements[key] = pending;
+        _session.LastEnsuredWeaponDef.Remove(player.Slot);
+        _session.LastReplayWeaponDef.Remove(player.Slot);
+        Server.NextFrame(() => CompleteCtStarterSidearmReplacement(
+            pending,
+            WeaponSlotReplacementClearWaitFrames));
+        return true;
+    }
+
     private bool BeginEmptyWeaponSlotGrant(
         CCSPlayerController player,
         CCSPlayerPawn pawn,
@@ -48,6 +101,48 @@ public sealed partial class DemoTracerPlugin
             WeaponSlotReplacementGrantWaitFrames,
             WeaponSlotReplacementGrantRetryAttempts));
         return true;
+    }
+
+    private void CompleteCtStarterSidearmReplacement(
+        PendingWeaponSlotReplacement pending,
+        int clearWaitFramesRemaining)
+    {
+        if (!TryGetPendingWeaponSlotReplacementPawn(pending, out var player, out var pawn))
+            return;
+
+        var targetPresent = HasReplayWeapon(pawn, pending.TargetItem);
+        var anySlotWeapon = GetWeaponsInReplaySlot(pawn, pending.WeaponSlot).Any();
+        switch (ReplayWeaponReplacementPolicy.DecideReplacementProgress(
+                    targetPresent,
+                    anySlotWeapon,
+                    clearWaitFramesRemaining))
+        {
+            case WeaponSlotReplacementAction.TargetReady:
+                FinishWeaponSlotReplacement(pending, success: true, "target_ready");
+                return;
+
+            case WeaponSlotReplacementAction.WaitForClear:
+                Server.NextFrame(() => CompleteCtStarterSidearmReplacement(
+                    pending,
+                    clearWaitFramesRemaining - 1));
+                return;
+
+            case WeaponSlotReplacementAction.PreserveExisting:
+                Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
+                    pending,
+                    WeaponSlotReplacementFallbackWaitFrames,
+                    fallbackRetryAttemptsRemaining: 0,
+                    failureReason: "starter_sidearm_clear_timeout"));
+                return;
+
+            case WeaponSlotReplacementAction.GrantTarget:
+                _ = TryGiveNamedItem(player, pending.TargetItem);
+                Server.NextFrame(() => VerifyTargetWeaponReplacement(
+                    pending,
+                    WeaponSlotReplacementGrantWaitFrames,
+                    WeaponSlotReplacementGrantRetryAttempts));
+                return;
+        }
     }
 
     private void VerifyTargetWeaponReplacement(

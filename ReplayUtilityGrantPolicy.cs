@@ -11,14 +11,25 @@ internal static class ReplayUtilityGrantPolicy
     public static bool ShouldQueue(
         ReplayHifiEvent replayEvent,
         ulong replaySteamId,
+        uint inventoryBaselineTickIndex,
         ReplayEquipmentCatalog equipment)
     {
         var kind = replayEvent.Kind.Trim().ToLowerInvariant();
         return kind is "item_pickup" or "item_transfer" &&
+               replayEvent.TickIndex > inventoryBaselineTickIndex &&
                BelongsToSlot(replayEvent.TargetSteamId, replaySteamId) &&
                TryResolveWeaponDefIndex(replayEvent, equipment, out var weaponDefIndex) &&
                equipment.ByDefIndex.TryGetValue(weaponDefIndex, out var definition) &&
                definition.Slot == ReplayWeaponSlot.Utility;
+    }
+
+    public static int ObservedUtilityCount(int entityCount, int? ammoCount)
+    {
+        var normalizedEntityCount = Math.Max(0, entityCount);
+        if (normalizedEntityCount == 0)
+            return 0;
+
+        return Math.Max(normalizedEntityCount, Math.Max(0, ammoCount ?? 0));
     }
 
     private static bool BelongsToSlot(ulong? eventSteamId, ulong replaySteamId)

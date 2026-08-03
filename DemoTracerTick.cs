@@ -165,7 +165,7 @@ public sealed partial class DemoTracerPlugin
 
             case "item_pickup":
             case "item_transfer":
-                if (ShouldQueueReplayUtilityGrant(replayEvent, replay.SteamId))
+                if (ShouldQueueReplayUtilityGrant(replayEvent, replay))
                     QueueReplayUtilityGrant(slot, replayEvent);
                 break;
 
@@ -183,8 +183,12 @@ public sealed partial class DemoTracerPlugin
 
     private bool ShouldQueueReplayUtilityGrant(
         ReplayHifiEvent replayEvent,
-        ulong replaySteamId)
-        => ReplayUtilityGrantPolicy.ShouldQueue(replayEvent, replaySteamId, _replayEquipment);
+        LoadedReplay replay)
+        => ReplayUtilityGrantPolicy.ShouldQueue(
+            replayEvent,
+            replay.SteamId,
+            replay.PlayStartTickIndex,
+            _replayEquipment);
 
     private void QueueReplayUtilityGrant(int slot, ReplayHifiEvent replayEvent)
     {
@@ -271,24 +275,6 @@ public sealed partial class DemoTracerPlugin
         return normalized.StartsWith("weapon_", StringComparison.OrdinalIgnoreCase)
             ? normalized
             : $"weapon_{normalized}";
-    }
-
-    private static int CountCurrentReplayItems(CCSPlayerController player, string className)
-    {
-        var pawn = player.PlayerPawn.Value;
-        if (pawn?.WeaponServices == null)
-            return 0;
-
-        var count = 0;
-        foreach (var handle in pawn.WeaponServices.MyWeapons)
-        {
-            var weapon = handle.Value;
-            if (weapon == null || !weapon.IsValid)
-                continue;
-            if (WeaponClassMatches(weapon.DesignerName, className))
-                count++;
-        }
-        return count;
     }
 
     private static IEnumerable<CBasePlayerWeapon> GetReplayWeaponsByClass(CCSPlayerPawn pawn, string className)

@@ -238,10 +238,19 @@ public sealed partial class DemoTracerPlugin
         }
 
         var currentSlotWeapons = GetWeaponsInReplaySlot(pawn, slot).ToList();
+        var canReplaceCtStarterSidearm =
+            player.Team == CsTeam.CounterTerrorist &&
+            targetItem != null &&
+            currentSlotWeapons.Count == 1 &&
+            ReplayWeaponReplacementPolicy.IsCtStarterSidearmSwap(
+                slot,
+                NormalizeWeaponClassName(currentSlotWeapons[0].DesignerName),
+                targetItem);
         switch (ReplayWeaponReplacementPolicy.DecideSlotPlanAction(
                     targetItem != null,
                     targetPresent,
-                    currentSlotWeapons.Count > 0))
+                    currentSlotWeapons.Count > 0,
+                    canReplaceCtStarterSidearm))
         {
             case ReplayWeaponSlotPlanAction.Complete:
                 return ReplayWeaponSlotSyncStatus.Complete;
@@ -250,6 +259,18 @@ public sealed partial class DemoTracerPlugin
                 return BeginEmptyWeaponSlotGrant(
                     player,
                     pawn,
+                    targetItem!,
+                    slot,
+                    playerUserId,
+                    replayWriteEpoch)
+                    ? ReplayWeaponSlotSyncStatus.Pending
+                    : ReplayWeaponSlotSyncStatus.RetryRequired;
+
+            case ReplayWeaponSlotPlanAction.ReplaceCtStarterSidearm:
+                return BeginCtStarterSidearmReplacement(
+                    player,
+                    pawn,
+                    currentSlotWeapons[0],
                     targetItem!,
                     slot,
                     playerUserId,

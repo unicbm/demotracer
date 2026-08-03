@@ -38,11 +38,82 @@ public sealed partial class DemoTracerPlugin
                 continue;
 
             var itemName = NormalizeWeaponClassName(weapon.DesignerName);
-            if (GetReplayWeaponSlot(itemName) is ReplayWeaponSlot.Knife or ReplayWeaponSlot.C4 or ReplayWeaponSlot.Other)
+            var slot = GetReplayWeaponSlot(itemName);
+            if (slot is ReplayWeaponSlot.Knife or ReplayWeaponSlot.C4 or ReplayWeaponSlot.Other)
                 continue;
+
+            if (slot == ReplayWeaponSlot.Utility)
+            {
+                int? ammoCount = TryReadReplayUtilityAmmoCount(pawn, weapon, out var observedAmmo)
+                    ? observedAmmo
+                    : null;
+                counts[itemName] = Math.Max(
+                    counts.GetValueOrDefault(itemName),
+                    ReplayUtilityGrantPolicy.ObservedUtilityCount(1, ammoCount));
+                continue;
+            }
+
             counts[itemName] = counts.GetValueOrDefault(itemName) + 1;
         }
         return counts;
+    }
+
+    private int CountCurrentReplayItems(CCSPlayerController player, string className)
+    {
+        var pawn = player.PlayerPawn.Value;
+        if (pawn?.WeaponServices == null)
+            return 0;
+
+        var entityCount = 0;
+        int? ammoCount = null;
+        foreach (var handle in pawn.WeaponServices.MyWeapons)
+        {
+            var weapon = handle.Value;
+            if (weapon == null || !weapon.IsValid ||
+                !WeaponClassMatches(weapon.DesignerName, className))
+            {
+                continue;
+            }
+
+            entityCount++;
+            if (!ammoCount.HasValue &&
+                GetReplayWeaponSlot(className) == ReplayWeaponSlot.Utility &&
+                TryReadReplayUtilityAmmoCount(pawn, weapon, out var observedAmmo))
+            {
+                ammoCount = observedAmmo;
+            }
+        }
+
+        return GetReplayWeaponSlot(className) == ReplayWeaponSlot.Utility
+            ? ReplayUtilityGrantPolicy.ObservedUtilityCount(entityCount, ammoCount)
+            : entityCount;
+    }
+
+    private static bool TryReadReplayUtilityAmmoCount(
+        CCSPlayerPawn pawn,
+        CBasePlayerWeapon weapon,
+        out int ammoCount)
+    {
+        ammoCount = 0;
+        try
+        {
+            var weaponServices = pawn.WeaponServices?.As<CCSPlayer_WeaponServices>();
+            var weaponData = weapon.VData;
+            if (weaponServices == null || weaponData == null)
+                return false;
+
+            var ammo = weaponServices.Ammo;
+            var ammoType = weaponData.PrimaryAmmoType;
+            if (ammoType >= ammo.Length)
+                return false;
+
+            ammoCount = ammo[ammoType];
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private IEnumerable<CBasePlayerWeapon> GetWeaponsInReplaySlot(CCSPlayerPawn pawn, ReplayWeaponSlot slot)

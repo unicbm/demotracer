@@ -17,6 +17,15 @@ internal enum ReplayWeaponSlotPlanAction
 {
     Complete,
     GrantIntoEmptySlot,
+    ReplaceCtStarterSidearm,
+    PreserveExisting
+}
+
+internal enum WeaponSlotReplacementAction
+{
+    TargetReady,
+    WaitForClear,
+    GrantTarget,
     PreserveExisting
 }
 
@@ -27,6 +36,13 @@ internal enum WeaponGrantVerificationAction
     WaitForAttachment,
     RetryGrant,
     UseFallback
+}
+
+internal enum DetachedWeaponCleanupAction
+{
+    Destroy,
+    Retry,
+    Abandon
 }
 
 internal enum SafeC4AlignmentAction
@@ -42,15 +58,56 @@ internal static class ReplayWeaponReplacementPolicy
     internal static ReplayWeaponSlotPlanAction DecideSlotPlanAction(
         bool hasTarget,
         bool targetPresent,
-        bool anySlotWeapon)
+        bool anySlotWeapon,
+        bool canReplaceCtStarterSidearm = false)
     {
         if (targetPresent)
             return ReplayWeaponSlotPlanAction.Complete;
+        if (anySlotWeapon && canReplaceCtStarterSidearm)
+            return ReplayWeaponSlotPlanAction.ReplaceCtStarterSidearm;
         if (anySlotWeapon)
             return ReplayWeaponSlotPlanAction.PreserveExisting;
         return hasTarget
             ? ReplayWeaponSlotPlanAction.GrantIntoEmptySlot
             : ReplayWeaponSlotPlanAction.Complete;
+    }
+
+    internal static bool IsCtStarterSidearmSwap(
+        ReplayWeaponSlot slot,
+        string currentItem,
+        string targetItem)
+    {
+        if (slot != ReplayWeaponSlot.Secondary)
+            return false;
+
+        var currentIsP2000 = currentItem.Equals(
+            "weapon_hkp2000",
+            StringComparison.OrdinalIgnoreCase);
+        var currentIsUsp = currentItem.Equals(
+            "weapon_usp_silencer",
+            StringComparison.OrdinalIgnoreCase);
+        var targetIsP2000 = targetItem.Equals(
+            "weapon_hkp2000",
+            StringComparison.OrdinalIgnoreCase);
+        var targetIsUsp = targetItem.Equals(
+            "weapon_usp_silencer",
+            StringComparison.OrdinalIgnoreCase);
+        return (currentIsP2000 && targetIsUsp) ||
+               (currentIsUsp && targetIsP2000);
+    }
+
+    internal static WeaponSlotReplacementAction DecideReplacementProgress(
+        bool targetPresent,
+        bool anySlotWeapon,
+        int clearWaitFramesRemaining)
+    {
+        if (targetPresent)
+            return WeaponSlotReplacementAction.TargetReady;
+        if (!anySlotWeapon)
+            return WeaponSlotReplacementAction.GrantTarget;
+        return clearWaitFramesRemaining > 0
+            ? WeaponSlotReplacementAction.WaitForClear
+            : WeaponSlotReplacementAction.PreserveExisting;
     }
 
     internal static WeaponGrantVerificationAction VerifyGrant(
@@ -73,6 +130,31 @@ internal static class ReplayWeaponReplacementPolicy
     internal static bool ShouldCacheFailedSwitch(bool targetPresent)
         => targetPresent;
 
+    internal static DetachedWeaponCleanupAction DecideDetachedWeaponCleanup(
+        bool identityMatches,
+        bool ownedByPawn,
+        bool activeWeaponReference,
+        int framesSinceDetach,
+        int retriesRemaining)
+    {
+        if (!identityMatches)
+            return DetachedWeaponCleanupAction.Abandon;
+
+        if (framesSinceDetach <= 0)
+        {
+            return retriesRemaining > 0
+                ? DetachedWeaponCleanupAction.Retry
+                : DetachedWeaponCleanupAction.Abandon;
+        }
+
+        if (!ownedByPawn && !activeWeaponReference)
+            return DetachedWeaponCleanupAction.Destroy;
+
+        return retriesRemaining > 0
+            ? DetachedWeaponCleanupAction.Retry
+            : DetachedWeaponCleanupAction.Abandon;
+    }
+
     internal static SafeC4AlignmentAction DecideSafeC4Alignment(
         bool targetHasC4,
         int foreignOwnerCount,
@@ -89,6 +171,11 @@ internal static class ReplayWeaponReplacementPolicy
             ? SafeC4AlignmentAction.WaitForCleanup
             : SafeC4AlignmentAction.GrantTarget;
     }
+
+    internal static bool CanUseActiveWeaponDropForC4(
+        bool pawnOwnsC4,
+        bool c4IsActiveWeapon)
+        => pawnOwnsC4 && c4IsActiveWeapon;
 
     internal static bool ShouldRestoreFallback(
         bool samePlayer,

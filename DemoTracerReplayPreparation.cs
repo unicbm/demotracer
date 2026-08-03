@@ -585,9 +585,10 @@ public sealed partial class DemoTracerPlugin
         string reason)
     {
         var weaponEntityHandle = weapon.EntityHandle.Raw;
+        var pawnOwnsC4 = PawnOwnsWeapon(pawn, weapon);
         if (weaponEntityHandle == Utilities.InvalidEHandleIndex ||
             !WeaponClassMatches(weapon.DesignerName, "weapon_c4") ||
-            !PawnOwnsWeapon(pawn, weapon))
+            !pawnOwnsC4)
         {
             return false;
         }
@@ -596,11 +597,26 @@ public sealed partial class DemoTracerPlugin
         if (pawn.ItemServices == null || pawn.ItemServices.Handle == IntPtr.Zero)
             return false;
 
+        var activeWeaponHandle = pawn.WeaponServices?.ActiveWeapon.Raw ??
+                                 Utilities.InvalidEHandleIndex;
+        if (!ReplayWeaponReplacementPolicy.CanUseActiveWeaponDropForC4(
+                pawnOwnsC4,
+                activeWeaponHandle == weaponEntityHandle))
+        {
+            // CounterStrikeSharp's DropActivePlayerWeapon drops the pawn's active
+            // weapon even though it accepts a weapon argument. Never call it for
+            // an inactive C4: doing so drops whichever gun or knife replay just
+            // selected while leaving the C4 owned, which starts a retry loop.
+            Server.PrintToConsole(
+                $"[DTR WARN] preserving native C4 owner slot={player.Slot} " +
+                $"reason={reason} active_handle={activeWeaponHandle} c4_handle={weaponEntityHandle}");
+            return false;
+        }
+
         try
         {
-            // This engine call receives the exact C4 entity. Unlike
-            // Controller.DropActiveWeapon it cannot race another writer and
-            // drop whichever gun happens to become active.
+            // The C4 identity and active-weapon identity were observed to match
+            // immediately above, so this active-weapon API cannot drop a gun.
             var itemServices = new CCSPlayer_ItemServices(pawn.ItemServices.Handle);
             itemServices.DropActivePlayerWeapon(weapon);
         }
