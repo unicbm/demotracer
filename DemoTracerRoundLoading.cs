@@ -500,7 +500,6 @@ public sealed partial class DemoTracerPlugin
 
     private bool ReplayIdentityShouldApplyScoreboardFlair()
         => ReplayRuntimePolicy.ShouldApplyScoreboardFlair(
-            _scoreboardAlignEnabled,
             _replayIdentityMode is ReplayIdentityMode.Steam or ReplayIdentityMode.Avatar);
 
     private void ScheduleReplayAvatarOverride(

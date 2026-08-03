@@ -12,6 +12,11 @@ namespace DemoTracer;
 
 internal static partial class DtrReplayReader
 {
+    // CS2's normal sv_maxvelocity ceiling is lower than this. Values beyond
+    // the conservative limit are parser artifacts seen on the first shared
+    // freeze-time snapshot after a spawn transition, not usable player motion.
+    private const float MaxPlayerVelocityComponent = 4096.0f;
+
     private static void ValidateReplaySemantics(DtrReplayFile replay)
     {
         if (!float.IsFinite(replay.TickRate) || replay.TickRate <= 0.0f)
@@ -134,6 +139,35 @@ internal static partial class DtrReplayReader
             throw new InvalidDataException($"{name} padding must be zero");
         if (snapshot.Ducked > 1 || snapshot.Ducking > 1 || snapshot.DesiresDuck > 1)
             throw new InvalidDataException($"{name} duck state bytes must be 0 or 1");
+    }
+
+    private static void NormalizeImpossiblePlayerVelocities(
+        NativeMovementSnapshot[] snapshots)
+    {
+        for (var i = 0; i < snapshots.Length; i++)
+        {
+            ref var snapshot = ref snapshots[i];
+            if (!float.IsFinite(snapshot.VelX) ||
+                !float.IsFinite(snapshot.VelY) ||
+                !float.IsFinite(snapshot.VelZ))
+            {
+                // Preserve malformed values for the strict semantic validator.
+                continue;
+            }
+            if (MathF.Abs(snapshot.VelX) <= MaxPlayerVelocityComponent &&
+                MathF.Abs(snapshot.VelY) <= MaxPlayerVelocityComponent &&
+                MathF.Abs(snapshot.VelZ) <= MaxPlayerVelocityComponent)
+            {
+                continue;
+            }
+
+            // Zero the whole vector so a corrupt horizontal component cannot
+            // leave a misleading vertical/animation state behind. The same
+            // shared snapshot is then safe as both the prior post and next pre.
+            snapshot.VelX = 0.0f;
+            snapshot.VelY = 0.0f;
+            snapshot.VelZ = 0.0f;
+        }
     }
 
     private static void RequireFinite(ReadOnlySpan<float> values, string name)

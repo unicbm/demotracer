@@ -67,10 +67,8 @@ internal static class ReplayRuntimePolicy
            runtimeSupported &&
            musicKitId is > 0 and <= ushort.MaxValue;
 
-    internal static bool ShouldApplyScoreboardFlair(
-        bool scoreboardAlignEnabled,
-        bool identitySupportsFlair)
-        => scoreboardAlignEnabled && identitySupportsFlair;
+    internal static bool ShouldApplyScoreboardFlair(bool identitySupportsFlair)
+        => identitySupportsFlair;
 
     internal static bool IsManagedSchemaPatchSupported(string? patch)
         => Version.TryParse(patch, out var current) &&

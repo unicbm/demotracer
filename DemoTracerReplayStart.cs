@@ -138,7 +138,10 @@ public sealed partial class DemoTracerPlugin
                 TimerFlags.STOP_ON_MAPCHANGE);
         }
 
-        Server.NextFrame(TryAssign);
+        // Match the stable round-start path: attempt assignment in the event
+        // frame, then poll only when the pawn is not ready yet. Deferring an
+        // already-ready spawn adds a visible one-frame movement reset.
+        TryAssign();
     }
 
     private bool TryAssignInitialRoundSpawns(out string reason)
@@ -292,7 +295,7 @@ public sealed partial class DemoTracerPlugin
                 pawn.Teleport(
                     new Vector(relocation.Origin.X, relocation.Origin.Y, relocation.Origin.Z),
                     null,
-                    new Vector(0.0f, 0.0f, 0.0f));
+                    null);
             }
 
             foreach (var replay in replayPlacements)
@@ -307,7 +310,7 @@ public sealed partial class DemoTracerPlugin
                 pawn.Teleport(
                     new Vector(replay.Destination.X, replay.Destination.Y, replay.Destination.Z),
                     null,
-                    new Vector(0.0f, 0.0f, 0.0f));
+                    null);
             }
 
             foreach (var summary in summaries)

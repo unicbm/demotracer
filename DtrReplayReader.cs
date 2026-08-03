@@ -193,6 +193,7 @@ internal static partial class DtrReplayReader
         var snapshots = new NativeMovementSnapshot[snapshotCount];
         for (var i = 0; i < snapshotCount; i++)
             snapshots[i] = ReadCurrentSnapshot(bodyReader);
+        NormalizeImpossiblePlayerVelocities(snapshots);
 
         var ticks = new NativeReplayTick[tickCount];
         long expectedSubticks = 0;
@@ -391,6 +392,7 @@ internal static partial class DtrReplayReader
 
         if (snapshots is null)
             throw new InvalidDataException("missing required section snapshots");
+        NormalizeImpossiblePlayerVelocities(snapshots);
         if (tickMetadata is null)
             throw new InvalidDataException("missing required section tick metadata");
         if (subticks is null)
