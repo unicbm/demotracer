@@ -141,32 +141,65 @@ internal static partial class DtrReplayReader
             throw new InvalidDataException($"{name} duck state bytes must be 0 or 1");
     }
 
-    private static void NormalizeImpossiblePlayerVelocities(
-        NativeMovementSnapshot[] snapshots)
+    private static void RepairLaggedPlayerVelocities(
+        NativeMovementSnapshot[] snapshots,
+        float tickRate)
     {
+        var hasImpossibleVelocity = false;
         for (var i = 0; i < snapshots.Length; i++)
         {
-            ref var snapshot = ref snapshots[i];
+            var snapshot = snapshots[i];
             if (!float.IsFinite(snapshot.VelX) ||
                 !float.IsFinite(snapshot.VelY) ||
                 !float.IsFinite(snapshot.VelZ))
             {
                 // Preserve malformed values for the strict semantic validator.
-                continue;
+                return;
             }
-            if (MathF.Abs(snapshot.VelX) <= MaxPlayerVelocityComponent &&
-                MathF.Abs(snapshot.VelY) <= MaxPlayerVelocityComponent &&
-                MathF.Abs(snapshot.VelZ) <= MaxPlayerVelocityComponent)
+            if (MathF.Abs(snapshot.VelX) > MaxPlayerVelocityComponent ||
+                MathF.Abs(snapshot.VelY) > MaxPlayerVelocityComponent ||
+                MathF.Abs(snapshot.VelZ) > MaxPlayerVelocityComponent)
             {
+                hasImpossibleVelocity = true;
+                break;
+            }
+        }
+        if (!hasImpossibleVelocity)
+            return;
+
+        // The converter's historical derived-velocity lane was exactly one
+        // sample late. An impossible spawn-transition value is an unambiguous
+        // marker for that lane, so rebuild its entire point-state derivative
+        // from the canonical origin chain instead of only clipping one sample.
+        for (var i = 0; i < snapshots.Length; i++)
+        {
+            ref var snapshot = ref snapshots[i];
+            if (i == 0 || !float.IsFinite(tickRate) || tickRate <= 0.0f)
+            {
+                snapshot.VelX = 0.0f;
+                snapshot.VelY = 0.0f;
+                snapshot.VelZ = 0.0f;
                 continue;
             }
 
-            // Zero the whole vector so a corrupt horizontal component cannot
-            // leave a misleading vertical/animation state behind. The same
-            // shared snapshot is then safe as both the prior post and next pre.
-            snapshot.VelX = 0.0f;
-            snapshot.VelY = 0.0f;
-            snapshot.VelZ = 0.0f;
+            var previous = snapshots[i - 1];
+            var velX = (snapshot.OriginX - previous.OriginX) * tickRate;
+            var velY = (snapshot.OriginY - previous.OriginY) * tickRate;
+            var velZ = (snapshot.OriginZ - previous.OriginZ) * tickRate;
+            if (!float.IsFinite(velX) ||
+                !float.IsFinite(velY) ||
+                !float.IsFinite(velZ) ||
+                MathF.Abs(velX) > MaxPlayerVelocityComponent ||
+                MathF.Abs(velY) > MaxPlayerVelocityComponent ||
+                MathF.Abs(velZ) > MaxPlayerVelocityComponent)
+            {
+                velX = 0.0f;
+                velY = 0.0f;
+                velZ = 0.0f;
+            }
+            snapshot.VelX = velX;
+            snapshot.VelY = velY;
+            snapshot.VelZ = velZ;
         }
     }
 
