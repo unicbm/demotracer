@@ -902,7 +902,7 @@ mod demoparser_impl {
         settings: ParserInputs<'a>,
         mode: ParsingMode,
     ) -> std::result::Result<DemoOutput, DemoParserError> {
-        parse_demo_once_with_decode_plan(bytes, settings, mode, DecodePlan::FULL)
+        parse_demo_once_with_decode_plan(bytes, settings, mode, DecodePlan::FULL_PLAYER_ROWS)
     }
 
     fn parse_demo_once_with_decode_plan<'a>(
