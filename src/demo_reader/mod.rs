@@ -468,9 +468,6 @@ mod demoparser_impl {
     const SINGLE_THREADED_OVERLAY_PROPS: &[&str] = &[
         DUCKED_PROP,
         DUCKING_PROP,
-        "velocity_X",
-        "velocity_Y",
-        "velocity_Z",
         "usercmd_subtick_moves",
         "usercmd_buttonstate_1",
         "usercmd_buttonstate_2",
@@ -534,9 +531,6 @@ mod demoparser_impl {
         origin_x => "X",
         origin_y => "Y",
         origin_z => "Z",
-        velocity_x => "velocity_X",
-        velocity_y => "velocity_Y",
-        velocity_z => "velocity_Z",
         pitch => "pitch",
         yaw => "yaw",
         buttons => "buttons",
@@ -695,9 +689,6 @@ mod demoparser_impl {
                 "usercmd_forward_move"
                     | "usercmd_left_move"
                     | "usercmd_up_move"
-                    | "velocity_X"
-                    | "velocity_Y"
-                    | "velocity_Z"
                     | "usercmd_viewangle_x"
                     | "usercmd_viewangle_y"
                     | "usercmd_viewangle_z"
@@ -985,9 +976,6 @@ mod demoparser_impl {
             "X",
             "Y",
             "Z",
-            "velocity_X",
-            "velocity_Y",
-            "velocity_Z",
             "pitch",
             "yaw",
             "buttons",
@@ -1172,9 +1160,6 @@ mod demoparser_impl {
                     .or($primary)
             };
         }
-        let velocity_x_column = overlay_column!("velocity_X", columns.velocity_x);
-        let velocity_y_column = overlay_column!("velocity_Y", columns.velocity_y);
-        let velocity_z_column = overlay_column!("velocity_Z", columns.velocity_z);
         let subtick_moves_column = overlay_column!("usercmd_subtick_moves", columns.subtick_moves);
         let buttonstate1_column = overlay_column!("usercmd_buttonstate_1", columns.buttonstate1);
         let buttonstate2_column = overlay_column!("usercmd_buttonstate_2", columns.buttonstate2);
@@ -1266,11 +1251,9 @@ mod demoparser_impl {
                             get_f32(columns.origin_y, idx).unwrap_or_default(),
                             get_f32(columns.origin_z, idx).unwrap_or_default(),
                         ],
-                        velocity: [
-                            get_f32(velocity_x_column, idx).unwrap_or_default(),
-                            get_f32(velocity_y_column, idx).unwrap_or_default(),
-                            get_f32(velocity_z_column, idx).unwrap_or_default(),
-                        ],
+                        // CS2 Demo serializers do not expose the pawn's actual locomotion
+                        // velocity. This is filled from the ordered position chain below.
+                        velocity: [0.0, 0.0, 0.0],
                         pitch: get_f32(columns.pitch, idx).unwrap_or_default(),
                         yaw: get_f32(columns.yaw, idx).unwrap_or_default(),
                         buttons: get_u64(columns.buttons, idx).unwrap_or_default(),
@@ -1384,7 +1367,7 @@ mod demoparser_impl {
 
         repair_short_global_tick_gaps(&mut rows);
         let tick_rate = estimate_tick_rate(&rows).unwrap_or(64.0);
-        rebuild_player_velocities(&mut rows, tick_rate);
+        derive_observed_player_velocities(&mut rows, tick_rate);
         let mut round_freeze_end_ticks = output
             .game_events
             .iter()
@@ -2145,12 +2128,11 @@ mod demoparser_impl {
         repaired
     }
 
-    /// demoparser's synthetic velocity columns are calculated while the
-    /// current row is still being assembled. They therefore describe the
-    /// previous position interval and arrive one row late. Rebuild the state
-    /// derivative after rows are ordered, using the detected demo tick rate
-    /// and refusing to differentiate across a round or pawn lifecycle edge.
-    fn rebuild_player_velocities(rows: &mut [ParsedPlayerTick], tick_rate: f32) {
+    /// CS2 demos expose player origins but not the pawn's actual locomotion
+    /// velocity (`m_vecVelocity`/`m_vecAbsVelocity`). Derive the observed
+    /// velocity after rows are ordered, using the detected demo tick rate and
+    /// refusing to differentiate across a round or pawn lifecycle edge.
+    fn derive_observed_player_velocities(rows: &mut [ParsedPlayerTick], tick_rate: f32) {
         if !tick_rate.is_finite() || tick_rate <= 0.0 {
             return;
         }
@@ -2985,7 +2967,7 @@ mod demoparser_impl {
             rows[1].velocity = [888.0, 888.0, 888.0];
             rows[2].velocity = [64.0, 0.0, 0.0];
 
-            rebuild_player_velocities(&mut rows, 64.0);
+            derive_observed_player_velocities(&mut rows, 64.0);
 
             assert_eq!(rows[0].velocity, [0.0, 0.0, 0.0]);
             assert_eq!(rows[1].velocity, [64.0, 0.0, 0.0]);
@@ -3005,7 +2987,7 @@ mod demoparser_impl {
             same_pawn.player_entity_id = Some(8);
             let mut rows = vec![before, new_round, same_pawn];
 
-            rebuild_player_velocities(&mut rows, 64.0);
+            derive_observed_player_velocities(&mut rows, 64.0);
 
             assert_eq!(rows[0].velocity, [0.0, 0.0, 0.0]);
             assert_eq!(rows[1].velocity, [0.0, 0.0, 0.0]);
