@@ -21,6 +21,7 @@ internal enum ReplayRoundWorkKind
     PresentationSync,
     C4EarlyReconcile,
     C4LateReconcile,
+    C4PostMutationReconcile,
 }
 
 internal readonly record struct ReplaySlotWorkKey(int Slot, ReplaySlotWorkKind Kind);
@@ -128,7 +129,13 @@ public sealed partial class DemoTracerPlugin
     {
         _replayRoundWorkEpoch++;
         _replayRoundWork.Clear();
+        ResetSafeC4RoundMutationState();
     }
+
+    private bool IsReplayRoundWorkEpochCurrent(long epoch)
+        => epoch == _replayRoundWorkEpoch &&
+           _mapActive &&
+           !_lifecycleResetInProgress;
 
     private void CancelReplaySlotDeferredWork(int slot)
         => _replaySlotWork.CancelWhere(key => key.Slot == slot);

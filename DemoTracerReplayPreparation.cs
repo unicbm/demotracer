@@ -24,6 +24,10 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
+    private readonly HashSet<uint> _pendingSafeC4DropHandles = [];
+    private long _pendingSafeC4GrantEpoch = -1;
+    private int _pendingSafeC4GrantSlot = -1;
+
     private string PlayLoaded(bool loop)
     {
         PreloadLoadedReplays();
@@ -384,33 +388,79 @@ public sealed partial class DemoTracerPlugin
         var targetSteamId = targetOwner.Value.SteamId;
         if (targetSlot < 0 || !CanWriteReplaySlot(targetSlot))
             return;
-        var firstAlignment = !_session.SafeC4Aligned;
-
-        // CS2 may assign its native C4 to another live T, including a human who
-        // joins during freeze time. Demo evidence makes this replay slot the
-        // authoritative owner, so purge every other player rather than only bots.
-        foreach (var candidate in FindTeamPlayers())
-        {
-            if (candidate.Slot == targetSlot ||
-                (_session.LoadedReplays.ContainsKey(candidate.Slot) &&
-                 !_session.ReplaySlots.IsOwned(candidate.Slot)))
-            {
-                continue;
-            }
-            RemoveC4FromPlayer(candidate, "safe_c4_owner_align");
-        }
 
         var player = Utilities.GetPlayerFromSlot(targetSlot);
         if (player is not { IsValid: true, PawnIsAlive: true })
             return;
-        if (CountCurrentReplayItems(player, "weapon_c4") <= 0 &&
-            !TryGiveNamedItem(player, "weapon_c4"))
+
+        var foreignOwners = new List<(CCSPlayerController Player, bool CanMutate)>();
+
+        // CS2 may assign its native C4 to another live T, including a human who
+        // joins during freeze time. C4 is a unique networked objective entity:
+        // move it through the engine's drop path and never detach/kill it in the
+        // same pass that grants its replacement.
+        foreach (var candidate in FindTeamPlayers())
         {
-            Server.PrintToConsole(
-                $"dtr: C4 safe owner align failed slot={targetSlot} steam_id={targetSteamId}");
-            return;
+            if (candidate.Slot == targetSlot ||
+                CountCurrentReplayItems(candidate, "weapon_c4") <= 0)
+                continue;
+
+            var canMutate = !_session.LoadedReplays.ContainsKey(candidate.Slot) ||
+                            _session.ReplaySlots.IsOwned(candidate.Slot);
+            foreignOwners.Add((candidate, canMutate));
         }
 
+        var targetHasC4 = CountCurrentReplayItems(player, "weapon_c4") > 0;
+        var grantPending = _pendingSafeC4GrantEpoch == _replayRoundWorkEpoch &&
+                           _pendingSafeC4GrantSlot == targetSlot;
+        switch (ReplayWeaponReplacementPolicy.DecideSafeC4Alignment(
+                    targetHasC4,
+                    foreignOwners.Count,
+                    _pendingSafeC4DropHandles.Count,
+                    grantPending))
+        {
+            case SafeC4AlignmentAction.DropForeignOwners:
+                foreach (var foreignOwner in foreignOwners)
+                {
+                    if (!foreignOwner.CanMutate)
+                    {
+                        Server.PrintToConsole(
+                            $"[DTR WARN] C4 safe transfer blocked by unowned replay slot={foreignOwner.Player.Slot}");
+                        continue;
+                    }
+
+                    _ = DropC4FromPlayerForSafeTransfer(
+                        foreignOwner.Player,
+                        "safe_c4_owner_align");
+                }
+                return;
+
+            case SafeC4AlignmentAction.WaitForCleanup:
+                return;
+
+            case SafeC4AlignmentAction.GrantTarget:
+                BeginSafeC4Grant(player, targetSteamId);
+                return;
+
+            case SafeC4AlignmentAction.TargetReady:
+                _pendingSafeC4GrantEpoch = -1;
+                _pendingSafeC4GrantSlot = -1;
+                MarkSafeC4OwnerAligned(
+                    targetSlot,
+                    targetSteamId,
+                    plantedOwner,
+                    initialOwner);
+                return;
+        }
+    }
+
+    private void MarkSafeC4OwnerAligned(
+        int targetSlot,
+        ulong targetSteamId,
+        (int Slot, ulong SteamId)? plantedOwner,
+        (int Slot, ulong SteamId)? initialOwner)
+    {
+        var firstAlignment = !_session.SafeC4Aligned;
         _session.SafeC4Aligned = true;
         if (!firstAlignment)
             return;
@@ -428,6 +478,66 @@ public sealed partial class DemoTracerPlugin
         var source = plantedOwner.HasValue ? "bomb_planted" : "bomb_initial_owner";
         Server.PrintToConsole(
             $"dtr: C4 safe owner aligned slot={targetSlot} steam_id={targetSteamId} source={source}");
+    }
+
+    private void BeginSafeC4Grant(CCSPlayerController player, ulong targetSteamId)
+    {
+        var roundEpoch = _replayRoundWorkEpoch;
+        _pendingSafeC4GrantEpoch = roundEpoch;
+        _pendingSafeC4GrantSlot = player.Slot;
+        if (!TryGiveNamedItem(player, "weapon_c4"))
+        {
+            _pendingSafeC4GrantEpoch = -1;
+            _pendingSafeC4GrantSlot = -1;
+            Server.PrintToConsole(
+                $"dtr: C4 safe owner grant failed slot={player.Slot} steam_id={targetSteamId}");
+            return;
+        }
+
+        Server.NextFrame(() => VerifySafeC4Grant(
+            roundEpoch,
+            player.Slot,
+            targetSteamId,
+            checksRemaining: WeaponSlotReplacementGrantWaitFrames));
+    }
+
+    private void VerifySafeC4Grant(
+        long roundEpoch,
+        int targetSlot,
+        ulong targetSteamId,
+        int checksRemaining)
+    {
+        if (!IsReplayRoundWorkEpochCurrent(roundEpoch) ||
+            _pendingSafeC4GrantEpoch != roundEpoch ||
+            _pendingSafeC4GrantSlot != targetSlot)
+        {
+            return;
+        }
+
+        var player = Utilities.GetPlayerFromSlot(targetSlot);
+        if (player is { IsValid: true, PawnIsAlive: true } &&
+            CountCurrentReplayItems(player, "weapon_c4") > 0)
+        {
+            _pendingSafeC4GrantEpoch = -1;
+            _pendingSafeC4GrantSlot = -1;
+            AlignSafeC4OwnerForLoadedReplays(forceReconcile: true);
+            return;
+        }
+
+        if (checksRemaining > 0)
+        {
+            Server.NextFrame(() => VerifySafeC4Grant(
+                roundEpoch,
+                targetSlot,
+                targetSteamId,
+                checksRemaining - 1));
+            return;
+        }
+
+        _pendingSafeC4GrantEpoch = -1;
+        _pendingSafeC4GrantSlot = -1;
+        Server.PrintToConsole(
+            $"[DTR WARN] C4 safe owner grant was not observed slot={targetSlot} steam_id={targetSteamId}");
     }
 
     private static bool IsBombInitialOwnerEvent(ReplayHifiEvent replayEvent)
@@ -455,14 +565,196 @@ public sealed partial class DemoTracerPlugin
         return null;
     }
 
-    private void RemoveC4FromPlayer(CCSPlayerController player, string reason)
+    private bool DropC4FromPlayerForSafeTransfer(CCSPlayerController player, string reason)
     {
         if (player is not { IsValid: true, PawnIsAlive: true } ||
             player.PlayerPawn is not { IsValid: true, Value.IsValid: true })
-            return;
+            return false;
 
         var pawn = player.PlayerPawn.Value;
+        var success = true;
         foreach (var weapon in GetReplayWeaponsByClass(pawn, "weapon_c4").ToArray())
-            RemoveReplayWeaponForReplacement(player, pawn, weapon, reason);
+            success &= DropC4ForSafeTransfer(player, pawn, weapon, reason);
+        return success;
+    }
+
+    private bool DropC4ForSafeTransfer(
+        CCSPlayerController player,
+        CCSPlayerPawn pawn,
+        CBasePlayerWeapon weapon,
+        string reason)
+    {
+        var weaponEntityHandle = weapon.EntityHandle.Raw;
+        if (weaponEntityHandle == Utilities.InvalidEHandleIndex ||
+            !WeaponClassMatches(weapon.DesignerName, "weapon_c4") ||
+            !PawnOwnsWeapon(pawn, weapon))
+        {
+            return false;
+        }
+        if (_pendingSafeC4DropHandles.Contains(weaponEntityHandle))
+            return true;
+        if (pawn.ItemServices == null || pawn.ItemServices.Handle == IntPtr.Zero)
+            return false;
+
+        try
+        {
+            // This engine call receives the exact C4 entity. Unlike
+            // Controller.DropActiveWeapon it cannot race another writer and
+            // drop whichever gun happens to become active.
+            var itemServices = new CCSPlayer_ItemServices(pawn.ItemServices.Handle);
+            itemServices.DropActivePlayerWeapon(weapon);
+        }
+        catch (Exception ex)
+        {
+            Server.PrintToConsole(
+                $"dtr: failed to engine-drop C4 slot={player.Slot} reason={reason}: {ex.Message}");
+            return false;
+        }
+
+        var roundEpoch = _replayRoundWorkEpoch;
+        _pendingSafeC4DropHandles.Add(weaponEntityHandle);
+        Server.NextFrame(() =>
+        {
+            if (!IsReplayRoundWorkEpochCurrent(roundEpoch) ||
+                !_pendingSafeC4DropHandles.Contains(weaponEntityHandle))
+            {
+                return;
+            }
+
+            Server.NextFrame(() => CleanupDroppedSafeC4(
+                roundEpoch,
+                player.Slot,
+                weaponEntityHandle,
+                reason,
+                killIssued: false,
+                retriesRemaining: DetachedWeaponCleanupRetryFrames));
+        });
+        return true;
+    }
+
+    private void CleanupDroppedSafeC4(
+        long roundEpoch,
+        int sourceSlot,
+        uint weaponEntityHandle,
+        string reason,
+        bool killIssued,
+        int retriesRemaining)
+    {
+        if (!IsReplayRoundWorkEpochCurrent(roundEpoch) ||
+            !_pendingSafeC4DropHandles.Contains(weaponEntityHandle))
+        {
+            return;
+        }
+
+        try
+        {
+            var weapon = new CHandle<CBasePlayerWeapon>(weaponEntityHandle).Value;
+            if (weapon is not { IsValid: true } ||
+                weapon.EntityHandle.Raw != weaponEntityHandle ||
+                !WeaponClassMatches(weapon.DesignerName, "weapon_c4"))
+            {
+                FinishSafeC4Drop(roundEpoch, weaponEntityHandle);
+                return;
+            }
+
+            var ownedByPawn = false;
+            var activeWeaponReference = false;
+            foreach (var candidate in Utilities.GetPlayers())
+            {
+                var candidatePawn = candidate?.PlayerPawn.Value;
+                var weaponServices = candidatePawn?.WeaponServices;
+                if (candidate is not { IsValid: true } ||
+                    candidatePawn is not { IsValid: true } ||
+                    weaponServices == null)
+                {
+                    continue;
+                }
+
+                ownedByPawn |= PawnOwnsWeapon(candidatePawn, weapon);
+                activeWeaponReference |= weaponServices.ActiveWeapon.Raw == weaponEntityHandle;
+                if (ownedByPawn && activeWeaponReference)
+                    break;
+            }
+
+            // If somebody picked the valid dropped C4 up, stop touching that
+            // entity and let reconciliation either accept or engine-drop it.
+            if (ownedByPawn)
+            {
+                FinishSafeC4Drop(roundEpoch, weaponEntityHandle);
+                return;
+            }
+
+            if (activeWeaponReference)
+            {
+                if (retriesRemaining > 0)
+                {
+                    Server.NextFrame(() => CleanupDroppedSafeC4(
+                        roundEpoch,
+                        sourceSlot,
+                        weaponEntityHandle,
+                        reason,
+                        killIssued,
+                        retriesRemaining - 1));
+                    return;
+                }
+
+                Server.PrintToConsole(
+                    $"[DTR WARN] dropped C4 remains engine-referenced slot={sourceSlot} reason={reason}");
+                return;
+            }
+
+            if (!killIssued)
+            {
+                weapon.AcceptInput("Kill");
+                Server.NextFrame(() => CleanupDroppedSafeC4(
+                    roundEpoch,
+                    sourceSlot,
+                    weaponEntityHandle,
+                    reason,
+                    killIssued: true,
+                    retriesRemaining));
+                return;
+            }
+
+            if (retriesRemaining > 0)
+            {
+                Server.NextFrame(() => CleanupDroppedSafeC4(
+                    roundEpoch,
+                    sourceSlot,
+                    weaponEntityHandle,
+                    reason,
+                    killIssued: true,
+                    retriesRemaining - 1));
+                return;
+            }
+
+            Server.PrintToConsole(
+                $"[DTR WARN] dropped C4 destruction was not observed slot={sourceSlot} reason={reason}");
+        }
+        catch (Exception ex)
+        {
+            Server.PrintToConsole(
+                $"dtr: failed to clean dropped C4 slot={sourceSlot} reason={reason}: {ex.Message}");
+        }
+    }
+
+    private void FinishSafeC4Drop(long roundEpoch, uint weaponEntityHandle)
+    {
+        if (!IsReplayRoundWorkEpochCurrent(roundEpoch) ||
+            !_pendingSafeC4DropHandles.Remove(weaponEntityHandle))
+        {
+            return;
+        }
+
+        ScheduleReplayRoundNextFrame(
+            ReplayRoundWorkKind.C4PostMutationReconcile,
+            () => AlignSafeC4OwnerForLoadedReplays(forceReconcile: true));
+    }
+
+    private void ResetSafeC4RoundMutationState()
+    {
+        _pendingSafeC4DropHandles.Clear();
+        _pendingSafeC4GrantEpoch = -1;
+        _pendingSafeC4GrantSlot = -1;
     }
 }

@@ -37,7 +37,7 @@ public sealed partial class DemoTracerPlugin
         if (!ReplayWeaponReplacementPolicy.CanRemoveForReplacement(weaponName))
         {
             Server.PrintToConsole(
-                $"dtr: refused destructive replay knife removal slot={player.Slot} item={weaponName} reason={reason}");
+                $"dtr: refused destructive replay weapon removal slot={player.Slot} item={weaponName} reason={reason}");
             return false;
         }
         if (!PawnOwnsWeapon(pawn, weapon))
@@ -88,29 +88,35 @@ public sealed partial class DemoTracerPlugin
         return true;
     }
 
-    private static void ScheduleRemovedReplayWeaponCleanup(
+    private void ScheduleRemovedReplayWeaponCleanup(
         int slot,
         uint weaponEntityHandle,
         string weaponName,
         string reason)
     {
+        var roundEpoch = _replayRoundWorkEpoch;
         Server.NextFrame(() => CleanupRemovedReplayWeapon(
             slot,
             weaponEntityHandle,
             weaponName,
             reason,
+            roundEpoch,
             framesSinceDetach: 1,
             retriesRemaining: DetachedWeaponCleanupRetryFrames));
     }
 
-    private static void CleanupRemovedReplayWeapon(
+    private void CleanupRemovedReplayWeapon(
         int slot,
         uint weaponEntityHandle,
         string weaponName,
         string reason,
+        long roundEpoch,
         int framesSinceDetach,
         int retriesRemaining)
     {
+        if (!IsReplayRoundWorkEpochCurrent(roundEpoch))
+            return;
+
         try
         {
             var weapon = new CHandle<CBasePlayerWeapon>(weaponEntityHandle).Value;
@@ -156,6 +162,7 @@ public sealed partial class DemoTracerPlugin
                         weaponEntityHandle,
                         weaponName,
                         reason,
+                        roundEpoch,
                         framesSinceDetach + 1,
                         retriesRemaining - 1));
                     return;

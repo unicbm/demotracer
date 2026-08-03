@@ -37,6 +37,14 @@ internal enum DetachedWeaponCleanupAction
     Abandon
 }
 
+internal enum SafeC4AlignmentAction
+{
+    DropForeignOwners,
+    WaitForCleanup,
+    TargetReady,
+    GrantTarget
+}
+
 internal static class ReplayWeaponReplacementPolicy
 {
     internal static WeaponSlotReplacementAction Decide(
@@ -105,7 +113,25 @@ internal static class ReplayWeaponReplacementPolicy
     {
         var normalized = className.Trim();
         return !normalized.StartsWith("weapon_knife", StringComparison.OrdinalIgnoreCase) &&
-               !normalized.Equals("weapon_bayonet", StringComparison.OrdinalIgnoreCase);
+               !normalized.Equals("weapon_bayonet", StringComparison.OrdinalIgnoreCase) &&
+               !normalized.Equals("weapon_c4", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static SafeC4AlignmentAction DecideSafeC4Alignment(
+        bool targetHasC4,
+        int foreignOwnerCount,
+        int pendingDropCount,
+        bool grantPending)
+    {
+        if (foreignOwnerCount > 0)
+            return SafeC4AlignmentAction.DropForeignOwners;
+        if (pendingDropCount > 0)
+            return SafeC4AlignmentAction.WaitForCleanup;
+        if (targetHasC4)
+            return SafeC4AlignmentAction.TargetReady;
+        return grantPending
+            ? SafeC4AlignmentAction.WaitForCleanup
+            : SafeC4AlignmentAction.GrantTarget;
     }
 
     internal static bool ShouldRestoreFallback(
