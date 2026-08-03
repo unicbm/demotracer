@@ -1384,6 +1384,7 @@ mod demoparser_impl {
 
         repair_short_global_tick_gaps(&mut rows);
         let tick_rate = estimate_tick_rate(&rows).unwrap_or(64.0);
+        rebuild_player_velocities(&mut rows, tick_rate);
         let mut round_freeze_end_ticks = output
             .game_events
             .iter()
@@ -2066,6 +2067,7 @@ mod demoparser_impl {
     }
 
     const MAX_REPAIRABLE_GLOBAL_GAP_TICKS: i32 = 8;
+    const MAX_PLAYER_VELOCITY_COMPONENT: f32 = 4096.0;
 
     /// Some GOTV demos omit a short run of complete entity snapshot ticks even
     /// though the surrounding ticks and later game state are valid. Fill only
@@ -2141,6 +2143,66 @@ mod demoparser_impl {
         rows.extend(additions);
         rows.sort_by_key(|row| (row.round, row.tick, row.steam_id));
         repaired
+    }
+
+    /// demoparser's synthetic velocity columns are calculated while the
+    /// current row is still being assembled. They therefore describe the
+    /// previous position interval and arrive one row late. Rebuild the state
+    /// derivative after rows are ordered, using the detected demo tick rate
+    /// and refusing to differentiate across a round or pawn lifecycle edge.
+    fn rebuild_player_velocities(rows: &mut [ParsedPlayerTick], tick_rate: f32) {
+        if !tick_rate.is_finite() || tick_rate <= 0.0 {
+            return;
+        }
+
+        let mut previous = BTreeMap::<u64, (u32, i32, u8, bool, Option<i32>, [f32; 3])>::new();
+        for row in rows {
+            let velocity = previous
+                .get(&row.steam_id)
+                .and_then(|(round, tick, team_num, is_alive, entity_id, origin)| {
+                    let tick_delta = row.tick.checked_sub(*tick)?;
+                    let same_entity = match (*entity_id, row.player_entity_id) {
+                        (Some(before), Some(after)) => before == after,
+                        (None, None) => true,
+                        _ => false,
+                    };
+                    if row.steam_id == 0
+                        || row.round != *round
+                        || row.team_num != *team_num
+                        || !*is_alive
+                        || !row.is_alive
+                        || !same_entity
+                        || tick_delta <= 0
+                    {
+                        return None;
+                    }
+
+                    let scale = tick_rate / tick_delta as f32;
+                    let velocity =
+                        std::array::from_fn(|axis| (row.origin[axis] - origin[axis]) * scale);
+                    velocity
+                        .iter()
+                        .all(|component| {
+                            component.is_finite()
+                                && component.abs() <= MAX_PLAYER_VELOCITY_COMPONENT
+                        })
+                        .then_some(velocity)
+                })
+                .unwrap_or([0.0, 0.0, 0.0]);
+
+            row.velocity = velocity;
+            previous.insert(
+                row.steam_id,
+                (
+                    row.round,
+                    row.tick,
+                    row.team_num,
+                    row.is_alive,
+                    row.player_entity_id,
+                    row.origin,
+                ),
+            );
+        }
     }
 
     fn stable_across_missing_tick(before: &ParsedPlayerTick, after: &ParsedPlayerTick) -> bool {
@@ -2910,6 +2972,44 @@ mod demoparser_impl {
             assert_eq!(repair_short_global_tick_gaps(&mut rows), 1);
             assert!(!rows.iter().any(|row| row.steam_id == 70 && row.tick == 11));
             assert!(rows.iter().any(|row| row.steam_id == 90 && row.tick == 11));
+        }
+
+        #[test]
+        fn rebuilt_velocity_matches_the_current_position_interval() {
+            let mut rows = vec![
+                gap_row(70, 10, 0.0),
+                gap_row(70, 11, 1.0),
+                gap_row(70, 12, 3.0),
+            ];
+            rows[0].velocity = [999.0, 999.0, 999.0];
+            rows[1].velocity = [888.0, 888.0, 888.0];
+            rows[2].velocity = [64.0, 0.0, 0.0];
+
+            rebuild_player_velocities(&mut rows, 64.0);
+
+            assert_eq!(rows[0].velocity, [0.0, 0.0, 0.0]);
+            assert_eq!(rows[1].velocity, [64.0, 0.0, 0.0]);
+            assert_eq!(rows[2].velocity, [128.0, 0.0, 0.0]);
+        }
+
+        #[test]
+        fn rebuilt_velocity_stops_at_round_and_pawn_boundaries() {
+            let mut before = gap_row(70, 10, 0.0);
+            before.round = 1;
+            before.player_entity_id = Some(7);
+            let mut new_round = gap_row(70, 11, 1000.0);
+            new_round.round = 2;
+            new_round.player_entity_id = Some(8);
+            let mut same_pawn = gap_row(70, 12, 1001.0);
+            same_pawn.round = 2;
+            same_pawn.player_entity_id = Some(8);
+            let mut rows = vec![before, new_round, same_pawn];
+
+            rebuild_player_velocities(&mut rows, 64.0);
+
+            assert_eq!(rows[0].velocity, [0.0, 0.0, 0.0]);
+            assert_eq!(rows[1].velocity, [0.0, 0.0, 0.0]);
+            assert_eq!(rows[2].velocity, [64.0, 0.0, 0.0]);
         }
 
         #[test]

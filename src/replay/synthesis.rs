@@ -471,8 +471,7 @@ mod tests {
         artifact.velocity = [126_715.7, 91_870.14, 256.0];
         let last = row(12, 7);
 
-        let rec = synthesize_player_rec(&[first, artifact, last], "de_nuke", 64.0, 1)
-            .unwrap();
+        let rec = synthesize_player_rec(&[first, artifact, last], "de_nuke", 64.0, 1).unwrap();
 
         assert_eq!(rec.ticks[0].post.velocity, [0.0, 0.0, 0.0]);
         assert_eq!(rec.ticks[1].pre.velocity, [0.0, 0.0, 0.0]);
