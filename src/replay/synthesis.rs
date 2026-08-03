@@ -12,6 +12,7 @@ use crate::{Error, Result};
 use std::collections::BTreeMap;
 
 pub const MAX_SUBTICKS_PER_TICK: usize = 36;
+const MAX_PLAYER_VELOCITY_COMPONENT: f32 = 4096.0;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SynthesisOptions {
@@ -168,8 +169,10 @@ fn synthesize_player_rec_with_projectile_iter<'a>(
     for pair in rows.windows(2) {
         let pre_row = pair[0].row();
         let post_row = pair[1].row();
-        let pre = pre_row.snapshot();
-        let post = post_row.snapshot();
+        let mut pre = pre_row.snapshot();
+        let mut post = post_row.snapshot();
+        normalize_impossible_player_velocity(&mut pre);
+        normalize_impossible_player_velocity(&mut post);
         command_frames.push(pre_row.command_frame());
         let mut tick_subticks = sanitize_subticks(pre_row, options.subtick_mode, &mut stats);
         let num_subtick = tick_subticks.len() as u32;
@@ -292,6 +295,16 @@ fn normalize_replay_weapon_def_index(def: i32) -> i32 {
         42
     } else {
         def
+    }
+}
+
+fn normalize_impossible_player_velocity(snapshot: &mut crate::model::MovementSnapshot) {
+    if snapshot
+        .velocity
+        .iter()
+        .any(|component| component.abs() > MAX_PLAYER_VELOCITY_COMPONENT)
+    {
+        snapshot.velocity = [0.0, 0.0, 0.0];
     }
 }
 
@@ -449,6 +462,20 @@ mod tests {
             0
         );
         assert!(rec.subticks.is_empty());
+    }
+
+    #[test]
+    fn synthesis_clears_impossible_spawn_transition_velocity() {
+        let first = row(10, 7);
+        let mut artifact = row(11, 7);
+        artifact.velocity = [126_715.7, 91_870.14, 256.0];
+        let last = row(12, 7);
+
+        let rec = synthesize_player_rec(&[first, artifact, last], "de_nuke", 64.0, 1)
+            .unwrap();
+
+        assert_eq!(rec.ticks[0].post.velocity, [0.0, 0.0, 0.0]);
+        assert_eq!(rec.ticks[1].pre.velocity, [0.0, 0.0, 0.0]);
     }
 
     #[test]
