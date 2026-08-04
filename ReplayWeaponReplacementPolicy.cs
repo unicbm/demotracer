@@ -49,6 +49,7 @@ internal enum SafeC4AlignmentAction
 {
     DropForeignOwners,
     WaitForCleanup,
+    WaitForNativeAssignment,
     TargetReady,
     GrantTarget
 }
@@ -159,7 +160,8 @@ internal static class ReplayWeaponReplacementPolicy
         bool targetHasC4,
         int foreignOwnerCount,
         int pendingDropCount,
-        bool grantPending)
+        bool grantPending,
+        bool replacementAuthorized)
     {
         if (foreignOwnerCount > 0)
             return SafeC4AlignmentAction.DropForeignOwners;
@@ -167,15 +169,23 @@ internal static class ReplayWeaponReplacementPolicy
             return SafeC4AlignmentAction.WaitForCleanup;
         if (targetHasC4)
             return SafeC4AlignmentAction.TargetReady;
-        return grantPending
-            ? SafeC4AlignmentAction.WaitForCleanup
-            : SafeC4AlignmentAction.GrantTarget;
+        if (grantPending)
+            return SafeC4AlignmentAction.WaitForCleanup;
+        return replacementAuthorized
+            ? SafeC4AlignmentAction.GrantTarget
+            : SafeC4AlignmentAction.WaitForNativeAssignment;
     }
 
     internal static bool CanUseActiveWeaponDropForC4(
         bool pawnOwnsC4,
         bool c4IsActiveWeapon)
         => pawnOwnsC4 && c4IsActiveWeapon;
+
+    internal static bool CanMutateForeignC4Owner(
+        bool isSafeReplayTargetBot,
+        bool hasLoadedReplay,
+        bool replayOwnsSlot)
+        => isSafeReplayTargetBot && (!hasLoadedReplay || replayOwnsSlot);
 
     internal static bool ShouldRestoreFallback(
         bool samePlayer,

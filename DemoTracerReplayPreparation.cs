@@ -27,6 +27,7 @@ public sealed partial class DemoTracerPlugin
     private readonly HashSet<uint> _pendingSafeC4DropHandles = [];
     private long _pendingSafeC4GrantEpoch = -1;
     private int _pendingSafeC4GrantSlot = -1;
+    private long _safeC4ReplacementAuthorizedEpoch = -1;
 
     private string PlayLoaded(bool loop)
     {
@@ -382,7 +383,10 @@ public sealed partial class DemoTracerPlugin
         var targetOwner = plantedOwner ?? initialOwner;
 
         if (!targetOwner.HasValue)
+        {
+            ResetSafeC4RoundMutationState();
             return;
+        }
 
         var targetSlot = targetOwner.Value.Slot;
         var targetSteamId = targetOwner.Value.SteamId;
@@ -405,19 +409,23 @@ public sealed partial class DemoTracerPlugin
                 CountCurrentReplayItems(candidate, "weapon_c4") <= 0)
                 continue;
 
-            var canMutate = !_session.LoadedReplays.ContainsKey(candidate.Slot) ||
-                            _session.ReplaySlots.IsOwned(candidate.Slot);
+            var canMutate = ReplayWeaponReplacementPolicy.CanMutateForeignC4Owner(
+                IsReplayTargetBot(candidate),
+                _session.LoadedReplays.ContainsKey(candidate.Slot),
+                _session.ReplaySlots.IsOwned(candidate.Slot));
             foreignOwners.Add((candidate, canMutate));
         }
 
         var targetHasC4 = CountCurrentReplayItems(player, "weapon_c4") > 0;
         var grantPending = _pendingSafeC4GrantEpoch == _replayRoundWorkEpoch &&
                            _pendingSafeC4GrantSlot == targetSlot;
+        var replacementAuthorized = _safeC4ReplacementAuthorizedEpoch == _replayRoundWorkEpoch;
         switch (ReplayWeaponReplacementPolicy.DecideSafeC4Alignment(
                     targetHasC4,
                     foreignOwners.Count,
                     _pendingSafeC4DropHandles.Count,
-                    grantPending))
+                    grantPending,
+                    replacementAuthorized))
         {
             case SafeC4AlignmentAction.DropForeignOwners:
                 foreach (var foreignOwner in foreignOwners)
@@ -436,6 +444,7 @@ public sealed partial class DemoTracerPlugin
                 return;
 
             case SafeC4AlignmentAction.WaitForCleanup:
+            case SafeC4AlignmentAction.WaitForNativeAssignment:
                 return;
 
             case SafeC4AlignmentAction.GrantTarget:
@@ -445,6 +454,7 @@ public sealed partial class DemoTracerPlugin
             case SafeC4AlignmentAction.TargetReady:
                 _pendingSafeC4GrantEpoch = -1;
                 _pendingSafeC4GrantSlot = -1;
+                _safeC4ReplacementAuthorizedEpoch = -1;
                 MarkSafeC4OwnerAligned(
                     targetSlot,
                     targetSteamId,
@@ -483,6 +493,13 @@ public sealed partial class DemoTracerPlugin
     private void BeginSafeC4Grant(CCSPlayerController player, ulong targetSteamId)
     {
         var roundEpoch = _replayRoundWorkEpoch;
+        if (_safeC4ReplacementAuthorizedEpoch != roundEpoch)
+            return;
+
+        // Consume the authorization before calling the engine. A successful
+        // GiveNamedItem whose attachment is delayed or unobservable must never
+        // be retried as a second C4 grant.
+        _safeC4ReplacementAuthorizedEpoch = -1;
         _pendingSafeC4GrantEpoch = roundEpoch;
         _pendingSafeC4GrantSlot = player.Slot;
         if (!TryGiveNamedItem(player, "weapon_c4"))
@@ -511,6 +528,13 @@ public sealed partial class DemoTracerPlugin
             _pendingSafeC4GrantEpoch != roundEpoch ||
             _pendingSafeC4GrantSlot != targetSlot)
         {
+            return;
+        }
+
+        if (!CanWriteReplaySlot(targetSlot))
+        {
+            _pendingSafeC4GrantEpoch = -1;
+            _pendingSafeC4GrantSlot = -1;
             return;
         }
 
@@ -568,7 +592,8 @@ public sealed partial class DemoTracerPlugin
     private bool DropC4FromPlayerForSafeTransfer(CCSPlayerController player, string reason)
     {
         if (player is not { IsValid: true, PawnIsAlive: true } ||
-            player.PlayerPawn is not { IsValid: true, Value.IsValid: true })
+            player.PlayerPawn is not { IsValid: true, Value.IsValid: true } ||
+            !IsReplayTargetBot(player))
             return false;
 
         var pawn = player.PlayerPawn.Value;
@@ -661,6 +686,11 @@ public sealed partial class DemoTracerPlugin
         {
             return;
         }
+        if (!HasSafeC4AlignmentTarget())
+        {
+            _pendingSafeC4DropHandles.Remove(weaponEntityHandle);
+            return;
+        }
 
         try
         {
@@ -669,7 +699,10 @@ public sealed partial class DemoTracerPlugin
                 weapon.EntityHandle.Raw != weaponEntityHandle ||
                 !WeaponClassMatches(weapon.DesignerName, "weapon_c4"))
             {
-                FinishSafeC4Drop(roundEpoch, weaponEntityHandle);
+                FinishSafeC4Drop(
+                    roundEpoch,
+                    weaponEntityHandle,
+                    authorizeReplacement: killIssued);
                 return;
             }
 
@@ -696,7 +729,10 @@ public sealed partial class DemoTracerPlugin
             // entity and let reconciliation either accept or engine-drop it.
             if (ownedByPawn)
             {
-                FinishSafeC4Drop(roundEpoch, weaponEntityHandle);
+                FinishSafeC4Drop(
+                    roundEpoch,
+                    weaponEntityHandle,
+                    authorizeReplacement: false);
                 return;
             }
 
@@ -754,13 +790,23 @@ public sealed partial class DemoTracerPlugin
         }
     }
 
-    private void FinishSafeC4Drop(long roundEpoch, uint weaponEntityHandle)
+    private void FinishSafeC4Drop(
+        long roundEpoch,
+        uint weaponEntityHandle,
+        bool authorizeReplacement)
     {
         if (!IsReplayRoundWorkEpochCurrent(roundEpoch) ||
             !_pendingSafeC4DropHandles.Remove(weaponEntityHandle))
         {
             return;
         }
+
+        // A new C4 may be created only after the exact old entity was killed
+        // and that destruction was observed. Merely dropping it, losing sight
+        // of it, or seeing another pawn pick it up never authorizes a clone.
+        _safeC4ReplacementAuthorizedEpoch = authorizeReplacement
+            ? roundEpoch
+            : -1;
 
         ScheduleReplayRoundNextFrame(
             ReplayRoundWorkKind.C4PostMutationReconcile,
@@ -772,5 +818,16 @@ public sealed partial class DemoTracerPlugin
         _pendingSafeC4DropHandles.Clear();
         _pendingSafeC4GrantEpoch = -1;
         _pendingSafeC4GrantSlot = -1;
+        _safeC4ReplacementAuthorizedEpoch = -1;
+    }
+
+    private bool HasSafeC4AlignmentTarget()
+        => FindLoadedC4Owner(IsBombPlantedEvent).HasValue ||
+           FindLoadedC4Owner(IsBombInitialOwnerEvent).HasValue;
+
+    private void CancelSafeC4MutationWithoutTarget()
+    {
+        if (!HasSafeC4AlignmentTarget())
+            ResetSafeC4RoundMutationState();
     }
 }

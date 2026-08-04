@@ -75,6 +75,7 @@ public sealed partial class DemoTracerPlugin
     {
         CancelReplaySlotDeferredWork(slot);
         _session.ReplaySlots.Release(slot);
+        CancelSafeC4MutationWithoutTarget();
         ClearPendingWeaponSlotReplacementsForSlot(slot);
         CancelPendingProjectileAlignForSlot(slot, reason);
         _cosmeticAlignmentTracker.CancelPending(slot);
