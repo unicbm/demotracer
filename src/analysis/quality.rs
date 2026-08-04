@@ -52,7 +52,11 @@ pub fn analyze_demo(parsed: &ParsedDemo, options: AnalysisOptions) -> DemoAnalys
             })
             .collect();
         let has_active_window = !active.is_empty();
-        let source = if has_active_window { active } else { indices };
+        let source = if has_active_window {
+            active
+        } else {
+            indices.clone()
+        };
         let source = apply_round_start_floor(parsed, &source, round_floor_tick);
         let Some(window) = select_stable_window(parsed, &source) else {
             continue;
@@ -70,14 +74,17 @@ pub fn analyze_demo(parsed: &ParsedDemo, options: AnalysisOptions) -> DemoAnalys
         let t_count = window.t_players;
         let ct_count = window.ct_players;
         let total = t_count + ct_count;
+        let partial_evidence = evidence_backed_partial_round(
+            parsed, &indices, &source, start_tick, end_tick, t_count, ct_count,
+        );
         let mut problems = Vec::new();
-        if total != 10 {
+        if total != 10 && !partial_evidence {
             problems.push(format!("available players {total} != 10"));
         }
-        if t_count != 5 {
+        if t_count != 5 && !partial_evidence {
             problems.push(format!("T players {t_count} != 5"));
         }
-        if ct_count != 5 {
+        if ct_count != 5 && !partial_evidence {
             problems.push(format!("CT players {ct_count} != 5"));
         }
         if duration_seconds < options.min_round_seconds {
@@ -99,10 +106,10 @@ pub fn analyze_demo(parsed: &ParsedDemo, options: AnalysisOptions) -> DemoAnalys
             problems.push("missing active/freeze-end window; used raw round rows".to_string());
         }
 
-        let status = if problems.is_empty() {
-            RoundStatus::Recommended
-        } else {
-            RoundStatus::Suspicious
+        let status = match (problems.is_empty(), partial_evidence) {
+            (true, true) => RoundStatus::Partial,
+            (true, false) => RoundStatus::Recommended,
+            (false, _) => RoundStatus::Suspicious,
         };
         rounds.push(RoundSummary {
             round,
@@ -126,6 +133,122 @@ pub fn analyze_demo(parsed: &ParsedDemo, options: AnalysisOptions) -> DemoAnalys
         row_count: parsed.rows.len(),
         rounds,
     }
+}
+
+fn evidence_backed_partial_round(
+    parsed: &ParsedDemo,
+    round_indices: &[usize],
+    active_indices: &[usize],
+    start_tick: i32,
+    end_tick: i32,
+    t_count: usize,
+    ct_count: usize,
+) -> bool {
+    if !matches!((t_count, ct_count), (4, 5) | (5, 4)) {
+        return false;
+    }
+
+    let mut freeze_players = BTreeMap::<u64, (u8, i32)>::new();
+    for idx in round_indices {
+        let row = &parsed.rows[*idx];
+        if row.tick >= start_tick
+            || !row.is_freeze_period
+            || !row.is_alive
+            || row.steam_id == 0
+            || !matches!(row.team_num, 2 | 3)
+        {
+            continue;
+        }
+        freeze_players
+            .entry(row.steam_id)
+            .and_modify(|entry| {
+                if row.tick > entry.1 {
+                    *entry = (row.team_num, row.tick);
+                }
+            })
+            .or_insert((row.team_num, row.tick));
+    }
+    let freeze_t = freeze_players
+        .values()
+        .filter(|(side, _)| *side == 2)
+        .count();
+    let freeze_ct = freeze_players
+        .values()
+        .filter(|(side, _)| *side == 3)
+        .count();
+    if freeze_t != 5 || freeze_ct != 5 {
+        return false;
+    }
+
+    let active_players = active_indices
+        .iter()
+        .filter_map(|idx| {
+            let row = &parsed.rows[*idx];
+            (row.tick >= start_tick
+                && row.tick <= end_tick
+                && row.is_alive
+                && row.steam_id != 0
+                && matches!(row.team_num, 2 | 3))
+            .then_some(row.steam_id)
+        })
+        .collect::<BTreeSet<_>>();
+    if active_players.len() != 9 {
+        return false;
+    }
+
+    let missing = freeze_players
+        .keys()
+        .filter(|steam_id| !active_players.contains(steam_id))
+        .copied()
+        .collect::<Vec<_>>();
+    let [missing_steam_id] = missing.as_slice() else {
+        return false;
+    };
+    let Some(&(side, last_alive_freeze_tick)) = freeze_players.get(missing_steam_id) else {
+        return false;
+    };
+    if (side == 2 && t_count != 4) || (side == 3 && ct_count != 4) {
+        return false;
+    }
+
+    let death_tick = parsed
+        .events
+        .iter()
+        .filter(|event| {
+            event.name == "player_death"
+                && event.tick >= last_alive_freeze_tick
+                && event.tick < start_tick
+                && (event.user_steam_id == Some(*missing_steam_id)
+                    || event.victim_steam_id == Some(*missing_steam_id))
+        })
+        .map(|event| event.tick)
+        .min();
+    let Some(death_tick) = death_tick else {
+        return false;
+    };
+
+    let has_dead_freeze_evidence = round_indices.iter().any(|idx| {
+        let row = &parsed.rows[*idx];
+        row.steam_id == *missing_steam_id
+            && row.tick >= death_tick
+            && row.tick < start_tick
+            && row.is_freeze_period
+            && !row.is_alive
+    });
+    let revived_during_live = round_indices.iter().any(|idx| {
+        let row = &parsed.rows[*idx];
+        row.steam_id == *missing_steam_id
+            && row.tick >= start_tick
+            && row.tick <= end_tick
+            && row.round_in_progress
+            && !row.is_freeze_period
+            && row.is_alive
+    });
+    if !has_dead_freeze_evidence || revived_during_live {
+        return false;
+    }
+
+    true
 }
 
 fn apply_round_start_floor(
@@ -424,7 +547,7 @@ fn select_stable_window(parsed: &ParsedDemo, indices: &[usize]) -> Option<Stable
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::ParsedPlayerTick;
+    use crate::model::{ParsedGameEvent, ParsedPlayerTick};
 
     fn row(round: u32, tick: i32, team_num: u8, steam_id: u64) -> ParsedPlayerTick {
         ParsedPlayerTick {
@@ -543,6 +666,88 @@ mod tests {
             .problems
             .iter()
             .any(|p| p.contains("available players")));
+    }
+
+    fn four_v_five_disconnect_demo(include_death_event: bool) -> ParsedDemo {
+        let mut rows = Vec::new();
+        for steam_id in 1..=10 {
+            let team_num = if steam_id <= 5 { 2 } else { 3 };
+            let mut frozen = row(11, 100, team_num, steam_id);
+            frozen.round_in_progress = false;
+            frozen.is_freeze_period = true;
+            rows.push(frozen);
+        }
+
+        let mut dead = row(11, 160, 3, 10);
+        dead.round_in_progress = false;
+        dead.is_freeze_period = true;
+        dead.is_alive = false;
+        rows.push(dead);
+
+        for steam_id in 1..=9 {
+            let team_num = if steam_id <= 5 { 2 } else { 3 };
+            rows.push(row(11, 200, team_num, steam_id));
+            rows.push(row(11, 1_000, team_num, steam_id));
+        }
+
+        ParsedDemo {
+            path: "x.dem".to_string(),
+            stem: "x".to_string(),
+            demo_sha256: "00".repeat(32),
+            map: "de_test".to_string(),
+            demo_patch_version: None,
+            demo_version_name: None,
+            server_name: None,
+            playback_time_seconds: None,
+            tick_rate: 64.0,
+            round_freeze_end_ticks: vec![180],
+            bomb_beginplant_ticks: Vec::new(),
+            bomb_planted_ticks: Vec::new(),
+            rows,
+            projectiles: Vec::new(),
+            voice_frames: Vec::new(),
+            events: include_death_event
+                .then(|| ParsedGameEvent {
+                    tick: 150,
+                    name: "player_death".to_string(),
+                    user_steam_id: Some(10),
+                    ..ParsedGameEvent::default()
+                })
+                .into_iter()
+                .collect(),
+            avatar_overrides: Vec::new(),
+            econ_items: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn selects_evidence_backed_four_v_five_round_as_partial() {
+        let analysis = analyze_demo(
+            &four_v_five_disconnect_demo(true),
+            AnalysisOptions::default(),
+        );
+        let round = &analysis.rounds[0];
+
+        assert_eq!(round.status, RoundStatus::Partial);
+        assert_eq!((round.t_players, round.ct_players), (5, 4));
+        assert!(round.selected_by_default());
+        assert!(round.problems.is_empty());
+    }
+
+    #[test]
+    fn keeps_four_v_five_round_suspicious_without_explicit_death_evidence() {
+        let analysis = analyze_demo(
+            &four_v_five_disconnect_demo(false),
+            AnalysisOptions::default(),
+        );
+        let round = &analysis.rounds[0];
+
+        assert_eq!(round.status, RoundStatus::Suspicious);
+        assert!(!round.selected_by_default());
+        assert!(round
+            .problems
+            .iter()
+            .any(|problem| problem.contains("available players 9 != 10")));
     }
 
     #[test]

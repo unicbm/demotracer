@@ -816,12 +816,12 @@ fn estimate_round_files(
 fn round_skip_reason(round: &RoundSummary, options: &ConvertMemoryOptions) -> Option<String> {
     let selected = match &options.selected_rounds {
         Some(rounds) => rounds.contains(&round.round),
-        None => round.recommended() || options.include_suspicious,
+        None => round.selected_by_default() || options.include_suspicious,
     };
     if !selected {
         return Some("not selected".to_string());
     }
-    if !round.recommended() && !options.include_suspicious {
+    if round.requires_suspicious_opt_in() && !options.include_suspicious {
         return Some(format!("suspicious ({})", round.problems.join("; ")));
     }
     None

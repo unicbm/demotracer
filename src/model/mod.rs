@@ -921,6 +921,7 @@ mod tests {
 #[serde(rename_all = "snake_case")]
 pub enum RoundStatus {
     Recommended,
+    Partial,
     Suspicious,
 }
 
@@ -939,8 +940,12 @@ pub struct RoundSummary {
 }
 
 impl RoundSummary {
-    pub fn recommended(&self) -> bool {
-        self.status == RoundStatus::Recommended
+    pub fn selected_by_default(&self) -> bool {
+        matches!(self.status, RoundStatus::Recommended | RoundStatus::Partial)
+    }
+
+    pub fn requires_suspicious_opt_in(&self) -> bool {
+        self.status == RoundStatus::Suspicious
     }
 }
 
