@@ -33,8 +33,16 @@ public sealed partial class DemoTracerPlugin
         BeginBotRandomizerCosmeticLeaseTransition();
         try
         {
-            if (StopReplayStateForRoundBoundary("round_start"))
+            var retainedPlayoffFallback = ShouldRetainLoadedPlayoffFallback();
+            if (retainedPlayoffFallback)
+            {
+                StopLoadedReplaySlots("playoff_pending_fallback");
+                InvalidateInitialSpawnAssignment();
+            }
+            else if (StopReplayStateForRoundBoundary("round_start"))
+            {
                 Server.PrintToConsole("[DTR WARN] round_start stopped stale DTR replay state");
+            }
 
             if ((_session.Plan.SequenceActive || _session.Plan.Armed || HasPlayoffSchedulingState()) && IsWarmupPeriod())
             {
@@ -57,6 +65,12 @@ public sealed partial class DemoTracerPlugin
             {
                 if (PrepareArmedRound("round_start"))
                     ScheduleFreezePrerollStart(_session.Plan.ArmedLabel);
+            }
+            if (retainedPlayoffFallback &&
+                !_session.Plan.PlayoffPrepared &&
+                _session.LoadedSlots.Count > 0)
+            {
+                PrepareLoadedReplayOwnership();
             }
             if (_session.LoadedSlots.Count > 0)
                 ScheduleRoundBoundarySpawnReconciliation();

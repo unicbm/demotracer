@@ -16,6 +16,7 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
+    private const int MinimumPlayoffRoundsPerRosterSide = 2;
     private bool _playoffEnabled;
 
     [ConsoleCommand("dtr_playoff", "dtr_playoff <true|false>")]
@@ -89,6 +90,14 @@ public sealed partial class DemoTracerPlugin
 
     private bool HasPlayoffSchedulingState()
         => IsPlayoffPlanReady() || _session.Plan.PlayoffPreparePending || _session.Plan.PlayoffPrepared;
+
+    private bool ShouldRetainLoadedPlayoffFallback()
+        => PlayoffReplayFallbackPolicy.ShouldRetainLoadedReplay(
+            planReady: IsPlayoffPlanReady(),
+            prepared: _session.Plan.PlayoffPrepared,
+            preparationPending: _session.Plan.PlayoffPreparePending,
+            prefetchReady: ReplayPrefetchReady(),
+            hasLoadedReplay: _session.LoadedSlots.Count > 0);
 
     private string FormatPlayoffPlanStatus()
     {
@@ -186,6 +195,18 @@ public sealed partial class DemoTracerPlugin
                 $"dtr: playoff skipped extra round {_session.Plan.PlayoffRoundIndex + 1}: no replay bot targets");
             return false;
         }
+        var coverage = GetPlayoffCoverageCounts(manifest, tSteamIds, ctSteamIds);
+        if (!coverage.IsEligible(MinimumPlayoffRoundsPerRosterSide))
+        {
+            _playoffEnabled = false;
+            ResetPlayoffProgress();
+            Server.PrintToConsole(
+                "[DTR WARN] playoff disabled: insufficient non-pistol full-buy coverage " +
+                $"(required={MinimumPlayoffRoundsPerRosterSide} per roster/side; " +
+                $"first T={coverage.FirstRosterAsT}/CT={coverage.FirstRosterAsCt}, " +
+                $"second T={coverage.SecondRosterAsT}/CT={coverage.SecondRosterAsCt})");
+            return false;
+        }
 
         var hasTRound = TryChoosePlayoffSourceRound(
                 manifest,
@@ -277,13 +298,40 @@ public sealed partial class DemoTracerPlugin
         if (steamIds.Count == 0)
             return true;
 
+        var candidates = FindEligiblePlayoffRounds(manifest, side, steamIds);
+        candidateCount = candidates.Length;
+        if (candidates.Length == 0)
+        {
+            error = $"side={side} has no full-buy source round covering every retained SteamID";
+            return false;
+        }
+
+        selectedRound = candidates[Random.Shared.Next(candidates.Length)];
+        return true;
+    }
+
+    private static PlayoffCoverageCounts GetPlayoffCoverageCounts(
+        ConversionManifest manifest,
+        IReadOnlySet<ulong> firstRoster,
+        IReadOnlySet<ulong> secondRoster)
+        => new(
+            FindEligiblePlayoffRounds(manifest, "t", firstRoster).Length,
+            FindEligiblePlayoffRounds(manifest, "ct", firstRoster).Length,
+            FindEligiblePlayoffRounds(manifest, "t", secondRoster).Length,
+            FindEligiblePlayoffRounds(manifest, "ct", secondRoster).Length);
+
+    private static int[] FindEligiblePlayoffRounds(
+        ConversionManifest manifest,
+        string side,
+        IReadOnlySet<ulong> steamIds)
+    {
         var replaySteamIdsByRound = manifest.Files
             .Where(file => file.Side.Equals(side, StringComparison.OrdinalIgnoreCase))
             .GroupBy(file => file.Round)
             .ToDictionary(
                 group => group.Key,
                 group => (IReadOnlyList<ulong>)group.Select(file => file.SteamId).ToArray());
-        var candidates = PlayoffRoundSelectionPolicy.FindEligibleRounds(
+        return PlayoffRoundSelectionPolicy.FindEligibleRounds(
             manifest.Rounds.Select(round => new PlayoffRoundCandidate(
                 round.Round,
                 round.PistolRound,
@@ -294,15 +342,6 @@ public sealed partial class DemoTracerPlugin
                     ? replaySteamIds
                     : Array.Empty<ulong>())),
             steamIds);
-        candidateCount = candidates.Length;
-        if (candidates.Length == 0)
-        {
-            error = $"side={side} has no full-buy source round covering every retained SteamID";
-            return false;
-        }
-
-        selectedRound = candidates[Random.Shared.Next(candidates.Length)];
-        return true;
     }
 
     private void PollPendingPlayoffPreparation(int token)
@@ -370,12 +409,37 @@ public sealed partial class DemoTracerPlugin
     private void StartPreparedPlayoffRound()
     {
         var extraRound = _session.Plan.PlayoffRoundIndex + 1;
+        if (!_session.Plan.PlayoffPrepared &&
+            _session.Plan.PlayoffPreparePending &&
+            ReplayPrefetchReady())
+        {
+            _ = CompletePendingPlayoffPreparation(
+                waitForDecode: false,
+                scheduleFreezePreroll: false);
+        }
+
         if (!_session.Plan.PlayoffPrepared)
         {
+            if (_session.LoadedSlots.Count > 0)
+            {
+                // The next source selection is still decoding. Replaying the
+                // last loaded DTR keeps every bot demo-controlled instead of
+                // silently falling back to its native AI for this server round.
+                _session.Plan.PlayoffPendingCanLoad = false;
+                PrepareLoadedReplayOwnership();
+                var fallback = StartLoaded(loop: false);
+                Server.PrintToConsole(
+                    $"dtr: playoff extra round {extraRound} reused the last loaded DTR while the next source finishes decoding; {fallback}");
+                _session.Plan.PlayoffRoundIndex++;
+                _ = PrepareNextPlayoffRound(
+                    $"playoff extra round {extraRound} fallback live prefetch",
+                    allowLoad: false);
+                return;
+            }
+
+            _session.Plan.PlayoffPendingCanLoad = false;
             Server.PrintToConsole(
-                $"dtr: playoff skipped start for extra round {extraRound}: replay prefetch was not ready by round_freeze_end");
-            ClearPlayoffPendingPreparation(cancelDecode: true);
-            _session.Plan.PlayoffRoundIndex++;
+                $"[DTR ERR] playoff extra round {extraRound} has neither a prepared replay nor a loaded DTR fallback; keeping the source selection armed");
             return;
         }
 
@@ -386,5 +450,22 @@ public sealed partial class DemoTracerPlugin
         _session.Plan.PlayoffRoundIndex++;
         _session.Plan.ClearPlayoffPrepared(resetRoundIndex: false);
         ReleaseUnusedWarmReplayBuffers();
+        _ = PrepareNextPlayoffRound(
+            $"playoff extra round {extraRound} live prefetch",
+            allowLoad: false);
     }
+}
+
+internal static class PlayoffReplayFallbackPolicy
+{
+    internal static bool ShouldRetainLoadedReplay(
+        bool planReady,
+        bool prepared,
+        bool preparationPending,
+        bool prefetchReady,
+        bool hasLoadedReplay)
+        => planReady &&
+           !prepared &&
+           hasLoadedReplay &&
+           (!preparationPending || !prefetchReady);
 }

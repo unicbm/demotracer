@@ -134,6 +134,16 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
+        var missingRound = ReplaySequenceContinuityPolicy.FindFirstMissingRound(rounds, startRound);
+        if (missingRound.HasValue)
+        {
+            command.ReplyToCommand(
+                $"[DTR ERR] Sequence cannot cross missing source_round={missingRound.Value}; its replay files were not exported.");
+            command.ReplyToCommand(
+                "[DTR HINT] Use single-round playback, or reconvert a contiguous source-round range.");
+            return;
+        }
+
         var deferExistingReplayCleanup =
             ReplayPlanOverridePolicy.DeferExistingReplayCleanupUntilRoundStart(restart);
         if (!CheckReplayStartGates(
@@ -452,6 +462,12 @@ public sealed partial class DemoTracerPlugin
                 _playoffEnabled
                     ? "dtr: sequence complete; playoff continuation is armed"
                     : "dtr: sequence complete");
+            if (_playoffEnabled)
+            {
+                _ = PrepareNextPlayoffRound(
+                    "final sequence round live prefetch",
+                    allowLoad: false);
+            }
         }
         else
         {

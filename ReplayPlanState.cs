@@ -12,6 +12,24 @@ internal static class ReplayPlanOverridePolicy
         => restartRequested;
 }
 
+internal static class ReplaySequenceContinuityPolicy
+{
+    internal static int? FindFirstMissingRound(
+        IReadOnlyList<int> availableRounds,
+        int startRound)
+    {
+        var expected = startRound;
+        foreach (var round in availableRounds.Where(round => round >= startRound).Order())
+        {
+            if (round != expected)
+                return expected;
+            expected++;
+        }
+
+        return null;
+    }
+}
+
 internal sealed class ReplayPlanState
 {
     public bool Armed { get; set; }

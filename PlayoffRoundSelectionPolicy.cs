@@ -12,6 +12,20 @@ internal readonly record struct PlayoffRoundCandidate(
     string? EconomyClass,
     IReadOnlyList<ulong> ReplaySteamIds);
 
+internal readonly record struct PlayoffCoverageCounts(
+    int FirstRosterAsT,
+    int FirstRosterAsCt,
+    int SecondRosterAsT,
+    int SecondRosterAsCt)
+{
+    public bool IsEligible(int minimumPerRosterSide)
+        => minimumPerRosterSide > 0 &&
+           FirstRosterAsT >= minimumPerRosterSide &&
+           FirstRosterAsCt >= minimumPerRosterSide &&
+           SecondRosterAsT >= minimumPerRosterSide &&
+           SecondRosterAsCt >= minimumPerRosterSide;
+}
+
 internal static class PlayoffRoundSelectionPolicy
 {
     public static int[] FindEligibleRounds(
