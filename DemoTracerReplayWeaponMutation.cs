@@ -24,20 +24,21 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
-    private bool RemoveCtStarterSidearmForReplacement(
+    private bool RemoveWeaponForReplacement(
         CCSPlayerController player,
         CCSPlayerPawn pawn,
         CBasePlayerWeapon weapon,
-        string targetItem)
+        string targetItem,
+        ReplayWeaponSlot weaponSlot)
     {
         var weaponName = NormalizeWeaponClassName(weapon.DesignerName);
         var weaponEntityHandle = weapon.EntityHandle.Raw;
-        if (player.Team != CsTeam.CounterTerrorist ||
-            weaponEntityHandle == Utilities.InvalidEHandleIndex ||
-            !ReplayWeaponReplacementPolicy.IsCtStarterSidearmSwap(
-                ReplayWeaponSlot.Secondary,
+        if (weaponEntityHandle == Utilities.InvalidEHandleIndex ||
+            !ReplayWeaponReplacementPolicy.CanReplaceOccupiedWeaponSlot(
+                weaponSlot,
                 weaponName,
                 targetItem) ||
+            GetReplayWeaponSlot(weaponName) != weaponSlot ||
             !PawnOwnsWeapon(pawn, weapon))
         {
             return false;
@@ -50,14 +51,14 @@ public sealed partial class DemoTracerPlugin
         catch (Exception ex)
         {
             Server.PrintToConsole(
-                $"dtr: failed to detach CT starter sidearm slot={player.Slot} item={weaponName}: {ex.Message}");
+                $"dtr: failed to detach occupied weapon slot={player.Slot}:{weaponSlot} item={weaponName}: {ex.Message}");
             return false;
         }
 
         if (weapon is { IsValid: true } && PawnOwnsWeapon(pawn, weapon))
         {
             Server.PrintToConsole(
-                $"dtr: CT starter sidearm detach is pending slot={player.Slot} item={weaponName}");
+                $"dtr: occupied weapon detach is pending slot={player.Slot}:{weaponSlot} item={weaponName}");
         }
 
         if (weapon is not { IsValid: true })
@@ -66,28 +67,28 @@ public sealed partial class DemoTracerPlugin
             !WeaponClassMatches(weapon.DesignerName, weaponName))
         {
             Server.PrintToConsole(
-                $"[DTR WARN] detached CT starter sidearm identity changed slot={player.Slot} item={weaponName}");
+                $"[DTR WARN] detached weapon identity changed slot={player.Slot}:{weaponSlot} item={weaponName}");
             // The exact old entity can no longer be cleaned safely, but the
             // inventory mutation already succeeded. Keep the replacement
             // transaction alive so an empty slot still receives either the
-            // target or the original starter pistol fallback.
+            // target or the original weapon fallback.
             return true;
         }
 
-        ScheduleRemovedCtStarterSidearmCleanup(
+        ScheduleRemovedWeaponCleanup(
             player.Slot,
             weaponEntityHandle,
             weaponName);
         return true;
     }
 
-    private void ScheduleRemovedCtStarterSidearmCleanup(
+    private void ScheduleRemovedWeaponCleanup(
         int slot,
         uint weaponEntityHandle,
         string weaponName)
     {
         var roundEpoch = _replayRoundWorkEpoch;
-        Server.NextFrame(() => CleanupRemovedCtStarterSidearm(
+        Server.NextFrame(() => CleanupRemovedWeapon(
             slot,
             weaponEntityHandle,
             weaponName,
@@ -96,7 +97,7 @@ public sealed partial class DemoTracerPlugin
             retriesRemaining: DetachedWeaponCleanupRetryFrames));
     }
 
-    private void CleanupRemovedCtStarterSidearm(
+    private void CleanupRemovedWeapon(
         int slot,
         uint weaponEntityHandle,
         string weaponName,
@@ -147,7 +148,7 @@ public sealed partial class DemoTracerPlugin
                     return;
 
                 case DetachedWeaponCleanupAction.Retry:
-                    Server.NextFrame(() => CleanupRemovedCtStarterSidearm(
+                    Server.NextFrame(() => CleanupRemovedWeapon(
                         slot,
                         weaponEntityHandle,
                         weaponName,
@@ -158,14 +159,14 @@ public sealed partial class DemoTracerPlugin
 
                 case DetachedWeaponCleanupAction.Abandon:
                     Server.PrintToConsole(
-                        $"[DTR WARN] detached CT starter sidearm remains engine-referenced slot={slot} item={weaponName}");
+                        $"[DTR WARN] detached weapon remains engine-referenced slot={slot} item={weaponName}");
                     return;
             }
         }
         catch (Exception ex)
         {
             Server.PrintToConsole(
-                $"dtr: failed to clean detached CT starter sidearm slot={slot} item={weaponName}: {ex.Message}");
+                $"dtr: failed to clean detached weapon slot={slot} item={weaponName}: {ex.Message}");
         }
     }
 

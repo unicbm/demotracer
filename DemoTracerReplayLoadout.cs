@@ -238,11 +238,10 @@ public sealed partial class DemoTracerPlugin
         }
 
         var currentSlotWeapons = GetWeaponsInReplaySlot(pawn, slot).ToList();
-        var canReplaceCtStarterSidearm =
-            player.Team == CsTeam.CounterTerrorist &&
+        var canReplaceOccupiedSlot =
             targetItem != null &&
             currentSlotWeapons.Count == 1 &&
-            ReplayWeaponReplacementPolicy.IsCtStarterSidearmSwap(
+            ReplayWeaponReplacementPolicy.CanReplaceOccupiedWeaponSlot(
                 slot,
                 NormalizeWeaponClassName(currentSlotWeapons[0].DesignerName),
                 targetItem);
@@ -250,7 +249,7 @@ public sealed partial class DemoTracerPlugin
                     targetItem != null,
                     targetPresent,
                     currentSlotWeapons.Count > 0,
-                    canReplaceCtStarterSidearm))
+                    canReplaceOccupiedSlot))
         {
             case ReplayWeaponSlotPlanAction.Complete:
                 return ReplayWeaponSlotSyncStatus.Complete;
@@ -266,8 +265,8 @@ public sealed partial class DemoTracerPlugin
                     ? ReplayWeaponSlotSyncStatus.Pending
                     : ReplayWeaponSlotSyncStatus.RetryRequired;
 
-            case ReplayWeaponSlotPlanAction.ReplaceCtStarterSidearm:
-                return BeginCtStarterSidearmReplacement(
+            case ReplayWeaponSlotPlanAction.ReplaceOccupiedSlot:
+                return BeginOccupiedWeaponSlotReplacement(
                     player,
                     pawn,
                     currentSlotWeapons[0],
@@ -279,10 +278,8 @@ public sealed partial class DemoTracerPlugin
                     : ReplayWeaponSlotSyncStatus.RetryRequired;
 
             case ReplayWeaponSlotPlanAction.PreserveExisting:
-                // Phase-one safety invariant: DTR evidence may select a
-                // different gun, but preparation must not detach an already
-                // usable primary/secondary before a transactional replacement
-                // implementation can prove that the target is attached.
+                // Ambiguous slot state (for example multiple weapons) is not
+                // safe to mutate automatically. Leave it intact and continue.
                 Server.PrintToConsole(
                     $"dtr: preserved occupied weapon slot={player.Slot}:{slot} " +
                     $"target={targetItem ?? "none"}");

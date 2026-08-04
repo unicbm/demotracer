@@ -17,7 +17,7 @@ internal enum ReplayWeaponSlotPlanAction
 {
     Complete,
     GrantIntoEmptySlot,
-    ReplaceCtStarterSidearm,
+    ReplaceOccupiedSlot,
     PreserveExisting
 }
 
@@ -60,12 +60,12 @@ internal static class ReplayWeaponReplacementPolicy
         bool hasTarget,
         bool targetPresent,
         bool anySlotWeapon,
-        bool canReplaceCtStarterSidearm = false)
+        bool canReplaceOccupiedSlot = false)
     {
         if (targetPresent)
             return ReplayWeaponSlotPlanAction.Complete;
-        if (anySlotWeapon && canReplaceCtStarterSidearm)
-            return ReplayWeaponSlotPlanAction.ReplaceCtStarterSidearm;
+        if (anySlotWeapon && canReplaceOccupiedSlot)
+            return ReplayWeaponSlotPlanAction.ReplaceOccupiedSlot;
         if (anySlotWeapon)
             return ReplayWeaponSlotPlanAction.PreserveExisting;
         return hasTarget
@@ -73,28 +73,19 @@ internal static class ReplayWeaponReplacementPolicy
             : ReplayWeaponSlotPlanAction.Complete;
     }
 
-    internal static bool IsCtStarterSidearmSwap(
+    internal static bool CanReplaceOccupiedWeaponSlot(
         ReplayWeaponSlot slot,
         string currentItem,
         string targetItem)
     {
-        if (slot != ReplayWeaponSlot.Secondary)
+        if (slot is not (ReplayWeaponSlot.Primary or ReplayWeaponSlot.Secondary) ||
+            string.IsNullOrWhiteSpace(currentItem) ||
+            string.IsNullOrWhiteSpace(targetItem))
+        {
             return false;
+        }
 
-        var currentIsP2000 = currentItem.Equals(
-            "weapon_hkp2000",
-            StringComparison.OrdinalIgnoreCase);
-        var currentIsUsp = currentItem.Equals(
-            "weapon_usp_silencer",
-            StringComparison.OrdinalIgnoreCase);
-        var targetIsP2000 = targetItem.Equals(
-            "weapon_hkp2000",
-            StringComparison.OrdinalIgnoreCase);
-        var targetIsUsp = targetItem.Equals(
-            "weapon_usp_silencer",
-            StringComparison.OrdinalIgnoreCase);
-        return (currentIsP2000 && targetIsUsp) ||
-               (currentIsUsp && targetIsP2000);
+        return !currentItem.Equals(targetItem, StringComparison.OrdinalIgnoreCase);
     }
 
     internal static WeaponSlotReplacementAction DecideReplacementProgress(

@@ -12,7 +12,7 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
-    private bool BeginCtStarterSidearmReplacement(
+    private bool BeginOccupiedWeaponSlotReplacement(
         CCSPlayerController player,
         CCSPlayerPawn pawn,
         CBasePlayerWeapon currentWeapon,
@@ -23,12 +23,11 @@ public sealed partial class DemoTracerPlugin
     {
         var currentItem = NormalizeWeaponClassName(currentWeapon.DesignerName);
         var currentSlotWeapons = GetWeaponsInReplaySlot(pawn, weaponSlot).ToList();
-        if (player.Team != CsTeam.CounterTerrorist ||
-            player.UserId != playerUserId ||
+        if (player.UserId != playerUserId ||
             !IsReplayWriteEpochCurrent(player.Slot, replayWriteEpoch) ||
             currentSlotWeapons.Count != 1 ||
             currentSlotWeapons[0].EntityHandle.Raw != currentWeapon.EntityHandle.Raw ||
-            !ReplayWeaponReplacementPolicy.IsCtStarterSidearmSwap(
+            !ReplayWeaponReplacementPolicy.CanReplaceOccupiedWeaponSlot(
                 weaponSlot,
                 currentItem,
                 targetItem))
@@ -39,11 +38,12 @@ public sealed partial class DemoTracerPlugin
         var key = (player.Slot, weaponSlot);
         if (_session.PendingWeaponSlotReplacements.ContainsKey(key))
             return false;
-        if (!RemoveCtStarterSidearmForReplacement(
+        if (!RemoveWeaponForReplacement(
                 player,
                 pawn,
                 currentWeapon,
-                targetItem))
+                targetItem,
+                weaponSlot))
         {
             return false;
         }
@@ -59,7 +59,7 @@ public sealed partial class DemoTracerPlugin
         _session.PendingWeaponSlotReplacements[key] = pending;
         _session.LastEnsuredWeaponDef.Remove(player.Slot);
         _session.LastReplayWeaponDef.Remove(player.Slot);
-        Server.NextFrame(() => CompleteCtStarterSidearmReplacement(
+        Server.NextFrame(() => CompleteOccupiedWeaponSlotReplacement(
             pending,
             WeaponSlotReplacementClearWaitFrames));
         return true;
@@ -103,7 +103,7 @@ public sealed partial class DemoTracerPlugin
         return true;
     }
 
-    private void CompleteCtStarterSidearmReplacement(
+    private void CompleteOccupiedWeaponSlotReplacement(
         PendingWeaponSlotReplacement pending,
         int clearWaitFramesRemaining)
     {
@@ -122,7 +122,7 @@ public sealed partial class DemoTracerPlugin
                 return;
 
             case WeaponSlotReplacementAction.WaitForClear:
-                Server.NextFrame(() => CompleteCtStarterSidearmReplacement(
+                Server.NextFrame(() => CompleteOccupiedWeaponSlotReplacement(
                     pending,
                     clearWaitFramesRemaining - 1));
                 return;
@@ -132,7 +132,7 @@ public sealed partial class DemoTracerPlugin
                     pending,
                     WeaponSlotReplacementFallbackWaitFrames,
                     fallbackRetryAttemptsRemaining: 0,
-                    failureReason: "starter_sidearm_clear_timeout"));
+                    failureReason: "occupied_slot_clear_timeout"));
                 return;
 
             case WeaponSlotReplacementAction.GrantTarget:
