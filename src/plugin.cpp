@@ -26,6 +26,7 @@
 #include "WeaponLockerState.h"
 #include "BotControllerState.h"
 #include "commands.h"
+#include "schema_resolver.h"
 #include "sig_scan.h"
 #include "platform.h"
 #include "version_targets.h"
@@ -81,6 +82,22 @@ bool BotControllerPlugin::Load(PluginId id, ISmmAPI *ismm,
         std::snprintf(error, maxlen,
                       "Failed to get ICvar (%s) via engine factory",
                       CVAR_INTERFACE_VERSION);
+        return false;
+    }
+
+    char schemaError[256] = {0};
+    if (!BotController::Schema::Init(schemaError, sizeof(schemaError)))
+    {
+        std::snprintf(error, maxlen,
+                      "Schema initialization failed: %s", schemaError);
+        return false;
+    }
+    if (!BotController::targets::LoadFromSchema(
+            schemaError, sizeof(schemaError)))
+    {
+        BotController::Schema::Reset();
+        std::snprintf(error, maxlen,
+                      "Schema target resolution failed: %s", schemaError);
         return false;
     }
     ConVar_Register(FCVAR_RELEASE | FCVAR_GAMEDLL);
@@ -158,10 +175,9 @@ bool BotControllerPlugin::Load(PluginId id, ISmmAPI *ismm,
         return false;
     }
 
-    // offsets first (hooks/detours read tg::k* at runtime)
+    // Private offsets first; all Schema-backed targets already came from the
+    // live server layout above.
     BotController::targets::LoadFromGamedata(gd);
-    if (!BotController::targets::ResolveRuntimeSchemaOffsets(error, maxlen))
-        return false;
 
     if (!BotController::WeaponLockerHooks::Install(gd, serverModule, error, maxlen))
         return false;
@@ -217,6 +233,7 @@ bool BotControllerPlugin::Unload(char * /*error*/, size_t /*maxlen*/)
     BotController::VoiceSender::SetInterfaces(nullptr, nullptr);
     BotController::Commands::g_pEngine = nullptr;
     BotController::Commands::g_pStringTables = nullptr;
+    BotController::Schema::Reset();
     ConVar_Unregister();
     g_pCVar = nullptr;
     BotController::DebugOut("[BotController] plugin unloaded\n");

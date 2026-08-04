@@ -384,10 +384,9 @@ namespace BotController
             size_t errorOutLen)
         {
 #if defined(_WIN32)
-            // The required Windows Update signature ends in
-            // `C6 81 <disp32> 00` (mov byte ptr [rcx+disp32], 0). Decode the
-            // private CCSBot flag from the matched function instead of
-            // trusting a version-pinned gamedata offset.
+            // The byte cleared by CCSBot::Update is not the similarly named
+            // public Schema field on current builds. Decode the private target
+            // from the required `C6 81 <disp32> 00` instruction itself.
             const auto *code = static_cast<const uint8_t *>(updateAddress);
             constexpr std::size_t kInstructionOffset = 28;
             if (code[kInstructionOffset] != 0xC6 ||

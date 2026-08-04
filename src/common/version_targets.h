@@ -9,7 +9,7 @@ namespace BotController::targets
 {
     // ---- CCSBot ----
 
-    // AI-ran-this-tick byte flag; Windows decodes it from CCSBot::Update.
+    // AI-ran-this-tick byte flag; decoded from CCSBot::Update.
     inline int kBot_AiTickedFlag = 0x610;
     // CCSBot -> pawn (CCSPlayerPawn*)
     inline int kBot_Pawn = 0x18;
@@ -90,9 +90,9 @@ namespace BotController::targets
     // CPlayerPawnComponent::Pawn pointer helper used by CounterStrikeSharp.
     inline int kServices_Pawn = 0x38;
     // m_nButtons.m_pButtonStates[0..2] — engine button state block (CInButtonState)
-    inline int kServices_Buttons = 0x50;       // states[0] (pressed)
-    inline int kServices_Buttons1 = 0x50 + 8;  // states[1]
-    inline int kServices_Buttons2 = 0x50 + 16; // states[2]
+    inline int kServices_Buttons = 0x50 + 0x08;       // states[0] (pressed)
+    inline int kServices_Buttons1 = 0x50 + 0x08 + 8;  // states[1]
+    inline int kServices_Buttons2 = 0x50 + 0x08 + 16; // states[2]
     // m_vecOldViewAngles (QAngle)
     inline int kServices_OldViewAngles = 0x240;
 
@@ -120,11 +120,11 @@ namespace BotController::targets
     inline int kVtIdx_PlayerRunCommand = 25;
     inline int kVtIdx_FinishMove = 38;
 
-    // Override the above from gamedata[name].offsets[platform]; missing keeps default
+    // Load only private/non-schema offsets from platform-specific gamedata.
     void LoadFromGamedata(const nlohmann::json &gd);
 
     // Replace every schema-backed offset with the live server layout. Returns
     // false rather than allowing stale offsets to write unrelated fields.
-    bool ResolveRuntimeSchemaOffsets(char *errorOut, std::size_t errorOutLen);
+    bool LoadFromSchema(char *errorOut, std::size_t errorOutLen);
 
 } // namespace BotController::targets
