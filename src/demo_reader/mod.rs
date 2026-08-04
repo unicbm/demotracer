@@ -1427,7 +1427,10 @@ mod demoparser_impl {
             }
             voice_frames.sort_by_key(|frame| (frame.xuid, frame.tick));
         }
-        let avatar_overrides = parse_avatar_overrides(output.server_avatar_overrides);
+        let avatar_overrides = parse_avatar_overrides(
+            output.server_avatar_overrides,
+            rows.iter().map(|row| row.steam_id),
+        );
         let econ_items = if options.collect_cosmetics {
             parse_econ_items(output.skins)
         } else {
@@ -1460,17 +1463,27 @@ mod demoparser_impl {
         options.collect_cosmetics || !COSMETIC_PLAYER_PROPS.contains(&prop)
     }
 
-    fn parse_avatar_overrides(raw: Vec<(String, Vec<u8>)>) -> Vec<ParsedAvatarOverride> {
+    fn parse_avatar_overrides(
+        raw: Vec<(String, Vec<u8>)>,
+        player_steam_ids: impl IntoIterator<Item = u64>,
+    ) -> Vec<ParsedAvatarOverride> {
         let mut by_steam_id: BTreeMap<u64, BTreeMap<String, (AvatarImageFormat, Vec<u8>)>> =
             BTreeMap::new();
+        let mut default_variants: BTreeMap<String, (AvatarImageFormat, Vec<u8>)> = BTreeMap::new();
         for (key, bytes) in raw {
             if bytes.is_empty() {
+                continue;
+            }
+            let sha256 = crate::demo_id::sha256_hex(&bytes);
+            if key.trim().eq_ignore_ascii_case("default") {
+                default_variants
+                    .entry(sha256)
+                    .or_insert_with(|| (detect_avatar_image_format(&bytes), bytes));
                 continue;
             }
             let Ok(steam_id) = key.trim().parse::<u64>() else {
                 continue;
             };
-            let sha256 = crate::demo_id::sha256_hex(&bytes);
             by_steam_id
                 .entry(steam_id)
                 .or_default()
@@ -1478,22 +1491,46 @@ mod demoparser_impl {
                 .or_insert_with(|| (detect_avatar_image_format(&bytes), bytes));
         }
 
-        by_steam_id
+        let mut parsed = by_steam_id
             .into_iter()
             .filter_map(|(steam_id, mut variants)| {
                 if variants.len() != 1 {
                     return None;
                 }
                 let (sha256, (format, bytes)) = variants.pop_first()?;
-                Some(ParsedAvatarOverride {
+                Some((
                     steam_id,
-                    format,
-                    sha256,
-                    source: "ServerAvatarOverrides".to_string(),
-                    bytes,
-                })
+                    ParsedAvatarOverride {
+                        steam_id,
+                        format,
+                        sha256,
+                        source: "ServerAvatarOverrides".to_string(),
+                        bytes,
+                    },
+                ))
             })
-            .collect()
+            .collect::<BTreeMap<_, _>>();
+
+        if default_variants.len() == 1 {
+            if let Some((sha256, (format, bytes))) = default_variants.pop_first() {
+                for steam_id in player_steam_ids
+                    .into_iter()
+                    .filter(|steam_id| *steam_id != 0)
+                {
+                    parsed
+                        .entry(steam_id)
+                        .or_insert_with(|| ParsedAvatarOverride {
+                            steam_id,
+                            format,
+                            sha256: sha256.clone(),
+                            source: "ServerAvatarOverrides".to_string(),
+                            bytes: bytes.clone(),
+                        });
+                }
+            }
+        }
+
+        parsed.into_values().collect()
     }
 
     fn parse_econ_items(
@@ -2733,6 +2770,43 @@ mod demoparser_impl {
             header.insert("playback_time".to_string(), " 3034.921875 ".to_string());
 
             assert_eq!(header_f32(&header, "playback_time"), Some(3034.921875));
+        }
+
+        #[test]
+        fn default_avatar_override_expands_to_demo_players() {
+            let png = b"\x89PNG\r\n\x1a\nblast".to_vec();
+            let expected_sha256 = crate::demo_id::sha256_hex(&png);
+
+            let parsed = parse_avatar_overrides(
+                vec![("default".to_string(), png.clone())],
+                [76561198000000002, 0, 76561198000000001, 76561198000000002],
+            );
+
+            assert_eq!(parsed.len(), 2);
+            assert_eq!(parsed[0].steam_id, 76561198000000001);
+            assert_eq!(parsed[1].steam_id, 76561198000000002);
+            assert!(parsed
+                .iter()
+                .all(|avatar| avatar.sha256 == expected_sha256 && avatar.bytes == png));
+        }
+
+        #[test]
+        fn player_avatar_override_takes_precedence_over_default() {
+            let default_png = b"\x89PNG\r\n\x1a\ndefault".to_vec();
+            let player_png = b"\x89PNG\r\n\x1a\nplayer".to_vec();
+            let player_sha256 = crate::demo_id::sha256_hex(&player_png);
+
+            let parsed = parse_avatar_overrides(
+                vec![
+                    ("default".to_string(), default_png),
+                    ("76561198000000001".to_string(), player_png),
+                ],
+                [76561198000000001],
+            );
+
+            assert_eq!(parsed.len(), 1);
+            assert_eq!(parsed[0].steam_id, 76561198000000001);
+            assert_eq!(parsed[0].sha256, player_sha256);
         }
 
         #[test]
