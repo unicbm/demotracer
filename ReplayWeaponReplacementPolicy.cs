@@ -198,10 +198,5 @@ internal static class ReplayWeaponReplacementPolicy
         ReplayWeaponSlot slot,
         bool counterTerrorist,
         string targetItem)
-    {
-        if (slot != ReplayWeaponSlot.Secondary)
-            return targetItem;
-
-        return counterTerrorist ? "weapon_hkp2000" : "weapon_glock";
-    }
+        => targetItem;
 }

@@ -24,6 +24,7 @@ public sealed partial class DemoTracerPlugin
     private float _nextBotHiderLeaseHeartbeatAt;
     private float _nextBotHiderLeaseRetryAt;
     private int _botHiderPresentationTransitionDepth;
+    private bool _botHiderAvatarIdentityReassertScheduled;
 
     private void BeginBotHiderPresentationTransition()
     {
@@ -73,7 +74,9 @@ public sealed partial class DemoTracerPlugin
         }
     }
 
-    private bool SyncBotHiderPresentationLease(bool announce)
+    private bool SyncBotHiderPresentationLease(
+        bool announce,
+        bool forceReplace = false)
     {
         if (_botHiderPresentationTransitionDepth > 0)
             return true;
@@ -101,8 +104,10 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
-        if (!string.IsNullOrWhiteSpace(_botHiderPresentationLeaseToken) &&
-            signature.Equals(_botHiderPresentationSignature, StringComparison.Ordinal))
+        if (BotHiderPresentationLeasePolicy.ShouldHeartbeatExistingLease(
+                forceReplace,
+                !string.IsNullOrWhiteSpace(_botHiderPresentationLeaseToken),
+                signature.Equals(_botHiderPresentationSignature, StringComparison.Ordinal)))
         {
             if (_botHiderBridge.Heartbeat(_botHiderPresentationLeaseToken))
             {
@@ -425,6 +430,7 @@ public sealed partial class DemoTracerPlugin
         if (_botHiderPresentationTransitionDepth > 0)
             return;
 
+        _botHiderAvatarIdentityReassertScheduled = false;
         var token = _botHiderPresentationLeaseToken;
         _botHiderPresentationLeaseToken = string.Empty;
         _botHiderPresentationSignature = string.Empty;
@@ -437,6 +443,32 @@ public sealed partial class DemoTracerPlugin
         if (!_botHiderBridge.Release(token))
             _ = _botHiderBridge.ReleaseOwner(DemoTracerBotHiderContract.DemoTracerOwner);
         Server.PrintToConsole($"dtr: BotHider presentation lease released reason={reason}");
+    }
+
+    private void ScheduleBotHiderAvatarIdentityReassert()
+    {
+        if (_botHiderAvatarIdentityReassertScheduled)
+            return;
+
+        _botHiderAvatarIdentityReassertScheduled = true;
+        Server.NextFrame(() =>
+        {
+            _botHiderAvatarIdentityReassertScheduled = false;
+            if (_replayIdentityMode != ReplayIdentityMode.Avatar ||
+                _session.LoadedSlots.Count == 0)
+            {
+                return;
+            }
+
+            // ServerAvatarOverrides is populated after the replay identity
+            // lease because the native write runs through the server command
+            // buffer. Replacing the unchanged lease invalidates BotHider's
+            // applied cache and republishes userinfo after the PNG is visible.
+            // One scheduled replacement covers every avatar queued together.
+            _ = SyncBotHiderPresentationLease(
+                announce: false,
+                forceReplace: true);
+        });
     }
 
     private bool HasActiveBotHiderReplayIdentity(int slot, ulong replaySteamId)
@@ -486,4 +518,13 @@ public sealed partial class DemoTracerPlugin
         int RetentionRank,
         ReplayScoreboardFlair? ScoreboardFlair,
         ReplayView View);
+}
+
+internal static class BotHiderPresentationLeasePolicy
+{
+    internal static bool ShouldHeartbeatExistingLease(
+        bool forceReplace,
+        bool hasLease,
+        bool signatureMatches)
+        => !forceReplace && hasLease && signatureMatches;
 }
