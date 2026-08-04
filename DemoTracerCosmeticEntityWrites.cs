@@ -57,6 +57,39 @@ public sealed partial class DemoTracerPlugin
         Utilities.SetStateChanged(pawn, "CBaseModelEntity", "m_clrRender");
     }
 
+    private bool TryRestoreNativeAgentModel(
+        CCSPlayerController player,
+        CCSPlayerPawn pawn,
+        ulong replaySteamId)
+    {
+        var slot = player.Slot;
+        if (!IsReplaySlotStillSafe(slot) ||
+            !TryValidateBotRandomizerClaim(
+                slot,
+                replaySteamId,
+                DemoTracerCosmeticWriteField.Agent) ||
+            player.UserId is not int userId ||
+            !_nativeAgentModels.TryGetValue(slot, out var native) ||
+            native.UserId != userId ||
+            native.PawnEntityHandle != pawn.EntityHandle.Raw ||
+            native.Team != player.Team)
+        {
+            return false;
+        }
+
+        try
+        {
+            ApplyAgentModel(pawn, native.ModelPath);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Server.PrintToConsole(
+                $"dtr: native agent model restore failed slot={slot} model={native.ModelPath}: {ex.Message}");
+            return false;
+        }
+    }
+
     private bool TryApplyWeaponCosmetic(
         CCSPlayerController player,
         CBasePlayerWeapon weapon,

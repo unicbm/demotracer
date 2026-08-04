@@ -131,6 +131,10 @@ public sealed partial class DemoTracerPlugin
     {
         if (@event.Userid is { IsValid: true } player)
         {
+            // This handler runs before BotRandomizer's spawn callback. Capture
+            // the engine-selected map default so missing demo Agent evidence
+            // has a concrete, identity-bound value to preserve.
+            CaptureNativeAgentModelForSpawn(player);
             var spawnedSlot = player.Slot;
             if (_retainedReplayViewmodelSlots.Contains(player.Slot) &&
                 !_session.ReplaySlots.IsPlaying(player.Slot))

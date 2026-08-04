@@ -194,6 +194,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         ClearReplayCrosshairPresentationEntry(playerSlot);
         _appliedGloveCosmetics.Remove(playerSlot);
         _gloveCosmeticTokens.Remove(playerSlot);
+        _nativeAgentModels.Remove(playerSlot);
         _ = SyncBotRandomizerCosmeticLease(announce: false);
 
         if (!HasReplayLifecycleState(includeNative: true))

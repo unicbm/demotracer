@@ -420,9 +420,12 @@ public sealed partial class DemoTracerPlugin
         }
 
         return new DemoTracerBotRandomizerClaimEvidence(
-            Agent: _cosmeticAlignEnabled &&
-                   _cosmeticAgentsEnabled &&
-                   replay.Cosmetics.Agent != null,
+            // Agent alignment owns both explicit demo Agents and the absence
+            // of Agent evidence. The latter means preserve the engine/map
+            // default, not hand the pawn to BotRandomizer.
+            Agent: ShouldClaimAgentOwnership(
+                _cosmeticAlignEnabled,
+                _cosmeticAgentsEnabled),
             Knife: _cosmeticAlignEnabled &&
                    _weaponAlignEnabled &&
                    _cosmeticKnivesEnabled &&
@@ -434,6 +437,11 @@ public sealed partial class DemoTracerPlugin
             MusicKit: ReplayMusicKitAlignmentAllowed(replay.MusicKitId),
             Weapons: weapons);
     }
+
+    internal static bool ShouldClaimAgentOwnership(
+        bool cosmeticAlignEnabled,
+        bool cosmeticAgentsEnabled)
+        => cosmeticAlignEnabled && cosmeticAgentsEnabled;
 
     internal static BotRandomizerCosmeticWriteClaim? BuildBotRandomizerWriteClaim(
         int slot,
@@ -475,9 +483,9 @@ public sealed partial class DemoTracerPlugin
             Slot = slot,
             Incarnation = incarnation,
             SubjectSteamId = subjectSteamId,
-            // Keep every field positive-evidence-only. Omitted fields remain
-            // Randomizer-owned and reconcile only on their next natural pawn
-            // or item lifecycle callback.
+            // Agent is identity-level ownership: absent demo evidence means
+            // preserve the captured map default. Item fields remain strictly
+            // positive-evidence-only to avoid inventory mutation races.
             Agent = evidence.Agent,
             Knife = evidence.Knife,
             Gloves = evidence.Gloves,

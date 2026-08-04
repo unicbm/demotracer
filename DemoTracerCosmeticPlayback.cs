@@ -54,6 +54,13 @@ public sealed partial class DemoTracerPlugin
             else
                 skipped++;
         }
+        else if (ShouldClaimAgentOwnership(_cosmeticAlignEnabled, _cosmeticAgentsEnabled))
+        {
+            if (TryRestoreNativeAgentModel(player, pawn, replay.SteamId))
+                applied++;
+            else
+                skipped++;
+        }
 
         if (_weaponAlignEnabled && WeaponCosmeticFeatureEnabled())
         {

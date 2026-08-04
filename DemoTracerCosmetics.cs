@@ -27,6 +27,7 @@ public sealed partial class DemoTracerPlugin
     private readonly Dictionary<(int Slot, nint EntityHandle), AppliedCosmeticEntityWrite> _appliedKnifeCosmeticWrites = new();
     private readonly Dictionary<int, AppliedGloveCosmetic> _appliedGloveCosmetics = new();
     private readonly Dictionary<int, int> _gloveCosmeticTokens = new();
+    private readonly Dictionary<int, NativeAgentModelCapture> _nativeAgentModels = new();
     private bool _cosmeticGiveNamedItemHooked;
     private int _nextGloveCosmeticToken;
     private long _cosmeticLifecycleGeneration;
@@ -324,6 +325,64 @@ public sealed partial class DemoTracerPlugin
         return path;
     }
 
+    internal static string? NormalizeNativeAgentModelPath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        var path = value.Trim().Replace('/', '\\').ToLowerInvariant();
+        if (path.Length is < 24 or > 192 ||
+            !path.StartsWith("characters\\models\\", StringComparison.Ordinal) ||
+            !path.EndsWith(".vmdl", StringComparison.Ordinal) ||
+            path.Contains("..", StringComparison.Ordinal) ||
+            path.Contains(':', StringComparison.Ordinal) ||
+            path.Contains('\0'))
+        {
+            return null;
+        }
+
+        foreach (var ch in path)
+        {
+            if (!char.IsAsciiLetterOrDigit(ch) && ch is not ('_' or '\\' or '.' or '-'))
+                return null;
+        }
+        return path;
+    }
+
+    private void CaptureNativeAgentModelForSpawn(CCSPlayerController player)
+    {
+        var slot = player.Slot;
+        _nativeAgentModels.Remove(slot);
+        if (player is not { IsValid: true, IsBot: true } ||
+            player.UserId is not int userId ||
+            player.Team is not (CsTeam.Terrorist or CsTeam.CounterTerrorist))
+        {
+            return;
+        }
+
+        try
+        {
+            var pawn = player.PlayerPawn.Value;
+            if (pawn is not { IsValid: true } ||
+                NormalizeNativeAgentModelPath(
+                    pawn.CBodyComponent?.SceneNode?.GetSkeletonInstance().ModelState.ModelName) is not { } modelPath)
+            {
+                return;
+            }
+
+            _nativeAgentModels[slot] = new NativeAgentModelCapture(
+                userId,
+                pawn.EntityHandle.Raw,
+                player.Team,
+                modelPath);
+        }
+        catch
+        {
+            // A missing model-state wrapper must not turn spawn handling into
+            // a gameplay failure. Without a validated capture we simply skip
+            // the default-model write while retaining Agent ownership.
+        }
+    }
+
     private bool IsWeaponCosmeticDefIndex(int weaponDefIndex)
         => IsWeaponCosmeticCategory(weaponDefIndex);
 
@@ -420,5 +479,11 @@ public sealed partial class DemoTracerPlugin
 
         return (files, weapons, knives, gloves, agents, stickers, charms);
     }
+
+    private readonly record struct NativeAgentModelCapture(
+        int UserId,
+        uint PawnEntityHandle,
+        CsTeam Team,
+        string ModelPath);
 
 }

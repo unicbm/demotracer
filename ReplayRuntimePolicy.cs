@@ -12,7 +12,7 @@ internal readonly record struct FreezePrerollTiming(
 
 internal static class ReplayRuntimePolicy
 {
-    internal static Version MaxVerifiedManagedSchemaPatch { get; } = new(1, 41, 7, 3);
+    internal static Version MaxVerifiedManagedSchemaPatch { get; } = new(1, 41, 7, 4);
 
     internal static FreezePrerollTiming ComputeFreezePrerollTiming(
         float freezeTimeSeconds,
