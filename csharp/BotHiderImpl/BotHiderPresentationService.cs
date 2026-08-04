@@ -23,6 +23,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     private readonly ulong[] _slotIncarnations = new ulong[MaxSlots];
     private readonly AppliedPresentation?[] _applied = new AppliedPresentation?[MaxSlots];
     private readonly bool[] _scoreboardFlairManaged = new bool[MaxSlots];
+    private readonly bool[] _scoreboardFlairRepublishPending = new bool[MaxSlots];
     private readonly Dictionary<string, PresentationLease> _leases = new(StringComparer.Ordinal);
     private readonly Dictionary<int, string> _leaseBySlot = new();
     private ulong _nextIncarnation;
@@ -224,6 +225,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             Array.Fill(_slotIncarnations, 0UL);
             Array.Fill(_applied, null);
             Array.Fill(_scoreboardFlairManaged, false);
+            Array.Fill(_scoreboardFlairRepublishPending, false);
         }
     }
 
@@ -250,6 +252,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             _slotIncarnations[slot] = 0;
             _applied[slot] = null;
             _scoreboardFlairManaged[slot] = false;
+            _scoreboardFlairRepublishPending[slot] = false;
         }
 
         // A lease can cover several slots. Restore the remaining slots now
@@ -311,6 +314,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             _slotIncarnations[slot] = ++_nextIncarnation;
             _applied[slot] = null;
             _scoreboardFlairManaged[slot] = false;
+            _scoreboardFlairRepublishPending[slot] = false;
         }
 
         state = new BotHiderManagedSlot
@@ -337,6 +341,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         _slotIncarnations[slot] = 0;
         _applied[slot] = null;
         _scoreboardFlairManaged[slot] = false;
+        _scoreboardFlairRepublishPending[slot] = false;
     }
 
     private bool TryNormalizeOverrides(
@@ -611,13 +616,16 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             }
 
             var scoreboardFlairNeedsWrite = effectiveScoreboardFlairManaged ||
-                                            _scoreboardFlairManaged[state.Slot];
+                                             _scoreboardFlairManaged[state.Slot];
             if (scoreboardFlairNeedsWrite)
             {
                 var scoreboardFlairSynchronized = ScoreboardFlairMatches(
                     player,
                     effective.ScoreboardFlair);
-                if (!scoreboardFlairSynchronized &&
+                var scoreboardFlairNeedsPublish = ShouldPublishScoreboardFlair(
+                    scoreboardFlairSynchronized,
+                    _scoreboardFlairRepublishPending[state.Slot]);
+                if (scoreboardFlairNeedsPublish &&
                     ApplyScoreboardFlair(player, effective.ScoreboardFlair))
                 {
                     scoreboardFlairSynchronized = ScoreboardFlairMatches(
@@ -628,7 +636,10 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
                 }
 
                 if (scoreboardFlairSynchronized)
+                {
                     _scoreboardFlairManaged[state.Slot] = effectiveScoreboardFlairManaged;
+                    _scoreboardFlairRepublishPending[state.Slot] = false;
+                }
                 else
                     throw new InvalidOperationException("controller scoreboard flair write was not retained");
             }
@@ -672,6 +683,11 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         TrySetStateChanged(player, "CCSPlayerController", "m_pInventoryServices");
         return true;
     }
+
+    internal static bool ShouldPublishScoreboardFlair(
+        bool scoreboardFlairMatches,
+        bool nextFrameRepublishPending)
+        => !scoreboardFlairMatches || nextFrameRepublishPending;
 
     private static bool IsNetworkedSchemaField(string className, string fieldName)
     {
@@ -853,6 +869,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
 
     private BotHiderPresentationLeaseResult Success(PresentationLease lease)
     {
+        ScheduleScoreboardFlairRepublish(lease);
         return new BotHiderPresentationLeaseResult
         {
             Ok = true,
@@ -861,6 +878,35 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             Reason = "ok",
             Slots = lease.Overrides.Keys.Order().ToArray()
         };
+    }
+
+    private void ScheduleScoreboardFlairRepublish(PresentationLease lease)
+    {
+        var slots = lease.Overrides.Values
+            .Where(requested => requested.ScoreboardFlair.HasValue)
+            .Select(requested => requested.Slot)
+            .ToArray();
+        if (slots.Length == 0)
+            return;
+
+        var leaseToken = lease.Token;
+        Server.NextFrame(() =>
+        {
+            lock (_sync)
+            {
+                if (_disposed)
+                    return;
+                foreach (var slot in slots)
+                {
+                    if (_leaseBySlot.TryGetValue(slot, out var currentToken) &&
+                        currentToken.Equals(leaseToken, StringComparison.Ordinal))
+                    {
+                        _scoreboardFlairRepublishPending[slot] = true;
+                    }
+                }
+            }
+            PublishManagedSlots();
+        });
     }
 
     private BotHiderPresentationLeaseResult Fail(string reason)
@@ -889,6 +935,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         {
             Array.Fill(_applied, null);
             Array.Fill(_scoreboardFlairManaged, false);
+            Array.Fill(_scoreboardFlairRepublishPending, false);
             _disposed = true;
         }
     }
