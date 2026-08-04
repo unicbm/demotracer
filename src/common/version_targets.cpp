@@ -1,7 +1,12 @@
 // Override structure offsets from gamedata.json (platform-aware)
 
 #include "version_targets.h"
+#include "schema_resolver.h"
 #include "sig_scan.h"
+
+#include <cstdio>
+#include <string>
+#include <vector>
 
 namespace BotController::targets
 {
@@ -58,5 +63,105 @@ namespace BotController::targets
         kMove_AbsOrigin          = Sig::FindPlatformOffset(gd, "CMoveData::AbsOrigin", kMove_AbsOrigin);
         kVtIdx_PlayerRunCommand  = Sig::FindPlatformOffset(gd, "vtidx::PlayerRunCommand", kVtIdx_PlayerRunCommand);
         kVtIdx_FinishMove        = Sig::FindPlatformOffset(gd, "vtidx::FinishMove", kVtIdx_FinishMove);
+    }
+
+    bool ResolveRuntimeSchemaOffsets(char *errorOut, std::size_t errorOutLen)
+    {
+        if (!Schema::Init())
+        {
+            std::snprintf(errorOut, errorOutLen,
+                          "SchemaSystem unavailable; refusing unsafe raw field offsets");
+            return false;
+        }
+
+        struct RequiredField
+        {
+            const char *className;
+            const char *fieldName;
+            int *destination;
+        };
+
+        const RequiredField fields[] = {
+            {"CCSBot", "m_enemy", &kBot_Enemy},
+            {"CCSBot", "m_isEnemyVisible", &kBot_IsEnemyVisible},
+            {"CCSBot", "m_visibleEnemyParts", &kBot_VisibleEnemyParts},
+            {"CCSBot", "m_lastSawEnemyTimestamp", &kBot_LastSawEnemyTimestamp},
+            {"CCSBot", "m_firstSawEnemyTimestamp", &kBot_FirstSawEnemyTimestamp},
+            {"CCSBot", "m_currentEnemyAcquireTimestamp", &kBot_CurrentEnemyAcquireTimestamp},
+            {"CCSBot", "m_isLastEnemyDead", &kBot_IsLastEnemyDead},
+            {"CCSBot", "m_nearbyEnemyCount", &kBot_NearbyEnemyCount},
+
+            {"CBaseEntity", "m_MoveType", &kEnt_MoveType},
+            {"CBaseEntity", "m_nActualMoveType", &kEnt_ActualMoveType},
+            {"CBaseEntity", "m_fFlags", &kEnt_Flags},
+            {"CBaseEntity", "m_vecAbsVelocity", &kEnt_AbsVelocity},
+            {"CBaseEntity", "m_CBodyComponent", &kEnt_BodyComponent},
+            {"CBodyComponent", "m_pSceneNode", &kBody_SceneNode},
+            {"CGameSceneNode", "m_vecAbsOrigin", &kNode_AbsOrigin},
+
+            {"CBasePlayerPawn", "m_pWeaponServices", &kPawn_WeaponServices},
+            {"CBasePlayerPawn", "m_pMovementServices", &kPawn_MovementServices},
+            {"CBasePlayerPawn", "m_hController", &kPawn_Controller},
+            {"CCSPlayerPawnBase", "m_hOriginalController", &kPawn_OriginalController},
+            {"CBasePlayerPawn", "v_angle", &kPawn_ViewAngle},
+            {"CBasePlayerPawn", "v_anglePrevious", &kPawn_ViewAnglePrevious},
+            {"CBasePlayerPawn", "m_ServerViewAngleChanges", &kPawn_ServerViewAngleChanges},
+            {"CCSPlayerPawn", "m_angEyeAngles", &kPawn_EyeAngles},
+
+            {"CPlayer_WeaponServices", "m_hActiveWeapon", &kWs_ActiveWeapon},
+            {"CPlayer_MovementServices", "m_nButtons", &kServices_Buttons},
+            {"CPlayer_MovementServices", "m_vecOldViewAngles", &kServices_OldViewAngles},
+            {"CCSPlayer_MovementServices", "m_vecLadderNormal", &kServices_LadderNormal},
+            {"CCSPlayer_MovementServices", "m_bDucked", &kServices_Ducked},
+            {"CCSPlayer_MovementServices", "m_flDuckAmount", &kServices_DuckAmount},
+            {"CCSPlayer_MovementServices", "m_flDuckSpeed", &kServices_DuckSpeed},
+            {"CCSPlayer_MovementServices", "m_bDesiresDuck", &kServices_DesiresDuck},
+            {"CCSPlayer_MovementServices", "m_bDucking", &kServices_Ducking},
+        };
+
+        std::vector<std::string> missing;
+        for (const RequiredField &field : fields)
+        {
+            const int offset = Schema::GetFieldOffset(field.className, field.fieldName);
+            if (offset < 0)
+            {
+                missing.emplace_back(std::string(field.className) + "::" + field.fieldName);
+                continue;
+            }
+            *field.destination = offset;
+        }
+
+        const int attributeManager =
+            Schema::GetFieldOffset("CEconEntity", "m_AttributeManager");
+        const int item = Schema::GetFieldOffset("CAttributeContainer", "m_Item");
+        const int itemDefinition =
+            Schema::GetFieldOffset("CEconItemView", "m_iItemDefinitionIndex");
+        if (attributeManager < 0)
+            missing.emplace_back("CEconEntity::m_AttributeManager");
+        if (item < 0)
+            missing.emplace_back("CAttributeContainer::m_Item");
+        if (itemDefinition < 0)
+            missing.emplace_back("CEconItemView::m_iItemDefinitionIndex");
+
+        if (!missing.empty())
+        {
+            std::string message = "Missing required server schema field";
+            if (missing.size() != 1)
+                message += "s";
+            message += ": ";
+            for (std::size_t i = 0; i < missing.size(); ++i)
+            {
+                if (i != 0)
+                    message += ", ";
+                message += missing[i];
+            }
+            std::snprintf(errorOut, errorOutLen, "%s", message.c_str());
+            return false;
+        }
+
+        kServices_Buttons1 = kServices_Buttons + 8;
+        kServices_Buttons2 = kServices_Buttons + 16;
+        kWeapon_ItemDefIndex = attributeManager + item + itemDefinition;
+        return true;
     }
 }

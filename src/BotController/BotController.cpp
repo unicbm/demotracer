@@ -378,6 +378,45 @@ namespace BotController
             return g_origJump(bot, mustJump);
         }
 
+        static bool ResolveAiTickedFlagFromUpdate(
+            void *updateAddress,
+            char *errorOut,
+            size_t errorOutLen)
+        {
+#if defined(_WIN32)
+            // The required Windows Update signature ends in
+            // `C6 81 <disp32> 00` (mov byte ptr [rcx+disp32], 0). Decode the
+            // private CCSBot flag from the matched function instead of
+            // trusting a version-pinned gamedata offset.
+            const auto *code = static_cast<const uint8_t *>(updateAddress);
+            constexpr std::size_t kInstructionOffset = 28;
+            if (code[kInstructionOffset] != 0xC6 ||
+                code[kInstructionOffset + 1] != 0x81 ||
+                code[kInstructionOffset + 6] != 0x00)
+            {
+                std::snprintf(errorOut, errorOutLen,
+                              "CCSBot::Update AI-ticked store shape changed");
+                return false;
+            }
+
+            int32_t offset = 0;
+            std::memcpy(&offset, code + kInstructionOffset + 2, sizeof(offset));
+            if (offset <= 0 || offset > 0x10000)
+            {
+                std::snprintf(errorOut, errorOutLen,
+                              "CCSBot::Update AI-ticked offset invalid: 0x%X",
+                              static_cast<unsigned>(offset));
+                return false;
+            }
+            tg::kBot_AiTickedFlag = offset;
+#else
+            (void)updateAddress;
+            (void)errorOut;
+            (void)errorOutLen;
+#endif
+            return true;
+        }
+
         // Resolve a sig from gamedata against the loaded server.dll.
         bool Install(const nlohmann::json &gd, const Sig::ModuleInfo &serverModule,
                      char *errorOut, size_t errorOutLen)
@@ -387,6 +426,14 @@ namespace BotController
             if (!g_addrUpdate)
             {
                 g_status = "failed: Update sig";
+                return false;
+            }
+            if (!ResolveAiTickedFlagFromUpdate(
+                    g_addrUpdate,
+                    errorOut,
+                    errorOutLen))
+            {
+                g_status = "failed: AI-ticked offset";
                 return false;
             }
 

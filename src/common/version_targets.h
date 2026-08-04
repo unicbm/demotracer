@@ -2,26 +2,27 @@
 
 #pragma once
 
+#include <cstddef>
 #include <nlohmann/json.hpp>
 
 namespace BotController::targets
 {
     // ---- CCSBot ----
 
-    // AI-ran-this-tick byte flag; set to 1 to fake a completed tick
+    // AI-ran-this-tick byte flag; Windows decodes it from CCSBot::Update.
     inline int kBot_AiTickedFlag = 0x610;
     // CCSBot -> pawn (CCSPlayerPawn*)
     inline int kBot_Pawn = 0x18;
-    // Native perception state. These are server-only CCSBot fields recovered
-    // from the current server.dll field-description table and vision code.
-    inline int kBot_Enemy = 0x5A08;                    // CHandle<CCSPlayerPawn>
-    inline int kBot_IsEnemyVisible = 0x5A0C;           // bool
-    inline int kBot_VisibleEnemyParts = 0x5A0D;        // uint8 bit mask
-    inline int kBot_LastSawEnemyTimestamp = 0x5A1C;    // float
-    inline int kBot_FirstSawEnemyTimestamp = 0x5A20;   // float
-    inline int kBot_CurrentEnemyAcquireTimestamp = 0x5A24; // float
-    inline int kBot_IsLastEnemyDead = 0x5A30;          // bool
-    inline int kBot_NearbyEnemyCount = 0x5A34;         // int32
+    // Schema-backed perception state. Defaults document the 2026-08-04 layout;
+    // plugin load replaces every one from the live server SchemaSystem.
+    inline int kBot_Enemy = 0x59F0;                    // CHandle<CCSPlayerPawn>
+    inline int kBot_IsEnemyVisible = 0x59F4;           // bool
+    inline int kBot_VisibleEnemyParts = 0x59F5;        // uint8 bit mask
+    inline int kBot_LastSawEnemyTimestamp = 0x5A04;    // float
+    inline int kBot_FirstSawEnemyTimestamp = 0x5A08;   // float
+    inline int kBot_CurrentEnemyAcquireTimestamp = 0x5A0C; // float
+    inline int kBot_IsLastEnemyDead = 0x5A18;          // bool
+    inline int kBot_NearbyEnemyCount = 0x5A1C;         // int32
 
     // ---- CBaseEntity / CEntityIdentity ----
 
@@ -50,21 +51,21 @@ namespace BotController::targets
     // ---- CCSPlayerPawn ----
 
     // m_pWeaponServices
-    inline int kPawn_WeaponServices = 0xA30;
+    inline int kPawn_WeaponServices = 0xA00;
     // m_pMovementServices
-    inline int kPawn_MovementServices = 0xA70;
+    inline int kPawn_MovementServices = 0xA40;
     // m_hController (CHandle)
-    inline int kPawn_Controller = 0xBB0;
+    inline int kPawn_Controller = 0xB80;
     // m_hOriginalController (CHandle)
-    inline int kPawn_OriginalController = 0xD24;
+    inline int kPawn_OriginalController = 0xCF4;
     // CCSPlayerPawn -> v_angle (QAngle)
-    inline int kPawn_ViewAngle = 0xAE8;
+    inline int kPawn_ViewAngle = 0xAB8;
     // v_anglePrevious (QAngle) — keep first-person spectator/camera history aligned
-    inline int kPawn_ViewAnglePrevious = 0xAF4;
+    inline int kPawn_ViewAnglePrevious = 0xAC4;
     // m_ServerViewAngleChanges — embedded network vector consumed by local/observer camera view.
-    inline int kPawn_ServerViewAngleChanges = 0xA80;
+    inline int kPawn_ServerViewAngleChanges = 0xA50;
     // m_angEyeAngles (QAngle) — written each replay tick alongside v_angle
-    inline int kPawn_EyeAngles = 0x1368;
+    inline int kPawn_EyeAngles = 0x13B8;
 
     // ---- BuyState ----
 
@@ -80,28 +81,28 @@ namespace BotController::targets
 
     // ---- CBasePlayerWeapon ----
 
-    // m_AttributeManager(0x978) -> m_Item(0x50) -> m_iItemDefinitionIndex(0x38),
+    // m_AttributeManager(0x958) -> m_Item(0x50) -> m_iItemDefinitionIndex(0x38),
     // all embedded; net direct add (no deref)
-    inline int kWeapon_ItemDefIndex = 0x978 + 0x50 + 0x38; // 0xA00
+    inline int kWeapon_ItemDefIndex = 0x958 + 0x50 + 0x38; // 0x9E0
 
     // ---- CCSPlayer_MovementServices ----
 
     // CPlayerPawnComponent::Pawn pointer helper used by CounterStrikeSharp.
     inline int kServices_Pawn = 0x38;
     // m_nButtons.m_pButtonStates[0..2] — engine button state block (CInButtonState)
-    inline int kServices_Buttons = 0x58;       // states[0] (pressed)
-    inline int kServices_Buttons1 = 0x58 + 8;  // states[1]
-    inline int kServices_Buttons2 = 0x58 + 16; // states[2]
+    inline int kServices_Buttons = 0x50;       // states[0] (pressed)
+    inline int kServices_Buttons1 = 0x50 + 8;  // states[1]
+    inline int kServices_Buttons2 = 0x50 + 16; // states[2]
     // m_vecOldViewAngles (QAngle)
     inline int kServices_OldViewAngles = 0x240;
 
     // duck/ladder state
-    inline int kServices_LadderNormal = 0x3F8; // Vector m_vecLadderNormal
-    inline int kServices_Ducked = 0x408;       // bool m_bDucked
-    inline int kServices_DuckAmount = 0x40C;   // float m_flDuckAmount
-    inline int kServices_DuckSpeed = 0x410;    // float m_flDuckSpeed
-    inline int kServices_DesiresDuck = 0x415;  // bool m_bDesiresDuck
-    inline int kServices_Ducking = 0x416;      // bool m_bDucking
+    inline int kServices_LadderNormal = 0x3D0; // Vector m_vecLadderNormal
+    inline int kServices_Ducked = 0x3E0;       // bool m_bDucked
+    inline int kServices_DuckAmount = 0x3E4;   // float m_flDuckAmount
+    inline int kServices_DuckSpeed = 0x3E8;    // float m_flDuckSpeed
+    inline int kServices_DesiresDuck = 0x3ED;  // bool m_bDesiresDuck
+    inline int kServices_Ducking = 0x3EE;      // bool m_bDucking
 
     // ---- CMoveData  ----
 
@@ -121,5 +122,9 @@ namespace BotController::targets
 
     // Override the above from gamedata[name].offsets[platform]; missing keeps default
     void LoadFromGamedata(const nlohmann::json &gd);
+
+    // Replace every schema-backed offset with the live server layout. Returns
+    // false rather than allowing stale offsets to write unrelated fields.
+    bool ResolveRuntimeSchemaOffsets(char *errorOut, std::size_t errorOutLen);
 
 } // namespace BotController::targets

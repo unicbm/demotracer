@@ -138,7 +138,7 @@
       "windows": 1552,
       "linux": 0
     },
-    "comment": "AI-ran-this-tick byte flag (0x610). linux: TODO"
+    "comment": "Diagnostic fallback only. Windows decodes this displacement from the required CCSBot::Update signature at runtime. linux: TODO"
   },
   "CCSBot::Pawn": {
     "offsets": {
@@ -148,36 +148,36 @@
     "comment": "CCSBot -> pawn (0x18). linux: TODO"
   },
   "CCSBot::Enemy": {
-    "offsets": { "windows": 23048, "linux": 0 },
-    "comment": "m_enemy CHandle at 0x5A08; recovered from server.dll 2026-07-10. linux: TODO"
+    "offsets": { "windows": 23024, "linux": 0 },
+    "comment": "Diagnostic fallback only: m_enemy at 0x59F0 on 2026-08-04; runtime SchemaSystem is authoritative. linux: TODO"
   },
   "CCSBot::IsEnemyVisible": {
-    "offsets": { "windows": 23052, "linux": 0 },
-    "comment": "m_isEnemyVisible bool at 0x5A0C. linux: TODO"
+    "offsets": { "windows": 23028, "linux": 0 },
+    "comment": "Diagnostic fallback only: m_isEnemyVisible at 0x59F4 on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSBot::VisibleEnemyParts": {
-    "offsets": { "windows": 23053, "linux": 0 },
-    "comment": "m_visibleEnemyParts byte at 0x5A0D. linux: TODO"
+    "offsets": { "windows": 23029, "linux": 0 },
+    "comment": "Diagnostic fallback only: m_visibleEnemyParts at 0x59F5 on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSBot::LastSawEnemyTimestamp": {
-    "offsets": { "windows": 23068, "linux": 0 },
-    "comment": "m_lastSawEnemyTimestamp float at 0x5A1C. linux: TODO"
+    "offsets": { "windows": 23044, "linux": 0 },
+    "comment": "Diagnostic fallback only: m_lastSawEnemyTimestamp at 0x5A04 on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSBot::FirstSawEnemyTimestamp": {
-    "offsets": { "windows": 23072, "linux": 0 },
-    "comment": "m_firstSawEnemyTimestamp float at 0x5A20. linux: TODO"
+    "offsets": { "windows": 23048, "linux": 0 },
+    "comment": "Diagnostic fallback only: m_firstSawEnemyTimestamp at 0x5A08 on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSBot::CurrentEnemyAcquireTimestamp": {
-    "offsets": { "windows": 23076, "linux": 0 },
-    "comment": "m_currentEnemyAcquireTimestamp float at 0x5A24. linux: TODO"
+    "offsets": { "windows": 23052, "linux": 0 },
+    "comment": "Diagnostic fallback only: m_currentEnemyAcquireTimestamp at 0x5A0C on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSBot::IsLastEnemyDead": {
-    "offsets": { "windows": 23088, "linux": 0 },
-    "comment": "m_isLastEnemyDead bool at 0x5A30. linux: TODO"
+    "offsets": { "windows": 23064, "linux": 0 },
+    "comment": "Diagnostic fallback only: m_isLastEnemyDead at 0x5A18 on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSBot::NearbyEnemyCount": {
-    "offsets": { "windows": 23092, "linux": 0 },
-    "comment": "m_nearbyEnemyCount int32 at 0x5A34. linux: TODO"
+    "offsets": { "windows": 23068, "linux": 0 },
+    "comment": "Diagnostic fallback only: m_nearbyEnemyCount at 0x5A1C on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CBaseEntity::Identity": {
     "offsets": {
@@ -251,59 +251,59 @@
   },
   "CCSPlayerPawn::WeaponServices": {
     "offsets": {
-      "windows": 2608,
+      "windows": 2560,
       "linux": 0
     },
-    "comment": "m_pWeaponServices (0xA30). linux: TODO"
+    "comment": "Diagnostic fallback only: m_pWeaponServices (0xA00) on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CBasePlayerPawn::MovementServices": {
     "offsets": {
-      "windows": 2672,
+      "windows": 2624,
       "linux": 0
     },
-    "comment": "m_pMovementServices (0xA70), used as a stable pawn->movement-services cross-check. linux: TODO"
+    "comment": "Diagnostic fallback only: m_pMovementServices (0xA40) on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSPlayerPawn::Controller": {
     "offsets": {
-      "windows": 2992,
+      "windows": 2944,
       "linux": 0
     },
-    "comment": "m_hController (0xBB0). linux: TODO"
+    "comment": "Diagnostic fallback only: m_hController (0xB80) on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSPlayerPawn::OriginalController": {
     "offsets": {
-      "windows": 3364,
+      "windows": 3316,
       "linux": 0
     },
-    "comment": "m_hOriginalController (0xD24). linux: TODO"
+    "comment": "Diagnostic fallback only: m_hOriginalController (0xCF4) on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSPlayerPawn::ViewAngle": {
     "offsets": {
-      "windows": 2792,
+      "windows": 2744,
       "linux": 0
     },
-    "comment": "v_angle (0xAE8). linux: TODO"
+    "comment": "Diagnostic fallback only: v_angle (0xAB8) on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSPlayerPawn::ViewAnglePrevious": {
     "offsets": {
-      "windows": 2804,
+      "windows": 2756,
       "linux": 0
     },
-    "comment": "v_anglePrevious (0xAF4). linux: TODO"
+    "comment": "Diagnostic fallback only: v_anglePrevious (0xAC4) on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSPlayerPawn::ServerViewAngleChanges": {
     "offsets": {
-      "windows": 2688,
+      "windows": 2640,
       "linux": 0
     },
-    "comment": "m_ServerViewAngleChanges (0xA80). linux: TODO"
+    "comment": "Diagnostic fallback only: m_ServerViewAngleChanges (0xA50) on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSPlayerPawn::EyeAngles": {
     "offsets": {
-      "windows": 4968,
+      "windows": 5048,
       "linux": 0
     },
-    "comment": "m_angEyeAngles (CCSPlayerPawnBase, 0x1368). linux: TODO"
+    "comment": "Diagnostic fallback only: m_angEyeAngles (CCSPlayerPawn, 0x13B8) on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSPlayer_WeaponServices::ActiveWeapon": {
     "offsets": {
@@ -314,10 +314,10 @@
   },
   "CBasePlayerWeapon::ItemDefIndex": {
     "offsets": {
-      "windows": 2560,
+      "windows": 2528,
       "linux": 0
     },
-    "comment": "m_iItemDefinitionIndex (0xA00). linux: TODO"
+    "comment": "Diagnostic fallback only: embedded m_iItemDefinitionIndex path (0x9E0) on 2026-08-04; runtime schema components are authoritative. linux: TODO"
   },
   "CCSPlayer_MovementServices::Pawn": {
     "offsets": {
@@ -328,24 +328,24 @@
   },
   "CCSPlayer_MovementServices::Buttons": {
     "offsets": {
+      "windows": 80,
+      "linux": 0
+    },
+    "comment": "Diagnostic fallback only: m_nButtons states[0] (0x50) on 2026-08-04; runtime schema is authoritative. linux: TODO"
+  },
+  "CCSPlayer_MovementServices::Buttons1": {
+    "offsets": {
       "windows": 88,
       "linux": 0
     },
-    "comment": "m_nButtons states[0] (0x58). linux: TODO"
+    "comment": "Diagnostic fallback only: states[1] (0x58) on 2026-08-04; derived from runtime m_nButtons. linux: TODO"
   },
-  "CCSPlayer_MovementServices::Buttons1": {
+  "CCSPlayer_MovementServices::Buttons2": {
     "offsets": {
       "windows": 96,
       "linux": 0
     },
-    "comment": "states[1] (0x60). linux: TODO"
-  },
-  "CCSPlayer_MovementServices::Buttons2": {
-    "offsets": {
-      "windows": 104,
-      "linux": 0
-    },
-    "comment": "states[2] (0x68). linux: TODO"
+    "comment": "Diagnostic fallback only: states[2] (0x60) on 2026-08-04; derived from runtime m_nButtons. linux: TODO"
   },
   "CCSPlayer_MovementServices::OldViewAngles": {
     "offsets": {
@@ -356,45 +356,45 @@
   },
   "CCSPlayer_MovementServices::LadderNormal": {
     "offsets": {
-      "windows": 1016,
+      "windows": 976,
       "linux": 0
     },
-    "comment": "m_vecLadderNormal (0x3F8). linux: TODO"
+    "comment": "Diagnostic fallback only: m_vecLadderNormal (0x3D0) on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSPlayer_MovementServices::Ducked": {
     "offsets": {
-      "windows": 1032,
+      "windows": 992,
       "linux": 0
     },
-    "comment": "m_bDucked (0x408). linux: TODO"
+    "comment": "Diagnostic fallback only: m_bDucked (0x3E0) on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSPlayer_MovementServices::DuckAmount": {
     "offsets": {
-      "windows": 1036,
+      "windows": 996,
       "linux": 0
     },
-    "comment": "m_flDuckAmount (0x40C). linux: TODO"
+    "comment": "Diagnostic fallback only: m_flDuckAmount (0x3E4) on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSPlayer_MovementServices::DuckSpeed": {
     "offsets": {
-      "windows": 1040,
+      "windows": 1000,
       "linux": 0
     },
-    "comment": "m_flDuckSpeed (0x410). linux: TODO"
+    "comment": "Diagnostic fallback only: m_flDuckSpeed (0x3E8) on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSPlayer_MovementServices::DesiresDuck": {
     "offsets": {
-      "windows": 1045,
+      "windows": 1005,
       "linux": 0
     },
-    "comment": "m_bDesiresDuck (0x415). linux: TODO"
+    "comment": "Diagnostic fallback only: m_bDesiresDuck (0x3ED) on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CCSPlayer_MovementServices::Ducking": {
     "offsets": {
-      "windows": 1046,
+      "windows": 1006,
       "linux": 0
     },
-    "comment": "m_bDucking (0x416). linux: TODO"
+    "comment": "Diagnostic fallback only: m_bDucking (0x3EE) on 2026-08-04; runtime schema is authoritative. linux: TODO"
   },
   "CMoveData::ForwardMove": {
     "offsets": {

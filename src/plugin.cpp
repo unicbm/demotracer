@@ -160,6 +160,8 @@ bool BotControllerPlugin::Load(PluginId id, ISmmAPI *ismm,
 
     // offsets first (hooks/detours read tg::k* at runtime)
     BotController::targets::LoadFromGamedata(gd);
+    if (!BotController::targets::ResolveRuntimeSchemaOffsets(error, maxlen))
+        return false;
 
     if (!BotController::WeaponLockerHooks::Install(gd, serverModule, error, maxlen))
         return false;

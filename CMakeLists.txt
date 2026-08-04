@@ -153,6 +153,7 @@ add_library(BotController SHARED
     src/BotRecorder/ReplaySubtickLayout.cpp
     src/VoiceSender/VoiceSender.cpp
     src/common/sig_scan.cpp
+    src/common/schema_resolver.cpp
     src/common/version_targets.cpp
     src/common/platform.cpp
     src/common/ccsbot_slot.cpp
