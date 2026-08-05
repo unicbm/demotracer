@@ -6,7 +6,7 @@
 
 CS2-Bot-Controller is a Metamod:Source plugin for Counter-Strike 2 that takes
 control of a bot's behaviour at the engine level. It can pin a bot's weapon,
-freeze its aim, stop it jumping, or hand its movement over to external code —
+freeze its aim, or hand its movement over to external code —
 and it can **record** a human player's per-tick movement and **replay** it back
 through any bot.
 
@@ -22,7 +22,6 @@ signatures/offsets, so Linux runtime packages are not supported yet.
 
 - **Weapon** — pin a bot to one weapon slot; AI switches are blocked.
 - **Aim** — freeze `CCSBot::Upkeep`; view holds still, AI keeps deciding/moving.
-- **Jump** — block `CCSBot::Jump`; bot stops jumping, move/fire/aim unaffected.
 - **All** — freeze both `CCSBot::Update` and `CCSBot::Upkeep` for callers that
   explicitly need a full native-AI freeze.
 
@@ -108,9 +107,9 @@ them into the package tree automatically.
 ## Commands
 
 ```
-bc_lock <all|aim|jump|weapon> <slot> [slot1..slot5]
-bc_unlock <all|aim|jump|weapon> <slot>
-bc_unlock_all <all|aim|jump|weapon>
+bc_lock <all|aim|weapon> <slot> [slot1..slot5]
+bc_unlock <all|aim|weapon> <slot>
+bc_unlock_all <all|aim|weapon>
 bc_replay_pov [off|spectated|always]
 bc_perf [0|1|reset]
 bc_status
@@ -120,7 +119,6 @@ bc_status
 
 ```
 bc_lock aim 1                # freeze bot 1's view, AI still runs
-bc_lock jump 1               # bot 1 can no longer jump
 bc_lock all 1                # explicit full native-AI freeze
 bc_lock weapon 1 slot3       # force bot 1 to knife
 bc_unlock_all weapon         # clear every weapon lock
@@ -147,11 +145,15 @@ BotController native exports or replay buffer structs.
 ```csharp
 using BotControllerApi;
 
-if (!BotController.IsCompatible()) return;   // requires ABI 16
+if (!BotController.IsCompatible()) return;   // requires ABI 18
 BotController.TryGetAbiInfo(out var abiInfo);
 var capabilities = BotController.Capabilities();
 var buildId = BotController.BuildId();
 ```
+
+DemoTracer intentionally skips native ABI 17 because current upstream
+BotController uses that number for an incompatible export surface. Reusing it
+would let upstream managed bridges falsely accept the DemoTracer runtime.
 
 Low-level movement integrations can probe
 `BotController.CapabilityUsercmdMovementIntent` and then call
@@ -182,7 +184,6 @@ behavior.
 
 ```csharp
 BotController.Lock(slot, LockKind.Aim);
-BotController.Lock(slot, LockKind.Jump);
 BotController.Lock(slot, LockKind.All);
 BotController.Lock(slot, LockTarget.Slot3);   // weapon lock
 BotController.Unlock(slot, LockKind.Aim);

@@ -227,7 +227,6 @@ bool BotControllerPlugin::Unload(char * /*error*/, size_t /*maxlen*/)
     BotController::WeaponLockerState::ClearAll();
     BotController::BotControllerState::ClearAllAll();
     BotController::BotControllerState::ClearAllAim();
-    BotController::BotControllerState::ClearAllJump();
     BotController::Dispatch::g_pEngine = nullptr;
     BotController::Dispatch::g_pGameClients = nullptr;
     BotController::VoiceSender::SetInterfaces(nullptr, nullptr);

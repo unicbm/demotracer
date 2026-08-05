@@ -1,4 +1,4 @@
-// C-ABI exports for CounterStrikeSharp P/Invoke. quiet=true on all entries.
+// C-ABI exports for CounterStrikeSharp P/Invoke.
 
 #include "dispatch.h"
 #include "BotController.h"
@@ -19,7 +19,7 @@
 
 namespace
 {
-    constexpr int kBotControllerAbiMajor = 16;
+    constexpr int kBotControllerAbiMajor = 18;
     constexpr int kBotControllerAbiMinor = 33;
     constexpr uint64_t kCapabilityReplaySlotState = 1ULL << 0;
     constexpr uint64_t kCapabilityStartReplayAt = 1ULL << 1;
@@ -74,20 +74,20 @@ namespace
 
 extern "C" __declspec(dllexport) int BotController_Lock(int slot, int kind, int arg)
 {
-    return BotController::Dispatch::Lock(slot,
-                                         static_cast<BotController::LockKind>(kind), arg, /*quiet=*/true);
+    return BotController::Dispatch::Lock(
+        slot, static_cast<BotController::LockKind>(kind), arg);
 }
 
 extern "C" __declspec(dllexport) int BotController_Unlock(int slot, int kind)
 {
-    return BotController::Dispatch::Unlock(slot,
-                                           static_cast<BotController::LockKind>(kind), /*quiet=*/true);
+    return BotController::Dispatch::Unlock(
+        slot, static_cast<BotController::LockKind>(kind));
 }
 
 extern "C" __declspec(dllexport) int BotController_UnlockAll(int kind)
 {
     return BotController::Dispatch::UnlockAll(
-        static_cast<BotController::LockKind>(kind), /*quiet=*/true);
+        static_cast<BotController::LockKind>(kind));
 }
 
 extern "C" __declspec(dllexport) int BotController_IsLocked(int slot, int kind)

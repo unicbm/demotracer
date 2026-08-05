@@ -63,14 +63,6 @@
     },
     "comment": "CCSBot::IsVisible(CCSPlayerPawn*, bool testFOV, uint8_t* visibleParts). Replay detour disables only testFOV. Windows signature verified against server.dll 2026-07-10."
   },
-  "CCSBot::Jump": {
-    "signatures": {
-      "library": "server",
-      "windows": "48 89 5C 24 ? 57 48 83 EC ? 48 8B D9 0F B6 FA 48 8B 49 ? 48 8B 91",
-      "linux": ""
-    },
-    "comment": "Bot requests a jump."
-  },
   "BuyState::OnUpdate": {
     "signatures": {
       "library": "server",

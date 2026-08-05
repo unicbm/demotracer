@@ -1,4 +1,4 @@
-// CCSBot Update/Upkeep/Jump detours
+// CCSBot update, replay view, and native perception detours.
 
 #include "BotController.h"
 #include "BotControllerState.h"
@@ -30,7 +30,6 @@ using IsVisiblePos_t = bool(BC_FASTCALL *)(void *bot, const void *pos,
                                            bool testFov, void *traceContext);
 using IsVisiblePlayer_t = bool(BC_FASTCALL *)(void *bot, void *playerPawn,
                                               bool testFov, uint8_t *visibleParts);
-using Jump_t = char(BC_FASTCALL *)(void *bot, char mustJump);
 using UpdateLookAngles_t = void(BC_FASTCALL *)(void *bot);
 using SetEyeAngles_t = void(BC_FASTCALL *)(void *pawn, float *angle);
 using GetEyeAngles_t = float *(BC_FASTCALL *)(void *pawn, float *out);
@@ -47,8 +46,6 @@ namespace BotController
         static void *g_addrIsVisiblePos = nullptr;
         static IsVisiblePlayer_t g_origIsVisiblePlayer = nullptr;
         static void *g_addrIsVisiblePlayer = nullptr;
-        static Jump_t g_origJump = nullptr;
-        static void *g_addrJump = nullptr;
         static UpdateLookAngles_t g_origUpdateLookAngles = nullptr;
         static void *g_addrUpdateLookAngles = nullptr;
         static SetEyeAngles_t g_origSetEyeAngles = nullptr;
@@ -66,7 +63,6 @@ namespace BotController
         static Hook g_hookUpkeep;
         static Hook g_hookIsVisiblePos;
         static Hook g_hookIsVisiblePlayer;
-        static Hook g_hookJump;
         static Hook g_hookUpdateLookAngles;
         static Hook g_hookSetEyeAngles;
         static Hook g_hookGetEyeAngles;
@@ -369,15 +365,6 @@ namespace BotController
             return g_origGetEyeAngles ? g_origGetEyeAngles(pawn, out) : out;
         }
 
-        // Skip Jump under Jump lock; return 0 mimics its own gate-fail.
-        static char BC_FASTCALL HookedJump(void *bot, char mustJump)
-        {
-            int slot = CCSBotToSlot(bot);
-            if (slot >= 0 && BotControllerState::GetJump(slot))
-                return 0;
-            return g_origJump(bot, mustJump);
-        }
-
         static bool ResolveAiTickedFlagFromUpdate(
             void *updateAddress,
             char *errorOut,
@@ -469,19 +456,6 @@ namespace BotController
                 std::snprintf(dbg, sizeof(dbg),
                               "[BotController] WARN: CCSBot::IsVisible(player) sig not resolved (%s); native replay 360 partial/disabled\n",
                               ivplErr);
-                DebugOut(dbg);
-            }
-
-            // Jump is optional; failure leaves all/aim working, only jump dies.
-            char jumpErr[256] = {0};
-            g_addrJump = Sig::ResolveSig(gd, serverModule, "CCSBot::Jump",
-                                         jumpErr, sizeof(jumpErr));
-            if (!g_addrJump)
-            {
-                char dbg[320];
-                std::snprintf(dbg, sizeof(dbg),
-                              "[BotController] WARN: CCSBot::Jump sig not resolved (%s); jump-lock disabled\n",
-                              jumpErr);
                 DebugOut(dbg);
             }
 
@@ -593,21 +567,6 @@ namespace BotController
                 }
             }
 
-            // optional: Jump
-            if (g_addrJump)
-            {
-                if (!g_hookJump.Create(g_addrJump,
-                                       reinterpret_cast<void *>(&HookedJump),
-                                       reinterpret_cast<void **>(&g_origJump)) ||
-                    !g_hookJump.Enable())
-                {
-                    DebugOut("[BotController] WARN: hook CCSBot::Jump failed; jump-lock disabled\n");
-                    g_hookJump.Remove();
-                    g_origJump = nullptr;
-                    g_addrJump = nullptr;
-                }
-            }
-
             // optional: UpdateLookAngles
             if (g_addrUpdateLookAngles)
             {
@@ -658,9 +617,9 @@ namespace BotController
 
             char dbg[400];
             std::snprintf(dbg, sizeof(dbg),
-                          "[BotController] Update@%p Upkeep@%p IVPos@%p IVPlayer@%p Jump@%p ULA@%p SEA@%p GEA@%p\n",
+                          "[BotController] Update@%p Upkeep@%p IVPos@%p IVPlayer@%p ULA@%p SEA@%p GEA@%p\n",
                           g_addrUpdate, g_addrUpkeep, g_addrIsVisiblePos,
-                          g_addrIsVisiblePlayer, g_addrJump,
+                          g_addrIsVisiblePlayer,
                           g_addrUpdateLookAngles, g_addrSetEyeAngles,
                           g_addrGetEyeAngles);
             DebugOut(dbg);
@@ -680,8 +639,6 @@ namespace BotController
 #endif
             g_hookUpdateLookAngles.Remove();
             g_origUpdateLookAngles = nullptr;
-            g_hookJump.Remove();
-            g_origJump = nullptr;
             g_hookIsVisiblePlayer.Remove();
             g_origIsVisiblePlayer = nullptr;
             g_addrIsVisiblePlayer = nullptr;
@@ -706,7 +663,6 @@ namespace BotController
         const char *Status() { return g_status.c_str(); }
         void *UpdateAddress() { return g_addrUpdate; }
         void *UpkeepAddress() { return g_addrUpkeep; }
-        void *JumpAddress() { return g_addrJump; }
         void *UpdateLookAnglesAddress() { return g_addrUpdateLookAngles; }
         void *SetEyeAnglesAddress() { return g_addrSetEyeAngles; }
         void *GetEyeAnglesAddress() { return g_addrGetEyeAngles; }

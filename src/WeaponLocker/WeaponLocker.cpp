@@ -580,11 +580,6 @@ namespace BotController
 
         int SwitchToLockTarget(int slot)
         {
-            return SwitchToLockTarget(slot, false);
-        }
-
-        int SwitchToLockTarget(int slot, bool quiet)
-        {
             if (!g_installed || !g_origSelectItem || !g_pGetSlot)
                 return 3;
             if (slot < 0 || slot >= 64)
@@ -609,11 +604,6 @@ namespace BotController
             // Route through the original (un-hooked) function so we don't
             // ping-pong through HookedSelectItem.
             g_origSelectItem(ws, target, 0);
-            if (!quiet)
-            {
-                DebugLine("[BL][switch] slot=%d lock=%d ws=%p target=%p\n",
-                          slot, static_cast<int>(lt), ws, target);
-            }
             return 0;
         }
     }

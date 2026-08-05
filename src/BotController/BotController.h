@@ -1,4 +1,4 @@
-// MinHook install/remove for CCSBot Update/Upkeep/Jump.
+// MinHook install/remove for CCSBot Update/Upkeep and replay view/perception hooks.
 
 #pragma once
 
@@ -57,7 +57,6 @@ namespace BotController
 
         void *UpdateAddress();
         void *UpkeepAddress();
-        void *JumpAddress();
         void *UpdateLookAnglesAddress();
         void *SetEyeAnglesAddress();
         void *GetEyeAnglesAddress();
