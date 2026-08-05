@@ -2225,12 +2225,14 @@ mod demoparser_impl {
     }
 
     fn stable_across_missing_tick(before: &ParsedPlayerTick, after: &ParsedPlayerTick) -> bool {
+        // A complete GOTV snapshot gap can straddle round_freeze_end, so the
+        // phase flags may legitimately differ across it. The authoritative
+        // event pass below repairs those flags after interpolation. Keep the
+        // player and pawn lifecycle checks strict here.
         before.steam_id == after.steam_id
             && before.round == after.round
             && before.team_num == after.team_num
             && before.is_alive == after.is_alive
-            && before.round_in_progress == after.round_in_progress
-            && before.is_freeze_period == after.is_freeze_period
             && before.player_user_id == after.player_user_id
             && before.player_entity_id == after.player_entity_id
     }
@@ -2961,6 +2963,42 @@ mod demoparser_impl {
             assert_eq!(repaired.game_time, Some(11.0));
             assert_eq!(repaired.yaw, 180.0);
             assert!(repaired.subtick_moves.is_empty());
+        }
+
+        #[test]
+        fn global_tick_gap_across_freeze_end_is_repaired() {
+            let mut rows = vec![
+                gap_row(70, 10, 0.0),
+                gap_row(90, 10, 20.0),
+                gap_row(70, 12, 4.0),
+                gap_row(90, 12, 24.0),
+            ];
+            for row in &mut rows[..2] {
+                row.round_in_progress = false;
+                row.is_freeze_period = true;
+            }
+            for row in &mut rows[2..] {
+                row.round_in_progress = true;
+                row.is_freeze_period = false;
+            }
+
+            assert_eq!(repair_short_global_tick_gaps(&mut rows), 2);
+            repair_round_phase_after_events(&mut rows, &[11], &[]);
+
+            for steam_id in [70, 90] {
+                let freeze = rows
+                    .iter()
+                    .find(|row| row.steam_id == steam_id && row.tick == 10)
+                    .unwrap();
+                let repaired = rows
+                    .iter()
+                    .find(|row| row.steam_id == steam_id && row.tick == 11)
+                    .unwrap();
+                assert!(freeze.is_freeze_period);
+                assert!(!freeze.round_in_progress);
+                assert!(!repaired.is_freeze_period);
+                assert!(repaired.round_in_progress);
+            }
         }
 
         #[test]
