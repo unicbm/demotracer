@@ -11,7 +11,7 @@ namespace DemoTracer;
 
 internal static partial class BotControllerNative
 {
-    public const int ExpectedAbiVersion = 16;
+    public const int ExpectedAbiVersion = 18;
     public const uint RecFormatVersion = 8;
     public const uint MinRecFormatVersion = 3;
     public const int MovementSnapshotByteSize = 92;
@@ -28,7 +28,6 @@ internal static partial class BotControllerNative
     internal const int LockKindAll = 0;
     internal const int LockKindAim = 1;
     internal const int LockKindWeapon = 2;
-    internal const int LockKindJump = 3;
 
     private const ulong CapabilityReplaySlotState = 1UL << 0;
     private const ulong CapabilityStartReplayAt = 1UL << 1;

@@ -874,7 +874,6 @@ internal static partial class BotControllerNative
             return;
         BotController_Unlock(slot, LockKindAll);
         BotController_Unlock(slot, LockKindAim);
-        BotController_Unlock(slot, LockKindJump);
     }
 
     private static bool ValidSlot(int slot)
