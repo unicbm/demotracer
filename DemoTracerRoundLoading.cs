@@ -549,6 +549,17 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
+        // ServerAvatarOverrides is keyed only by SteamID. Never publish a
+        // replay avatar unless this exact bot currently owns that exact
+        // SteamID through the BotHider presentation lease; a live human may
+        // legitimately own the same SteamID when the lease is rejected.
+        if (!HasActiveBotHiderReplayIdentity(slot, steamId))
+        {
+            Server.PrintToConsole(
+                $"dtr: replay avatar skipped slot={slot} player={playerName} sid={steamId}: exact identity lease inactive");
+            return;
+        }
+
         Server.ExecuteCommand(
             $"bc_avatar_override_probe {avatarSteamId} \"{EscapeConsoleString(commandPath)}\"");
         ScheduleBotHiderAvatarIdentityReassert();
