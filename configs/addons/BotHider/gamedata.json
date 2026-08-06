@@ -32,6 +32,48 @@
     },
     "comment": "packs network entities for clients"
   },
+  "CServerSideClient::SetName": {
+    "offsets": {
+      "windows": 61,
+      "linux": 63
+    },
+    "comment": "updates the client display name"
+  },
+  "GameResourceServiceServer::m_pEntitySystem": {
+    "offsets": {
+      "windows": 88,
+      "linux": 88
+    },
+    "comment": "resolves the game entity system"
+  },
+  "CEntitySystem::m_EntityList": {
+    "offsets": {
+      "windows": 16,
+      "linux": 16
+    },
+    "comment": "resolves entity identity chunks"
+  },
+  "CEntityIdentity::Size": {
+    "offsets": {
+      "windows": 112,
+      "linux": 112
+    },
+    "comment": "steps through entity identities"
+  },
+  "CEntityIdentity::m_pInstance": {
+    "offsets": {
+      "windows": 0,
+      "linux": 0
+    },
+    "comment": "resolves an entity instance"
+  },
+  "CEntityIdentity::m_designerName": {
+    "offsets": {
+      "windows": 32,
+      "linux": 32
+    },
+    "comment": "resolves an entity class name"
+  },
   "CNetworkGameServerBase::m_Clients": {
     "offsets": {
       "windows": 584,

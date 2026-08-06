@@ -212,6 +212,8 @@ public sealed class SharedMemoryClient : IDisposable
     private bool PostCommand(byte type, int slot, ulong sid, string? name)
     {
         if (_view == null) return false;
+        if (!TryEncodeFixedUtf8(name ?? string.Empty, NameLen, out var nameBuf))
+            return false;
         lock (_writeLock)
         {
             uint w = _view.ReadUInt32(OffWriteIdx);
@@ -223,17 +225,32 @@ public sealed class SharedMemoryClient : IDisposable
             _view.Write(baseOff + 0, type);
             _view.Write(baseOff + 1, (byte)slot);
             _view.Write(baseOff + 8, sid);
-            var nameBuf = new byte[NameLen];
-            if (name != null)
-            {
-                var encoded = Encoding.UTF8.GetBytes(name);
-                Array.Copy(encoded, nameBuf, Math.Min(encoded.Length, NameLen - 1));
-            }
             _view.WriteArray(baseOff + 16, nameBuf, 0, NameLen);
 
             Interlocked.MemoryBarrier();
             _view.Write(OffWriteIdx, w + 1);
         }
+        return true;
+    }
+
+    // Encode a NUL-terminated fixed field without truncating a UTF-8 sequence.
+    internal static bool TryEncodeFixedUtf8(
+        string value,
+        int fieldLength,
+        out byte[] buffer)
+    {
+        if (fieldLength <= 0)
+        {
+            buffer = [];
+            return false;
+        }
+
+        buffer = new byte[fieldLength];
+        var byteCount = Encoding.UTF8.GetByteCount(value);
+        if (byteCount >= fieldLength)
+            return false;
+
+        Encoding.UTF8.GetBytes(value, 0, value.Length, buffer, 0);
         return true;
     }
 

@@ -21,8 +21,8 @@ namespace cs2bh::targets
     inline constexpr int kVTSlot_ClientPutInServer = 13;
 
 #if defined(_WIN32)
-    // Current engine2.dll CServerSideClient::SetName vtable slot
-    inline constexpr int kVTSlot_ClientSetName = 0x1E8 / 8;
+    // CServerSideClient::SetName vtable slot, loaded from gamedata.
+    inline int kVTSlot_ClientSetName = -1;
 #else
     // Preserve the upstream Linux CreateFakeClient hook path
     inline constexpr int kVTSlot_CreateFakeClient = 52;
@@ -38,10 +38,11 @@ namespace cs2bh::targets
     // * UTIL_Remove(CEntityInstance*) in server.dll
 
     inline constexpr const char *kIface_GameResourceServiceServer = "GameResourceServiceServerV001";
-    inline constexpr int kEntSys_OffsetInGameResSvc = 0x58;   // GameResourceService → CGameEntitySystem*
-    inline constexpr int kEntSys_IdentityChunksOffset = 0x10; // CEntitySystem → m_pIdentityChunks[]
-    inline constexpr int kEntIdentity_Size = 0x70;            // sizeof(CEntityIdentity) = 112 (runtime-verified stride)
-    inline constexpr int kEntIdentity_InstanceOffset = 0x00;  // CEntityIdentity::m_pInstance
+    inline int kEntSys_OffsetInGameResSvc = 0x58;   // GameResourceService → CGameEntitySystem*
+    inline int kEntSys_IdentityChunksOffset = 0x10; // CEntitySystem → m_pIdentityChunks[]
+    inline int kEntIdentity_Size = 0x70;            // sizeof(CEntityIdentity) = 112
+    inline int kEntIdentity_InstanceOffset = 0x00;  // CEntityIdentity::m_pInstance
+    inline int kEntIdentity_ClassNameOffset = 0x20; // CEntityIdentity::m_designerName
     inline constexpr int kEntListChunkSize = 512;             // entities per identity chunk
 
     // CBasePlayerController::m_iszPlayerName

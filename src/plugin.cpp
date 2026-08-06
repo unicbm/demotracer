@@ -644,6 +644,24 @@ namespace cs2bh
         targets::kController_FakeClientFlagsOffset = FindPlatformOffset(gamedata, "CBasePlayerController::FakeClientFlags", targets::kController_FakeClientFlagsOffset);
         // CBaseEntity team number, used only for JoinTeam diagnostics
         targets::kController_TeamOffset = FindPlatformOffset(gamedata, "CBaseEntity::m_iTeamNum", targets::kController_TeamOffset);
+#if defined(_WIN32)
+        targets::kVTSlot_ClientSetName = FindPlatformOffset(
+            gamedata, "CServerSideClient::SetName", targets::kVTSlot_ClientSetName);
+#endif
+        targets::kEntSys_OffsetInGameResSvc = FindPlatformOffset(
+            gamedata, "GameResourceServiceServer::m_pEntitySystem",
+            targets::kEntSys_OffsetInGameResSvc);
+        targets::kEntSys_IdentityChunksOffset = FindPlatformOffset(
+            gamedata, "CEntitySystem::m_EntityList",
+            targets::kEntSys_IdentityChunksOffset);
+        targets::kEntIdentity_Size = FindPlatformOffset(
+            gamedata, "CEntityIdentity::Size", targets::kEntIdentity_Size);
+        targets::kEntIdentity_InstanceOffset = FindPlatformOffset(
+            gamedata, "CEntityIdentity::m_pInstance",
+            targets::kEntIdentity_InstanceOffset);
+        targets::kEntIdentity_ClassNameOffset = FindPlatformOffset(
+            gamedata, "CEntityIdentity::m_designerName",
+            targets::kEntIdentity_ClassNameOffset);
     }
 
     // Resolves and prepares the bot quota flip-around detour
@@ -815,7 +833,12 @@ namespace cs2bh
     {
         if (classnameOut && classnameCap)
             classnameOut[0] = '\0';
-        if (!g_pGameResourceService || entityIndex <= 0 || entityIndex >= 0x8000)
+        if (!g_pGameResourceService || entityIndex <= 0 || entityIndex >= 0x8000 ||
+            targets::kEntSys_OffsetInGameResSvc < 0 ||
+            targets::kEntSys_IdentityChunksOffset < 0 ||
+            targets::kEntIdentity_Size <= 0 ||
+            targets::kEntIdentity_InstanceOffset < 0 ||
+            (classnameOut && classnameCap && targets::kEntIdentity_ClassNameOffset < 0))
             return nullptr;
 
         void *entSys = nullptr;
@@ -835,7 +858,8 @@ namespace cs2bh
         unsigned char *identity = reinterpret_cast<unsigned char *>(chunk) +
                                   (entityIndex % targets::kEntListChunkSize) * targets::kEntIdentity_Size;
         if (classnameOut && classnameCap)
-            SehReadCStr(identity + 0x20, classnameOut, classnameCap);
+            SehReadCStr(identity + targets::kEntIdentity_ClassNameOffset,
+                        classnameOut, classnameCap);
 
         void *instance = nullptr;
         if (!SehReadPtr(identity + targets::kEntIdentity_InstanceOffset, &instance) || !instance)
@@ -1393,6 +1417,8 @@ namespace cs2bh
             return nullptr;
 #if defined(_WIN32)
         (void)plugin;
+        if (targets::kVTSlot_ClientSetName < 0)
+            return nullptr;
         __try
         {
             auto **vtable = *reinterpret_cast<void ***>(pClient);
@@ -2514,6 +2540,28 @@ namespace cs2bh
             {
                 // Override member offsets from gamedata.json (fallback kept if absent)
                 LoadMemberOffsets(gamedata);
+                META_CONPRINTF(
+                    "[BOTHIDER] gamedata targets: SetName=#%d team=%d entitySystem=%d "
+                    "entityList=%d identitySize=%d instance=%d className=%d\n",
+#if defined(_WIN32)
+                    targets::kVTSlot_ClientSetName,
+#else
+                    -1,
+#endif
+                    targets::kController_TeamOffset,
+                    targets::kEntSys_OffsetInGameResSvc,
+                    targets::kEntSys_IdentityChunksOffset,
+                    targets::kEntIdentity_Size,
+                    targets::kEntIdentity_InstanceOffset,
+                    targets::kEntIdentity_ClassNameOffset);
+#if defined(_WIN32)
+                if (targets::kVTSlot_ClientSetName < 0)
+                {
+                    META_CONPRINTF(
+                        "[BOTHIDER] warning: CServerSideClient::SetName vtable slot missing - "
+                        "name overwrite disabled\n");
+                }
+#endif
 
                 sig::ModuleInfo serverModule = sig::ModuleFromInterfacePtr(gameclients);
                 if (!serverModule)
