@@ -5,8 +5,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 use crate::export::{
-    glove_econ_seed_index, inventory_item_cosmetic_evidence, knife_econ_paint_index,
-    matching_active_econ_knife_paint, matching_econ_glove_seed, valid_knife_item_def_index,
+    glove_econ_seed_index, inventory_item_cosmetic_evidence, is_knife_cosmetic_def_index,
+    knife_econ_paint_index, matching_active_econ_knife_paint, matching_econ_glove_seed,
     valid_music_kit_evidence_id, EconGloveSeedIndex,
 };
 use crate::inspect_link::item_inspect;
@@ -874,7 +874,7 @@ fn combine_item_id(high: Option<u32>, low: Option<u32>) -> Option<u64> {
 }
 
 fn is_knife(def: i32) -> bool {
-    valid_knife_item_def_index(def)
+    is_knife_cosmetic_def_index(def)
 }
 
 fn is_glove(def: i32) -> bool {
@@ -1188,6 +1188,37 @@ mod tests {
                 ("glove", Some("ct"), Some(5034), Some(10033)),
             ])
         );
+    }
+
+    #[test]
+    fn omits_owned_default_knife_paint_artifacts() {
+        let steam_id = 76561198169234291;
+        let mut t_side = player_row(steam_id, 100, 2, Vec::new());
+        t_side.item_def_idx = 59;
+        t_side.active_weapon_paint_kit = Some(38);
+        t_side.active_weapon_paint_seed = Some(774);
+        t_side.active_weapon_paint_wear = Some(0.014_620_723);
+        t_side.active_weapon_original_owner_steam_id = Some(steam_id);
+
+        let mut ct_side = player_row(steam_id, 200, 3, Vec::new());
+        ct_side.item_def_idx = 42;
+        ct_side.active_weapon_paint_kit = Some(38);
+        ct_side.active_weapon_paint_seed = Some(774);
+        ct_side.active_weapon_paint_wear = Some(0.014_620_723);
+        ct_side.active_weapon_original_owner_steam_id = Some(steam_id);
+
+        let parsed = ParsedDemo {
+            rows: vec![t_side, ct_side],
+            ..ParsedDemo::default()
+        };
+        let details = summarize_player_details(&parsed, None, Some(1))
+            .remove(&steam_id)
+            .expect("player evidence");
+
+        assert!(!details
+            .cosmetics
+            .iter()
+            .any(|cosmetic| cosmetic.kind == "knife"));
     }
 
     #[test]

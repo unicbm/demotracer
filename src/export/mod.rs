@@ -3291,8 +3291,9 @@ fn is_weapon_cosmetic_def_index(def: i32) -> bool {
     )
 }
 
-fn is_knife_cosmetic_def_index(def: i32) -> bool {
-    valid_knife_item_def_index(def)
+pub(crate) fn is_knife_cosmetic_def_index(def: i32) -> bool {
+    // The CT/T defaults are playback equipment, not ownable knife models.
+    valid_knife_item_def_index(def) && !matches!(def, 42 | 59)
 }
 
 fn weapon_def_index_from_item_name(item_name: &str) -> Option<i32> {
@@ -4693,14 +4694,31 @@ mod tests {
 
     #[test]
     fn default_knife_paint_false_positive_is_skipped() {
-        let default_knife_false_positive = ParsedPlayerTick {
-            item_def_idx: 42,
-            active_weapon_paint_kit: Some(572),
-            active_weapon_paint_seed: Some(525),
-            active_weapon_paint_wear: Some(0.026_503_133),
+        let steam_id = 76561198169234291;
+        let t_default_knife_false_positive = ParsedPlayerTick {
+            steam_id,
+            team_num: 2,
+            item_def_idx: 59,
+            active_weapon_paint_kit: Some(38),
+            active_weapon_paint_seed: Some(774),
+            active_weapon_paint_wear: Some(0.014_620_723),
+            active_weapon_original_owner_steam_id: Some(steam_id),
             ..sample_row(164)
         };
-        let rows = vec![&default_knife_false_positive];
+        let ct_default_knife_false_positive = ParsedPlayerTick {
+            steam_id,
+            team_num: 3,
+            item_def_idx: 42,
+            active_weapon_paint_kit: Some(38),
+            active_weapon_paint_seed: Some(774),
+            active_weapon_paint_wear: Some(0.014_620_723),
+            active_weapon_original_owner_steam_id: Some(steam_id),
+            ..sample_row(165)
+        };
+        let rows = vec![
+            &t_default_knife_false_positive,
+            &ct_default_knife_false_positive,
+        ];
 
         let cosmetics = replay_cosmetics_at(&rows, &rows, 0, None, None, true, false);
 
