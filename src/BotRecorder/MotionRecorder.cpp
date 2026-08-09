@@ -45,6 +45,9 @@ namespace BotController
             std::vector<SubtickMove> subs;
             std::vector<ReplayCommandFrameData> commands;
             std::vector<ReplayMovementExtra> movementExtras;
+            std::vector<ReplayInputHistoryTick> inputHistoryTicks;
+            std::vector<ReplayInputHistoryEntry> inputHistoryEntries;
+            std::vector<size_t> inputHistoryOffset;
             std::vector<size_t> subOffset; // prefix sum, size ticks.size()+1
             std::atomic<int> cursor{0};
             std::atomic<int> startCursor{0};
@@ -80,6 +83,9 @@ namespace BotController
             std::vector<SubtickMove>().swap(p.subs);
             std::vector<ReplayCommandFrameData>().swap(p.commands);
             std::vector<ReplayMovementExtra>().swap(p.movementExtras);
+            std::vector<ReplayInputHistoryTick>().swap(p.inputHistoryTicks);
+            std::vector<ReplayInputHistoryEntry>().swap(p.inputHistoryEntries);
+            std::vector<size_t>().swap(p.inputHistoryOffset);
             std::vector<size_t>().swap(p.subOffset);
         }
 
@@ -1058,6 +1064,20 @@ namespace BotController
                                 const ReplayMovementExtra *movementExtras,
                                 int movementExtraCount) noexcept
         {
+            return LoadReplayWithInputHistory(
+                slot, ticks, tickCount, subs, subCount,
+                commands, commandCount, movementExtras, movementExtraCount,
+                nullptr, 0, nullptr, 0);
+        }
+
+        bool LoadReplayWithInputHistory(
+            int slot, const ReplayTick *ticks, int tickCount,
+            const SubtickMove *subs, int subCount,
+            const ReplayCommandFrameData *commands, int commandCount,
+            const ReplayMovementExtra *movementExtras, int movementExtraCount,
+            const ReplayInputHistoryTick *inputHistoryTicks, int inputHistoryTickCount,
+            const ReplayInputHistoryEntry *inputHistoryEntries, int inputHistoryEntryCount) noexcept
+        {
             bool committed = false;
             try
             {
@@ -1073,6 +1093,8 @@ namespace BotController
                         ticks, tickCount, subs, subCount,
                         commands, commandCount,
                         movementExtras, movementExtraCount,
+                        inputHistoryTicks, inputHistoryTickCount,
+                        inputHistoryEntries, inputHistoryEntryCount,
                         staged))
                 {
                     return false;
@@ -1086,6 +1108,9 @@ namespace BotController
                 p.subs.swap(staged.subs);
                 p.commands.swap(staged.commands);
                 p.movementExtras.swap(staged.movementExtras);
+                p.inputHistoryTicks.swap(staged.inputHistoryTicks);
+                p.inputHistoryEntries.swap(staged.inputHistoryEntries);
+                p.inputHistoryOffset.swap(staged.inputHistoryOffsets);
                 p.subOffset.swap(staged.offsets);
                 committed = true;
                 p.cursor.store(0, std::memory_order_relaxed);
@@ -1319,6 +1344,23 @@ namespace BotController
             if (cur >= 0 && static_cast<size_t>(cur) < p.commands.size())
                 command = &p.commands[static_cast<size_t>(cur)];
 
+            const ReplayInputHistoryTick *inputHistoryTick = nullptr;
+            const ReplayInputHistoryEntry *inputHistory = nullptr;
+            int32_t inputHistoryCount = 0;
+            if (cur >= 0 && static_cast<size_t>(cur) < p.inputHistoryTicks.size() &&
+                p.inputHistoryOffset.size() == p.inputHistoryTicks.size() + 1)
+            {
+                const size_t historyBegin = p.inputHistoryOffset[static_cast<size_t>(cur)];
+                const size_t historyEnd = p.inputHistoryOffset[static_cast<size_t>(cur) + 1];
+                if (historyBegin <= historyEnd && historyEnd <= p.inputHistoryEntries.size())
+                {
+                    inputHistoryTick = &p.inputHistoryTicks[static_cast<size_t>(cur)];
+                    inputHistoryCount = static_cast<int32_t>(historyEnd - historyBegin);
+                    if (inputHistoryCount > 0)
+                        inputHistory = p.inputHistoryEntries.data() + historyBegin;
+                }
+            }
+
             const bool hasCommandButtons =
                 command && ((command->fields & kCommandFieldButtons) != 0);
             if (hasCommandButtons)
@@ -1352,6 +1394,9 @@ namespace BotController
             out.tick = tick;
             out.subticks = subticks;
             out.command = command;
+            out.inputHistoryTick = inputHistoryTick;
+            out.inputHistory = inputHistory;
+            out.inputHistoryCount = inputHistoryCount;
             out.subtickCount = subtickCount;
             out.weaponSelect = ReplayWeaponSelectForDef(slot, tick->weaponDefIndex);
             out.commandView = ReplayCommandViewForTick(p, cur, total, *tick);

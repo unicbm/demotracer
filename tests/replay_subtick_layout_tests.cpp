@@ -10,6 +10,8 @@ namespace
 {
     using BotController::ReplayCommandFrameData;
     using BotController::ReplayMovementExtra;
+    using BotController::ReplayInputHistoryEntry;
+    using BotController::ReplayInputHistoryTick;
     using BotController::ReplaySubtickLayout::ReplayLoadStaging;
     using BotController::ReplaySubtickLayout::TryBuildReplaySubtickOffsets;
     using BotController::ReplaySubtickLayout::TryGetReplaySubtickRange;
@@ -285,6 +287,45 @@ namespace
               "unknown command field accepted");
         CheckStagingA(staged);
     }
+
+    void TestInputHistoryStaging()
+    {
+        const std::vector<ReplayTick> ticks{Tick(0, 7), Tick(0, 7)};
+        const std::vector<ReplayInputHistoryTick> historyTicks{
+            ReplayInputHistoryTick{100, 0, -1, 1},
+            ReplayInputHistoryTick{101, -1, -1, 0}};
+        ReplayInputHistoryEntry entry{};
+        entry.fields = (1u << 1) | (1u << 2);
+        entry.renderTickCount = 99;
+        entry.renderTickFraction = 0.75f;
+        const std::vector<ReplayInputHistoryEntry> entries{entry};
+
+        ReplayLoadStaging staged;
+        Check(TryStageReplayLoad(
+                  ticks.data(), static_cast<int>(ticks.size()),
+                  nullptr, 0, nullptr, 0, nullptr, 0,
+                  historyTicks.data(), static_cast<int>(historyTicks.size()),
+                  entries.data(), static_cast<int>(entries.size()), staged),
+              "valid input history rejected");
+        Check(staged.inputHistoryTicks.size() == 2,
+              "input history tick descriptors were not staged");
+        Check(staged.inputHistoryEntries.size() == 1 &&
+                  staged.inputHistoryEntries[0].renderTickCount == 99,
+              "input history entry was not staged");
+        Check(staged.inputHistoryOffsets == std::vector<std::size_t>({0, 1, 1}),
+              "input history offsets are wrong");
+
+        auto invalidTicks = historyTicks;
+        invalidTicks[0].attack1StartHistoryIndex = 1;
+        Check(!TryStageReplayLoad(
+                  ticks.data(), static_cast<int>(ticks.size()),
+                  nullptr, 0, nullptr, 0, nullptr, 0,
+                  invalidTicks.data(), static_cast<int>(invalidTicks.size()),
+                  entries.data(), static_cast<int>(entries.size()), staged),
+              "out-of-range attack history index accepted");
+        Check(staged.inputHistoryOffsets == std::vector<std::size_t>({0, 1, 1}),
+              "rejected input history changed staging");
+    }
 } // namespace
 
 int main()
@@ -295,6 +336,7 @@ int main()
     TestInvalidRangesPreserveOutput();
     TestTransactionalStaging();
     TestSemanticValidationPreservesStaging();
+    TestInputHistoryStaging();
     std::puts("BotController replay subtick safety tests passed");
     return 0;
 }

@@ -20,7 +20,7 @@
 namespace
 {
     constexpr int kBotControllerAbiMajor = 18;
-    constexpr int kBotControllerAbiMinor = 33;
+    constexpr int kBotControllerAbiMinor = 34;
     constexpr uint64_t kCapabilityReplaySlotState = 1ULL << 0;
     constexpr uint64_t kCapabilityStartReplayAt = 1ULL << 1;
     constexpr uint64_t kCapabilityStartReplayUntil = 1ULL << 2;
@@ -36,6 +36,7 @@ namespace
     constexpr uint64_t kCapabilityReleaseReplayBuffer = 1ULL << 12;
     constexpr uint64_t kCapabilityButtonOnlyMovementIntent = 1ULL << 13;
     constexpr uint64_t kCapabilityHandoffBestWeapon = 1ULL << 14;
+    constexpr uint64_t kCapabilityReplayInputHistory = 1ULL << 15;
     constexpr uint64_t kBotControllerCapabilities =
         kCapabilityReplaySlotState |
         kCapabilityStartReplayAt |
@@ -51,7 +52,8 @@ namespace
         kCapabilityNativePerception |
         kCapabilityReleaseReplayBuffer |
         kCapabilityButtonOnlyMovementIntent |
-        kCapabilityHandoffBestWeapon;
+        kCapabilityHandoffBestWeapon |
+        kCapabilityReplayInputHistory;
 
 #pragma pack(push, 4)
     struct BotControllerAbiInfo
@@ -449,6 +451,31 @@ extern "C" __declspec(dllexport) int BotController_LoadReplayExtended(
         return BotController::MotionRecorder::LoadReplayExtended(
                    slot, ticks, tickCount, subs, subCount,
                    commands, commandCount, movementExtras, movementExtraCount)
+                   ? 0
+                   : -1;
+    }
+    catch (...)
+    {
+        return -1;
+    }
+}
+
+extern "C" __declspec(dllexport) int BotController_LoadReplayWithInputHistory(
+    int slot,
+    const BotController::ReplayTick *ticks, int tickCount,
+    const BotController::SubtickMove *subs, int subCount,
+    const BotController::ReplayCommandFrameData *commands, int commandCount,
+    const BotController::ReplayMovementExtra *movementExtras, int movementExtraCount,
+    const BotController::ReplayInputHistoryTick *inputHistoryTicks, int inputHistoryTickCount,
+    const BotController::ReplayInputHistoryEntry *inputHistoryEntries, int inputHistoryEntryCount) noexcept
+{
+    try
+    {
+        return BotController::MotionRecorder::LoadReplayWithInputHistory(
+                   slot, ticks, tickCount, subs, subCount,
+                   commands, commandCount, movementExtras, movementExtraCount,
+                   inputHistoryTicks, inputHistoryTickCount,
+                   inputHistoryEntries, inputHistoryEntryCount)
                    ? 0
                    : -1;
     }

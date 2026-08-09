@@ -117,6 +117,38 @@ namespace BotControllerApi
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    public struct ReplayInputHistoryTick
+    {
+        public int SourceClientTick;
+        public int Attack1StartHistoryIndex;
+        public int Attack2StartHistoryIndex;
+        public uint NumEntries;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    public struct ReplayInputHistoryEntry
+    {
+        public uint Fields;
+        public float ViewPitch, ViewYaw, ViewRoll;
+        public int RenderTickCount;
+        public float RenderTickFraction;
+        public int PlayerTickCount;
+        public float PlayerTickFraction;
+        public float ClInterpFraction;
+        public int SvInterp0SrcTick, SvInterp0DstTick;
+        public float SvInterp0Fraction;
+        public int SvInterp1SrcTick, SvInterp1DstTick;
+        public float SvInterp1Fraction;
+        public int PlayerInterpSrcTick, PlayerInterpDstTick;
+        public float PlayerInterpFraction;
+        public int FrameNumber, TargetEntIndex;
+        public float ShootPositionX, ShootPositionY, ShootPositionZ;
+        public float TargetHeadPosCheckX, TargetHeadPosCheckY, TargetHeadPosCheckZ;
+        public float TargetAbsPosCheckX, TargetAbsPosCheckY, TargetAbsPosCheckZ;
+        public float TargetAbsAngCheckX, TargetAbsAngCheckY, TargetAbsAngCheckZ;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
     public struct AbiInfo
     {
         public const int ByteSize = 44;
@@ -169,6 +201,7 @@ namespace BotControllerApi
         public const ulong CapabilityReleaseReplayBuffer = 1UL << 12;
         public const ulong CapabilityButtonOnlyMovementIntent = 1UL << 13;
         public const ulong CapabilityHandoffBestWeapon = 1UL << 14;
+        public const ulong CapabilityReplayInputHistory = 1UL << 15;
         public const int MovementIntentPreserveMoveAxes = 1 << 0;
 
         // Sentinel weapon def meaning "any knife"
@@ -268,6 +301,15 @@ namespace BotControllerApi
             [In] SubtickMove[] subs, int subCount,
             [In] ReplayCommandFrame[] commands, int commandCount,
             [In] ReplayMovementExtra[] movementExtras, int movementExtraCount);
+
+        [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int BotController_LoadReplayWithInputHistory(
+            int slot, [In] ReplayTick[] ticks, int tickCount,
+            [In] SubtickMove[] subs, int subCount,
+            [In] ReplayCommandFrame[] commands, int commandCount,
+            [In] ReplayMovementExtra[] movementExtras, int movementExtraCount,
+            [In] ReplayInputHistoryTick[] inputHistoryTicks, int inputHistoryTickCount,
+            [In] ReplayInputHistoryEntry[] inputHistoryEntries, int inputHistoryEntryCount);
 
         [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
         private static extern int BotController_TransferRecordingToReplay(int srcSlot, int dstSlot);
@@ -479,6 +521,23 @@ namespace BotControllerApi
                    commands?.Length ?? 0,
                    movementExtras ?? Array.Empty<ReplayMovementExtra>(),
                    movementExtras?.Length ?? 0) == 0;
+
+        public static bool LoadReplayWithInputHistory(
+            int slot,
+            ReplayTick[] ticks,
+            SubtickMove[] subs,
+            ReplayCommandFrame[] commands,
+            ReplayMovementExtra[] movementExtras,
+            ReplayInputHistoryTick[] inputHistoryTicks,
+            ReplayInputHistoryEntry[] inputHistoryEntries)
+            => ticks is { Length: > 0 }
+               && BotController_LoadReplayWithInputHistory(
+                   slot, ticks, ticks.Length,
+                   subs ?? Array.Empty<SubtickMove>(), subs?.Length ?? 0,
+                   commands ?? Array.Empty<ReplayCommandFrame>(), commands?.Length ?? 0,
+                   movementExtras ?? Array.Empty<ReplayMovementExtra>(), movementExtras?.Length ?? 0,
+                   inputHistoryTicks ?? Array.Empty<ReplayInputHistoryTick>(), inputHistoryTicks?.Length ?? 0,
+                   inputHistoryEntries ?? Array.Empty<ReplayInputHistoryEntry>(), inputHistoryEntries?.Length ?? 0) == 0;
 
         // Move a slot's just-recorded buffers straight into another slot's
         // replay buffer, no managed round-trip.
