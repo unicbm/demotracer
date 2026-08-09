@@ -14,6 +14,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     private static readonly Lazy<(bool Allowed, string Patch)> ManagedSchemaRuntime =
         new(DetectManagedSchemaRuntime);
     private static readonly TimeSpan LeaseTimeout = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan PresentationFailureLogInterval = TimeSpan.FromSeconds(30);
 
     private readonly SharedMemoryClient _client;
     private readonly object _sync = new();
@@ -24,6 +25,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     private readonly AppliedPresentation?[] _applied = new AppliedPresentation?[MaxSlots];
     private readonly bool[] _scoreboardFlairManaged = new bool[MaxSlots];
     private readonly bool[] _scoreboardFlairRepublishPending = new bool[MaxSlots];
+    private readonly DateTime[] _nextPresentationFailureLogUtc = new DateTime[MaxSlots];
+    private readonly int[] _suppressedPresentationFailures = new int[MaxSlots];
     private readonly Dictionary<string, PresentationLease> _leases = new(StringComparer.Ordinal);
     private readonly Dictionary<int, string> _leaseBySlot = new();
     private ulong _nextIncarnation;
@@ -342,6 +345,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         _applied[slot] = null;
         _scoreboardFlairManaged[slot] = false;
         _scoreboardFlairRepublishPending[slot] = false;
+        ClearPresentationFailure(slot);
     }
 
     private bool TryNormalizeOverrides(
@@ -645,13 +649,36 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             }
 
             _applied[state.Slot] = effective;
+            _suppressedPresentationFailures[state.Slot] = 0;
         }
         catch (Exception ex)
         {
             _applied[state.Slot] = null;
-            Server.PrintToConsole(
-                $"[DemoTracer BotHider] presentation write failed slot={state.Slot}: {ex.Message}");
+            ReportPresentationFailure(state.Slot, ex.Message);
         }
+    }
+
+    private void ReportPresentationFailure(int slot, string reason)
+    {
+        var now = DateTime.UtcNow;
+        if (now >= _nextPresentationFailureLogUtc[slot])
+        {
+            var suppressed = _suppressedPresentationFailures[slot];
+            var suffix = suppressed > 0 ? $" (suppressed={suppressed})" : string.Empty;
+            Server.PrintToConsole(
+                $"[DemoTracer BotHider] presentation write failed slot={slot}: {reason}{suffix}");
+            _nextPresentationFailureLogUtc[slot] = now + PresentationFailureLogInterval;
+            _suppressedPresentationFailures[slot] = 0;
+            return;
+        }
+
+        _suppressedPresentationFailures[slot]++;
+    }
+
+    private void ClearPresentationFailure(int slot)
+    {
+        _nextPresentationFailureLogUtc[slot] = default;
+        _suppressedPresentationFailures[slot] = 0;
     }
 
     private static bool ScoreboardFlairMatches(CCSPlayerController player, uint itemDefIndex)
