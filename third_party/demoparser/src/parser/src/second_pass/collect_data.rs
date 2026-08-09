@@ -1196,13 +1196,11 @@ impl<'a> SecondPassParser<'a> {
         entity_id: &i32,
         include_cosmetics: bool,
     ) -> Result<PlayerInventorySnapshot, PropCollectionError> {
-        if let Some(mut snapshot) = self
-            .player_inventory_snapshot_cache
-            .borrow()
-            .get(entity_id)
-            .filter(|snapshot| snapshot.generation == self.inventory_generation)
-            .cloned()
-        {
+        if let Some(mut snapshot) = clone_current_inventory_snapshot(
+            &self.player_inventory_snapshot_cache,
+            *entity_id,
+            self.inventory_generation,
+        ) {
             if include_cosmetics && snapshot.cosmetics.is_none() {
                 snapshot.cosmetics = Some(self.collect_inventory_cosmetics(
                     entity_id,
@@ -2097,6 +2095,18 @@ fn inventory_cosmetics_are_reusable(
         && cached_weapon_signature == current_weapon_signature
 }
 
+fn clone_current_inventory_snapshot(
+    cache: &std::cell::RefCell<ahash::AHashMap<i32, PlayerInventorySnapshot>>,
+    entity_id: i32,
+    generation: u64,
+) -> Option<PlayerInventorySnapshot> {
+    let cache = cache.borrow();
+    cache
+        .get(&entity_id)
+        .filter(|snapshot| snapshot.generation == generation)
+        .cloned()
+}
+
 fn refresh_owned_weapon_dynamic_fields(
     stable: &InventoryWeaponCosmetic,
     current: &InventoryWeaponCosmetic,
@@ -2113,11 +2123,16 @@ fn refresh_owned_weapon_dynamic_fields(
 #[cfg(test)]
 mod tests {
     use super::{
-        inventory_cosmetics_are_reusable, is_map_based_default_agent,
+        clone_current_inventory_snapshot, inventory_cosmetics_are_reusable,
+        is_map_based_default_agent,
         refresh_owned_weapon_dynamic_fields, stable_owned_weapon_slot_key,
         stickers_from_attributes, should_collect_player_rows, StickerAttribute, STEAM_ID64_BASE,
     };
+    use crate::second_pass::parser_settings::PlayerInventorySnapshot;
     use crate::second_pass::variants::InventoryWeaponCosmetic;
+    use ahash::AHashMap;
+    use std::cell::RefCell;
+    use std::sync::Arc;
 
     #[test]
     fn explicit_full_player_rows_do_not_depend_on_synthetic_velocity() {
@@ -2176,6 +2191,28 @@ mod tests {
             player,
             &[(41, 3, 9), (42, 1, 5)],
         ));
+    }
+
+    #[test]
+    fn cloned_inventory_snapshot_releases_cache_borrow_before_upgrade() {
+        let cache = RefCell::new(AHashMap::default());
+        cache.borrow_mut().insert(
+            7,
+            PlayerInventorySnapshot {
+                generation: 3,
+                player_signature: (1, Some(76561198000000001), Some(2)),
+                weapon_eids: vec![41],
+                weapon_signature: vec![(41, 2, 5)],
+                ids: vec![7],
+                cosmetics: None,
+            },
+        );
+
+        let mut snapshot = clone_current_inventory_snapshot(&cache, 7, 3).unwrap();
+        snapshot.cosmetics = Some(Arc::from([]));
+        cache.borrow_mut().insert(7, snapshot);
+
+        assert!(cache.borrow().get(&7).unwrap().cosmetics.is_some());
     }
 
     #[test]
