@@ -86,10 +86,43 @@ namespace BotController
         float lastLandedVelocityY;
         float lastLandedVelocityZ;
     };
+
+    struct ReplayInputHistoryTick
+    {
+        int32_t sourceClientTick;
+        int32_t attack1StartHistoryIndex;
+        int32_t attack2StartHistoryIndex;
+        uint32_t numEntries;
+    };
+
+    struct ReplayInputHistoryEntry
+    {
+        uint32_t fields;
+        float viewPitch, viewYaw, viewRoll;
+        int32_t renderTickCount;
+        float renderTickFraction;
+        int32_t playerTickCount;
+        float playerTickFraction;
+        float clInterpFraction;
+        int32_t svInterp0SrcTick, svInterp0DstTick;
+        float svInterp0Fraction;
+        int32_t svInterp1SrcTick, svInterp1DstTick;
+        float svInterp1Fraction;
+        int32_t playerInterpSrcTick, playerInterpDstTick;
+        float playerInterpFraction;
+        int32_t frameNumber;
+        int32_t targetEntIndex;
+        float shootPositionX, shootPositionY, shootPositionZ;
+        float targetHeadPosCheckX, targetHeadPosCheckY, targetHeadPosCheckZ;
+        float targetAbsPosCheckX, targetAbsPosCheckY, targetAbsPosCheckZ;
+        float targetAbsAngCheckX, targetAbsAngCheckY, targetAbsAngCheckZ;
+    };
 #pragma pack(pop)
 
     static_assert(sizeof(ReplayCommandFrameData) == 68);
     static_assert(sizeof(ReplayMovementExtra) == 48);
+    static_assert(sizeof(ReplayInputHistoryTick) == 16);
+    static_assert(sizeof(ReplayInputHistoryEntry) == 128);
 
     namespace MotionRecorder
     {
@@ -103,6 +136,8 @@ namespace BotController
         constexpr uint32_t kCommandFieldMouse = 1u << 5;
         constexpr uint32_t kCommandFieldWeaponSelect = 1u << 6;
         constexpr uint32_t kCommandFieldLeftHand = 1u << 7;
+        constexpr int kMaxInputHistoryPerTick = 64;
+        constexpr uint32_t kInputHistoryFieldsAll = (1u << 21) - 1;
 
         enum class ReplaySnapMode : int
         {
@@ -181,6 +216,9 @@ namespace BotController
             const ReplayTick *tick;
             const SubtickMove *subticks;
             const ReplayCommandFrameData *command;
+            const ReplayInputHistoryTick *inputHistoryTick;
+            const ReplayInputHistoryEntry *inputHistory;
+            int32_t inputHistoryCount;
             int32_t subtickCount;
             int32_t weaponSelect;
             MovementSnapshot commandView;
@@ -251,6 +289,13 @@ namespace BotController
                                 int commandCount,
                                 const ReplayMovementExtra *movementExtras,
                                 int movementExtraCount) noexcept;
+        bool LoadReplayWithInputHistory(
+            int slot, const ReplayTick *ticks, int tickCount,
+            const SubtickMove *subs, int subCount,
+            const ReplayCommandFrameData *commands, int commandCount,
+            const ReplayMovementExtra *movementExtras, int movementExtraCount,
+            const ReplayInputHistoryTick *inputHistoryTicks, int inputHistoryTickCount,
+            const ReplayInputHistoryEntry *inputHistoryEntries, int inputHistoryEntryCount) noexcept;
         bool StartReplay(int slot, bool loop); // play from tick 0
         bool StartReplayAt(int slot, bool loop, int startIndex);
         bool StartReplayUntil(int slot, bool loop, int startIndex, int holdBeforeIndex);

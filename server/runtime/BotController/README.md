@@ -174,6 +174,11 @@ ABI minor 33 adds `BotController.CapabilityHandoffBestWeapon` and
 `CCSBot` incarnation and consumed once after its next native `Update`. It is
 discarded if replay control or a weapon lock resumes before execution.
 
+ABI minor 34 adds `BotController.CapabilityReplayInputHistory` and
+`LoadReplayWithInputHistory`. The loader accepts tick-aligned shooting history;
+runtime injection rebases demo tick counts to the current usercmd and does not
+reuse demo entity indexes.
+
 Replay handoff integrations can probe `CapabilityNativePerception`, then read
 `TryGetNativePerceptionState`. During replay, the native vision detours disable
 only the `CCSBot::IsVisible` FOV test; LOS/smoke logic and native enemy/reaction

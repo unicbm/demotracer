@@ -5,13 +5,15 @@
  *--------------------------------------------------------------------------------------------*/
 
 use crate::model::{
-    Cs2Rec, Cs2RecHeader, ParsedPlayerTick, ParsedProjectile, ReplayProjectile, ReplayTick,
-    SubtickMode, SubtickMove,
+    Cs2Rec, Cs2RecHeader, ParsedPlayerTick, ParsedProjectile, ReplayInputHistoryEntry,
+    ReplayInputHistoryTick, ReplayProjectile, ReplayTick, SubtickMode, SubtickMove,
+    INPUT_HISTORY_FIELDS_ALL,
 };
 use crate::{Error, Result};
 use std::collections::BTreeMap;
 
 pub const MAX_SUBTICKS_PER_TICK: usize = 36;
+pub const MAX_INPUT_HISTORY_PER_TICK: usize = 64;
 const MAX_PLAYER_VELOCITY_COMPONENT: f32 = 4096.0;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -165,6 +167,8 @@ fn synthesize_player_rec_with_projectile_iter<'a>(
     let mut ticks = Vec::with_capacity(rows.len().saturating_sub(1));
     let mut subticks = Vec::new();
     let mut command_frames = Vec::with_capacity(rows.len().saturating_sub(1));
+    let mut input_history_ticks = Vec::with_capacity(rows.len().saturating_sub(1));
+    let mut input_history_entries = Vec::new();
     let mut stats = SynthesisStats::default();
     for pair in rows.windows(2) {
         let pre_row = pair[0].row();
@@ -174,6 +178,10 @@ fn synthesize_player_rec_with_projectile_iter<'a>(
         normalize_impossible_player_velocity(&mut pre);
         normalize_impossible_player_velocity(&mut post);
         command_frames.push(pre_row.command_frame());
+        let (input_history_tick, mut tick_input_history) =
+            sanitize_input_history(pre_row, options.subtick_mode);
+        input_history_ticks.push(input_history_tick);
+        input_history_entries.append(&mut tick_input_history);
         let mut tick_subticks = sanitize_subticks(pre_row, options.subtick_mode, &mut stats);
         let num_subtick = tick_subticks.len() as u32;
         subticks.append(&mut tick_subticks);
@@ -205,9 +213,76 @@ fn synthesize_player_rec_with_projectile_iter<'a>(
             subticks,
             command_frames,
             movement_extras: Vec::new(),
+            input_history_ticks,
+            input_history_entries,
         },
         stats,
     ))
+}
+
+fn sanitize_input_history(
+    row: &ParsedPlayerTick,
+    subtick_mode: SubtickMode,
+) -> (ReplayInputHistoryTick, Vec<ReplayInputHistoryEntry>) {
+    if subtick_mode == SubtickMode::Off {
+        return (ReplayInputHistoryTick::default(), Vec::new());
+    }
+
+    let mut remap = vec![None; row.input_history.len()];
+    let mut entries = Vec::with_capacity(row.input_history.len().min(MAX_INPUT_HISTORY_PER_TICK));
+    for (source_index, entry) in row.input_history.iter().enumerate() {
+        if entries.len() >= MAX_INPUT_HISTORY_PER_TICK || !input_history_entry_is_valid(entry) {
+            continue;
+        }
+        remap[source_index] = Some(entries.len() as i32);
+        entries.push(*entry);
+    }
+
+    let remap_attack_index = |source_index: i32| -> i32 {
+        usize::try_from(source_index)
+            .ok()
+            .and_then(|index| remap.get(index).copied().flatten())
+            .unwrap_or(-1)
+    };
+    (
+        ReplayInputHistoryTick {
+            // Modern demos normally provide base.client_tick. Demo tick is the safest
+            // same-clock fallback for older delta commands and is only used as an offset anchor.
+            source_client_tick: row.usercmd_client_tick.unwrap_or(row.tick),
+            attack1_start_history_index: remap_attack_index(
+                row.usercmd_attack1_start_history_index,
+            ),
+            attack2_start_history_index: remap_attack_index(
+                row.usercmd_attack2_start_history_index,
+            ),
+            num_entries: entries.len() as u32,
+        },
+        entries,
+    )
+}
+
+fn input_history_entry_is_valid(entry: &ReplayInputHistoryEntry) -> bool {
+    entry.fields & !INPUT_HISTORY_FIELDS_ALL == 0
+        && entry.view_angles.iter().all(|value| value.is_finite())
+        && entry.render_tick_fraction.is_finite()
+        && entry.player_tick_fraction.is_finite()
+        && entry.cl_interp_fraction.is_finite()
+        && entry.sv_interp0_fraction.is_finite()
+        && entry.sv_interp1_fraction.is_finite()
+        && entry.player_interp_fraction.is_finite()
+        && entry.shoot_position.iter().all(|value| value.is_finite())
+        && entry
+            .target_head_pos_check
+            .iter()
+            .all(|value| value.is_finite())
+        && entry
+            .target_abs_pos_check
+            .iter()
+            .all(|value| value.is_finite())
+        && entry
+            .target_abs_ang_check
+            .iter()
+            .all(|value| value.is_finite())
 }
 
 fn synthesize_projectiles<'a>(
@@ -349,6 +424,10 @@ mod tests {
             usercmd_mouse_dy: Some(-2),
             usercmd_weapon_select: Some(123),
             usercmd_left_hand_desired: Some(true),
+            usercmd_client_tick: Some(tick),
+            usercmd_attack1_start_history_index: -1,
+            usercmd_attack2_start_history_index: -1,
+            input_history: Vec::new(),
             item_def_idx: weapon,
             inventory_as_ids: Vec::new(),
             inventory_weapon_cosmetics: Vec::new().into(),
@@ -565,6 +644,38 @@ mod tests {
         assert_eq!(rec.ticks[0].num_subtick, 0);
         assert!(rec.subticks.is_empty());
         assert_eq!(stats, SynthesisStats::default());
+    }
+
+    #[test]
+    fn synthesis_keeps_valid_shooting_history_and_remaps_attack_indexes() {
+        let mut first = row(500, 7);
+        first.usercmd_client_tick = Some(700);
+        first.usercmd_attack1_start_history_index = 0;
+        first.usercmd_attack2_start_history_index = 1;
+        first.input_history = vec![
+            ReplayInputHistoryEntry {
+                fields: crate::model::INPUT_HISTORY_FIELD_RENDER_TICK_COUNT
+                    | crate::model::INPUT_HISTORY_FIELD_RENDER_TICK_FRACTION,
+                render_tick_count: 699,
+                render_tick_fraction: 0.75,
+                ..ReplayInputHistoryEntry::default()
+            },
+            ReplayInputHistoryEntry {
+                render_tick_fraction: f32::NAN,
+                ..ReplayInputHistoryEntry::default()
+            },
+        ];
+
+        let rec = synthesize_player_rec(&[first, row(501, 7)], "de_nuke", 64.0, 1).unwrap();
+
+        assert_eq!(rec.input_history_ticks.len(), 1);
+        assert_eq!(rec.input_history_ticks[0].source_client_tick, 700);
+        assert_eq!(rec.input_history_ticks[0].attack1_start_history_index, 0);
+        assert_eq!(rec.input_history_ticks[0].attack2_start_history_index, -1);
+        assert_eq!(rec.input_history_ticks[0].num_entries, 1);
+        assert_eq!(rec.input_history_entries.len(), 1);
+        assert_eq!(rec.input_history_entries[0].render_tick_count, 699);
+        assert_eq!(rec.input_history_entries[0].render_tick_fraction, 0.75);
     }
 
     #[test]

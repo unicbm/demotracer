@@ -596,6 +596,11 @@ internal static partial class BotControllerNative
                     LastLoadError = $"v7+ replay requires extended replay capability; {RuntimeSummary}";
                     return false;
                 }
+                if ((Capabilities & CapabilityReplayInputHistory) == 0)
+                {
+                    LastLoadError = $"v7+ replay requires input history capability; {RuntimeSummary}";
+                    return false;
+                }
 
                 var commandFrames = replay.CommandFrames.Length == 0
                     ? [new NativeReplayCommandFrame()]
@@ -603,7 +608,13 @@ internal static partial class BotControllerNative
                 var movementExtras = replay.MovementExtras.Length == 0
                     ? [new NativeReplayMovementExtra()]
                     : replay.MovementExtras;
-                var extendedOk = BotController_LoadReplayExtended(
+                var inputHistoryTicks = replay.InputHistoryTicks.Length == 0
+                    ? [new NativeReplayInputHistoryTick()]
+                    : replay.InputHistoryTicks;
+                var inputHistoryEntries = replay.InputHistoryEntries.Length == 0
+                    ? [new NativeReplayInputHistoryEntry()]
+                    : replay.InputHistoryEntries;
+                var extendedOk = BotController_LoadReplayWithInputHistory(
                     slot,
                     replay.Ticks,
                     replay.Ticks.Length,
@@ -612,8 +623,12 @@ internal static partial class BotControllerNative
                     commandFrames,
                     replay.CommandFrames.Length,
                     movementExtras,
-                    replay.MovementExtras.Length) == 0;
-                LastLoadError = extendedOk ? string.Empty : "BotController_LoadReplayExtended failed";
+                    replay.MovementExtras.Length,
+                    inputHistoryTicks,
+                    replay.InputHistoryTicks.Length,
+                    inputHistoryEntries,
+                    replay.InputHistoryEntries.Length) == 0;
+                LastLoadError = extendedOk ? string.Empty : "BotController_LoadReplayWithInputHistory failed";
                 return extendedOk;
             }
 

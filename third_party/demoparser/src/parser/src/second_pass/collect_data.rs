@@ -868,6 +868,11 @@ impl<'a> SecondPassParser<'a> {
             USERCMD_SUBTICK_MOVES_BASEID => {
                 self.get_prop_from_ent(&USERCMD_SUBTICK_MOVES_BASEID, entity_id)
             }
+            USERCMD_CLIENT_TICK
+            | USERCMD_ATTACK_START_HISTORY_INDEX_1
+            | USERCMD_ATTACK_START_HISTORY_INDEX_2 => {
+                self.get_prop_from_ent(&prop_info.id, entity_id)
+            }
             GLOVE_PAINT_ID => self.find_glove_skin_id(entity_id),
             GLOVE_SKIN => self.find_glove_skin(entity_id),
             GLOVE_PAINT_SEED => self.find_glove_paint_seed(entity_id),

@@ -152,6 +152,22 @@ internal static partial class BotControllerNative
         int movementExtraCount);
 
     [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int BotController_LoadReplayWithInputHistory(
+        int slot,
+        [In] NativeReplayTick[] ticks,
+        int tickCount,
+        [In] NativeSubtickMove[] subs,
+        int subCount,
+        [In] NativeReplayCommandFrame[] commandFrames,
+        int commandFrameCount,
+        [In] NativeReplayMovementExtra[] movementExtras,
+        int movementExtraCount,
+        [In] NativeReplayInputHistoryTick[] inputHistoryTicks,
+        int inputHistoryTickCount,
+        [In] NativeReplayInputHistoryEntry[] inputHistoryEntries,
+        int inputHistoryEntryCount);
+
+    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
     private static extern int BotController_StartReplay(int slot, int loop);
 
     [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]

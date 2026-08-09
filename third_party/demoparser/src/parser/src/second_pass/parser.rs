@@ -36,7 +36,7 @@ use snap::raw::decompress_len;
 use snap::raw::Decoder as SnapDecoder;
 use std::sync::atomic::Ordering;
 
-use super::variants::{InputHistory, UserCmdSubtickMove};
+use super::variants::{InputHistory, InputHistoryInterpolation, UserCmdSubtickMove};
 
 const OUTER_BUF_DEFAULT_LEN: usize = 400_000;
 const INNER_BUF_DEFAULT_LEN: usize = 8192 * 15;
@@ -136,6 +136,9 @@ enum DeltaMessageSchema {
     Buttons,
     QAngle,
     InputHistory,
+    Interpolation,
+    InterpolationCl,
+    Vector,
     SubtickMove,
 }
 
@@ -167,6 +170,19 @@ impl DeltaMessageSchema {
                 5 | 7 => Some(5),
                 _ => None,
             },
+            Self::Interpolation => match field {
+                1 | 2 => Some(0),
+                3 => Some(5),
+                _ => None,
+            },
+            Self::InterpolationCl => match field {
+                3 => Some(5),
+                _ => None,
+            },
+            Self::Vector => match field {
+                1..=3 => Some(5),
+                _ => None,
+            },
             Self::SubtickMove => match field {
                 1 | 2 => Some(0),
                 3 | 4 | 5 | 8 | 9 => Some(5),
@@ -181,6 +197,9 @@ impl DeltaMessageSchema {
             (Self::BaseUserCmd, 3) => Some(Self::Buttons),
             (Self::BaseUserCmd, 4) => Some(Self::QAngle),
             (Self::InputHistory, 2 | 69) => Some(Self::QAngle),
+            (Self::InputHistory, 12) => Some(Self::InterpolationCl),
+            (Self::InputHistory, 13..=15) => Some(Self::Interpolation),
+            (Self::InputHistory, 66..=68) => Some(Self::Vector),
             _ => None,
         }
     }
@@ -193,6 +212,9 @@ impl DeltaMessageSchema {
             Self::BaseUserCmd => &[(3, 2), (4, 2), (5, 5), (6, 5), (7, 5), (8, 0), (9, 0), (11, 0), (12, 0), (20, 0)],
             Self::CsgoUserCmd => &[(1, 2), (9, 0)],
             Self::InputHistory => &[(2, 2), (4, 0), (5, 5), (6, 0), (7, 5)],
+            Self::Interpolation => &[(1, 0), (2, 0), (3, 5)],
+            Self::InterpolationCl => &[(3, 5)],
+            Self::Vector => &[(1, 5), (2, 5), (3, 5)],
             Self::SubtickMove => &[(1, 0), (2, 0), (3, 5), (4, 5), (5, 5), (8, 5), (9, 5)],
         };
         for (field, wire_type) in fields {
@@ -209,6 +231,44 @@ impl DeltaMessageSchema {
             }
         }
         out
+    }
+}
+
+fn parse_input_history(input: CsgoInputHistoryEntryPb) -> InputHistory {
+    InputHistory {
+        view_angles: input.view_angles.map(|value| [value.x(), value.y(), value.z()]),
+        render_tick_count: input.render_tick_count,
+        render_tick_fraction: input.render_tick_fraction,
+        player_tick_count: input.player_tick_count,
+        player_tick_fraction: input.player_tick_fraction,
+        cl_interp_fraction: input.cl_interp.and_then(|value| value.frac),
+        sv_interp0: input.sv_interp0.map(|value| InputHistoryInterpolation {
+            src_tick: value.src_tick,
+            dst_tick: value.dst_tick,
+            fraction: value.frac,
+        }),
+        sv_interp1: input.sv_interp1.map(|value| InputHistoryInterpolation {
+            src_tick: value.src_tick,
+            dst_tick: value.dst_tick,
+            fraction: value.frac,
+        }),
+        player_interp: input.player_interp.map(|value| InputHistoryInterpolation {
+            src_tick: value.src_tick,
+            dst_tick: value.dst_tick,
+            fraction: value.frac,
+        }),
+        frame_number: input.frame_number,
+        target_ent_index: input.target_ent_index,
+        shoot_position: input.shoot_position.map(|value| [value.x(), value.y(), value.z()]),
+        target_head_pos_check: input
+            .target_head_pos_check
+            .map(|value| [value.x(), value.y(), value.z()]),
+        target_abs_pos_check: input
+            .target_abs_pos_check
+            .map(|value| [value.x(), value.y(), value.z()]),
+        target_abs_ang_check: input
+            .target_abs_ang_check
+            .map(|value| [value.x(), value.y(), value.z()]),
     }
 }
 
@@ -567,26 +627,30 @@ impl<'a> SecondPassParser<'a> {
             };
 
             let left_hand_desired = user_cmd.left_hand_desired();
+            let attack1_start_history_index =
+                user_cmd.attack1_start_history_index.unwrap_or(-1);
+            let attack2_start_history_index =
+                user_cmd.attack2_start_history_index.unwrap_or(-1);
             if let Some(base) = user_cmd.base {
                 let entity_id = demo_network_ehandle_index(base.pawn_entity_handle());
                 if let Some(Some(ent)) = self.entities.get_mut(entity_id as usize) {
-                    let mut history = vec![];
-                    for input in user_cmd.input_history {
-                        // view_angles may be absent on some entries; default the angle to (0, 0, 0)
-                        // rather than panicking, matching prost's default accessor behaviour.
-                        let view_angles = input.view_angles.clone().unwrap_or_default();
-                        let ih = InputHistory {
-                            player_tick_count: input.player_tick_count(),
-                            player_tick_fraction: input.player_tick_fraction(),
-                            render_tick_count: input.render_tick_count(),
-                            render_tick_fraction: input.render_tick_fraction(),
-                            x: view_angles.x(),
-                            y: view_angles.y(),
-                            z: view_angles.z(),
-                        };
-                        history.push(ih);
-                    }
+                    let history = user_cmd
+                        .input_history
+                        .into_iter()
+                        .map(parse_input_history)
+                        .collect();
                     ent.props.insert(USERCMD_INPUT_HISTORY_BASEID, Variant::InputHistory(history));
+                    ent.props.insert(
+                        USERCMD_ATTACK_START_HISTORY_INDEX_1,
+                        Variant::I32(attack1_start_history_index),
+                    );
+                    ent.props.insert(
+                        USERCMD_ATTACK_START_HISTORY_INDEX_2,
+                        Variant::I32(attack2_start_history_index),
+                    );
+                    if let Some(client_tick) = base.client_tick {
+                        ent.props.insert(USERCMD_CLIENT_TICK, Variant::I32(client_tick));
+                    }
                     let mut subtick_moves = vec![];
                     for subtick in &base.subtick_moves {
                         subtick_moves.push(UserCmdSubtickMove {
@@ -630,20 +694,11 @@ impl<'a> SecondPassParser<'a> {
         let input_history = decode_codegen_delta_repeated::<CsgoInputHistoryEntryPb>(&user_cmd.input_history_delta, DeltaMessageSchema::InputHistory)
             .unwrap_or_default()
             .into_iter()
-            .map(|input| {
-                let view_angles = input.view_angles.unwrap_or_default();
-                InputHistory {
-                    player_tick_count: input.player_tick_count(),
-                    player_tick_fraction: input.player_tick_fraction(),
-                    render_tick_count: input.render_tick_count(),
-                    render_tick_fraction: input.render_tick_fraction(),
-                    x: view_angles.x(),
-                    y: view_angles.y(),
-                    z: view_angles.z(),
-                }
-            })
+            .map(parse_input_history)
             .collect();
         let left_hand_desired = user_cmd.left_hand_desired;
+        let attack1_start_history_index = user_cmd.attack1_start_history_index.unwrap_or(-1);
+        let attack2_start_history_index = user_cmd.attack2_start_history_index.unwrap_or(-1);
         let Some(base) = user_cmd.base else {
             return;
         };
@@ -690,6 +745,17 @@ impl<'a> SecondPassParser<'a> {
 
         ent.props.insert(USERCMD_INPUT_HISTORY_BASEID, Variant::InputHistory(input_history));
         ent.props.insert(USERCMD_SUBTICK_MOVES_BASEID, Variant::UserCmdSubtickMoves(subtick_moves));
+        ent.props.insert(
+            USERCMD_ATTACK_START_HISTORY_INDEX_1,
+            Variant::I32(attack1_start_history_index),
+        );
+        ent.props.insert(
+            USERCMD_ATTACK_START_HISTORY_INDEX_2,
+            Variant::I32(attack2_start_history_index),
+        );
+        if let Some(client_tick) = base.client_tick {
+            ent.props.insert(USERCMD_CLIENT_TICK, Variant::I32(client_tick));
+        }
         if let Some(value) = left_hand_desired {
             ent.props.insert(USERCMD_SUBTICK_LEFT_HAND_DESIRED, Variant::Bool(value));
         }

@@ -6,8 +6,9 @@
 
 use crate::model::{
     Cs2Rec, Cs2RecHeader, HighFidelityMetadata, MovementSnapshot, ProjectileKind,
-    ReplayCommandFrame, ReplayMovementExtra, ReplayProjectile, ReplayTick, SubtickMove,
-    COMMAND_FIELDS_ALL, DTR_FORMAT_VERSION,
+    ReplayCommandFrame, ReplayInputHistoryEntry, ReplayInputHistoryTick, ReplayMovementExtra,
+    ReplayProjectile, ReplayTick, SubtickMove, COMMAND_FIELDS_ALL, DTR_FORMAT_VERSION,
+    INPUT_HISTORY_FIELDS_ALL,
 };
 use crate::{io_error, Error, Result};
 use std::fs::File;
@@ -26,8 +27,11 @@ const PROJECTILE_BYTE_SIZE: usize = 48;
 const SUBTICK_BYTE_SIZE: usize = 28;
 const COMMAND_FRAME_BYTE_SIZE: usize = 68;
 const MOVEMENT_EXTRA_BYTE_SIZE: usize = 48;
+const INPUT_HISTORY_TICK_BYTE_SIZE: usize = 16;
+const INPUT_HISTORY_ENTRY_BYTE_SIZE: usize = 128;
 const SECTION_HEADER_BYTE_SIZE: u64 = 36;
 const MAX_SUBTICKS_PER_TICK: u32 = 36;
+const MAX_INPUT_HISTORY_PER_TICK: u32 = 64;
 
 const SECTION_SNAPSHOTS: u32 = 1;
 const SECTION_TICK_METADATA: u32 = 2;
@@ -36,6 +40,7 @@ const SECTION_HIGH_FIDELITY_JSON: u32 = 4;
 const SECTION_SUBTICKS: u32 = 5;
 const SECTION_COMMAND_FRAMES: u32 = 6;
 const SECTION_MOVEMENT_EXTRAS: u32 = 7;
+const SECTION_INPUT_HISTORY: u32 = 8;
 const SECTION_VERSION_V1: u32 = 1;
 const SECTION_VERSION_V2: u32 = 2;
 
@@ -193,6 +198,7 @@ pub fn write_rec<W: Write>(writer: &mut W, rec: &Cs2Rec) -> Result<()> {
         rec.movement_extras.len(),
         rec.ticks.len(),
     )?;
+    validate_input_history_shape(rec)?;
     let tick_count = checked_u32_count("tick count", rec.ticks.len())?;
     let subtick_count = checked_u32_count("subtick count", rec.subticks.len())?;
     let projectile_count = checked_u32_count("projectile count", rec.projectiles.len())?;
@@ -276,16 +282,24 @@ fn read_rec_bounded<R: Read>(reader: &mut ReadBudget<R>, limits: DtrReadLimits) 
     let map = read_bounded_string(reader, "map string")?;
     let player_name = read_bounded_string(reader, "player name string")?;
     if version >= 7 {
-        let (ticks, projectiles, high_fidelity, subticks, command_frames, movement_extras) =
-            read_sectioned_body(
-                reader,
-                version,
-                tick_count,
-                subtick_count,
-                projectile_count,
-                metadata_json_len,
-                limits,
-            )?;
+        let (
+            ticks,
+            projectiles,
+            high_fidelity,
+            subticks,
+            command_frames,
+            movement_extras,
+            input_history_ticks,
+            input_history_entries,
+        ) = read_sectioned_body(
+            reader,
+            version,
+            tick_count,
+            subtick_count,
+            projectile_count,
+            metadata_json_len,
+            limits,
+        )?;
 
         let rec = Cs2Rec {
             header: Cs2RecHeader {
@@ -305,6 +319,8 @@ fn read_rec_bounded<R: Read>(reader: &mut ReadBudget<R>, limits: DtrReadLimits) 
             subticks,
             command_frames,
             movement_extras,
+            input_history_ticks,
+            input_history_entries,
         };
         return finish_read_rec(reader, rec);
     }
@@ -379,6 +395,8 @@ fn read_rec_bounded<R: Read>(reader: &mut ReadBudget<R>, limits: DtrReadLimits) 
         subticks,
         command_frames: Vec::new(),
         movement_extras: Vec::new(),
+        input_history_ticks: Vec::new(),
+        input_history_entries: Vec::new(),
     };
     finish_read_rec(reader, rec)
 }
@@ -478,6 +496,41 @@ fn validate_rec_semantics(rec: &Cs2Rec) -> Result<()> {
         )?;
     }
 
+    for (index, entry) in rec.input_history_entries.iter().enumerate() {
+        if entry.fields & !INPUT_HISTORY_FIELDS_ALL != 0 {
+            return Err(Error::InvalidRec(format!(
+                "input history entry {index} has unknown fields 0x{:08x}",
+                entry.fields & !INPUT_HISTORY_FIELDS_ALL
+            )));
+        }
+        validate_finite_values(
+            &[
+                entry.view_angles[0],
+                entry.view_angles[1],
+                entry.view_angles[2],
+                entry.render_tick_fraction,
+                entry.player_tick_fraction,
+                entry.cl_interp_fraction,
+                entry.sv_interp0_fraction,
+                entry.sv_interp1_fraction,
+                entry.player_interp_fraction,
+                entry.shoot_position[0],
+                entry.shoot_position[1],
+                entry.shoot_position[2],
+                entry.target_head_pos_check[0],
+                entry.target_head_pos_check[1],
+                entry.target_head_pos_check[2],
+                entry.target_abs_pos_check[0],
+                entry.target_abs_pos_check[1],
+                entry.target_abs_pos_check[2],
+                entry.target_abs_ang_check[0],
+                entry.target_abs_ang_check[1],
+                entry.target_abs_ang_check[2],
+            ],
+            &format!("input history entry {index}"),
+        )?;
+    }
+
     for (index, projectile) in rec.projectiles.iter().enumerate() {
         if projectile.tick_index as usize >= rec.ticks.len() {
             return Err(Error::InvalidRec(format!(
@@ -506,7 +559,7 @@ fn validate_rec_semantics(rec: &Cs2Rec) -> Result<()> {
         )?;
     }
 
-    Ok(())
+    validate_input_history_shape(rec)
 }
 
 fn validate_snapshot_semantics(snapshot: &MovementSnapshot, name: &str) -> Result<()> {
@@ -601,6 +654,52 @@ fn validate_optional_tick_aligned_count(name: &str, count: usize, tick_count: us
     Ok(())
 }
 
+fn validate_input_history_shape(rec: &Cs2Rec) -> Result<()> {
+    validate_optional_tick_aligned_count(
+        "input history tick count",
+        rec.input_history_ticks.len(),
+        rec.ticks.len(),
+    )?;
+    if rec.input_history_ticks.is_empty() {
+        if rec.input_history_entries.is_empty() {
+            return Ok(());
+        }
+        return Err(Error::InvalidRec(
+            "input history entries require tick descriptors".to_string(),
+        ));
+    }
+    let mut expected_entries = 0_usize;
+    for (tick_index, tick) in rec.input_history_ticks.iter().enumerate() {
+        if tick.num_entries > MAX_INPUT_HISTORY_PER_TICK {
+            return Err(Error::InvalidRec(format!(
+                "input history tick {tick_index} count {} exceeds limit {MAX_INPUT_HISTORY_PER_TICK}",
+                tick.num_entries
+            )));
+        }
+        for (name, index) in [
+            ("attack1", tick.attack1_start_history_index),
+            ("attack2", tick.attack2_start_history_index),
+        ] {
+            if index < -1 || index >= tick.num_entries as i32 {
+                return Err(Error::InvalidRec(format!(
+                    "input history tick {tick_index} {name} index {index} is outside {} entries",
+                    tick.num_entries
+                )));
+            }
+        }
+        expected_entries = expected_entries
+            .checked_add(tick.num_entries as usize)
+            .ok_or_else(|| Error::InvalidRec("input history entry sum overflow".to_string()))?;
+    }
+    if expected_entries != rec.input_history_entries.len() {
+        return Err(Error::InvalidRec(format!(
+            "input history tick sum {expected_entries} != entry count {}",
+            rec.input_history_entries.len()
+        )));
+    }
+    Ok(())
+}
+
 fn write_sectioned_body<W: Write>(
     writer: &mut W,
     rec: &Cs2Rec,
@@ -661,6 +760,12 @@ fn write_sectioned_body<W: Write>(
             build_movement_extra_section(rec)?,
         ));
     }
+    sections.push((
+        SECTION_INPUT_HISTORY,
+        SECTION_VERSION_V1,
+        rec.ticks.len(),
+        build_input_history_section(rec)?,
+    ));
 
     write_u32(writer, checked_u32_count("section count", sections.len())?)?;
     for (section_id, section_version, element_count, payload) in sections {
@@ -735,6 +840,76 @@ fn build_subtick_section(rec: &Cs2Rec) -> Result<Vec<u8>> {
         write_subtick(&mut body, subtick)?;
     }
     Ok(body)
+}
+
+fn build_input_history_section(rec: &Cs2Rec) -> Result<Vec<u8>> {
+    let capacity = rec
+        .ticks
+        .len()
+        .checked_mul(INPUT_HISTORY_TICK_BYTE_SIZE)
+        .and_then(|value| {
+            rec.input_history_entries
+                .len()
+                .checked_mul(INPUT_HISTORY_ENTRY_BYTE_SIZE)
+                .and_then(|entry_bytes| value.checked_add(entry_bytes))
+        })
+        .ok_or_else(|| Error::InvalidRec("input history section too large".to_string()))?;
+    let mut body = Vec::with_capacity(capacity);
+    let mut entry_index = 0_usize;
+    for tick_index in 0..rec.ticks.len() {
+        let tick = rec
+            .input_history_ticks
+            .get(tick_index)
+            .copied()
+            .unwrap_or_default();
+        write_i32(&mut body, tick.source_client_tick)?;
+        write_i32(&mut body, tick.attack1_start_history_index)?;
+        write_i32(&mut body, tick.attack2_start_history_index)?;
+        write_u32(&mut body, tick.num_entries)?;
+        let end = entry_index + tick.num_entries as usize;
+        for entry in &rec.input_history_entries[entry_index..end] {
+            write_input_history_entry(&mut body, entry)?;
+        }
+        entry_index = end;
+    }
+    Ok(body)
+}
+
+fn write_input_history_entry<W: Write>(
+    writer: &mut W,
+    entry: &ReplayInputHistoryEntry,
+) -> Result<()> {
+    write_u32(writer, entry.fields)?;
+    for value in entry.view_angles {
+        write_f32(writer, value)?;
+    }
+    write_i32(writer, entry.render_tick_count)?;
+    write_f32(writer, entry.render_tick_fraction)?;
+    write_i32(writer, entry.player_tick_count)?;
+    write_f32(writer, entry.player_tick_fraction)?;
+    write_f32(writer, entry.cl_interp_fraction)?;
+    write_i32(writer, entry.sv_interp0_src_tick)?;
+    write_i32(writer, entry.sv_interp0_dst_tick)?;
+    write_f32(writer, entry.sv_interp0_fraction)?;
+    write_i32(writer, entry.sv_interp1_src_tick)?;
+    write_i32(writer, entry.sv_interp1_dst_tick)?;
+    write_f32(writer, entry.sv_interp1_fraction)?;
+    write_i32(writer, entry.player_interp_src_tick)?;
+    write_i32(writer, entry.player_interp_dst_tick)?;
+    write_f32(writer, entry.player_interp_fraction)?;
+    write_i32(writer, entry.frame_number)?;
+    write_i32(writer, entry.target_ent_index)?;
+    for values in [
+        entry.shoot_position,
+        entry.target_head_pos_check,
+        entry.target_abs_pos_check,
+        entry.target_abs_ang_check,
+    ] {
+        for value in values {
+            write_f32(writer, value)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1131,6 +1306,8 @@ type V7Sections = (
     Vec<SubtickMove>,
     Vec<ReplayCommandFrame>,
     Vec<ReplayMovementExtra>,
+    Vec<ReplayInputHistoryTick>,
+    Vec<ReplayInputHistoryEntry>,
 );
 
 fn read_sectioned_body<R: Read>(
@@ -1157,6 +1334,9 @@ fn read_sectioned_body<R: Read>(
     let mut saw_movement_extras = false;
     let mut command_frames = Vec::new();
     let mut movement_extras = Vec::new();
+    let mut saw_input_history = false;
+    let mut input_history_ticks = Vec::new();
+    let mut input_history_entries = Vec::new();
     let mut total_compressed = 0_u64;
     let mut total_decoded = 0_u64;
 
@@ -1284,6 +1464,15 @@ fn read_sectioned_body<R: Read>(
                     )?,
                 )?;
             }
+            SECTION_INPUT_HISTORY => {
+                reject_duplicate(saw_input_history, "input history")?;
+                require_input_history_section_header_shape(
+                    header.section_version,
+                    header.element_count,
+                    tick_count,
+                    header.uncompressed_len,
+                )?;
+            }
             _ => unreachable!(),
         }
 
@@ -1336,6 +1525,11 @@ fn read_sectioned_body<R: Read>(
                 movement_extras = read_movement_extras_from_section(&body, tick_count)?;
                 saw_movement_extras = true;
             }
+            SECTION_INPUT_HISTORY => {
+                (input_history_ticks, input_history_entries) =
+                    read_input_history_from_section(&body, tick_count)?;
+                saw_input_history = true;
+            }
             _ => unreachable!(),
         }
     }
@@ -1357,6 +1551,14 @@ fn read_sectioned_body<R: Read>(
         return Err(Error::InvalidRec(
             "missing high fidelity metadata section".to_string(),
         ));
+    }
+    if format_version >= 9 && !saw_input_history {
+        return Err(Error::InvalidRec(
+            "missing required section input history".to_string(),
+        ));
+    }
+    if !saw_input_history {
+        input_history_ticks = vec![ReplayInputHistoryTick::default(); tick_count];
     }
 
     let mut expected_subticks = 0_usize;
@@ -1389,6 +1591,8 @@ fn read_sectioned_body<R: Read>(
         subticks,
         command_frames,
         movement_extras,
+        input_history_ticks,
+        input_history_entries,
     ))
 }
 
@@ -1443,6 +1647,7 @@ fn is_known_section(section_id: u32) -> bool {
             | SECTION_SUBTICKS
             | SECTION_COMMAND_FRAMES
             | SECTION_MOVEMENT_EXTRAS
+            | SECTION_INPUT_HISTORY
     )
 }
 
@@ -1512,7 +1717,7 @@ fn require_versioned_section_header_shape(
                 )));
             }
         }
-        (8, SECTION_VERSION_V2) => {
+        (8 | 9, SECTION_VERSION_V2) => {
             if expected_elements == 0 && byte_len != 0 {
                 return Err(Error::InvalidRec(format!(
                     "empty {name} section has non-zero byte length {byte_len}"
@@ -1524,6 +1729,45 @@ fn require_versioned_section_header_shape(
                 "unsupported {name} section version {section_version} for .dtr v{format_version}"
             )));
         }
+    }
+    Ok(())
+}
+
+fn require_input_history_section_header_shape(
+    section_version: u32,
+    element_count: u32,
+    tick_count: usize,
+    byte_len: u64,
+) -> Result<()> {
+    if section_version != SECTION_VERSION_V1 {
+        return Err(Error::InvalidRec(format!(
+            "unsupported input history section version {section_version}"
+        )));
+    }
+    if u64::from(element_count) != tick_count as u64 {
+        return Err(Error::InvalidRec(format!(
+            "input history element count {element_count} != expected {tick_count}"
+        )));
+    }
+    let minimum = checked_product(
+        tick_count,
+        INPUT_HISTORY_TICK_BYTE_SIZE,
+        "input history tick descriptors",
+    )? as u64;
+    let maximum_entries = tick_count
+        .checked_mul(MAX_INPUT_HISTORY_PER_TICK as usize)
+        .ok_or_else(|| Error::InvalidRec("input history entry limit overflow".to_string()))?;
+    let maximum = minimum
+        .checked_add(checked_product(
+            maximum_entries,
+            INPUT_HISTORY_ENTRY_BYTE_SIZE,
+            "input history entries",
+        )? as u64)
+        .ok_or_else(|| Error::InvalidRec("input history section limit overflow".to_string()))?;
+    if !(minimum..=maximum).contains(&byte_len) {
+        return Err(Error::InvalidRec(format!(
+            "input history byte length {byte_len} is outside {minimum}..={maximum}"
+        )));
     }
     Ok(())
 }
@@ -1891,6 +2135,87 @@ fn read_movement_extras_from_section(
     }
     require_no_trailing(&reader, body, "movement extras")?;
     Ok(extras)
+}
+
+fn read_input_history_from_section(
+    body: &[u8],
+    tick_count: usize,
+) -> Result<(Vec<ReplayInputHistoryTick>, Vec<ReplayInputHistoryEntry>)> {
+    let mut reader = Cursor::new(body);
+    let mut ticks = reserved_vec(tick_count, "input history tick descriptors")?;
+    let mut entries = Vec::new();
+    for tick_index in 0..tick_count {
+        let tick = ReplayInputHistoryTick {
+            source_client_tick: read_i32(&mut reader)?,
+            attack1_start_history_index: read_i32(&mut reader)?,
+            attack2_start_history_index: read_i32(&mut reader)?,
+            num_entries: read_u32(&mut reader)?,
+        };
+        if tick.num_entries > MAX_INPUT_HISTORY_PER_TICK {
+            return Err(Error::InvalidRec(format!(
+                "input history tick {tick_index} count {} exceeds limit {MAX_INPUT_HISTORY_PER_TICK}",
+                tick.num_entries
+            )));
+        }
+        entries
+            .try_reserve(tick.num_entries as usize)
+            .map_err(|error| {
+                Error::InvalidRec(format!("unable to allocate input history: {error}"))
+            })?;
+        for _ in 0..tick.num_entries {
+            entries.push(read_input_history_entry(&mut reader)?);
+        }
+        ticks.push(tick);
+    }
+    require_no_trailing(&reader, body, "input history")?;
+    Ok((ticks, entries))
+}
+
+fn read_input_history_entry<R: Read>(reader: &mut R) -> Result<ReplayInputHistoryEntry> {
+    let fields = read_u32(reader)?;
+    let view_angles = [read_f32(reader)?, read_f32(reader)?, read_f32(reader)?];
+    let render_tick_count = read_i32(reader)?;
+    let render_tick_fraction = read_f32(reader)?;
+    let player_tick_count = read_i32(reader)?;
+    let player_tick_fraction = read_f32(reader)?;
+    let cl_interp_fraction = read_f32(reader)?;
+    let sv_interp0_src_tick = read_i32(reader)?;
+    let sv_interp0_dst_tick = read_i32(reader)?;
+    let sv_interp0_fraction = read_f32(reader)?;
+    let sv_interp1_src_tick = read_i32(reader)?;
+    let sv_interp1_dst_tick = read_i32(reader)?;
+    let sv_interp1_fraction = read_f32(reader)?;
+    let player_interp_src_tick = read_i32(reader)?;
+    let player_interp_dst_tick = read_i32(reader)?;
+    let player_interp_fraction = read_f32(reader)?;
+    let frame_number = read_i32(reader)?;
+    let target_ent_index = read_i32(reader)?;
+    let mut read_vec3 =
+        || -> Result<[f32; 3]> { Ok([read_f32(reader)?, read_f32(reader)?, read_f32(reader)?]) };
+    Ok(ReplayInputHistoryEntry {
+        fields,
+        view_angles,
+        render_tick_count,
+        render_tick_fraction,
+        player_tick_count,
+        player_tick_fraction,
+        cl_interp_fraction,
+        sv_interp0_src_tick,
+        sv_interp0_dst_tick,
+        sv_interp0_fraction,
+        sv_interp1_src_tick,
+        sv_interp1_dst_tick,
+        sv_interp1_fraction,
+        player_interp_src_tick,
+        player_interp_dst_tick,
+        player_interp_fraction,
+        frame_number,
+        target_ent_index,
+        shoot_position: read_vec3()?,
+        target_head_pos_check: read_vec3()?,
+        target_abs_pos_check: read_vec3()?,
+        target_abs_ang_check: read_vec3()?,
+    })
 }
 
 fn require_no_trailing(reader: &Cursor<&[u8]>, body: &[u8], name: &str) -> Result<()> {
@@ -3340,6 +3665,26 @@ mod tests {
                 },
             ],
             movement_extras: Vec::new(),
+            input_history_ticks: vec![
+                ReplayInputHistoryTick {
+                    source_client_tick: 100,
+                    attack1_start_history_index: 0,
+                    attack2_start_history_index: -1,
+                    num_entries: 1,
+                },
+                ReplayInputHistoryTick::default(),
+            ],
+            input_history_entries: vec![ReplayInputHistoryEntry {
+                fields: crate::model::INPUT_HISTORY_FIELD_VIEW_ANGLES
+                    | crate::model::INPUT_HISTORY_FIELD_RENDER_TICK_COUNT
+                    | crate::model::INPUT_HISTORY_FIELD_RENDER_TICK_FRACTION
+                    | crate::model::INPUT_HISTORY_FIELD_SHOOT_POSITION,
+                view_angles: [4.0, 90.0, 0.0],
+                render_tick_count: 99,
+                render_tick_fraction: 0.75,
+                shoot_position: [10.0, 20.0, 30.0],
+                ..ReplayInputHistoryEntry::default()
+            }],
         }
     }
 

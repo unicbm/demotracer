@@ -17,7 +17,10 @@ namespace BotController
             std::vector<SubtickMove> subs;
             std::vector<ReplayCommandFrameData> commands;
             std::vector<ReplayMovementExtra> movementExtras;
+            std::vector<ReplayInputHistoryTick> inputHistoryTicks;
+            std::vector<ReplayInputHistoryEntry> inputHistoryEntries;
             std::vector<std::size_t> offsets;
+            std::vector<std::size_t> inputHistoryOffsets;
 
             void Swap(ReplayLoadStaging &other) noexcept;
         };
@@ -52,6 +55,21 @@ namespace BotController
             int commandCount,
             const ReplayMovementExtra *movementExtras,
             int movementExtraCount,
+            ReplayLoadStaging &staged) noexcept;
+
+        bool TryStageReplayLoad(
+            const ReplayTick *ticks,
+            int tickCount,
+            const SubtickMove *subs,
+            int subCount,
+            const ReplayCommandFrameData *commands,
+            int commandCount,
+            const ReplayMovementExtra *movementExtras,
+            int movementExtraCount,
+            const ReplayInputHistoryTick *inputHistoryTicks,
+            int inputHistoryTickCount,
+            const ReplayInputHistoryEntry *inputHistoryEntries,
+            int inputHistoryEntryCount,
             ReplayLoadStaging &staged) noexcept;
     } // namespace ReplaySubtickLayout
 } // namespace BotController

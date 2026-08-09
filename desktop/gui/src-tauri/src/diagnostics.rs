@@ -2449,12 +2449,12 @@ mod tests {
             "counterStrikeSharpVersion": "1.0.371.0",
             "botController": {
                 "abiMajor": 18,
-                "abiMinor": 33,
-                "capabilities": "0x7fff",
+                "abiMinor": 34,
+                "capabilities": "0xffff",
                 "buildId": "fixture",
                 "compatible": true,
                 "requiredCapabilities": {
-                    "mask": "0x41ff",
+                    "mask": "0xc1ff",
                     "present": true,
                     "missing": "0x0"
                 }
@@ -2513,11 +2513,11 @@ mod tests {
             "counterStrikeSharpVersion": "1.0.371.0",
             "botController": {
                 "abiMajor": 18,
-                "abiMinor": 33,
-                "capabilities": "0x7fff",
+                "abiMinor": 34,
+                "capabilities": "0xffff",
                 "buildId": "fixture",
                 "compatible": true,
-                "requiredCapabilities": { "mask": "0x41ff", "present": true, "missing": "0x0" }
+                "requiredCapabilities": { "mask": "0xc1ff", "present": true, "missing": "0x0" }
             },
             "botHider": { "providerApi": 1, "connected": true, "draining": false, "available": true },
             "cosmetics": {

@@ -422,7 +422,7 @@ mod demoparser_impl {
         AvatarImageFormat, ParsedAvatarOverride, ParsedEconItem, ParsedGameEvent,
         ParsedInventoryWeaponAttribute, ParsedInventoryWeaponCosmetic, ParsedPlayerTick,
         ParsedProjectile, ParsedScoreboardFlair, ParsedVoiceFrame, ParsedWeaponSticker,
-        ProjectileEffectSource, ProjectileKind, SubtickMove,
+        ProjectileEffectSource, ProjectileKind, ReplayInputHistoryEntry, SubtickMove,
     };
     use ahash::AHashMap;
     use parser::first_pass::parser_settings::{
@@ -435,6 +435,7 @@ mod demoparser_impl {
     use parser::second_pass::game_events::GameEvent;
     use parser::second_pass::parser_settings::create_huffman_lookup_table;
     use parser::second_pass::variants::{
+        InputHistory as ParserInputHistory,
         InventoryWeaponCosmetic as ParserInventoryWeaponCosmetic, PropColumn, VarVec, Variant,
     };
     use rayon::prelude::*;
@@ -468,6 +469,10 @@ mod demoparser_impl {
     const SINGLE_THREADED_OVERLAY_PROPS: &[&str] = &[
         DUCKED_PROP,
         DUCKING_PROP,
+        "usercmd_input_history",
+        "usercmd_client_tick",
+        "usercmd_attack1_start_history_index",
+        "usercmd_attack2_start_history_index",
         "usercmd_subtick_moves",
         "usercmd_buttonstate_1",
         "usercmd_buttonstate_2",
@@ -522,6 +527,10 @@ mod demoparser_impl {
         team_num => "team_num",
         is_airborne => "is_airborne",
         entity_flags => "CCSPlayerPawn.m_fFlags",
+        input_history => "usercmd_input_history",
+        usercmd_client_tick => "usercmd_client_tick",
+        usercmd_attack1_start_history_index => "usercmd_attack1_start_history_index",
+        usercmd_attack2_start_history_index => "usercmd_attack2_start_history_index",
         subtick_moves => "usercmd_subtick_moves",
         name => "name",
         is_alive => "is_alive",
@@ -699,8 +708,14 @@ mod demoparser_impl {
             ),
             Some(VarVec::I32(_)) => matches!(
                 friendly_name,
-                "usercmd_mouse_dx" | "usercmd_mouse_dy" | "usercmd_weapon_select"
+                "usercmd_mouse_dx"
+                    | "usercmd_mouse_dy"
+                    | "usercmd_weapon_select"
+                    | "usercmd_client_tick"
+                    | "usercmd_attack1_start_history_index"
+                    | "usercmd_attack2_start_history_index"
             ),
+            Some(VarVec::InputHistory(_)) => friendly_name == "usercmd_input_history",
             Some(VarVec::UserCmdSubtickMoves(_)) => friendly_name == "usercmd_subtick_moves",
             _ => false,
         }
@@ -992,6 +1007,10 @@ mod demoparser_impl {
             "usercmd_mouse_dy",
             "usercmd_weapon_select",
             "usercmd_left_hand_desired",
+            "usercmd_input_history",
+            "usercmd_client_tick",
+            "usercmd_attack1_start_history_index",
+            "usercmd_attack2_start_history_index",
             "item_def_idx",
             "inventory_as_ids",
             "inventory_weapon_cosmetics",
@@ -1161,6 +1180,17 @@ mod demoparser_impl {
             };
         }
         let subtick_moves_column = overlay_column!("usercmd_subtick_moves", columns.subtick_moves);
+        let input_history_column = overlay_column!("usercmd_input_history", columns.input_history);
+        let usercmd_client_tick_column =
+            overlay_column!("usercmd_client_tick", columns.usercmd_client_tick);
+        let usercmd_attack1_start_history_index_column = overlay_column!(
+            "usercmd_attack1_start_history_index",
+            columns.usercmd_attack1_start_history_index
+        );
+        let usercmd_attack2_start_history_index_column = overlay_column!(
+            "usercmd_attack2_start_history_index",
+            columns.usercmd_attack2_start_history_index
+        );
         let buttonstate1_column = overlay_column!("usercmd_buttonstate_1", columns.buttonstate1);
         let buttonstate2_column = overlay_column!("usercmd_buttonstate_2", columns.buttonstate2);
         let buttonstate3_column = overlay_column!("usercmd_buttonstate_3", columns.buttonstate3);
@@ -1273,6 +1303,19 @@ mod demoparser_impl {
                         usercmd_mouse_dy: get_i32(usercmd_mouse_dy_column, idx),
                         usercmd_weapon_select: get_i32(usercmd_weapon_select_column, idx),
                         usercmd_left_hand_desired: get_bool(usercmd_left_hand_desired_column, idx),
+                        usercmd_client_tick: get_i32(usercmd_client_tick_column, idx),
+                        usercmd_attack1_start_history_index: get_i32(
+                            usercmd_attack1_start_history_index_column,
+                            idx,
+                        )
+                        .unwrap_or(-1),
+                        usercmd_attack2_start_history_index: get_i32(
+                            usercmd_attack2_start_history_index_column,
+                            idx,
+                        )
+                        .unwrap_or(-1),
+                        input_history: get_input_history(input_history_column, idx)
+                            .unwrap_or_default(),
                         item_def_idx: get_i32(columns.item_def_idx, idx)
                             .or_else(|| get_u32(columns.item_def_idx, idx).map(|v| v as i32))
                             .unwrap_or(-1),
@@ -2265,6 +2308,10 @@ mod demoparser_impl {
         // previous command state but do not replay its subtick edges twice.
         row.subtick_moves.clear();
         row.subtick_button_truncated = 0;
+        row.usercmd_client_tick = None;
+        row.usercmd_attack1_start_history_index = -1;
+        row.usercmd_attack2_start_history_index = -1;
+        row.input_history.clear();
         row
     }
 
@@ -2526,6 +2573,148 @@ mod demoparser_impl {
                 Some((moves, truncated))
             }
             _ => None,
+        }
+    }
+
+    fn get_input_history(
+        column: Option<&PropColumn>,
+        idx: usize,
+    ) -> Option<Vec<ReplayInputHistoryEntry>> {
+        let raw = match column?.data.as_ref()? {
+            VarVec::InputHistory(values) => values.get(idx)?,
+            _ => return None,
+        };
+        Some(raw.iter().map(map_input_history_entry).collect())
+    }
+
+    fn map_input_history_entry(raw: &ParserInputHistory) -> ReplayInputHistoryEntry {
+        use crate::model::*;
+
+        let mut out = ReplayInputHistoryEntry::default();
+        macro_rules! set_scalar {
+            ($source:expr, $field:ident, $flag:ident) => {
+                if let Some(value) = $source {
+                    out.$field = value;
+                    out.fields |= $flag;
+                }
+            };
+        }
+        set_scalar!(
+            raw.view_angles,
+            view_angles,
+            INPUT_HISTORY_FIELD_VIEW_ANGLES
+        );
+        set_scalar!(
+            raw.render_tick_count,
+            render_tick_count,
+            INPUT_HISTORY_FIELD_RENDER_TICK_COUNT
+        );
+        set_scalar!(
+            raw.render_tick_fraction,
+            render_tick_fraction,
+            INPUT_HISTORY_FIELD_RENDER_TICK_FRACTION
+        );
+        set_scalar!(
+            raw.player_tick_count,
+            player_tick_count,
+            INPUT_HISTORY_FIELD_PLAYER_TICK_COUNT
+        );
+        set_scalar!(
+            raw.player_tick_fraction,
+            player_tick_fraction,
+            INPUT_HISTORY_FIELD_PLAYER_TICK_FRACTION
+        );
+        set_scalar!(
+            raw.cl_interp_fraction,
+            cl_interp_fraction,
+            INPUT_HISTORY_FIELD_CL_INTERP_FRACTION
+        );
+        map_input_history_interp(
+            raw.sv_interp0,
+            &mut out.sv_interp0_src_tick,
+            &mut out.sv_interp0_dst_tick,
+            &mut out.sv_interp0_fraction,
+            &mut out.fields,
+            INPUT_HISTORY_FIELD_SV_INTERP0_SRC_TICK,
+            INPUT_HISTORY_FIELD_SV_INTERP0_DST_TICK,
+            INPUT_HISTORY_FIELD_SV_INTERP0_FRACTION,
+        );
+        map_input_history_interp(
+            raw.sv_interp1,
+            &mut out.sv_interp1_src_tick,
+            &mut out.sv_interp1_dst_tick,
+            &mut out.sv_interp1_fraction,
+            &mut out.fields,
+            INPUT_HISTORY_FIELD_SV_INTERP1_SRC_TICK,
+            INPUT_HISTORY_FIELD_SV_INTERP1_DST_TICK,
+            INPUT_HISTORY_FIELD_SV_INTERP1_FRACTION,
+        );
+        map_input_history_interp(
+            raw.player_interp,
+            &mut out.player_interp_src_tick,
+            &mut out.player_interp_dst_tick,
+            &mut out.player_interp_fraction,
+            &mut out.fields,
+            INPUT_HISTORY_FIELD_PLAYER_INTERP_SRC_TICK,
+            INPUT_HISTORY_FIELD_PLAYER_INTERP_DST_TICK,
+            INPUT_HISTORY_FIELD_PLAYER_INTERP_FRACTION,
+        );
+        set_scalar!(
+            raw.frame_number,
+            frame_number,
+            INPUT_HISTORY_FIELD_FRAME_NUMBER
+        );
+        set_scalar!(
+            raw.target_ent_index,
+            target_ent_index,
+            INPUT_HISTORY_FIELD_TARGET_ENT_INDEX
+        );
+        set_scalar!(
+            raw.shoot_position,
+            shoot_position,
+            INPUT_HISTORY_FIELD_SHOOT_POSITION
+        );
+        set_scalar!(
+            raw.target_head_pos_check,
+            target_head_pos_check,
+            INPUT_HISTORY_FIELD_TARGET_HEAD_POS_CHECK
+        );
+        set_scalar!(
+            raw.target_abs_pos_check,
+            target_abs_pos_check,
+            INPUT_HISTORY_FIELD_TARGET_ABS_POS_CHECK
+        );
+        set_scalar!(
+            raw.target_abs_ang_check,
+            target_abs_ang_check,
+            INPUT_HISTORY_FIELD_TARGET_ABS_ANG_CHECK
+        );
+        out
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn map_input_history_interp(
+        raw: Option<parser::second_pass::variants::InputHistoryInterpolation>,
+        src_tick: &mut i32,
+        dst_tick: &mut i32,
+        fraction: &mut f32,
+        fields: &mut u32,
+        src_flag: u32,
+        dst_flag: u32,
+        fraction_flag: u32,
+    ) {
+        let Some(raw) = raw else { return };
+        if let Some(value) = raw.src_tick {
+            *src_tick = value;
+            *fields |= src_flag;
+        }
+        if let Some(value) = raw.dst_tick {
+            *dst_tick = value;
+            *fields |= dst_flag;
+        }
+        if let Some(value) = raw.fraction {
+            *fraction = value;
+            *fields |= fraction_flag;
         }
     }
 

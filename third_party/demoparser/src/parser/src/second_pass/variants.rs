@@ -62,13 +62,28 @@ pub struct InventoryWeaponAttribute {
 }
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct InputHistory {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    pub render_tick_count: i32,
-    pub render_tick_fraction: f32,
-    pub player_tick_count: i32,
-    pub player_tick_fraction: f32,
+    pub view_angles: Option<[f32; 3]>,
+    pub render_tick_count: Option<i32>,
+    pub render_tick_fraction: Option<f32>,
+    pub player_tick_count: Option<i32>,
+    pub player_tick_fraction: Option<f32>,
+    pub cl_interp_fraction: Option<f32>,
+    pub sv_interp0: Option<InputHistoryInterpolation>,
+    pub sv_interp1: Option<InputHistoryInterpolation>,
+    pub player_interp: Option<InputHistoryInterpolation>,
+    pub frame_number: Option<i32>,
+    pub target_ent_index: Option<i32>,
+    pub shoot_position: Option<[f32; 3]>,
+    pub target_head_pos_check: Option<[f32; 3]>,
+    pub target_abs_pos_check: Option<[f32; 3]>,
+    pub target_abs_ang_check: Option<[f32; 3]>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct InputHistoryInterpolation {
+    pub src_tick: Option<i32>,
+    pub dst_tick: Option<i32>,
+    pub fraction: Option<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

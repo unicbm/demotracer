@@ -5,16 +5,16 @@ loader and BotController runtime.
 
 All values are little-endian. The format is lossless for stored replay evidence:
 movement snapshots, projectile events, high-fidelity metadata, subtick records,
-and command-frame data retain their original `f32`, integer, or UTF-8 JSON
-values.
+command-frame data, and shooting input-history data retain their original
+`f32`, integer, or UTF-8 JSON values.
 
 ## Version Gates
 
 - Magic: `CSDTRREC`
-- Current writer format: `.dtr` v8
-- Runtime reader support: v3 through v8
+- Current writer format: `.dtr` v9
+- Runtime reader support: v3 through v9
 - Current manifest ABI: 17
-- Current BotController native ABI: 16
+- Current BotController native ABI: 18
 - Current DemoTracer companion API: 7
 
 Compatibility notes:
@@ -26,6 +26,9 @@ Compatibility notes:
   16 and extended replay capability.
 - v8 keeps the v7 section container and changes only the snapshot and command
   frame section payloads to bit-exact columnar delta-varint layouts.
+- v9 adds per-command `CSGOUserCmdPB.input_history` and attack start indexes.
+  Playback rebases stored absolute history ticks to the live command tick;
+  demo entity indexes are retained as evidence but are not injected.
 
 ## Reader Safety Limits
 
@@ -91,7 +94,7 @@ attributes. No inspect payload is generated for partial glove evidence.
 | Field | Type | Notes |
 | --- | --- | --- |
 | magic | 8 bytes | `CSDTRREC` |
-| version | `u32` | Current writer emits `8` |
+| version | `u32` | Current writer emits `9` |
 | tick_rate | `f32` | Demo tickrate estimate |
 | round | `u32` | `total_rounds_played` window |
 | side | `u8` | `2=T`, `3=CT`, `0=unknown` |
@@ -135,9 +138,10 @@ Required sections:
 
 | ID | Section | Section version | Count | Decoded payload |
 | ---: | --- | ---: | ---: | --- |
-| 1 | `MovementSnapshotV3` chain | `1` in v7; `2` in v8 | `0 if tick_count == 0, else tick_count + 1` | v1: 92 bytes each; v2: columnar delta-varint stream |
+| 1 | `MovementSnapshotV3` chain | `1` in v7; `2` in v8+ | `0 if tick_count == 0, else tick_count + 1` | v1: 92 bytes each; v2: columnar delta-varint stream |
 | 2 | tick metadata | `1` | `tick_count` | 8 bytes each |
 | 5 | `SubtickMoveV3` | `1` | `subtick_count` | 28 bytes each |
+| 8 | input history (required in v9) | `1` | `tick_count` | Variable; 16-byte tick descriptor plus 128 bytes per entry |
 
 Optional sections:
 
@@ -145,13 +149,33 @@ Optional sections:
 | ---: | --- | ---: | ---: | --- |
 | 3 | `ProjectileEventV4` | `1` | `projectile_count` | 48 bytes each |
 | 4 | `HighFidelityMetadataV6` | `1` | `0 or 1` | UTF-8 JSON |
-| 6 | `CommandFrameV1` | `1` in v7; `2` in v8 | `tick_count` | v1: 68 bytes each; v2: columnar delta-varint stream |
+| 6 | `CommandFrameV1` | `1` in v7; `2` in v8+ | `tick_count` | v1: 68 bytes each; v2: columnar delta-varint stream |
 | 7 | `MovementExtraV1` | `1` | `tick_count` | 48 bytes each |
 
 Unknown section IDs must be skipped using `compressed_len`. Duplicate known
 sections are invalid. Missing required sections are invalid. Optional
 tick-aligned sections may be omitted; when present, their `element_count` must
 equal `tick_count`.
+
+### v9 input-history section
+
+For each replay tick, the payload stores a 16-byte descriptor followed
+immediately by that tick's entries:
+
+`source_client_tick: i32`, `attack1_start_history_index: i32`,
+`attack2_start_history_index: i32`, `num_entries: u32`.
+
+Each entry is 128 bytes and starts with a `u32 fields` presence mask, followed
+by view angles, render/player tick and fraction fields, client/server/player
+interpolation fields, frame and target indexes, shoot position, and the three
+target check vectors in protobuf field order. At most 64 entries are allowed
+per tick. Attack indexes are `-1` or index the same tick's retained entries.
+All stored floats must be finite.
+
+At injection, render/player and interpolation source/destination ticks use
+`live_client_tick + (stored_tick - source_client_tick)`. Fractions and spatial
+checks remain unchanged. `target_ent_index` is not injected because live entity
+indexes are not stable across demo and replay servers.
 
 ## v8 Columnar Delta-Varint Sections
 
@@ -339,8 +363,8 @@ Projectile metadata entries contain:
 ## Parser Checklist
 
 1. Read and validate magic `CSDTRREC`.
-2. Require `version == 8` for current writer output, or accept `version == 3`
-   through `7` for backward compatibility.
+2. Require `version == 9` for current writer output, or accept `version == 3`
+   through `8` for backward compatibility.
 3. Read `tick_count`, `subtick_count`, `projectile_count`,
    `play_start_tick_index`, `metadata_json_len`, `map`, and `player_name`. For
    v3, treat `projectile_count` as `0`; for v3/v4, treat
@@ -349,7 +373,9 @@ Projectile metadata entries contain:
    sections using `compressed_len`.
 5. For v7+, require snapshot, tick metadata, and subtick sections; require
    projectile/high-fidelity sections when their header counts are non-zero.
-   Require snapshot/command section version 1 for v7 and version 2 for v8.
+   Require snapshot/command section version 1 for v7 and version 2 for v8+.
+   For v9, also require the input-history section and validate its per-tick
+   counts and attack indexes.
 6. For v3-v6, require legacy `codec == 1`, verify legacy body length, then
    Brotli-decompress exactly `body_compressed_len` bytes.
 7. Rebuild ticks from the snapshot chain and metadata.

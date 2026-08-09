@@ -264,6 +264,65 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Fact]
+    public void ReadsV9InputHistoryWithAttackIndexes()
+    {
+        var snapshots = BuildV2SnapshotPayload([new NativeMovementSnapshot(), new NativeMovementSnapshot()]);
+        byte[] tickMetadata;
+        using (var stream = new MemoryStream())
+        using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write(-1);
+            writer.Write(0U);
+            writer.Flush();
+            tickMetadata = stream.ToArray();
+        }
+        byte[] inputHistory;
+        using (var stream = new MemoryStream())
+        using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write(100); // source client tick
+            writer.Write(0);   // attack1 history index
+            writer.Write(-1);  // attack2 history index
+            writer.Write(1U);
+            writer.Write((1U << 1) | (1U << 2) | (1U << 16));
+            writer.Write(0.0f); writer.Write(0.0f); writer.Write(0.0f);
+            writer.Write(99); writer.Write(0.75f);
+            writer.Write(0); writer.Write(0.0f); writer.Write(0.0f);
+            for (var i = 0; i < 3; i++)
+            {
+                writer.Write(-1); writer.Write(-1); writer.Write(0.0f);
+            }
+            writer.Write(0); writer.Write(123);
+            for (var i = 0; i < 12; i++)
+                writer.Write(0.0f);
+            writer.Flush();
+            inputHistory = stream.ToArray();
+        }
+        Assert.Equal(144, inputHistory.Length);
+
+        var path = WriteFile(writer =>
+        {
+            WriteCompleteHeader(writer, version: 9, tickCount: 1, subtickCount: 0);
+            writer.Write(4U);
+            WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
+            WriteSection(writer, 2, CodecNone, 1, tickMetadata);
+            WriteSection(writer, 5, CodecNone, 0, []);
+            WriteSection(writer, 8, CodecNone, 1, inputHistory);
+        });
+
+        var replay = DtrReplayReader.Read(path);
+
+        var tick = Assert.Single(replay.InputHistoryTicks);
+        Assert.Equal(100, tick.SourceClientTick);
+        Assert.Equal(0, tick.Attack1StartHistoryIndex);
+        Assert.Equal(-1, tick.Attack2StartHistoryIndex);
+        var entry = Assert.Single(replay.InputHistoryEntries);
+        Assert.Equal(99, entry.RenderTickCount);
+        Assert.Equal(0.75f, entry.RenderTickFraction);
+        Assert.Equal(123, entry.TargetEntIndex);
+    }
+
+    [Fact]
     public void ClearsImpossibleSharedSpawnTransitionVelocity()
     {
         var before = new NativeMovementSnapshot

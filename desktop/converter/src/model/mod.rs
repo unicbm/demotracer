@@ -10,7 +10,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 pub const DEMOTRACER_ABI: i32 = 17;
-pub const DTR_FORMAT_VERSION: u32 = 8;
+pub const DTR_FORMAT_VERSION: u32 = 9;
 
 pub const COMMAND_FIELD_FORWARD_MOVE: u32 = 1 << 0;
 pub const COMMAND_FIELD_LEFT_MOVE: u32 = 1 << 1;
@@ -28,6 +28,30 @@ pub const COMMAND_FIELDS_ALL: u32 = COMMAND_FIELD_FORWARD_MOVE
     | COMMAND_FIELD_MOUSE
     | COMMAND_FIELD_WEAPON_SELECT
     | COMMAND_FIELD_LEFT_HAND;
+
+pub const INPUT_HISTORY_FIELD_VIEW_ANGLES: u32 = 1 << 0;
+pub const INPUT_HISTORY_FIELD_RENDER_TICK_COUNT: u32 = 1 << 1;
+pub const INPUT_HISTORY_FIELD_RENDER_TICK_FRACTION: u32 = 1 << 2;
+pub const INPUT_HISTORY_FIELD_PLAYER_TICK_COUNT: u32 = 1 << 3;
+pub const INPUT_HISTORY_FIELD_PLAYER_TICK_FRACTION: u32 = 1 << 4;
+pub const INPUT_HISTORY_FIELD_CL_INTERP_FRACTION: u32 = 1 << 5;
+pub const INPUT_HISTORY_FIELD_SV_INTERP0_SRC_TICK: u32 = 1 << 6;
+pub const INPUT_HISTORY_FIELD_SV_INTERP0_DST_TICK: u32 = 1 << 7;
+pub const INPUT_HISTORY_FIELD_SV_INTERP0_FRACTION: u32 = 1 << 8;
+pub const INPUT_HISTORY_FIELD_SV_INTERP1_SRC_TICK: u32 = 1 << 9;
+pub const INPUT_HISTORY_FIELD_SV_INTERP1_DST_TICK: u32 = 1 << 10;
+pub const INPUT_HISTORY_FIELD_SV_INTERP1_FRACTION: u32 = 1 << 11;
+pub const INPUT_HISTORY_FIELD_PLAYER_INTERP_SRC_TICK: u32 = 1 << 12;
+pub const INPUT_HISTORY_FIELD_PLAYER_INTERP_DST_TICK: u32 = 1 << 13;
+pub const INPUT_HISTORY_FIELD_PLAYER_INTERP_FRACTION: u32 = 1 << 14;
+pub const INPUT_HISTORY_FIELD_FRAME_NUMBER: u32 = 1 << 15;
+pub const INPUT_HISTORY_FIELD_TARGET_ENT_INDEX: u32 = 1 << 16;
+pub const INPUT_HISTORY_FIELD_SHOOT_POSITION: u32 = 1 << 17;
+pub const INPUT_HISTORY_FIELD_TARGET_HEAD_POS_CHECK: u32 = 1 << 18;
+pub const INPUT_HISTORY_FIELD_TARGET_ABS_POS_CHECK: u32 = 1 << 19;
+pub const INPUT_HISTORY_FIELD_TARGET_ABS_ANG_CHECK: u32 = 1 << 20;
+pub const INPUT_HISTORY_FIELDS_ALL: u32 = (1 << 21) - 1;
+pub const INPUT_HISTORY_CLIENT_TICK_UNKNOWN: i32 = i32::MIN;
 
 pub fn public_demo_path(path: &str) -> String {
     let normalized = path.replace('\\', "/");
@@ -179,6 +203,80 @@ pub struct ReplayMovementExtra {
     pub last_landed_tick: i32,
     pub last_landed_frac: f32,
     pub last_landed_velocity: [f32; 3],
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ReplayInputHistoryTick {
+    pub source_client_tick: i32,
+    pub attack1_start_history_index: i32,
+    pub attack2_start_history_index: i32,
+    pub num_entries: u32,
+}
+
+impl Default for ReplayInputHistoryTick {
+    fn default() -> Self {
+        Self {
+            source_client_tick: INPUT_HISTORY_CLIENT_TICK_UNKNOWN,
+            attack1_start_history_index: -1,
+            attack2_start_history_index: -1,
+            num_entries: 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ReplayInputHistoryEntry {
+    pub fields: u32,
+    pub view_angles: [f32; 3],
+    pub render_tick_count: i32,
+    pub render_tick_fraction: f32,
+    pub player_tick_count: i32,
+    pub player_tick_fraction: f32,
+    pub cl_interp_fraction: f32,
+    pub sv_interp0_src_tick: i32,
+    pub sv_interp0_dst_tick: i32,
+    pub sv_interp0_fraction: f32,
+    pub sv_interp1_src_tick: i32,
+    pub sv_interp1_dst_tick: i32,
+    pub sv_interp1_fraction: f32,
+    pub player_interp_src_tick: i32,
+    pub player_interp_dst_tick: i32,
+    pub player_interp_fraction: f32,
+    pub frame_number: i32,
+    pub target_ent_index: i32,
+    pub shoot_position: [f32; 3],
+    pub target_head_pos_check: [f32; 3],
+    pub target_abs_pos_check: [f32; 3],
+    pub target_abs_ang_check: [f32; 3],
+}
+
+impl Default for ReplayInputHistoryEntry {
+    fn default() -> Self {
+        Self {
+            fields: 0,
+            view_angles: [0.0; 3],
+            render_tick_count: 0,
+            render_tick_fraction: 0.0,
+            player_tick_count: 0,
+            player_tick_fraction: 0.0,
+            cl_interp_fraction: 0.0,
+            sv_interp0_src_tick: -1,
+            sv_interp0_dst_tick: -1,
+            sv_interp0_fraction: 0.0,
+            sv_interp1_src_tick: -1,
+            sv_interp1_dst_tick: -1,
+            sv_interp1_fraction: 0.0,
+            player_interp_src_tick: -1,
+            player_interp_dst_tick: -1,
+            player_interp_fraction: 0.0,
+            frame_number: 0,
+            target_ent_index: -1,
+            shoot_position: [0.0; 3],
+            target_head_pos_check: [0.0; 3],
+            target_abs_pos_check: [0.0; 3],
+            target_abs_ang_check: [0.0; 3],
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -475,6 +573,8 @@ pub struct Cs2Rec {
     pub subticks: Vec<SubtickMove>,
     pub command_frames: Vec<ReplayCommandFrame>,
     pub movement_extras: Vec<ReplayMovementExtra>,
+    pub input_history_ticks: Vec<ReplayInputHistoryTick>,
+    pub input_history_entries: Vec<ReplayInputHistoryEntry>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -670,6 +770,10 @@ pub struct ParsedPlayerTick {
     pub usercmd_mouse_dy: Option<i32>,
     pub usercmd_weapon_select: Option<i32>,
     pub usercmd_left_hand_desired: Option<bool>,
+    pub usercmd_client_tick: Option<i32>,
+    pub usercmd_attack1_start_history_index: i32,
+    pub usercmd_attack2_start_history_index: i32,
+    pub input_history: Vec<ReplayInputHistoryEntry>,
     pub item_def_idx: i32,
     pub inventory_as_ids: Vec<i32>,
     pub inventory_weapon_cosmetics: Arc<[ParsedInventoryWeaponCosmetic]>,

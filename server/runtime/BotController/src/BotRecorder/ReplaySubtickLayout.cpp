@@ -37,7 +37,9 @@ namespace
         const ReplayCommandFrameData *commands,
         int commandCount,
         const ReplayMovementExtra *movementExtras,
-        int movementExtraCount) noexcept
+        int movementExtraCount,
+        const ReplayInputHistoryEntry *inputHistoryEntries,
+        int inputHistoryEntryCount) noexcept
     {
         constexpr std::uint32_t commandFieldsAll =
             MotionRecorder::kCommandFieldForwardMove |
@@ -102,6 +104,26 @@ namespace
                 return false;
             }
         }
+        for (int i = 0; i < inputHistoryEntryCount; ++i)
+        {
+            const auto &entry = inputHistoryEntries[i];
+            const float values[] = {
+                entry.viewPitch, entry.viewYaw, entry.viewRoll,
+                entry.renderTickFraction, entry.playerTickFraction,
+                entry.clInterpFraction, entry.svInterp0Fraction,
+                entry.svInterp1Fraction, entry.playerInterpFraction,
+                entry.shootPositionX, entry.shootPositionY, entry.shootPositionZ,
+                entry.targetHeadPosCheckX, entry.targetHeadPosCheckY, entry.targetHeadPosCheckZ,
+                entry.targetAbsPosCheckX, entry.targetAbsPosCheckY, entry.targetAbsPosCheckZ,
+                entry.targetAbsAngCheckX, entry.targetAbsAngCheckY, entry.targetAbsAngCheckZ};
+            if ((entry.fields & ~MotionRecorder::kInputHistoryFieldsAll) != 0)
+                return false;
+            for (float value : values)
+            {
+                if (!std::isfinite(value))
+                    return false;
+            }
+        }
         return true;
     }
 }
@@ -114,7 +136,10 @@ namespace BotController::ReplaySubtickLayout
         subs.swap(other.subs);
         commands.swap(other.commands);
         movementExtras.swap(other.movementExtras);
+        inputHistoryTicks.swap(other.inputHistoryTicks);
+        inputHistoryEntries.swap(other.inputHistoryEntries);
         offsets.swap(other.offsets);
+        inputHistoryOffsets.swap(other.inputHistoryOffsets);
     }
 
     bool TryBuildReplaySubtickOffsets(
@@ -209,6 +234,27 @@ namespace BotController::ReplaySubtickLayout
         int movementExtraCount,
         ReplayLoadStaging &staged) noexcept
     {
+        return TryStageReplayLoad(
+            ticks, tickCount, subs, subCount,
+            commands, commandCount, movementExtras, movementExtraCount,
+            nullptr, 0, nullptr, 0, staged);
+    }
+
+    bool TryStageReplayLoad(
+        const ReplayTick *ticks,
+        int tickCount,
+        const SubtickMove *subs,
+        int subCount,
+        const ReplayCommandFrameData *commands,
+        int commandCount,
+        const ReplayMovementExtra *movementExtras,
+        int movementExtraCount,
+        const ReplayInputHistoryTick *inputHistoryTicks,
+        int inputHistoryTickCount,
+        const ReplayInputHistoryEntry *inputHistoryEntries,
+        int inputHistoryEntryCount,
+        ReplayLoadStaging &staged) noexcept
+    {
         try
         {
             if (!ticks || tickCount < 0 || subCount < 0 ||
@@ -216,7 +262,12 @@ namespace BotController::ReplaySubtickLayout
                 (commandCount != 0 && commandCount != tickCount) ||
                 (commandCount > 0 && !commands) ||
                 (movementExtraCount != 0 && movementExtraCount != tickCount) ||
-                (movementExtraCount > 0 && !movementExtras))
+                (movementExtraCount > 0 && !movementExtras) ||
+                (inputHistoryTickCount != 0 && inputHistoryTickCount != tickCount) ||
+                (inputHistoryTickCount > 0 && !inputHistoryTicks) ||
+                inputHistoryEntryCount < 0 ||
+                (inputHistoryEntryCount > 0 && !inputHistoryEntries) ||
+                (inputHistoryTickCount == 0 && inputHistoryEntryCount != 0))
             {
                 return false;
             }
@@ -232,7 +283,8 @@ namespace BotController::ReplaySubtickLayout
             if (!ValidReplaySemantics(
                     ticks, tickCount, subs, subCount,
                     commands, commandCount,
-                    movementExtras, movementExtraCount))
+                    movementExtras, movementExtraCount,
+                    inputHistoryEntries, inputHistoryEntryCount))
             {
                 return false;
             }
@@ -248,6 +300,38 @@ namespace BotController::ReplaySubtickLayout
             {
                 candidate.movementExtras.assign(
                     movementExtras, movementExtras + movementExtraCount);
+            }
+            if (inputHistoryTickCount > 0)
+            {
+                std::uint64_t total = 0;
+                candidate.inputHistoryOffsets.reserve(
+                    static_cast<std::size_t>(inputHistoryTickCount) + 1);
+                candidate.inputHistoryOffsets.push_back(0);
+                for (int i = 0; i < inputHistoryTickCount; ++i)
+                {
+                    const auto &tick = inputHistoryTicks[i];
+                    if (tick.numEntries > MotionRecorder::kMaxInputHistoryPerTick ||
+                        tick.attack1StartHistoryIndex < -1 ||
+                        tick.attack2StartHistoryIndex < -1 ||
+                        tick.attack1StartHistoryIndex >= static_cast<int32_t>(tick.numEntries) ||
+                        tick.attack2StartHistoryIndex >= static_cast<int32_t>(tick.numEntries))
+                    {
+                        return false;
+                    }
+                    total += tick.numEntries;
+                    if (total > static_cast<std::uint64_t>(inputHistoryEntryCount))
+                        return false;
+                    candidate.inputHistoryOffsets.push_back(static_cast<std::size_t>(total));
+                }
+                if (total != static_cast<std::uint64_t>(inputHistoryEntryCount))
+                    return false;
+                candidate.inputHistoryTicks.assign(
+                    inputHistoryTicks, inputHistoryTicks + inputHistoryTickCount);
+                if (inputHistoryEntryCount > 0)
+                {
+                    candidate.inputHistoryEntries.assign(
+                        inputHistoryEntries, inputHistoryEntries + inputHistoryEntryCount);
+                }
             }
 
             const ReplayTick *candidateTicks =

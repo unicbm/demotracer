@@ -110,7 +110,24 @@ internal static partial class DtrReplayReader
             or SectionHighFidelityJson
             or SectionSubticks
             or SectionCommandFrames
-            or SectionMovementExtras;
+            or SectionMovementExtras
+            or SectionInputHistory;
+
+    private static void RequireInputHistorySectionShape(DtrSectionHeader header, int tickCount)
+    {
+        if (header.SectionVersion != SectionVersionV1)
+            throw new InvalidDataException(
+                $"unsupported input history section version {header.SectionVersion}");
+        if (header.ElementCount != tickCount)
+            throw new InvalidDataException(
+                $"input history section count {header.ElementCount} != expected {tickCount}");
+        var minimum = checked(tickCount * BotControllerNative.ReplayInputHistoryTickByteSize);
+        var maximum = checked(minimum +
+            tickCount * MaxInputHistoryPerTick * BotControllerNative.ReplayInputHistoryEntryByteSize);
+        if (header.UncompressedLength < minimum || header.UncompressedLength > maximum)
+            throw new InvalidDataException(
+                $"input history section length {header.UncompressedLength} is outside {minimum}..={maximum}");
+    }
 
     private static void RequireSectionShape(
         DtrSectionHeader header,
