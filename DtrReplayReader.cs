@@ -61,9 +61,12 @@ internal static partial class DtrReplayReader
     private const uint SectionSubticks = 5;
     private const uint SectionCommandFrames = 6;
     private const uint SectionMovementExtras = 7;
+    private const uint SectionInputHistory = 8;
     private const uint SectionVersionV1 = 1;
     private const uint SectionVersionV2 = 2;
     private const uint CommandFieldsAll = 0xff;
+    private const uint InputHistoryFieldsAll = (1U << 21) - 1;
+    private const int MaxInputHistoryPerTick = 64;
 
     private static readonly byte[] RecMagic =
     [
@@ -253,6 +256,8 @@ internal static partial class DtrReplayReader
             subticks,
             [],
             [],
+            [],
+            [],
             tickRate,
             (uint)playStartTickIndex);
     }
@@ -277,6 +282,8 @@ internal static partial class DtrReplayReader
         NativeSubtickMove[]? subticks = null;
         NativeReplayCommandFrame[]? commandFrames = null;
         NativeReplayMovementExtra[]? movementExtras = null;
+        NativeReplayInputHistoryTick[]? inputHistoryTicks = null;
+        NativeReplayInputHistoryEntry[]? inputHistoryEntries = null;
         var seenHighFidelity = false;
         var seenKnownSections = new HashSet<uint>();
         long totalCompressedBytes = 0;
@@ -331,17 +338,24 @@ internal static partial class DtrReplayReader
                     "movement extras",
                     tickCount,
                     ExpectedSectionLength(tickCount, BotControllerNative.ReplayMovementExtraByteSize, "movement extras")),
+                SectionInputHistory => (
+                    "input history",
+                    tickCount,
+                    0),
                 _ => throw new InvalidDataException($"unsupported known section {header.SectionId}")
             };
             RejectDuplicate(!seenKnownSections.Add(header.SectionId), name);
             var usesV2ColumnLayout = version >= 8 &&
                 header.SectionId is SectionSnapshots or SectionCommandFrames;
-            RequireSectionShape(
-                header,
-                name,
-                expectedElementCount,
-                usesV2ColumnLayout ? null : expectedUncompressedLength,
-                usesV2ColumnLayout ? SectionVersionV2 : SectionVersionV1);
+            if (header.SectionId == SectionInputHistory)
+                RequireInputHistorySectionShape(header, tickCount);
+            else
+                RequireSectionShape(
+                    header,
+                    name,
+                    expectedElementCount,
+                    usesV2ColumnLayout ? null : expectedUncompressedLength,
+                    usesV2ColumnLayout ? SectionVersionV2 : SectionVersionV1);
             ValidateKnownSectionCodec(header, name);
 
             EnsureRemaining(
@@ -387,6 +401,10 @@ internal static partial class DtrReplayReader
                 case SectionMovementExtras:
                     movementExtras = ReadMovementExtrasFromSection(body, tickCount);
                     break;
+                case SectionInputHistory:
+                    (inputHistoryTicks, inputHistoryEntries) =
+                        ReadInputHistoryFromSection(body, tickCount);
+                    break;
             }
         }
 
@@ -401,6 +419,8 @@ internal static partial class DtrReplayReader
             throw new InvalidDataException("missing required section projectiles");
         if (metadataJsonLength > 0 && !seenHighFidelity)
             throw new InvalidDataException("missing required section high fidelity metadata");
+        if (version >= 9 && inputHistoryTicks is null)
+            throw new InvalidDataException("missing required section input history");
 
         var ticks = new NativeReplayTick[tickCount];
         long expectedSubticks = 0;
@@ -427,6 +447,8 @@ internal static partial class DtrReplayReader
             subticks,
             commandFrames ?? [],
             movementExtras ?? [],
+            inputHistoryTicks ?? [],
+            inputHistoryEntries ?? [],
             tickRate,
             (uint)playStartTickIndex);
     }
@@ -451,5 +473,7 @@ internal readonly record struct DtrReplayFile(
     NativeSubtickMove[] Subticks,
     NativeReplayCommandFrame[] CommandFrames,
     NativeReplayMovementExtra[] MovementExtras,
+    NativeReplayInputHistoryTick[] InputHistoryTicks,
+    NativeReplayInputHistoryEntry[] InputHistoryEntries,
     float TickRate,
     uint PlayStartTickIndex);

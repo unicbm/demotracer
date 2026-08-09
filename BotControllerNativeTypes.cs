@@ -12,13 +12,15 @@ namespace DemoTracer;
 internal static partial class BotControllerNative
 {
     public const int ExpectedAbiVersion = 18;
-    public const uint RecFormatVersion = 8;
+    public const uint RecFormatVersion = 9;
     public const uint MinRecFormatVersion = 3;
     public const int MovementSnapshotByteSize = 92;
     public const int ReplayTickByteSize = 192;
     public const int SubtickMoveByteSize = 28;
     public const int ReplayCommandFrameByteSize = 68;
     public const int ReplayMovementExtraByteSize = 48;
+    public const int ReplayInputHistoryTickByteSize = 16;
+    public const int ReplayInputHistoryEntryByteSize = 128;
     public const int ProjectileBirthAlignStatusByteSize = 36;
     internal const uint CommandFieldLeftHand = 1U << 7;
     public const int ReplaySlotStateByteSize = 24;
@@ -44,6 +46,7 @@ internal static partial class BotControllerNative
     internal const ulong CapabilityReleaseReplayBuffer = 1UL << 12;
     internal const ulong CapabilityButtonOnlyMovementIntent = 1UL << 13;
     internal const ulong CapabilityHandoffBestWeapon = 1UL << 14;
+    internal const ulong CapabilityReplayInputHistory = 1UL << 15;
     internal const int MovementIntentPreserveMoveAxes = 1 << 0;
 
     public const ulong RequiredCapabilityMask =
@@ -56,7 +59,8 @@ internal static partial class BotControllerNative
         CapabilityBuyPlan |
         CapabilityControllerBotOffset |
         CapabilityExtendedReplay |
-        CapabilityHandoffBestWeapon;
+        CapabilityHandoffBestWeapon |
+        CapabilityReplayInputHistory;
 
     public static string RuntimePlatformName
         => RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
@@ -90,6 +94,14 @@ internal static partial class BotControllerNative
         var movementExtraSize = Marshal.SizeOf<NativeReplayMovementExtra>();
         if (movementExtraSize != ReplayMovementExtraByteSize)
             throw new InvalidOperationException($"ReplayMovementExtra layout is {movementExtraSize}, expected {ReplayMovementExtraByteSize}");
+
+        var inputHistoryTickSize = Marshal.SizeOf<NativeReplayInputHistoryTick>();
+        if (inputHistoryTickSize != ReplayInputHistoryTickByteSize)
+            throw new InvalidOperationException($"ReplayInputHistoryTick layout is {inputHistoryTickSize}, expected {ReplayInputHistoryTickByteSize}");
+
+        var inputHistoryEntrySize = Marshal.SizeOf<NativeReplayInputHistoryEntry>();
+        if (inputHistoryEntrySize != ReplayInputHistoryEntryByteSize)
+            throw new InvalidOperationException($"ReplayInputHistoryEntry layout is {inputHistoryEntrySize}, expected {ReplayInputHistoryEntryByteSize}");
 
         var projectileBirthAlignStatusSize = Marshal.SizeOf<NativeProjectileBirthAlignStatus>();
         if (projectileBirthAlignStatusSize != ProjectileBirthAlignStatusByteSize)
@@ -429,4 +441,37 @@ internal struct NativeReplayMovementExtra
     public float LastLandedVelocityX;
     public float LastLandedVelocityY;
     public float LastLandedVelocityZ;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+internal struct NativeReplayInputHistoryTick
+{
+    public int SourceClientTick;
+    public int Attack1StartHistoryIndex;
+    public int Attack2StartHistoryIndex;
+    public uint NumEntries;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+internal struct NativeReplayInputHistoryEntry
+{
+    public uint Fields;
+    public float ViewPitch, ViewYaw, ViewRoll;
+    public int RenderTickCount;
+    public float RenderTickFraction;
+    public int PlayerTickCount;
+    public float PlayerTickFraction;
+    public float ClInterpFraction;
+    public int SvInterp0SrcTick, SvInterp0DstTick;
+    public float SvInterp0Fraction;
+    public int SvInterp1SrcTick, SvInterp1DstTick;
+    public float SvInterp1Fraction;
+    public int PlayerInterpSrcTick, PlayerInterpDstTick;
+    public float PlayerInterpFraction;
+    public int FrameNumber;
+    public int TargetEntIndex;
+    public float ShootPositionX, ShootPositionY, ShootPositionZ;
+    public float TargetHeadPosCheckX, TargetHeadPosCheckY, TargetHeadPosCheckZ;
+    public float TargetAbsPosCheckX, TargetAbsPosCheckY, TargetAbsPosCheckZ;
+    public float TargetAbsAngCheckX, TargetAbsAngCheckY, TargetAbsAngCheckZ;
 }
