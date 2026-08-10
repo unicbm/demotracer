@@ -309,7 +309,7 @@ public sealed partial class DemoTracerPlugin
         }
 
         _session.RebuiltInventorySlots.Remove(pending.PlayerSlot);
-        _session.LoadoutSyncedSlots.Remove(pending.PlayerSlot);
+        _session.WeaponLoadoutSyncedSlots.Remove(pending.PlayerSlot);
         Server.PrintToConsole(
             $"[DTR WARN] weapon slot replacement incomplete slot={pending.PlayerSlot} " +
             $"target={pending.TargetItem} fallback={pending.FallbackItem} reason={reason}");
@@ -330,7 +330,7 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        _session.LoadoutSyncedSlots.Remove(pending.PlayerSlot);
+        _session.WeaponLoadoutSyncedSlots.Remove(pending.PlayerSlot);
         ApplyReplayLoadoutForSlot(pending.PlayerSlot, replay);
     }
 

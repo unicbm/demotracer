@@ -80,6 +80,11 @@ public sealed partial class DemoTracerPlugin
                     continue;
                 }
 
+                // Revalidate pawn and controller equipment at the final start
+                // boundary. Preload can run before CS2 finishes its spawn-side
+                // controller mirrors, so an earlier successful write is not
+                // sufficient evidence that armor is visible at playback start.
+                ApplyReplayLoadoutForSlot(slot, replay);
                 ApplyReplayRoundStartBalanceForSlot(slot, replay);
             }
 
@@ -809,7 +814,8 @@ public sealed partial class DemoTracerPlugin
             {
                 InvalidateLoadedReplayCosmeticAlignmentForSlot(slot);
                 player.Respawn();
-                _session.LoadoutSyncedSlots.Remove(slot);
+                _session.WeaponLoadoutSyncedSlots.Remove(slot);
+                _session.PawnEquipmentSync.Invalidate(slot);
                 _session.RebuiltInventorySlots.Remove(slot);
                 _session.LastEnsuredWeaponDef.Remove(slot);
                 _session.LastReplayWeaponDef.Remove(slot);

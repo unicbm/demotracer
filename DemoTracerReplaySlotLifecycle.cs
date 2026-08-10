@@ -95,9 +95,11 @@ public sealed partial class DemoTracerPlugin
         if (releaseKind == ReplayReleaseKind.Immediate)
         {
             _session.RebuiltInventorySlots.Remove(slot);
-            _session.LoadoutSyncedSlots.Remove(slot);
+            _session.WeaponLoadoutSyncedSlots.Remove(slot);
+            _session.PawnEquipmentSync.Invalidate(slot);
             _session.BalanceSyncedSlots.Remove(slot);
         }
+        BotControllerNative.ClearReplayPawnEquipment(slot);
         _session.PendingBulletHits.Remove(slot);
         _session.PendingBulletDamages.Remove(slot);
         _session.PendingThreat360.Remove(slot);

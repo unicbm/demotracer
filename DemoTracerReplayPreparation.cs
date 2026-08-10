@@ -327,20 +327,40 @@ public sealed partial class DemoTracerPlugin
 
     private static (bool Allowed, string Patch) DetectManagedSchemaRuntime()
     {
+        string? gameDirectory = null;
         try
         {
-            var steamInfPath = Path.Combine(Server.GameDirectory, "steam.inf");
-            var patchLine = File.ReadLines(steamInfPath)
-                .FirstOrDefault(line => line.StartsWith("PatchVersion=", StringComparison.OrdinalIgnoreCase));
-            var patch = patchLine?["PatchVersion=".Length..].Trim() ?? "unknown";
-            return ReplayRuntimePolicy.IsManagedSchemaPatchSupported(patch)
-                ? (true, patch)
-                : (false, patch);
+            gameDirectory = Server.GameDirectory;
         }
         catch
         {
-            return (false, "unknown");
         }
+        var candidates = ReplayRuntimePolicy.ManagedSchemaSteamInfCandidates(
+            gameDirectory,
+            typeof(DemoTracerPlugin).Assembly.Location);
+        foreach (var steamInfPath in candidates)
+        {
+            try
+            {
+                if (!File.Exists(steamInfPath))
+                    continue;
+                var patchLine = File.ReadLines(steamInfPath)
+                    .FirstOrDefault(line => line.StartsWith("PatchVersion=", StringComparison.OrdinalIgnoreCase));
+                var patch = patchLine?["PatchVersion=".Length..].Trim();
+                if (string.IsNullOrWhiteSpace(patch))
+                    continue;
+                return ReplayRuntimePolicy.IsManagedSchemaPatchSupported(patch)
+                    ? (true, patch)
+                    : (false, patch);
+            }
+            catch
+            {
+                // Keep probing deterministic assembly ancestors. CSS may
+                // report a relative game directory depending on host launch.
+            }
+        }
+
+        return (false, "unknown");
     }
 
     private static void TrySetReplayMusicKitStateChanged(

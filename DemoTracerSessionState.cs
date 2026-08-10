@@ -32,7 +32,8 @@ public sealed partial class DemoTracerPlugin
         public List<KeyValuePair<uint, PendingProjectileAlign>> PendingProjectileAlignTickScratch { get; } = [];
         public Queue<string> ProjectileAlignLog { get; } = [];
         public HashSet<int> RebuiltInventorySlots { get; } = [];
-        public HashSet<int> LoadoutSyncedSlots { get; } = [];
+        public HashSet<int> WeaponLoadoutSyncedSlots { get; } = [];
+        public ReplayPawnEquipmentSyncTracker PawnEquipmentSync { get; } = new();
         public HashSet<int> BalanceSyncedSlots { get; } = [];
         public Dictionary<int, float> ReplayStartedAt { get; } = [];
         public Dictionary<int, uint> ReplayPerceptionBaselineSerial { get; } = [];
