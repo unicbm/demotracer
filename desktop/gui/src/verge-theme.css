@@ -2272,6 +2272,107 @@ textarea {
   flex: 1;
 }
 
+.settings-theme-modal {
+  width: min(620px, calc(100vw - 52px));
+  height: min(720px, calc(100vh - 52px));
+}
+
+.settings-theme-form {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  padding: 0 22px 8px;
+  flex-direction: column;
+  overflow: auto;
+  background: var(--surface-raised);
+  scrollbar-width: none;
+}
+
+.settings-theme-form::-webkit-scrollbar {
+  display: none;
+}
+
+.settings-theme-color-row,
+.settings-theme-font-row,
+.settings-theme-css-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(240px, 0.85fr);
+  align-items: center;
+  min-height: 50px;
+  gap: 22px;
+}
+
+.settings-theme-color-row strong,
+.settings-theme-font-row strong,
+.settings-theme-css-row strong {
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.settings-theme-color-control {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-theme-color-swatch {
+  position: relative;
+  display: block;
+  width: 28px;
+  height: 28px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--divider-strong) 72%, transparent);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--surface-raised) 20%, transparent);
+}
+
+.settings-theme-color-swatch input[type="color"] {
+  position: absolute;
+  inset: -8px;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.settings-theme-color-value,
+.settings-theme-font-row input {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  color: var(--text-primary);
+  background: var(--surface-subtle);
+  border: 1px solid var(--divider-strong);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.settings-theme-color-value {
+  font-family: var(--mono);
+  text-transform: uppercase;
+}
+
+.settings-theme-color-row.is-invalid .settings-theme-color-value,
+.settings-theme-font-row.is-invalid input {
+  border-color: var(--danger);
+}
+
+.settings-theme-font-row input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.settings-theme-css-row {
+  margin-top: 2px;
+}
+
+.settings-theme-css-row .secondary-button {
+  justify-self: end;
+  min-width: 112px;
+  color: var(--accent);
+}
+
 .settings-css-modal {
   width: min(860px, calc(100vw - 52px));
   height: min(700px, calc(100vh - 52px));
@@ -2328,9 +2429,17 @@ textarea {
   }
 
   .settings-modal,
+  .settings-theme-modal,
   .settings-css-modal {
     width: calc(100vw - 20px);
     height: calc(100vh - 20px);
     max-height: calc(100vh - 20px);
+  }
+
+  .settings-theme-color-row,
+  .settings-theme-font-row,
+  .settings-theme-css-row {
+    grid-template-columns: minmax(130px, 1fr) minmax(190px, 1fr);
+    gap: 12px;
   }
 }

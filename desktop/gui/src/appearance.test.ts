@@ -9,16 +9,22 @@ import { describe, it } from "node:test";
 import {
   cycleUiScale,
   CUSTOM_CSS_STORAGE_KEY,
+  isThemeColor,
   LEGACY_APPEARANCE_STORAGE_KEYS,
   normalizeSidebarCollapsed,
   normalizeCustomCss,
+  normalizeThemeCustomization,
   normalizeUiScale,
   normalizeTheme,
   recommendedUiScale,
   resolveTheme,
   stepUiScale,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
+  THEME_CUSTOMIZATION_STORAGE_KEY,
+  THEME_PALETTE_DEFAULTS,
   themeBackground,
+  themeCustomizationCss,
+  themePalette,
   toggleResolvedTheme,
 } from "./appearance.ts";
 
@@ -87,5 +93,31 @@ describe("appearance preferences", () => {
     assert.equal(normalizeCustomCss(".card { border-radius: 18px; }"), ".card { border-radius: 18px; }");
     assert.equal(normalizeCustomCss(null), "");
     assert.equal(normalizeCustomCss("x".repeat(70_000)).length, 65_536);
+  });
+
+  it("normalizes visual theme settings without accepting CSS fragments", () => {
+    const customization = normalizeThemeCustomization(JSON.stringify({
+      dark: { ...THEME_PALETTE_DEFAULTS.dark, primary: "#0a84ff" },
+      fontFamily: '"Segoe UI Variable", sans-serif',
+    }));
+    assert.equal(THEME_CUSTOMIZATION_STORAGE_KEY, "demotracer.theme-customization.v1");
+    assert.equal(customization.dark?.primary, "#0A84FF");
+    assert.equal(customization.fontFamily, '"Segoe UI Variable", sans-serif');
+    assert.equal(isThemeColor("#EBEBE599"), true);
+    assert.equal(isThemeColor("red; color: white"), false);
+    assert.equal(normalizeThemeCustomization({
+      dark: THEME_PALETTE_DEFAULTS.dark,
+      fontFamily: "sans-serif; color: red",
+    }).fontFamily, undefined);
+  });
+
+  it("keeps light and dark palette overrides independent", () => {
+    const customization = normalizeThemeCustomization({ dark: THEME_PALETTE_DEFAULTS.dark });
+    assert.deepEqual(themePalette(customization, "dark"), THEME_PALETTE_DEFAULTS.dark);
+    assert.deepEqual(themePalette(customization, "light"), THEME_PALETTE_DEFAULTS.light);
+    const css = themeCustomizationCss(customization);
+    assert.match(css, /data-color-mode="dark"/);
+    assert.doesNotMatch(css, /data-color-mode="light"/);
+    assert.match(css, /--trace: #2495FF/);
   });
 });

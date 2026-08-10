@@ -20,7 +20,15 @@ import {
   SlidersIcon,
   TraceMark,
 } from "../icons";
-import type { ResolvedTheme, UiScale } from "../appearance";
+import {
+  isThemeColor,
+  isThemeFontFamily,
+  themePalette,
+  type ResolvedTheme,
+  type ThemeCustomization,
+  type ThemePalette,
+  type UiScale,
+} from "../appearance";
 import { DEMOTRACER_CREDITS } from "../credits";
 import { LANGUAGE_OPTIONS, type TextDictionary } from "../i18n";
 import type {
@@ -44,13 +52,38 @@ import type { PlaybackHandoffMode, PlaybackPresetOptions } from "./PlaybackComma
 import { DialogPrimitive } from "./Dialog";
 import "./settings-workspace.css";
 
-type SettingsModal = "desktopUpdate" | "playbackInstall" | "advanced" | "about" | "customCss" | null;
+type SettingsModal = "desktopUpdate" | "playbackInstall" | "advanced" | "about" | "theme" | "customCss" | null;
+
+type ThemeColorKey = keyof ThemePalette;
+
+interface ThemeEditorDraft extends ThemePalette {
+  fontFamily: string;
+}
+
+const THEME_COLOR_KEYS: readonly ThemeColorKey[] = [
+  "primary",
+  "secondary",
+  "textPrimary",
+  "textSecondary",
+  "info",
+  "warning",
+  "danger",
+  "success",
+];
+
+function themeEditorDraft(customization: ThemeCustomization, theme: ResolvedTheme): ThemeEditorDraft {
+  return {
+    ...themePalette(customization, theme),
+    fontFamily: customization.fontFamily ?? "",
+  };
+}
 
 interface SettingsWorkspaceProps {
   words: TextDictionary;
   language: Language;
   resolvedTheme: ResolvedTheme;
   uiScale: UiScale;
+  themeCustomization: ThemeCustomization;
   customCss: string;
   environment: LocalEnvironmentSettings;
   exportRoot: string;
@@ -76,6 +109,7 @@ interface SettingsWorkspaceProps {
   releaseAction: "installingOnline" | "installingFile" | "rollingBack" | null;
   releaseNotice: string;
   onUiScaleChange: (scale: UiScale) => void;
+  onThemeCustomizationChange: (customization: ThemeCustomization) => void;
   onCustomCssChange: (css: string) => void;
   onLanguageChange: (language: Language) => void;
   onToggleTheme: () => void;
@@ -285,6 +319,7 @@ export function SettingsWorkspace({
   language,
   resolvedTheme,
   uiScale,
+  themeCustomization,
   customCss,
   environment,
   exportRoot,
@@ -310,6 +345,7 @@ export function SettingsWorkspace({
   releaseAction,
   releaseNotice,
   onUiScaleChange,
+  onThemeCustomizationChange,
   onCustomCssChange,
   onLanguageChange,
   onToggleTheme,
@@ -341,6 +377,7 @@ export function SettingsWorkspace({
   onPlaybackChange,
 }: SettingsWorkspaceProps) {
   const [settingsModal, setSettingsModal] = useState<SettingsModal>(null);
+  const [themeDraft, setThemeDraft] = useState<ThemeEditorDraft>(() => themeEditorDraft(themeCustomization, resolvedTheme));
   const [customCssDraft, setCustomCssDraft] = useState(customCss);
   const [serverGuideQuery, setServerGuideQuery] = useState("");
   const [validatingServerConfig, setValidatingServerConfig] = useState(false);
@@ -406,6 +443,46 @@ export function SettingsWorkspace({
     return words.serverConfigGroupCosmetics;
   };
 
+  const themeColorFields: ReadonlyArray<{ key: ThemeColorKey; label: string }> = [
+    { key: "primary", label: words.themePrimaryColor },
+    { key: "secondary", label: words.themeSecondaryColor },
+    { key: "textPrimary", label: words.themeTextPrimaryColor },
+    { key: "textSecondary", label: words.themeTextSecondaryColor },
+    { key: "info", label: words.themeInfoColor },
+    { key: "warning", label: words.themeWarningColor },
+    { key: "danger", label: words.themeErrorColor },
+    { key: "success", label: words.themeSuccessColor },
+  ];
+  const themeDraftValid = THEME_COLOR_KEYS.every((key) => isThemeColor(themeDraft[key]))
+    && isThemeFontFamily(themeDraft.fontFamily);
+  const themeCustomized = Object.keys(themeCustomization).length > 0 || Boolean(customCss.trim());
+
+  const openThemeEditor = () => {
+    setThemeDraft(themeEditorDraft(themeCustomization, resolvedTheme));
+    setCustomCssDraft(customCss);
+    setSettingsModal("theme");
+  };
+
+  const saveTheme = () => {
+    if (!themeDraftValid) return;
+    const palette: ThemePalette = {
+      primary: themeDraft.primary.trim().toUpperCase(),
+      secondary: themeDraft.secondary.trim().toUpperCase(),
+      textPrimary: themeDraft.textPrimary.trim().toUpperCase(),
+      textSecondary: themeDraft.textSecondary.trim().toUpperCase(),
+      info: themeDraft.info.trim().toUpperCase(),
+      warning: themeDraft.warning.trim().toUpperCase(),
+      danger: themeDraft.danger.trim().toUpperCase(),
+      success: themeDraft.success.trim().toUpperCase(),
+    };
+    const next: ThemeCustomization = { ...themeCustomization, [resolvedTheme]: palette };
+    const fontFamily = themeDraft.fontFamily.trim();
+    if (fontFamily) next.fontFamily = fontFamily;
+    else delete next.fontFamily;
+    onThemeCustomizationChange(next);
+    setSettingsModal(null);
+  };
+
   const appearanceView = (
     <div className="settings-pane settings-appearance-pane">
       <section className="settings-card settings-form-card" aria-label={words.settingsNavAppearance}>
@@ -450,13 +527,10 @@ export function SettingsWorkspace({
         <button
           className="settings-subpage-row"
           type="button"
-          onClick={() => {
-            setCustomCssDraft(customCss);
-            setSettingsModal("customCss");
-          }}
+          onClick={openThemeEditor}
         >
-          <span><strong>{words.customCssTitle}</strong></span>
-          <em>{customCss.trim() ? words.customCssConfigured : words.customCssNotConfigured}</em>
+          <span><strong>{words.themeSettingsTitle}</strong></span>
+          <em>{themeCustomized ? words.themeCustomized : words.themeDefault}</em>
           <ChevronIcon size={15} />
         </button>
       </section>
@@ -1278,6 +1352,66 @@ export function SettingsWorkspace({
     </div>
   );
 
+  const themeView = (
+    <div className="settings-theme-form">
+      {themeColorFields.map(({ key, label }) => {
+        const color = themeDraft[key];
+        const valid = isThemeColor(color);
+        return (
+          <label className={`settings-theme-color-row${valid ? "" : " is-invalid"}`} key={key}>
+            <strong>{label}</strong>
+            <span className="settings-theme-color-control">
+              <span className="settings-theme-color-swatch" style={{ backgroundColor: valid ? color : "transparent" }}>
+                <input
+                  type="color"
+                  value={valid ? color.slice(0, 7) : "#000000"}
+                  aria-label={`${label} · ${words.themeChooseColor}`}
+                  onChange={(event) => setThemeDraft((current) => ({ ...current, [key]: event.target.value.toUpperCase() }))}
+                />
+              </span>
+              <input
+                className="settings-theme-color-value"
+                value={color}
+                maxLength={9}
+                spellCheck={false}
+                aria-label={label}
+                aria-invalid={!valid}
+                onBlur={() => {
+                  if (valid) setThemeDraft((current) => ({ ...current, [key]: current[key].toUpperCase() }));
+                }}
+                onChange={(event) => setThemeDraft((current) => ({ ...current, [key]: event.target.value }))}
+              />
+            </span>
+          </label>
+        );
+      })}
+      <label className={`settings-theme-font-row${isThemeFontFamily(themeDraft.fontFamily) ? "" : " is-invalid"}`}>
+        <strong>{words.themeFontFamily}</strong>
+        <input
+          value={themeDraft.fontFamily}
+          maxLength={200}
+          spellCheck={false}
+          placeholder={words.themeFontPlaceholder}
+          aria-invalid={!isThemeFontFamily(themeDraft.fontFamily)}
+          onChange={(event) => setThemeDraft((current) => ({ ...current, fontFamily: event.target.value }))}
+        />
+      </label>
+      <div className="settings-theme-css-row">
+        <strong>{words.themeCssInjection}</strong>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => {
+            setCustomCssDraft(customCss);
+            setSettingsModal("customCss");
+          }}
+        >
+          {words.themeEditCss}
+        </button>
+      </div>
+    </div>
+  );
+
   const playbackReleaseStatus = !environment.cs2Path.trim()
     ? words.releaseUnverified
     : playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy;
@@ -1285,7 +1419,8 @@ export function SettingsWorkspace({
     : settingsModal === "playbackInstall" ? words.releasePlayback
     : settingsModal === "advanced" ? words.serverConfigTitle
       : settingsModal === "about" ? words.settingsNavAbout
-        : words.customCssTitle;
+        : settingsModal === "theme" ? words.themeSettingsTitle
+          : words.customCssEditorTitle;
   const modalContent = settingsModal === "desktopUpdate" ? desktopUpdateView
     : settingsModal === "playbackInstall" ? playbackInstallView
     : settingsModal === "advanced" ? serverConfigView
@@ -1325,7 +1460,7 @@ export function SettingsWorkspace({
         </div>
       </div>
 
-      {settingsModal && settingsModal !== "customCss" ? (
+      {settingsModal && settingsModal !== "theme" && settingsModal !== "customCss" ? (
         <DialogPrimitive labelledBy="settings-modal-title" onDismiss={() => setSettingsModal(null)} className={`dialog-surface settings-modal is-${settingsModal}`}>
           <header className="settings-modal-header">
             <h2 id="settings-modal-title">{modalTitle}</h2>
@@ -1338,11 +1473,25 @@ export function SettingsWorkspace({
         </DialogPrimitive>
       ) : null}
 
-      {settingsModal === "customCss" ? (
-        <DialogPrimitive labelledBy="custom-css-modal-title" onDismiss={() => setSettingsModal(null)} className="dialog-surface settings-modal settings-css-modal">
+      {settingsModal === "theme" ? (
+        <DialogPrimitive labelledBy="theme-settings-modal-title" onDismiss={() => setSettingsModal(null)} className="dialog-surface settings-modal settings-theme-modal">
           <header className="settings-modal-header">
-            <h2 id="custom-css-modal-title">{words.customCssTitle}</h2>
+            <h2 id="theme-settings-modal-title">{words.themeSettingsTitle}</h2>
             <button className="icon-button" type="button" onClick={() => setSettingsModal(null)} aria-label={words.close} title={words.close}><CloseIcon size={16} /></button>
+          </header>
+          {themeView}
+          <footer className="settings-modal-footer">
+            <button className="secondary-button" type="button" onClick={() => setSettingsModal(null)}>{words.cancel}</button>
+            <button className="primary-button" type="button" disabled={!themeDraftValid} onClick={saveTheme}>{words.save}</button>
+          </footer>
+        </DialogPrimitive>
+      ) : null}
+
+      {settingsModal === "customCss" ? (
+        <DialogPrimitive labelledBy="custom-css-modal-title" onDismiss={() => setSettingsModal("theme")} className="dialog-surface settings-modal settings-css-modal">
+          <header className="settings-modal-header">
+            <h2 id="custom-css-modal-title">{words.customCssEditorTitle}</h2>
+            <button className="icon-button" type="button" onClick={() => setSettingsModal("theme")} aria-label={words.close} title={words.close}><CloseIcon size={16} /></button>
           </header>
           <div className="settings-css-editor">
             <p>{words.customCssHelp}</p>
@@ -1351,8 +1500,8 @@ export function SettingsWorkspace({
           <footer className="settings-modal-footer">
             <button className="text-button" type="button" onClick={() => setCustomCssDraft("")}>{words.customCssReset}</button>
             <span />
-            <button className="secondary-button" type="button" onClick={() => setSettingsModal(null)}>{words.cancel}</button>
-            <button className="primary-button" type="button" onClick={() => { onCustomCssChange(customCssDraft); setSettingsModal(null); }}>{words.customCssSave}</button>
+            <button className="secondary-button" type="button" onClick={() => { setCustomCssDraft(customCss); setSettingsModal("theme"); }}>{words.cancel}</button>
+            <button className="primary-button" type="button" onClick={() => { onCustomCssChange(customCssDraft); setSettingsModal("theme"); }}>{words.customCssSave}</button>
           </footer>
         </DialogPrimitive>
       ) : null}

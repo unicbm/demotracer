@@ -47,19 +47,23 @@ import { AlertIcon, ArrowIcon, CheckIcon, CloseIcon, CopyIcon, FolderIcon, Refre
 import { COSMETIC_PHRASE, TEXT } from "./i18n";
 import {
   applyCustomCss,
+  applyThemeCustomization,
   CUSTOM_CSS_STORAGE_KEY,
   LEGACY_APPEARANCE_STORAGE_KEYS,
   normalizeCustomCss,
   normalizeSidebarCollapsed,
   normalizeTheme,
+  normalizeThemeCustomization,
   normalizeUiScale,
   recommendedUiScale,
   resolveTheme,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
   stepUiScale,
   themeBackground,
+  THEME_CUSTOMIZATION_STORAGE_KEY,
   THEME_STORAGE_KEY,
   toggleResolvedTheme,
+  type ThemeCustomization,
   type UiScale,
 } from "./appearance";
 import {
@@ -696,6 +700,9 @@ function App() {
     normalizeSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY))
   ));
   const [uiScale, setUiScale] = useState<UiScale>(storedUiScale);
+  const [themeCustomization, setThemeCustomization] = useState<ThemeCustomization>(() => (
+    normalizeThemeCustomization(localStorage.getItem(THEME_CUSTOMIZATION_STORAGE_KEY))
+  ));
   const [customCss, setCustomCss] = useState(() => normalizeCustomCss(localStorage.getItem(CUSTOM_CSS_STORAGE_KEY)));
   const [phase, setPhase] = useState<Phase>("idle");
   const [singleTask, setSingleTask] = useState<"analysis" | "conversion" | null>(null);
@@ -1047,6 +1054,16 @@ function App() {
       document.documentElement.style.zoom = String(uiScale);
     }
   }, [uiScale]);
+
+  useEffect(() => {
+    const normalized = normalizeThemeCustomization(themeCustomization);
+    applyThemeCustomization(normalized);
+    if (Object.keys(normalized).length > 0) {
+      localStorage.setItem(THEME_CUSTOMIZATION_STORAGE_KEY, JSON.stringify(normalized));
+    } else {
+      localStorage.removeItem(THEME_CUSTOMIZATION_STORAGE_KEY);
+    }
+  }, [themeCustomization]);
 
   useEffect(() => {
     const normalized = normalizeCustomCss(customCss);
@@ -3516,6 +3533,7 @@ function App() {
             language={language}
             resolvedTheme={resolvedTheme}
             uiScale={uiScale}
+            themeCustomization={themeCustomization}
             customCss={customCss}
             environment={localEnvironment}
             exportRoot={libraryRoot}
@@ -3541,6 +3559,7 @@ function App() {
             releaseAction={releaseAction}
             releaseNotice={releaseNotice}
             onUiScaleChange={setUiScale}
+            onThemeCustomizationChange={setThemeCustomization}
             onCustomCssChange={setCustomCss}
             onLanguageChange={setLanguage}
             onToggleTheme={() => setTheme(toggleResolvedTheme(theme, systemDark))}

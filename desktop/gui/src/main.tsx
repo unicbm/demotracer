@@ -8,10 +8,13 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import {
+  applyThemeCustomization,
   LEGACY_APPEARANCE_STORAGE_KEYS,
   normalizeTheme,
+  normalizeThemeCustomization,
   resolveTheme,
   themeBackground,
+  THEME_CUSTOMIZATION_STORAGE_KEY,
   THEME_STORAGE_KEY,
 } from "./appearance";
 import "./styles.css";
@@ -29,6 +32,7 @@ document.documentElement.dataset.colorMode = initialResolvedTheme;
 document.documentElement.style.backgroundColor = initialBackground;
 document.body.style.backgroundColor = initialBackground;
 document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", initialBackground);
+applyThemeCustomization(normalizeThemeCustomization(localStorage.getItem(THEME_CUSTOMIZATION_STORAGE_KEY)));
 for (const key of LEGACY_APPEARANCE_STORAGE_KEYS) localStorage.removeItem(key);
 
 document.addEventListener("contextmenu", (event) => {
