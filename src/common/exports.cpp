@@ -4,6 +4,7 @@
 #include "BotController.h"
 #include "MotionRecorder.h"
 #include "InputInjector.h"
+#include "ReplayPawnEquipment.h"
 #include "BuyControllerState.h"
 #include "VoiceSender.h"
 #include "projectile_birth_align.h"
@@ -20,7 +21,7 @@
 namespace
 {
     constexpr int kBotControllerAbiMajor = 18;
-    constexpr int kBotControllerAbiMinor = 34;
+    constexpr int kBotControllerAbiMinor = 35;
     constexpr uint64_t kCapabilityReplaySlotState = 1ULL << 0;
     constexpr uint64_t kCapabilityStartReplayAt = 1ULL << 1;
     constexpr uint64_t kCapabilityStartReplayUntil = 1ULL << 2;
@@ -37,6 +38,7 @@ namespace
     constexpr uint64_t kCapabilityButtonOnlyMovementIntent = 1ULL << 13;
     constexpr uint64_t kCapabilityHandoffBestWeapon = 1ULL << 14;
     constexpr uint64_t kCapabilityReplayInputHistory = 1ULL << 15;
+    constexpr uint64_t kCapabilityReplayPawnEquipment = 1ULL << 16;
     constexpr uint64_t kBotControllerCapabilities =
         kCapabilityReplaySlotState |
         kCapabilityStartReplayAt |
@@ -53,7 +55,8 @@ namespace
         kCapabilityReleaseReplayBuffer |
         kCapabilityButtonOnlyMovementIntent |
         kCapabilityHandoffBestWeapon |
-        kCapabilityReplayInputHistory;
+        kCapabilityReplayInputHistory |
+        kCapabilityReplayPawnEquipment;
 
 #pragma pack(push, 4)
     struct BotControllerAbiInfo
@@ -260,6 +263,42 @@ extern "C" __declspec(dllexport) int BotController_SetReplayPawn(int slot, uint6
                reinterpret_cast<void *>(static_cast<uintptr_t>(pawnPtr)))
                ? 0
                : -1;
+}
+
+extern "C" __declspec(dllexport) int BotController_SetReplayPawnEquipment(
+    int slot,
+    uint64_t pawnPtr,
+    uint64_t controllerPtr,
+    int armor,
+    int helmet,
+    int defuser)
+{
+    if ((helmet != 0 && helmet != 1) || (defuser != 0 && defuser != 1))
+        return -1;
+    return BotController::ReplayPawnEquipment::Set(
+               slot,
+               reinterpret_cast<void *>(static_cast<uintptr_t>(pawnPtr)),
+               reinterpret_cast<void *>(static_cast<uintptr_t>(controllerPtr)),
+               armor,
+               helmet != 0,
+               defuser != 0)
+               ? 0
+               : -1;
+}
+
+extern "C" __declspec(dllexport) int BotController_ClearReplayPawnEquipment(int slot)
+{
+    return BotController::ReplayPawnEquipment::Clear(slot) ? 0 : -1;
+}
+
+extern "C" __declspec(dllexport) int BotController_GetReplayPawnEquipmentState(
+    int slot,
+    BotController::ReplayPawnEquipment::State *out,
+    int size)
+{
+    if (!out || size != static_cast<int>(sizeof(*out)))
+        return -1;
+    return BotController::ReplayPawnEquipment::GetState(slot, *out) ? 0 : -1;
 }
 
 extern "C" __declspec(dllexport) int BotController_SetUsercmdMovementIntent(
