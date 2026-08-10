@@ -46,8 +46,8 @@ use cs2_demotracer::voice_export::export_round_voice_sidecars;
 use diagnostics::{choose_cs2_dir, detect_cs2_installations, inspect_cs2_install};
 use inventory_simulator::{set_inventory_simulator_panel, start_inventory_simulator_batch};
 use playback_manager::{
-    choose_playback_bundle, install_playback_bundle, playback_release_status,
-    rollback_playback_install,
+    choose_playback_bundle, install_latest_playback_bundle, install_playback_bundle,
+    playback_release_status, playback_update_status, rollback_playback_install,
 };
 use serde::{Deserialize, Serialize};
 use server_config::{load_server_config, save_server_config, validate_server_config};
@@ -5464,8 +5464,10 @@ pub fn run() {
             detect_cs2_installations,
             inspect_cs2_install,
             playback_release_status,
+            playback_update_status,
             choose_playback_bundle,
             install_playback_bundle,
+            install_latest_playback_bundle,
             rollback_playback_install,
             load_server_config,
             validate_server_config,

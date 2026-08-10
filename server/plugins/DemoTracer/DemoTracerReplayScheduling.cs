@@ -106,9 +106,8 @@ public sealed partial class DemoTracerPlugin
                 return;
 
             // A player_spawn invalidates the old pawn even if native replay
-            // state still says Playing. Rebuild the new pawn before relying on
-            // the playing marker; the per-slot sync flags make lease-only
-            // reconciliations no-ops.
+            // state still says Playing. Pawn equipment is keyed by entity
+            // handle, while the weapon inventory remains independently cached.
             ApplyReplayLoadoutForSlot(context.Slot, replay);
             PreloadReplayWeaponsForSlot(context.Slot, replay);
             if (!TryAlignLoadedReplayCosmeticsForSlot(context.Slot, replay))

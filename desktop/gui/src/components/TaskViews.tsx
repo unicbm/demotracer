@@ -15,13 +15,14 @@ import {
   ReplayIcon,
 } from "../icons";
 import type { TextDictionary } from "../i18n";
-import type { ConversionSummary, Language, ProgressPhase, ProgressState } from "../types";
+import type { ConversionSummary, Language } from "../types";
 
 export type CopyTarget =
   | "playback"
   | "phrase"
   | "output"
   | "manifest"
+  | "demoPath"
   | `player:${string}:${"steam" | "crosshair" | "viewmodel" | "inspect"}:${number}`;
 export type CommandMode = "sequence" | "round";
 
@@ -46,49 +47,6 @@ export function OpeningArchiveView({ words, manifestName }: OpeningArchiveViewPr
   );
 }
 
-function formatElapsed(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-}
-
-interface AnalysisProgressViewProps {
-  words: TextDictionary;
-  sourceFileName: string;
-  elapsedSeconds: number;
-  progressPhase: ProgressPhase;
-  cancelPending: boolean;
-  onCancel: () => void;
-}
-
-export function AnalysisProgressView({
-  words,
-  sourceFileName,
-  elapsedSeconds,
-  progressPhase,
-  cancelPending,
-  onCancel,
-}: AnalysisProgressViewProps) {
-  const decompressing = progressPhase === "decompressing";
-  return (
-    <section className="task-state-view task-progress-view" aria-labelledby="analysis-progress-title">
-      <div className="task-progress-copy">
-        <h1 id="analysis-progress-title">{decompressing ? words.decompressingTitle : words.analyzingTitle}</h1>
-        <strong>{sourceFileName}</strong>
-        <p>{decompressing ? words.decompressingBody : words.fullParse}</p>
-      </div>
-      <div className="indeterminate-progress" role="progressbar" aria-label={decompressing ? words.decompressingTitle : words.analyzingTitle}><span /></div>
-      <div className="task-progress-meta" role="status" aria-live="polite">
-        <span>{words.localOnly}</span>
-        {elapsedSeconds >= 8 ? <span>{words.elapsed.replace("{time}", formatElapsed(elapsedSeconds))}</span> : null}
-      </div>
-      <button className="secondary-button analysis-cancel-button" type="button" disabled={cancelPending} onClick={onCancel}>
-        {cancelPending ? words.stoppingAnalysis : words.stopAnalysis}
-      </button>
-      {elapsedSeconds >= 30 ? <p className="long-task-note">{words.analyzingLong}</p> : null}
-    </section>
-  );
-}
-
 interface AnalysisFailedViewProps {
   words: TextDictionary;
   error: string;
@@ -107,83 +65,6 @@ export function AnalysisFailedView({ words, error, retryButtonRef, onRetry, onCh
         <button ref={retryButtonRef} className="primary-button" type="button" onClick={onRetry}><ReplayIcon size={16} />{words.retryAnalysis}</button>
         <button className="secondary-button" type="button" onClick={onChangeDemo}>{words.changeDemo}</button>
       </div>
-    </section>
-  );
-}
-
-function progressPhaseIndex(phase: ProgressPhase): number {
-  if (phase === "writing") return 1;
-  if (phase === "artifacts") return 2;
-  if (phase === "voice") return 3;
-  if (phase === "validating" || phase === "complete") return 4;
-  return 0;
-}
-
-interface ConversionProgressViewProps {
-  words: TextDictionary;
-  progress: ProgressState;
-  outputRoot: string;
-}
-
-export function ConversionProgressView({ words, progress, outputRoot }: ConversionProgressViewProps) {
-  const stages = [words.preparing, words.writingPlayers, words.writingArtifacts, words.exportingVoice, words.validating];
-  const activeIndex = progressPhaseIndex(progress.phase);
-  const determinate = progress.estimated > 0 && progress.unit !== null;
-  const fraction = determinate ? Math.min(1, progress.written / progress.estimated) : 0;
-  const currentLabel =
-    progress.unit === "playerFiles"
-      ? words.playerFilesProgress.replace("{written}", String(progress.written)).replace("{total}", String(progress.estimated))
-      : progress.unit === "artifacts"
-        ? words.artifactsProgress.replace("{written}", String(progress.written)).replace("{total}", String(progress.estimated))
-        : stages[activeIndex];
-
-  return (
-    <section className="task-state-view conversion-progress-view" aria-labelledby="conversion-title">
-      <header>
-        <h1 id="conversion-title">{words.conversionTitle}</h1>
-        <p>{words.conversionBody}</p>
-      </header>
-
-      <div className="conversion-progress-main">
-        <strong>{stages[activeIndex]}</strong>
-        <span className="progress-count">{currentLabel}</span>
-        <div
-          className={`linear-progress${determinate ? " is-determinate" : " is-indeterminate"}`}
-          role="progressbar"
-          aria-label={stages[activeIndex]}
-          aria-valuemin={determinate ? 0 : undefined}
-          aria-valuemax={determinate ? progress.estimated : undefined}
-          aria-valuenow={determinate ? progress.written : undefined}
-          aria-valuetext={currentLabel}
-        >
-          <span style={determinate ? { width: `${fraction * 100}%` } : undefined} />
-        </div>
-        <span className="round-progress-copy" aria-hidden={progress.currentRound === undefined}>
-          {progress.currentRound !== undefined
-            ? words.roundProgress
-              .replace("{round}", String(progress.currentRound))
-              .replace("{completed}", String(progress.completedRounds))
-              .replace("{total}", String(progress.selectedRounds))
-            : "\u00a0"}
-        </span>
-        <span className="current-item" aria-hidden={!progress.currentItem}>{progress.currentItem || "\u00a0"}</span>
-      </div>
-
-      <ol className="stage-list" aria-label={words.workflowLabel}>
-        {stages.map((stage, index) => (
-          <li className={`${index < activeIndex ? "is-done" : ""}${index === activeIndex ? " is-active" : ""}`} key={stage}>
-            <i aria-hidden="true">{index < activeIndex ? <CheckIcon size={12} /> : null}</i>
-            <span>{stage}</span>
-          </li>
-        ))}
-      </ol>
-
-      <div className="output-root-readout">
-        <span>{words.outputTarget}</span>
-        <code title={outputRoot}>{outputRoot}</code>
-      </div>
-
-      <span className="sr-only" role="status" aria-live="polite">{progress.announcement}</span>
     </section>
   );
 }

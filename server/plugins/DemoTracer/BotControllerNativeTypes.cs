@@ -22,6 +22,7 @@ internal static partial class BotControllerNative
     public const int ReplayInputHistoryTickByteSize = 16;
     public const int ReplayInputHistoryEntryByteSize = 128;
     public const int ProjectileBirthAlignStatusByteSize = 36;
+    public const int ReplayPawnEquipmentStateByteSize = 48;
     internal const uint CommandFieldLeftHand = 1U << 7;
     public const int ReplaySlotStateByteSize = 24;
     public const int MaxSlots = 64;
@@ -47,6 +48,7 @@ internal static partial class BotControllerNative
     internal const ulong CapabilityButtonOnlyMovementIntent = 1UL << 13;
     internal const ulong CapabilityHandoffBestWeapon = 1UL << 14;
     internal const ulong CapabilityReplayInputHistory = 1UL << 15;
+    internal const ulong CapabilityReplayPawnEquipment = 1UL << 16;
     internal const int MovementIntentPreserveMoveAxes = 1 << 0;
 
     public const ulong RequiredCapabilityMask =
@@ -60,7 +62,8 @@ internal static partial class BotControllerNative
         CapabilityControllerBotOffset |
         CapabilityExtendedReplay |
         CapabilityHandoffBestWeapon |
-        CapabilityReplayInputHistory;
+        CapabilityReplayInputHistory |
+        CapabilityReplayPawnEquipment;
 
     public static string RuntimePlatformName
         => RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
@@ -106,6 +109,10 @@ internal static partial class BotControllerNative
         var projectileBirthAlignStatusSize = Marshal.SizeOf<NativeProjectileBirthAlignStatus>();
         if (projectileBirthAlignStatusSize != ProjectileBirthAlignStatusByteSize)
             throw new InvalidOperationException($"ProjectileBirthAlignStatus layout is {projectileBirthAlignStatusSize}, expected {ProjectileBirthAlignStatusByteSize}");
+
+        var replayPawnEquipmentStateSize = Marshal.SizeOf<NativeReplayPawnEquipmentState>();
+        if (replayPawnEquipmentStateSize != ReplayPawnEquipmentStateByteSize)
+            throw new InvalidOperationException($"ReplayPawnEquipmentState layout is {replayPawnEquipmentStateSize}, expected {ReplayPawnEquipmentStateByteSize}");
     }
 }
 
@@ -150,6 +157,23 @@ internal struct NativeProjectileBirthAlignStatus
     public int Failed;
     public int InitialPositionOffset;
     public int InitialVelocityOffset;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 4)]
+internal struct NativeReplayPawnEquipmentState
+{
+    public int Configured;
+    public int Pending;
+    public int Applied;
+    public int ExpectedArmor;
+    public int ExpectedHelmet;
+    public int ExpectedDefuser;
+    public int PawnArmor;
+    public int ControllerArmor;
+    public int ItemServicesHelmet;
+    public int ControllerHelmet;
+    public int ItemServicesDefuser;
+    public int ControllerDefuser;
 }
 
 internal readonly record struct ReplayFileMetadata(

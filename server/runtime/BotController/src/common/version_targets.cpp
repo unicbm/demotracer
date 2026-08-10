@@ -58,12 +58,20 @@ namespace BotController::targets
 
             {"CBasePlayerPawn", "m_pWeaponServices", &kPawn_WeaponServices},
             {"CBasePlayerPawn", "m_pMovementServices", &kPawn_MovementServices},
+            {"CBasePlayerPawn", "m_pItemServices", &kPawn_ItemServices},
             {"CBasePlayerPawn", "m_hController", &kPawn_Controller},
             {"CCSPlayerPawnBase", "m_hOriginalController", &kPawn_OriginalController},
             {"CBasePlayerPawn", "v_angle", &kPawn_ViewAngle},
             {"CBasePlayerPawn", "v_anglePrevious", &kPawn_ViewAnglePrevious},
             {"CBasePlayerPawn", "m_ServerViewAngleChanges", &kPawn_ServerViewAngleChanges},
             {"CCSPlayerPawn", "m_angEyeAngles", &kPawn_EyeAngles},
+            {"CCSPlayerPawn", "m_ArmorValue", &kPawn_ArmorValue},
+
+            {"CCSPlayer_ItemServices", "m_bHasHelmet", &kItemServices_HasHelmet},
+            {"CCSPlayer_ItemServices", "m_bHasDefuser", &kItemServices_HasDefuser},
+            {"CCSPlayerController", "m_iPawnArmor", &kController_PawnArmor},
+            {"CCSPlayerController", "m_bPawnHasHelmet", &kController_PawnHasHelmet},
+            {"CCSPlayerController", "m_bPawnHasDefuser", &kController_PawnHasDefuser},
 
             {"CPlayer_WeaponServices", "m_hActiveWeapon", &kWs_ActiveWeapon},
             {"CPlayer_MovementServices", "m_vecOldViewAngles", &kServices_OldViewAngles},

@@ -3,6 +3,7 @@
 #include "MotionRecorder.h"
 #include "BotController.h"
 #include "InputInjector.h"
+#include "ReplayPawnEquipment.h"
 #include "ReplaySubtickLayout.h"
 #include "WeaponLocker.h"
 #include "ccsbot_slot.h"
@@ -207,6 +208,7 @@ namespace BotController
         static void FinalizeReplayStopState(int slot, ReplayState &p,
                                             void *services = nullptr)
         {
+            ReplayPawnEquipment::Clear(slot);
             if (!services)
                 services = InputInjector::LiveMovementServices(slot);
             if (!services)
@@ -1148,6 +1150,10 @@ namespace BotController
             {
                 return false;
             }
+            // Equipment initialization is best-effort here. A newly spawned
+            // Pawn may not expose ItemServices until its first movement hook;
+            // refusing to start would prevent that final one-shot pass.
+            ReplayPawnEquipment::PrepareForReplayStart(slot);
             const bool resumesHeldReplay =
                 p.playing.load(std::memory_order_acquire) &&
                 p.holdBeforeCursor.load(std::memory_order_relaxed) == startIndex;
@@ -1179,6 +1185,7 @@ namespace BotController
             {
                 return false;
             }
+            ReplayPawnEquipment::PrepareForReplayStart(slot);
             p.cursor.store(startIndex, std::memory_order_relaxed);
             p.startCursor.store(startIndex, std::memory_order_relaxed);
             p.holdBeforeCursor.store(holdBeforeIndex, std::memory_order_relaxed);
@@ -1208,6 +1215,7 @@ namespace BotController
                 g_serverViewChangeIndex[slot] = 0;
                 InputInjector::ClearUsercmdMovementIntent(slot);
             }
+            ReplayPawnEquipment::Clear(slot);
             return true;
         }
 
@@ -1234,6 +1242,7 @@ namespace BotController
                 p.loop.store(false, std::memory_order_relaxed);
                 InputInjector::ClearReplayPawn(slot);
             }
+            ReplayPawnEquipment::Clear(slot);
             return true;
         }
 
@@ -2113,6 +2122,7 @@ namespace BotController
                 InputInjector::ClearReplayPawn(i);
             }
             InputInjector::ClearAllUsercmdMovementIntents();
+            ReplayPawnEquipment::ClearAll();
             g_replayPovMask.store(0, std::memory_order_relaxed);
         }
     }

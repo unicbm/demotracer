@@ -1,6 +1,6 @@
 [package]
 name = "cs2-demotracer"
-version = "1.0.10"
+version = "1.0.11"
 edition = "2021"
 license-file = "../../LICENSE"
 publish = false

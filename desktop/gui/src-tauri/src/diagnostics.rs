@@ -307,6 +307,7 @@ struct ReceiptAudit {
 #[derive(Debug, Default)]
 struct RuntimeAudit {
     verification: String,
+    plugin_version: Option<String>,
     counter_strike_sharp_version: Option<String>,
     loaded_plugin_directories: Option<BTreeSet<String>>,
     cosmetics: Option<RuntimeCosmeticsWire>,
@@ -948,11 +949,16 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
 
     RuntimeAudit {
         verification: "verified".to_string(),
+        plugin_version: Some(health.plugin_version),
         counter_strike_sharp_version: Some(health.counter_strike_sharp_version),
         loaded_plugin_directories: Some(loaded_plugin_directories),
         cosmetics: Some(health.cosmetics),
         checks,
     }
+}
+
+pub(crate) fn fresh_runtime_plugin_version(game_csgo: &Path) -> Option<String> {
+    inspect_runtime_health(game_csgo).plugin_version
 }
 
 fn runtime_audit_without_live_evidence(
@@ -2449,12 +2455,12 @@ mod tests {
             "counterStrikeSharpVersion": "1.0.371.0",
             "botController": {
                 "abiMajor": 18,
-                "abiMinor": 34,
-                "capabilities": "0xffff",
+                "abiMinor": 35,
+                "capabilities": "0x1ffff",
                 "buildId": "fixture",
                 "compatible": true,
                 "requiredCapabilities": {
-                    "mask": "0xc1ff",
+                    "mask": "0x1c1ff",
                     "present": true,
                     "missing": "0x0"
                 }
@@ -2513,11 +2519,11 @@ mod tests {
             "counterStrikeSharpVersion": "1.0.371.0",
             "botController": {
                 "abiMajor": 18,
-                "abiMinor": 34,
-                "capabilities": "0xffff",
+                "abiMinor": 35,
+                "capabilities": "0x1ffff",
                 "buildId": "fixture",
                 "compatible": true,
-                "requiredCapabilities": { "mask": "0xc1ff", "present": true, "missing": "0x0" }
+                "requiredCapabilities": { "mask": "0x1c1ff", "present": true, "missing": "0x0" }
             },
             "botHider": { "providerApi": 1, "connected": true, "draining": false, "available": true },
             "cosmetics": {

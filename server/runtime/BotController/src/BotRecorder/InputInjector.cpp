@@ -9,6 +9,7 @@
 #include "ccsbot_slot.h"
 #include "sig_scan.h"
 #include "MotionRecorder.h"
+#include "ReplayPawnEquipment.h"
 #include "projectile_birth_align.h"
 #include "version_targets.h"
 #include "hook.h"
@@ -483,7 +484,6 @@ namespace BotController
         {
             if (!ValidSlotIndex(slot))
                 return false;
-            g_slotPawns[slot].store(nullptr, std::memory_order_release);
             if (!pawn)
                 return false;
 
@@ -498,6 +498,9 @@ namespace BotController
             if (ownerSlot >= 0 && ownerSlot != slot)
                 return false;
 
+            void *previous = g_slotPawns[slot].load(std::memory_order_acquire);
+            if (previous != pawn)
+                ReplayPawnEquipment::Clear(slot);
             g_slotPawns[slot].store(pawn, std::memory_order_release);
             return true;
         }
@@ -505,7 +508,10 @@ namespace BotController
         void ClearReplayPawn(int slot)
         {
             if (ValidSlotIndex(slot))
+            {
+                ReplayPawnEquipment::Clear(slot);
                 g_slotPawns[slot].store(nullptr, std::memory_order_release);
+            }
         }
 
         static void *ServicesToPawnField(void *services)
@@ -636,6 +642,11 @@ namespace BotController
             bool recording = slot >= 0 && slot < kMaxSlots &&
                              MotionRecorder::IsRecording(slot);
             bool replaying = ReplayActiveAndSafe(slot);
+            if (replaying)
+            {
+                ReplayPawnEquipment::ApplyPendingForPawn(
+                    slot, ResolveReplayPawn(slot, services));
+            }
             UsercmdMovementIntentFrame movementIntent{};
             bool hasMovementIntent =
                 !replaying && !IsSlotControllingBot(slot) &&
@@ -697,6 +708,11 @@ namespace BotController
             bool recording = slot >= 0 && slot < kMaxSlots &&
                              MotionRecorder::IsRecording(slot);
             bool replaying = ReplayActiveAndSafe(slot);
+            if (replaying)
+            {
+                ReplayPawnEquipment::ApplyPendingForPawn(
+                    slot, ResolveReplayPawn(slot, services));
+            }
             UsercmdMovementIntentFrame movementIntent{};
             bool hasMovementIntent =
                 !replaying && !IsSlotControllingBot(slot) &&

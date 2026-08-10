@@ -6,6 +6,7 @@
 
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Modules.Utils;
 using DemoTracerBotHiderApi;
 using System.Text;
 using System.Text.Json;
@@ -15,7 +16,7 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin
 {
     private const int RuntimeHealthSchemaVersion = 1;
-    private const int MinimumBotControllerAbiMinor = 34;
+    private const int MinimumBotControllerAbiMinor = 35;
     private const long RuntimeHealthWriteIntervalMilliseconds = 10_000;
     private const string RuntimeHealthFileName = "demotracer-runtime.v1.json";
     private static readonly JsonSerializerOptions RuntimeHealthJsonOptions = new()
@@ -163,6 +164,9 @@ public sealed partial class DemoTracerPlugin
                 StickersEnabled: _stickerAlignEnabled,
                 CharmsEnabled: _charmAlignEnabled,
                 PreserveNativeEnabled: _preserveNativeBotCosmetics),
+            ManagedSchema: new RuntimeManagedSchemaHealth(
+                Allowed: ManagedSchemaRuntime.Value.Allowed,
+                Patch: ManagedSchemaRuntime.Value.Patch),
             ReplayWeapons: BuildRuntimeReplayWeaponHealth(),
             LoadedCssPluginDirectories: DiscoverLoadedCssPluginDirectories());
     }
@@ -214,7 +218,8 @@ public sealed partial class DemoTracerPlugin
                     ? target
                     : null;
                 RuntimeReplayCosmeticClaimHealth? cosmeticClaim = null;
-                if (_session.LoadedReplays.TryGetValue(slot, out var replay) &&
+                var hasReplay = _session.LoadedReplays.TryGetValue(slot, out var replay);
+                if (hasReplay &&
                     _botRandomizerLease.TryGet(
                         slot,
                         replay.SteamId,
@@ -246,9 +251,12 @@ public sealed partial class DemoTracerPlugin
                     ReplayDefIndex: replayState.WeaponDefIndex,
                     CachedReplayDefIndex: cachedReplayDefIndex,
                     LockedTarget: lockedTarget,
-                    LoadoutSynced: _session.LoadoutSyncedSlots.Contains(slot),
+                    LoadoutSynced: _session.WeaponLoadoutSyncedSlots.Contains(slot),
                     PendingSlotReplacements: _session.PendingWeaponSlotReplacements.Keys.Count(
                         key => key.PlayerSlot == slot),
+                    Equipment: hasReplay
+                        ? BuildRuntimeReplayEquipmentHealth(slot, player, pawn, replay)
+                        : null,
                     CosmeticClaim: cosmeticClaim,
                     Inventory: inventory.ToArray(),
                     Error: null));
@@ -271,6 +279,7 @@ public sealed partial class DemoTracerPlugin
                     LockedTarget: null,
                     LoadoutSynced: false,
                     PendingSlotReplacements: 0,
+                    Equipment: null,
                     CosmeticClaim: null,
                     Inventory: [],
                     Error: ex.GetType().Name));
@@ -278,6 +287,58 @@ public sealed partial class DemoTracerPlugin
         }
 
         return snapshots.ToArray();
+    }
+
+    private RuntimeReplayEquipmentHealth BuildRuntimeReplayEquipmentHealth(
+        int slot,
+        CCSPlayerController? player,
+        CCSPlayerPawn? pawn,
+        LoadedReplay replay)
+    {
+        var hasNativeState = BotControllerNative.TryGetReplayPawnEquipmentState(
+            slot, out var nativeState);
+        if (!replay.HasLoadout ||
+            player is not { IsValid: true } ||
+            pawn is not { IsValid: true })
+        {
+            return new RuntimeReplayEquipmentHealth(
+                ExpectedArmor: replay.HasLoadout ? (int)replay.Loadout.ArmorValue : null,
+                PawnArmor: null,
+                ControllerArmor: null,
+                ExpectedHelmet: replay.HasLoadout ? replay.Loadout.HasHelmet : null,
+                ItemServicesHelmet: null,
+                ControllerHelmet: null,
+                ExpectedDefuser: null,
+                ItemServicesDefuser: null,
+                ControllerDefuser: null,
+                NativeAvailable: hasNativeState,
+                NativeConfigured: hasNativeState && nativeState.Configured != 0,
+                NativePending: hasNativeState && nativeState.Pending != 0,
+                NativeApplied: hasNativeState && nativeState.Applied != 0,
+                Synced: false);
+        }
+
+        var expectedDefuser = player.Team == CsTeam.CounterTerrorist && replay.Loadout.HasDefuser;
+        var itemServicesAvailable =
+            pawn.ItemServices != null && pawn.ItemServices.Handle != IntPtr.Zero;
+        var itemServices = itemServicesAvailable
+            ? new CCSPlayer_ItemServices(pawn.ItemServices!.Handle)
+            : null;
+        return new RuntimeReplayEquipmentHealth(
+            ExpectedArmor: (int)replay.Loadout.ArmorValue,
+            PawnArmor: pawn.ArmorValue,
+            ControllerArmor: player.PawnArmor,
+            ExpectedHelmet: replay.Loadout.HasHelmet,
+            ItemServicesHelmet: itemServices?.HasHelmet,
+            ControllerHelmet: player.PawnHasHelmet,
+            ExpectedDefuser: expectedDefuser,
+            ItemServicesDefuser: itemServices?.HasDefuser,
+            ControllerDefuser: player.PawnHasDefuser,
+            NativeAvailable: hasNativeState,
+            NativeConfigured: hasNativeState && nativeState.Configured != 0,
+            NativePending: hasNativeState && nativeState.Pending != 0,
+            NativeApplied: hasNativeState && nativeState.Applied != 0,
+            Synced: ReplayPawnEquipmentStateMatches(player, pawn, replay.Loadout));
     }
 
     private static string FormatEntityHandle(uint value)
@@ -394,6 +455,7 @@ public sealed partial class DemoTracerPlugin
         RuntimeBotControllerHealth BotController,
         RuntimeBotHiderHealth BotHider,
         RuntimeCosmeticAlignmentHealth Cosmetics,
+        RuntimeManagedSchemaHealth ManagedSchema,
         RuntimeReplayWeaponHealth[] ReplayWeapons,
         string[] LoadedCssPluginDirectories);
 
@@ -427,6 +489,10 @@ public sealed partial class DemoTracerPlugin
         bool CharmsEnabled,
         bool PreserveNativeEnabled);
 
+    private sealed record RuntimeManagedSchemaHealth(
+        bool Allowed,
+        string Patch);
+
     private sealed record RuntimeReplayWeaponHealth(
         int Slot,
         int? UserId,
@@ -443,9 +509,26 @@ public sealed partial class DemoTracerPlugin
         int? LockedTarget,
         bool LoadoutSynced,
         int PendingSlotReplacements,
+        RuntimeReplayEquipmentHealth? Equipment,
         RuntimeReplayCosmeticClaimHealth? CosmeticClaim,
         RuntimeReplayInventoryWeaponHealth[] Inventory,
         string? Error);
+
+    private sealed record RuntimeReplayEquipmentHealth(
+        int? ExpectedArmor,
+        int? PawnArmor,
+        int? ControllerArmor,
+        bool? ExpectedHelmet,
+        bool? ItemServicesHelmet,
+        bool? ControllerHelmet,
+        bool? ExpectedDefuser,
+        bool? ItemServicesDefuser,
+        bool? ControllerDefuser,
+        bool NativeAvailable,
+        bool NativeConfigured,
+        bool NativePending,
+        bool NativeApplied,
+        bool Synced);
 
     private sealed record RuntimeReplayCosmeticClaimHealth(
         bool Agent,

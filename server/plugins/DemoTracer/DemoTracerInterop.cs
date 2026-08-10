@@ -89,6 +89,9 @@ internal static partial class BotControllerNative
     public static bool HasHandoffBestWeaponCapability
         => (Capabilities & CapabilityHandoffBestWeapon) == CapabilityHandoffBestWeapon;
 
+    public static bool HasReplayPawnEquipmentCapability
+        => (Capabilities & CapabilityReplayPawnEquipment) == CapabilityReplayPawnEquipment;
+
     public static bool TryGetNativePerceptionState(int slot, out NativePerceptionState state)
     {
         state = default;
@@ -207,6 +210,7 @@ internal static partial class BotControllerNative
                    $"voice_send={VoiceStatusText} " +
                    $"left_hand_alias={HasLeftHandIntentAliasExports} left_hand_latch={HasLeftHandDesiredLatchExports} " +
                    $"release_replay_buffer={HasReleaseReplayBufferCapability} " +
+                   $"replay_pawn_equipment={HasReplayPawnEquipmentCapability} " +
                    $"projectile_birth_align={HasProjectileBirthAlignExports} " +
                    $"dtr_reader={MinRecFormatVersion}..{RecFormatVersion} " +
                    $"platform={RuntimePlatformName} api={DemoTracerApiVersion}";
@@ -412,6 +416,72 @@ internal static partial class BotControllerNative
         }
         catch
         {
+            return false;
+        }
+    }
+
+    public static bool SetReplayPawnEquipment(
+        int slot,
+        nint pawnHandle,
+        nint controllerHandle,
+        int armor,
+        bool helmet,
+        bool defuser)
+    {
+        if (!ValidSlot(slot) ||
+            !HasReplayPawnEquipmentCapability ||
+            pawnHandle == IntPtr.Zero ||
+            controllerHandle == IntPtr.Zero ||
+            armor is < 0 or > 100)
+        {
+            return false;
+        }
+
+        try
+        {
+            return BotController_SetReplayPawnEquipment(
+                slot,
+                unchecked((ulong)pawnHandle),
+                unchecked((ulong)controllerHandle),
+                armor,
+                helmet ? 1 : 0,
+                defuser ? 1 : 0) == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool ClearReplayPawnEquipment(int slot)
+    {
+        if (!ValidSlot(slot) || !HasReplayPawnEquipmentCapability)
+            return false;
+        try
+        {
+            return BotController_ClearReplayPawnEquipment(slot) == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool TryGetReplayPawnEquipmentState(
+        int slot,
+        out NativeReplayPawnEquipmentState state)
+    {
+        state = default;
+        if (!ValidSlot(slot) || !HasReplayPawnEquipmentCapability)
+            return false;
+        try
+        {
+            return BotController_GetReplayPawnEquipmentState(
+                slot, out state, ReplayPawnEquipmentStateByteSize) == 0;
+        }
+        catch
+        {
+            state = default;
             return false;
         }
     }

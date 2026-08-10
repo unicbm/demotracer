@@ -1,0 +1,167 @@
+/*---------------------------------------------------------------------------------------------
+ * Copyright (c) 2026 unicbm. All rights reserved.
+ * Licensed under the GNU Affero General Public License v3.0 only.
+ * See LICENSE in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.single-task-panel {
+  position: absolute;
+  z-index: 22;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(380px, calc(100% - 20px));
+  max-height: calc(100% - 20px);
+  min-height: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--divider-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 44px color-mix(in srgb, #000 20%, transparent);
+}
+
+.single-task-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 50px;
+  padding: 7px 8px 7px 16px;
+  gap: 12px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.single-task-heading h2 {
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.single-task-body {
+  display: grid;
+  min-height: 0;
+  padding: 15px 16px 17px;
+  gap: 14px;
+  overflow: auto;
+}
+
+.single-task-source {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analysis-task-status,
+.conversion-task-status {
+  display: grid;
+  gap: 10px;
+}
+
+.analysis-task-status {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.analysis-task-status strong,
+.conversion-task-current strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analysis-task-status time,
+.conversion-task-current time {
+  color: var(--text-secondary);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.single-task-indeterminate,
+.single-task-progress {
+  grid-column: 1 / -1;
+  height: 3px;
+  overflow: hidden;
+  background: var(--surface-muted);
+}
+
+.single-task-indeterminate > span,
+.single-task-progress.is-indeterminate > span {
+  display: block;
+  width: 38%;
+  height: 100%;
+  background: var(--trace);
+  animation: single-task-indeterminate 1.25s ease-in-out infinite;
+}
+
+.single-task-progress.is-determinate > span {
+  display: block;
+  height: 100%;
+  background: var(--trace);
+  transition: width 150ms linear;
+}
+
+.conversion-task-current,
+.conversion-task-progress-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.conversion-task-progress-copy {
+  color: var(--text-secondary);
+  font-size: 9.5px;
+}
+
+.conversion-task-progress-copy b {
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: right;
+}
+
+.single-task-current-item,
+.single-task-output {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 9.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.single-task-footer {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 52px;
+  padding: 7px 8px;
+  border-top: 1px solid var(--divider);
+}
+
+.single-task-footer button { min-width: 112px; }
+
+@keyframes single-task-indeterminate {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(300%); }
+}
+
+@media (max-width: 620px) {
+  .single-task-panel {
+    top: 6px;
+    right: 6px;
+    width: calc(100% - 12px);
+    max-height: calc(100% - 12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .single-task-indeterminate > span,
+  .single-task-progress.is-indeterminate > span { animation: none; }
+}

@@ -170,7 +170,8 @@ public sealed partial class DemoTracerPlugin
         _session.ProjectileAlignNextBySlot[slot] = 0;
         _session.ReplayHifiEventNextBySlot[slot] = 0;
         _session.RebuiltInventorySlots.Remove(slot);
-        _session.LoadoutSyncedSlots.Remove(slot);
+        _session.WeaponLoadoutSyncedSlots.Remove(slot);
+        _session.PawnEquipmentSync.Invalidate(slot);
         _session.BalanceSyncedSlots.Remove(slot);
         InvalidateLoadedReplayCosmeticAlignmentForSlot(slot);
         _session.ScoreboardSyncedSlots.Remove(slot);

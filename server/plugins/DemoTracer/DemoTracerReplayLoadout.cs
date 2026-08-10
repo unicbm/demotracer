@@ -31,20 +31,50 @@ public sealed partial class DemoTracerPlugin
     {
         if (!CanWriteReplaySlot(slot) ||
             !_weaponAlignEnabled ||
-            !replay.HasLoadout ||
-            _session.LoadoutSyncedSlots.Contains(slot))
+            !replay.HasLoadout)
             return;
 
         var player = Utilities.GetPlayerFromSlot(slot);
         var pawn = player?.PlayerPawn.Value;
         if (player is not { IsValid: true, PawnIsAlive: true } ||
             pawn is not { IsValid: true } ||
-            pawn.WeaponServices == null ||
             player.UserId is not int playerUserId)
             return;
-        var replayWriteEpoch = CurrentReplayWriteEpoch(slot);
 
-        ApplyReplayArmorAndKit(player, pawn, replay.Loadout);
+        var equipmentIdentity = new ReplayPawnEquipmentIdentity(
+            playerUserId,
+            pawn.EntityHandle.Raw,
+            _session.ReplayIdentityGenerationBySlot.GetValueOrDefault(slot),
+            replay.SteamId);
+        var equipmentSynced =
+            _session.PawnEquipmentSync.IsSynced(slot, equipmentIdentity) &&
+            ReplayPawnEquipmentStateMatches(player, pawn, replay.Loadout);
+        var loadoutRetryScheduled = false;
+        if (!equipmentSynced &&
+            TryApplyReplayArmorAndKit(slot, player, pawn, replay.Loadout) &&
+            ReplayPawnEquipmentStateMatches(player, pawn, replay.Loadout))
+        {
+            _session.PawnEquipmentSync.MarkSynced(slot, equipmentIdentity);
+            equipmentSynced = true;
+        }
+        if (!equipmentSynced && slotRetryFramesRemaining > 0)
+        {
+            ScheduleReplayLoadoutRetry(slot, slotRetryFramesRemaining - 1);
+            loadoutRetryScheduled = true;
+        }
+
+        // Weapon inventory can survive a round spawn, while armor, helmet, and
+        // defuser state belong to the newly-created pawn. Keep their completion
+        // state independent so preserving an AWP never suppresses pawn gear.
+        if (_session.WeaponLoadoutSyncedSlots.Contains(slot))
+            return;
+        if (pawn.WeaponServices == null)
+        {
+            if (slotRetryFramesRemaining > 0 && !loadoutRetryScheduled)
+                ScheduleReplayLoadoutRetry(slot, slotRetryFramesRemaining - 1);
+            return;
+        }
+        var replayWriteEpoch = CurrentReplayWriteEpoch(slot);
 
         var targetItems = BuildLoadoutItemCounts(replay.Loadout);
         var primarySync = SyncTargetWeaponSlot(
@@ -100,7 +130,7 @@ public sealed partial class DemoTracerPlugin
             !retryWeaponSync &&
             !_session.PendingWeaponSlotReplacements.Keys.Any(key => key.PlayerSlot == slot))
         {
-            _session.LoadoutSyncedSlots.Add(slot);
+            _session.WeaponLoadoutSyncedSlots.Add(slot);
         }
     }
 
@@ -121,24 +151,50 @@ public sealed partial class DemoTracerPlugin
         ApplyReplayWeaponPreset(slot, ChooseStartWeaponDef(currentReplay), force: true);
     }
 
-    private static void ApplyReplayArmorAndKit(
+    private static bool TryApplyReplayArmorAndKit(
+        int slot,
         CCSPlayerController player,
         CCSPlayerPawn pawn,
         ReplayLoadoutSnapshot loadout)
     {
-        if (!ManagedSchemaWritesAllowed())
-            return;
+        // CSS owns the manifest-derived desired state. BotController owns the
+        // live Pawn lifecycle and applies it immediately, at replay start, and
+        // once from the first movement/usercmd hook for this registered Pawn.
+        if (!BotControllerNative.SetReplayPawn(slot, pawn.Handle))
+            return false;
 
-        pawn.ArmorValue = (int)loadout.ArmorValue;
-        Utilities.SetStateChanged(pawn, "CCSPlayerPawn", "m_ArmorValue");
+        var expectedDefuser = player.Team == CsTeam.CounterTerrorist && loadout.HasDefuser;
+        return BotControllerNative.SetReplayPawnEquipment(
+            slot,
+            pawn.Handle,
+            player.Handle,
+            (int)loadout.ArmorValue,
+            loadout.HasHelmet,
+            expectedDefuser);
+    }
 
-        if (pawn.ItemServices == null || pawn.ItemServices.Handle == IntPtr.Zero)
-            return;
-
-        var itemServices = new CCSPlayer_ItemServices(pawn.ItemServices.Handle);
-        itemServices.HasHelmet = loadout.HasHelmet;
-        itemServices.HasDefuser = player.Team == CsTeam.CounterTerrorist && loadout.HasDefuser;
-        Utilities.SetStateChanged(pawn, "CCSPlayerPawn", "m_pItemServices");
+    private static bool ReplayPawnEquipmentStateMatches(
+        CCSPlayerController player,
+        CCSPlayerPawn pawn,
+        ReplayLoadoutSnapshot loadout)
+    {
+        var expectedDefuser = player.Team == CsTeam.CounterTerrorist && loadout.HasDefuser;
+        var itemServicesAvailable =
+            pawn.ItemServices != null && pawn.ItemServices.Handle != IntPtr.Zero;
+        var itemServices = itemServicesAvailable
+            ? new CCSPlayer_ItemServices(pawn.ItemServices!.Handle)
+            : null;
+        return ReplayRuntimePolicy.PawnEquipmentStateMatches(
+            (int)loadout.ArmorValue,
+            loadout.HasHelmet,
+            expectedDefuser,
+            pawn.ArmorValue,
+            itemServicesAvailable,
+            itemServices?.HasHelmet ?? false,
+            itemServices?.HasDefuser ?? false,
+            player.PawnArmor,
+            player.PawnHasHelmet,
+            player.PawnHasDefuser);
     }
 
     private static bool ResetReplayPawnRoundStartHealth(int slot)

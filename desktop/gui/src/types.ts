@@ -457,7 +457,23 @@ export interface Cs2InstallCandidate {
 export interface PlaybackReleaseStatus {
   appVersion: string;
   currentVersion?: string | null;
+  loadedPluginVersion?: string | null;
   canRollback: boolean;
+}
+
+export interface PlaybackUpdateRelease {
+  latestVersion: string;
+  updateAvailable: boolean;
+  notes?: string | null;
+}
+
+export type PlaybackUpdatePhase = "idle" | "checking" | "current" | "available" | "error";
+
+export interface PlaybackUpdateStatus {
+  phase: PlaybackUpdatePhase;
+  latestVersion?: string;
+  notes?: string | null;
+  error?: string;
 }
 
 export interface PlaybackInstallResult {

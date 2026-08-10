@@ -97,6 +97,24 @@ internal static partial class BotControllerNative
     private static extern int BotController_SetReplayPawn(int slot, ulong pawnPtr);
 
     [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int BotController_SetReplayPawnEquipment(
+        int slot,
+        ulong pawnPtr,
+        ulong controllerPtr,
+        int armor,
+        int helmet,
+        int defuser);
+
+    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int BotController_ClearReplayPawnEquipment(int slot);
+
+    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int BotController_GetReplayPawnEquipmentState(
+        int slot,
+        out NativeReplayPawnEquipmentState state,
+        int size);
+
+    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
     private static extern int BotController_SetUsercmdMovementIntent(
         int slot,
         ulong buttonsSet,

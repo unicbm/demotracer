@@ -730,21 +730,77 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
 
     private static (bool Allowed, string Patch) DetectManagedSchemaRuntime()
     {
+        foreach (var steamInfPath in ManagedSchemaSteamInfCandidates())
+        {
+            try
+            {
+                if (!File.Exists(steamInfPath))
+                    continue;
+                var patchLine = File.ReadLines(steamInfPath)
+                    .FirstOrDefault(line => line.StartsWith("PatchVersion=", StringComparison.OrdinalIgnoreCase));
+                var patch = patchLine?["PatchVersion=".Length..].Trim();
+                if (string.IsNullOrWhiteSpace(patch))
+                    continue;
+                return Version.TryParse(patch, out var current) &&
+                       current.CompareTo(MaxVerifiedManagedSchemaPatch) <= 0
+                    ? (true, patch)
+                    : (false, patch);
+            }
+            catch
+            {
+                // Continue to the assembly-derived CS2 directory.
+            }
+        }
+
+        return (false, "unknown");
+    }
+
+    private static IReadOnlyList<string> ManagedSchemaSteamInfCandidates()
+    {
+        var candidates = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddCandidate(string? candidate)
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+                return;
+            try
+            {
+                var fullPath = Path.GetFullPath(candidate);
+                if (seen.Add(fullPath))
+                    candidates.Add(fullPath);
+            }
+            catch
+            {
+            }
+        }
+
+        string? gameDirectory = null;
         try
         {
-            var steamInfPath = Path.Combine(Server.GameDirectory, "steam.inf");
-            var patchLine = File.ReadLines(steamInfPath)
-                .FirstOrDefault(line => line.StartsWith("PatchVersion=", StringComparison.OrdinalIgnoreCase));
-            var patch = patchLine?["PatchVersion=".Length..].Trim() ?? "unknown";
-            return Version.TryParse(patch, out var current) &&
-                   current.CompareTo(MaxVerifiedManagedSchemaPatch) <= 0
-                ? (true, patch)
-                : (false, patch);
+            gameDirectory = Server.GameDirectory;
         }
         catch
         {
-            return (false, "unknown");
         }
+        if (!string.IsNullOrWhiteSpace(gameDirectory))
+            AddCandidate(Path.Combine(gameDirectory, "steam.inf"));
+
+        string? directory = null;
+        try
+        {
+            directory = Path.GetDirectoryName(typeof(BotHiderPresentationService).Assembly.Location);
+        }
+        catch
+        {
+        }
+        for (var depth = 0; depth < 8 && !string.IsNullOrWhiteSpace(directory); depth++)
+        {
+            AddCandidate(Path.Combine(directory, "steam.inf"));
+            directory = Directory.GetParent(directory)?.FullName;
+        }
+
+        return candidates;
     }
 
     private static void TrySetStateChanged(

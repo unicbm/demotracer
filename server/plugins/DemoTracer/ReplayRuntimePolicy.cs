@@ -14,6 +14,49 @@ internal static class ReplayRuntimePolicy
 {
     internal static Version MaxVerifiedManagedSchemaPatch { get; } = new(1, 41, 7, 4);
 
+    internal static IReadOnlyList<string> ManagedSchemaSteamInfCandidates(
+        string? gameDirectory,
+        string? assemblyLocation)
+    {
+        var candidates = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddCandidate(string? candidate)
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+                return;
+            try
+            {
+                var fullPath = Path.GetFullPath(candidate);
+                if (seen.Add(fullPath))
+                    candidates.Add(fullPath);
+            }
+            catch
+            {
+                // Invalid host paths are ignored; detection remains fail-closed.
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(gameDirectory))
+            AddCandidate(Path.Combine(gameDirectory, "steam.inf"));
+
+        string? directory = null;
+        try
+        {
+            directory = Path.GetDirectoryName(assemblyLocation);
+        }
+        catch
+        {
+        }
+        for (var depth = 0; depth < 8 && !string.IsNullOrWhiteSpace(directory); depth++)
+        {
+            AddCandidate(Path.Combine(directory, "steam.inf"));
+            directory = Directory.GetParent(directory)?.FullName;
+        }
+
+        return candidates;
+    }
+
     internal static FreezePrerollTiming ComputeFreezePrerollTiming(
         float freezeTimeSeconds,
         float phaseRemainingSeconds,
@@ -58,6 +101,25 @@ internal static class ReplayRuntimePolicy
            controllerMusicKitId == expectedMusicKitId &&
            controllerMusicKitMvps == 0 &&
            !mvpNoMusic;
+
+    internal static bool PawnEquipmentStateMatches(
+        int expectedArmor,
+        bool expectedHelmet,
+        bool expectedDefuser,
+        int pawnArmor,
+        bool itemServicesAvailable,
+        bool itemServicesHelmet,
+        bool itemServicesDefuser,
+        int controllerArmor,
+        bool controllerHelmet,
+        bool controllerDefuser)
+        => itemServicesAvailable &&
+           pawnArmor == expectedArmor &&
+           itemServicesHelmet == expectedHelmet &&
+           itemServicesDefuser == expectedDefuser &&
+           controllerArmor == expectedArmor &&
+           controllerHelmet == expectedHelmet &&
+           controllerDefuser == expectedDefuser;
 
     internal static bool ShouldApplyMusicKit(
         bool cosmeticAlignEnabled,

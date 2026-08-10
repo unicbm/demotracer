@@ -54,6 +54,9 @@ namespace BotController::targets
     inline int kPawn_WeaponServices = 0xA00;
     // m_pMovementServices
     inline int kPawn_MovementServices = 0xA40;
+    // m_pItemServices and replay-owned round-start equipment.
+    inline int kPawn_ItemServices = 0;
+    inline int kPawn_ArmorValue = 0;
     // m_hController (CHandle)
     inline int kPawn_Controller = 0xB80;
     // m_hOriginalController (CHandle)
@@ -66,6 +69,14 @@ namespace BotController::targets
     inline int kPawn_ServerViewAngleChanges = 0xA50;
     // m_angEyeAngles (QAngle) — written each replay tick alongside v_angle
     inline int kPawn_EyeAngles = 0x13B8;
+
+    // ---- CCSPlayer_ItemServices / CCSPlayerController ----
+
+    inline int kItemServices_HasHelmet = 0;
+    inline int kItemServices_HasDefuser = 0;
+    inline int kController_PawnArmor = 0;
+    inline int kController_PawnHasHelmet = 0;
+    inline int kController_PawnHasDefuser = 0;
 
     // ---- BuyState ----
 

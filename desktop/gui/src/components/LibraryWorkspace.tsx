@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowIcon, CloseIcon, FolderIcon, PlusIcon, RefreshIcon, ReplayIcon, SearchIcon, TraceMark, TrashIcon } from "../icons";
+import { ArrowIcon, CloseIcon, CopyIcon, FolderIcon, PlusIcon, RefreshIcon, ReplayIcon, SearchIcon, TraceMark, TrashIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
 import {
   demoLibraryTimestamp,
@@ -60,6 +60,7 @@ interface LibraryWorkspaceProps {
   onRepairEntry: (entry: DemoLibraryEntry) => void;
   onRevealManifest: (entry: DemoLibraryEntry) => void;
   onRevealDemo: (entry: DemoLibraryEntry) => void;
+  onCopyDemoPath: (entry: DemoLibraryEntry) => void;
   onReparseEntry: (entry: DemoLibraryEntry) => void;
   onDeleteEntry: (entry: DemoLibraryEntry) => void;
 }
@@ -226,6 +227,7 @@ function LibraryRow({
   onRepair,
   onRevealManifest,
   onRevealDemo,
+  onCopyDemoPath,
   onReparse,
   onDelete,
   repairing,
@@ -241,6 +243,7 @@ function LibraryRow({
   onRepair: () => void;
   onRevealManifest: () => void;
   onRevealDemo: () => void;
+  onCopyDemoPath: () => void;
   onReparse: () => void;
   onDelete: () => void;
   repairing: boolean;
@@ -310,6 +313,7 @@ function LibraryRow({
         { label: words.openArchive, icon: <ReplayIcon size={15} />, disabled, onSelect: onOpen },
         { label: words.openManifestLocation, icon: <FolderIcon size={15} />, onSelect: onRevealManifest },
         { label: words.openDemoLocation, icon: <FolderIcon size={15} />, disabled: needsSourceLink, onSelect: onRevealDemo },
+        { label: words.copyDemoPath, icon: <CopyIcon size={15} />, disabled: needsSourceLink, onSelect: onCopyDemoPath },
         { label: words.reparseDemo, icon: <RefreshIcon size={15} />, dividerBefore: true, disabled: disabled || taskBusy, onSelect: onReparse },
         ...(needsRepair ? [{ label: repairActionLabel, icon: <RefreshIcon size={15} />, disabled: repairing || disabled || taskBusy, onSelect: onRepair }] : []),
         { label: words.deleteArchive, icon: <TrashIcon size={15} />, dividerBefore: true, danger: true, disabled: disabled || taskBusy, onSelect: onDelete },
@@ -705,6 +709,7 @@ export function LibraryWorkspace({
   onRepairEntry,
   onRevealManifest,
   onRevealDemo,
+  onCopyDemoPath,
   onReparseEntry,
   onDeleteEntry,
 }: LibraryWorkspaceProps) {
@@ -809,6 +814,7 @@ export function LibraryWorkspace({
       onRepair={() => onRepairEntry(entry)}
       onRevealManifest={() => onRevealManifest(entry)}
       onRevealDemo={() => onRevealDemo(entry)}
+      onCopyDemoPath={() => onCopyDemoPath(entry)}
       onReparse={() => onReparseEntry(entry)}
       onDelete={() => onDeleteEntry(entry)}
       repairing={repairingManifest === entry.manifestPath}

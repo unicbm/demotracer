@@ -24,6 +24,29 @@ public sealed class RuntimeCompatibilityTests
         Assert.Equal(expected, ReplayRuntimePolicy.IsManagedSchemaPatchSupported(patch));
     }
 
+    [Fact]
+    public void ManagedSchemaPatchProbeFallsBackFromHostGameDirectoryToPluginAncestors()
+    {
+        var csgoDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "demotracer-managed-schema-test",
+            "game",
+            "csgo");
+        var assemblyLocation = Path.Combine(
+            csgoDirectory,
+            "addons",
+            "counterstrikesharp",
+            "plugins",
+            "DemoTracer",
+            "DemoTracer.dll");
+
+        var candidates = ReplayRuntimePolicy.ManagedSchemaSteamInfCandidates(
+            "csgo",
+            assemblyLocation);
+
+        Assert.Contains(Path.Combine(csgoDirectory, "steam.inf"), candidates);
+    }
+
     [Theory]
     [InlineData(false, true, 70, false)]
     [InlineData(true, false, 70, false)]
@@ -41,6 +64,34 @@ public sealed class RuntimeCompatibilityTests
                 cosmeticsEnabled,
                 runtimeSupported,
                 musicKitId));
+    }
+
+    [Fact]
+    public void PawnEquipmentRequiresPawnItemServicesAndControllerMirrorsToMatch()
+    {
+        Assert.True(ReplayRuntimePolicy.PawnEquipmentStateMatches(
+            expectedArmor: 100,
+            expectedHelmet: true,
+            expectedDefuser: true,
+            pawnArmor: 100,
+            itemServicesAvailable: true,
+            itemServicesHelmet: true,
+            itemServicesDefuser: true,
+            controllerArmor: 100,
+            controllerHelmet: true,
+            controllerDefuser: true));
+
+        Assert.False(ReplayRuntimePolicy.PawnEquipmentStateMatches(
+            expectedArmor: 100,
+            expectedHelmet: true,
+            expectedDefuser: true,
+            pawnArmor: 100,
+            itemServicesAvailable: true,
+            itemServicesHelmet: true,
+            itemServicesDefuser: true,
+            controllerArmor: 0,
+            controllerHelmet: false,
+            controllerDefuser: false));
     }
 
     [Theory]

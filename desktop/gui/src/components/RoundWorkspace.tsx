@@ -4,8 +4,8 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowIcon, FolderIcon, SlidersIcon } from "../icons";
+import { useMemo } from "react";
+import { ArrowIcon, FolderIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
 import type { InventorySimulatorItem } from "../inventorySimulator";
 import { useInventorySimulatorSelection } from "../inventorySimulatorSelection";
@@ -33,7 +33,6 @@ interface RoundWorkspaceProps {
   onClearSelection: () => void;
   onAllowSuspiciousChange: (checked: boolean) => void;
   onChooseOutput: () => void;
-  onOpenSettings: (trigger: HTMLButtonElement) => void;
   onConvert: () => void;
   onSelectPlayer: (selection: PlayerSelection) => void;
   onClosePlayer: () => void;
@@ -65,7 +64,6 @@ export function RoundWorkspace({
   onClearSelection,
   onAllowSuspiciousChange,
   onChooseOutput,
-  onOpenSettings,
   onConvert,
   onSelectPlayer,
   onClosePlayer,
@@ -74,22 +72,6 @@ export function RoundWorkspace({
   onSyncInventorySimulator,
   formatNumber,
 }: RoundWorkspaceProps) {
-  const [inspectedRound, setInspectedRound] = useState<number | null>(() => (
-    analysis.rounds.find((round) => selectedRounds.has(round.round))?.round
-      ?? analysis.rounds[0]?.round
-      ?? null
-  ));
-  const inspectedAnalysisIdRef = useRef(analysis.analysisId);
-  useEffect(() => {
-    const analysisChanged = inspectedAnalysisIdRef.current !== analysis.analysisId;
-    inspectedAnalysisIdRef.current = analysis.analysisId;
-    setInspectedRound((current) => {
-      if (!analysisChanged && analysis.rounds.some((round) => round.round === current)) return current;
-      return analysis.rounds.find((round) => selectedRounds.has(round.round))?.round
-        ?? analysis.rounds[0]?.round
-        ?? null;
-    });
-  }, [analysis.analysisId, analysis.rounds, selectedRounds]);
   const recommendedCount = useMemo(() => analysis.rounds.filter((round) => round.status === "recommended").length, [analysis.rounds]);
   const partialCount = useMemo(() => analysis.rounds.filter((round) => round.status === "partial").length, [analysis.rounds]);
   const suspiciousCount = analysis.rounds.length - recommendedCount - partialCount;
@@ -153,6 +135,13 @@ export function RoundWorkspace({
         onSelectPlayer={onSelectPlayer}
       />
       <div className="round-selection-panel">
+        <header className="round-selection-heading">
+          <h1>{words.roundSelectionTitle}</h1>
+          <span className="round-selection-count">
+            <strong>{selectedRounds.size}</strong>
+            <small>/ {analysis.rounds.length}</small>
+          </span>
+        </header>
         <div className="round-toolbar">
           <strong className="round-summary">{summary}</strong>
           <div className="round-batch-actions">
@@ -183,10 +172,8 @@ export function RoundWorkspace({
           rounds={analysis.rounds}
           selectedRounds={selectedRounds}
           allowSuspicious={allowSuspicious}
-          activeRound={inspectedRound}
           disabled={convertPending}
           onToggle={onToggleRound}
-          onInspect={(round) => setInspectedRound(round.round)}
           formatNumber={formatNumber}
         />
       </div>
@@ -204,10 +191,6 @@ export function RoundWorkspace({
           <button className="secondary-button output-button" type="button" onClick={onChooseOutput} disabled={convertPending}>
             <FolderIcon size={15} />
             {outputDir ? words.changeOutput : words.chooseOutput}
-          </button>
-          <button className="secondary-button status-settings-button" type="button" onClick={(event) => onOpenSettings(event.currentTarget)} disabled={convertPending}>
-            <SlidersIcon size={15} />
-            {words.exportSettings}
           </button>
           <button className="primary-button convert-button" type="button" disabled={!canConvert} aria-busy={convertPending} onClick={onConvert}>
             {convertPending ? words.preparing : words.convertCount.replace("{count}", String(selectedRounds.size))}

@@ -1347,7 +1347,6 @@ textarea {
 .batch-workspace,
 .archive-workspace,
 .analysis-overview,
-.conversion-progress-view,
 .result-view,
 .empty-state,
 .failure-view,
@@ -1374,11 +1373,9 @@ textarea {
 .archive-summary-card,
 .archive-hero,
 .round-toolbar,
-.round-data-table,
 .player-roster,
 .result-next-step,
 .result-capabilities > div,
-.conversion-progress-main,
 .failure-card,
 .validation-failure-card,
 .empty-state > div {
@@ -1389,7 +1386,6 @@ textarea {
 }
 
 .analysis-stat,
-.round-card,
 .round-summary-item,
 .playback-option,
 .result-path-row,
@@ -1400,7 +1396,6 @@ textarea {
   border-radius: var(--radius-md);
 }
 
-.round-card.is-selected,
 .playback-option.is-selected {
   background: var(--selected-row);
   border-color: color-mix(in srgb, var(--accent) 38%, var(--divider));
@@ -2136,6 +2131,99 @@ textarea {
   border-left: 0;
   border-radius: 0;
   box-shadow: none;
+}
+
+/* DTR round selection is one continuous workspace, not a stack of cards. */
+.round-selection-panel {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  background: var(--surface-raised);
+}
+
+.round-selection-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 54px;
+  padding: 10px 18px;
+  gap: 16px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.round-selection-heading h1 { font-size: 15px; line-height: 1.25; }
+.round-selection-count {
+  display: inline-flex;
+  flex: none;
+  align-items: baseline;
+  color: var(--text-secondary);
+  font-family: var(--mono);
+}
+.round-selection-count strong { color: var(--text-primary); font-size: 12px; line-height: 1; }
+.round-selection-count small { margin-left: 4px; color: var(--text-tertiary); font-size: 10px; letter-spacing: 0; }
+
+.round-selection-panel > .round-toolbar {
+  min-height: 42px;
+  padding-inline: 18px;
+  background: var(--surface-raised);
+  border: 0;
+  border-bottom: 1px solid var(--divider);
+  border-radius: 0;
+  box-shadow: none;
+}
+.round-selection-panel .round-summary { color: var(--text-secondary); font-size: 10.5px; font-weight: 600; }
+.round-selection-panel .round-batch-actions { padding-left: 4px; }
+.round-selection-panel .round-batch-actions .text-button { min-height: 26px; font-size: 10px; }
+.round-selection-panel .allow-suspicious-control { min-height: 28px; font-size: 10px; }
+
+.round-list-scroll {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--surface-raised);
+  scrollbar-gutter: stable;
+}
+.round-export-table { min-width: 600px; }
+.round-export-table thead th { height: 34px; padding-inline: 10px; color: var(--text-tertiary); background: var(--surface-subtle); font-size: 9px; font-weight: 680; letter-spacing: .02em; }
+.round-export-table thead th:nth-child(1) { width: 42px; }
+.round-export-table thead th:nth-child(2) { width: 64px; }
+.round-export-table thead th:nth-child(3) { width: 112px; }
+.round-export-table thead th:nth-child(4) { width: 72px; }
+.round-export-table thead th:nth-child(5) { width: 94px; }
+.round-export-table thead th:nth-child(6) { width: 94px; }
+.round-export-table thead th:nth-child(7) { width: auto; }
+.round-export-table .round-data-row > th,
+.round-export-table .round-data-row > td { height: 40px; padding-inline: 10px; background: var(--surface-raised); font-size: 10px; }
+.round-export-table .round-data-row:hover > th,
+.round-export-table .round-data-row:hover > td { background: var(--hover-row); }
+.round-export-table .round-data-row.is-selected > th,
+.round-export-table .round-data-row.is-selected > td { background: var(--surface-raised); }
+.round-export-table .round-data-row.is-selected:hover > th,
+.round-export-table .round-data-row.is-selected:hover > td { background: var(--hover-row); }
+.round-export-table .round-number-cell { font-family: var(--mono); font-size: 11px; }
+.round-list-status { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 9.5px; font-weight: 600; }
+.round-list-status > i { width: 6px; height: 6px; background: currentColor; border-radius: var(--radius-circle); }
+.round-list-status.is-recommended { color: var(--success); }
+.round-list-status.is-partial { color: var(--accent); }
+.round-list-status.is-suspicious { color: var(--warning); }
+.round-team-count,
+.round-record-count { color: var(--text-secondary); font-family: var(--mono); font-size: 9.5px !important; }
+.round-issue-cell { max-width: 0; overflow: hidden; color: var(--text-tertiary); text-overflow: ellipsis; white-space: nowrap; }
+
+.round-workspace > .export-status-bar {
+  min-height: 72px;
+  padding: 9px 14px 9px 18px;
+  background: var(--surface-raised);
+  border-top-color: var(--divider);
+}
+.round-workspace .selection-status > strong { font-size: 11px; }
+.round-workspace .convert-button { min-width: 190px; }
+
+.export-inspector.is-docked { flex-basis: 312px; width: 312px; }
+
+@media (max-width: 1080px) {
+  .round-workspace > .export-status-bar { grid-template-columns: minmax(180px, 1fr) auto; }
+  .round-workspace .output-button { width: 36px; padding: 0; overflow: hidden; color: transparent; gap: 0; }
+  .round-workspace .output-button svg { flex: none; color: var(--text-primary); }
+  .round-workspace .convert-button { min-width: 164px; }
 }
 
 .settings-modal.is-environment .settings-environment-pane > .diagnostic-empty {

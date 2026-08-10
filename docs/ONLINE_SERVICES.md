@@ -6,7 +6,7 @@ local paths, or logs.
 
 | Trigger | Request | Data sent |
 | --- | --- | --- |
-| The desktop app starts, or the user clicks **Check for updates** | `releases.detr.site/channels/stable/latest.json` | Current app version, Windows updater target/architecture, and normal request metadata |
+| The desktop app starts, the CS2 folder changes, or the user clicks **Check for updates** | `releases.detr.site/channels/stable/latest.json` | Current app and installed playback versions, Windows updater target/architecture, and normal request metadata |
 | A roster is visible | `steamcommunity.com/profiles/<steamid>?xml=1` and the public profile page | SteamID64 and normal request metadata |
 | **About & credits** is opened | `avatars.githubusercontent.com` | Public GitHub avatar identifier and normal request metadata |
 | A cosmetic image is opened | `cdn.cstrike.app` | Catalog image key and normal request metadata |
@@ -59,10 +59,13 @@ version exists, the app shows the current version, latest version, and localized
 release notes before the user chooses whether to download and install it. The
 Tauri updater verifies the package signature before the passive NSIS install.
 
-CSS releases remain explicit local installs from this repository's GitHub
-Releases. A local CSS ZIP is validated against its embedded receipt and per-file
-hashes before installation. Choosing any GitHub Releases link opens the system
-browser under the normal browser privacy policy.
+The app also checks the playback entry in that signed stable manifest after a
+CS2 installation is selected. A newer CSS bundle is shown before the user
+chooses whether to download and install it. The download URL is restricted to
+the immutable release origin, and the package is verified with SHA-256 and a
+minisign signature before the existing receipt and per-file validation runs.
+CS2 must be closed before installation. A manually selected local CSS ZIP
+remains supported and goes through the same receipt and per-file validation.
 
 DemoTracer 1.0 has no telemetry, cloud conversion, replay upload, account
 system, or remote player catalog.

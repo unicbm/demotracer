@@ -27,6 +27,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $outputRootPath = Join-Path $repoRoot $OutputRoot
+$desktopRoot = Join-Path $repoRoot "desktop\gui"
 $publishRootPath = Join-Path $outputRootPath "release-v$Version"
 $updaterRootPath = Join-Path $outputRootPath "updater-v$Version"
 $guiName = "demotracer-gui-v$Version.exe"
@@ -87,6 +88,26 @@ foreach ($assetName in $assetNames) {
     }
 }
 
+$cssSignatureName = "$cssName.sig"
+$cssSignaturePath = Join-Path $outputRootPath $cssSignatureName
+Push-Location $desktopRoot
+try {
+    $signerArgs = @("tauri", "signer", "sign")
+    if ([string]::IsNullOrEmpty($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
+        $signerArgs += "--password="
+    }
+    $signerArgs += (Join-Path $outputRootPath $cssName)
+    & pnpm.cmd @signerArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "pnpm.cmd failed with exit code $LASTEXITCODE"
+    }
+} finally {
+    Pop-Location
+}
+if (-not (Test-Path -LiteralPath $cssSignaturePath -PathType Leaf)) {
+    throw "CSS updater signature not found: $cssSignaturePath"
+}
+
 if (Test-Path -LiteralPath $publishRootPath) {
     Remove-Item -LiteralPath $publishRootPath -Recurse -Force
 }
@@ -115,6 +136,8 @@ if (-not (Test-Path -LiteralPath $guiSignaturePath -PathType Leaf)) {
 }
 Copy-Item -LiteralPath (Join-Path $outputRootPath $guiName) -Destination $updaterRootPath -Force
 Copy-Item -LiteralPath $guiSignaturePath -Destination $updaterRootPath -Force
+Copy-Item -LiteralPath (Join-Path $outputRootPath $cssName) -Destination $updaterRootPath -Force
+Copy-Item -LiteralPath $cssSignaturePath -Destination $updaterRootPath -Force
 
 $publishedAt = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
 $localizedReleaseNotes = [ordered]@{
@@ -131,11 +154,17 @@ $latestManifest = [ordered]@{
             url = "$releaseBase/releases/v$Version/$guiName"
         }
     }
+    playback = [ordered]@{
+        version = $Version
+        url = "$releaseBase/releases/v$Version/$cssName"
+        signature = (Get-Content -LiteralPath $cssSignaturePath -Raw -Encoding UTF8).Trim()
+        sha256 = (Get-FileHash -LiteralPath (Join-Path $outputRootPath $cssName) -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
 }
 $latestManifestPath = Join-Path $updaterRootPath "latest.json"
 $latestManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $latestManifestPath -Encoding UTF8
 
-$updaterAssetNames = @($guiName, $guiSignatureName, "latest.json")
+$updaterAssetNames = @($guiName, $guiSignatureName, $cssName, $cssSignatureName, "latest.json")
 $checksumLines = foreach ($assetName in $updaterAssetNames) {
     $assetPath = Join-Path $updaterRootPath $assetName
     $hash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()

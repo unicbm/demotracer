@@ -34,6 +34,7 @@ import type {
   Language,
   LocalEnvironmentSettings,
   PlaybackReleaseStatus,
+  PlaybackUpdateStatus,
   ServerConfigDocument,
   ServerConfigValidation,
 } from "../types";
@@ -70,8 +71,9 @@ interface SettingsWorkspaceProps {
   appVersion: string;
   guiUpdate: GuiUpdateStatus;
   playbackRelease: PlaybackReleaseStatus | null;
+  playbackUpdate: PlaybackUpdateStatus;
   playbackReleaseError: string;
-  releaseAction: "installingFile" | "rollingBack" | null;
+  releaseAction: "installingOnline" | "installingFile" | "rollingBack" | null;
   releaseNotice: string;
   onUiScaleChange: (scale: UiScale) => void;
   onCustomCssChange: (css: string) => void;
@@ -84,6 +86,8 @@ interface SettingsWorkspaceProps {
   onInspectEnvironment: () => void;
   onCheckGuiUpdate: () => void;
   onInstallGuiUpdate: () => void;
+  onCheckPlaybackUpdate: () => void;
+  onInstallLatestPlayback: () => void;
   onInstallPlaybackBundle: () => void;
   onRollbackPlayback: () => void;
   onLoadServerConfig: () => Promise<boolean>;
@@ -301,6 +305,7 @@ export function SettingsWorkspace({
   appVersion,
   guiUpdate,
   playbackRelease,
+  playbackUpdate,
   playbackReleaseError,
   releaseAction,
   releaseNotice,
@@ -315,6 +320,8 @@ export function SettingsWorkspace({
   onInspectEnvironment,
   onCheckGuiUpdate,
   onInstallGuiUpdate,
+  onCheckPlaybackUpdate,
+  onInstallLatestPlayback,
   onInstallPlaybackBundle,
   onRollbackPlayback,
   onLoadServerConfig,
@@ -665,6 +672,13 @@ export function SettingsWorkspace({
   );
 
   const releaseBusy = releaseAction !== null;
+  const playbackUpdateBusy = releaseBusy || playbackUpdate.phase === "checking";
+  const playbackUpdateLabel = playbackUpdate.phase === "checking" ? words.releaseChecking
+    : playbackUpdate.phase === "current" ? words.releaseUpToDate
+      : playbackUpdate.phase === "available" ? words.releaseUpdateAvailable
+        : playbackUpdate.phase === "error" ? words.releaseCheckUnavailable
+          : words.releaseNotChecked;
+  const playbackReleaseNotes = releaseNotesForLanguage(playbackUpdate.notes, language);
   const guiUpdateBusy = guiUpdate.phase === "checking"
     || guiUpdate.phase === "downloading"
     || guiUpdate.phase === "installing";
@@ -747,9 +761,9 @@ export function SettingsWorkspace({
     <div className="settings-pane release-manager-pane">
       <section className="settings-card release-card" aria-label={words.releasePlayback}>
         <div className="settings-card-heading release-compact-heading">
-          <strong>{words.releaseInstalled}</strong>
-          <span className="count-badge">
-            {playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseUnverified}
+          <strong>{words.releasePlayback}</strong>
+          <span className={`release-status-pill is-${playbackUpdate.phase}`} role="status">
+            <i aria-hidden="true" />{playbackUpdateLabel}
           </span>
         </div>
 
@@ -759,12 +773,32 @@ export function SettingsWorkspace({
           <>
             <code className="release-target-path">{environment.cs2Path}</code>
             <div className="release-version-grid">
-              <div><span>{words.releaseInstalled}</span><strong>{playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy}</strong></div>
-              <div><span>{words.releaseInstallSource}</span><strong>{words.releaseLocalZip}</strong></div>
+              <div><span>{words.releaseInstalledBundle}</span><strong>{playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy}</strong></div>
+              <div><span>{words.releaseLoadedPlugin}</span><strong>{playbackRelease?.loadedPluginVersion ? `v${playbackRelease.loadedPluginVersion}` : words.releaseNotRunning}</strong></div>
+              <div><span>{words.releaseLatestVersion}</span><strong>{playbackUpdate.latestVersion ? `v${playbackUpdate.latestVersion}` : "—"}</strong></div>
+              <div><span>{words.releaseInstallSource}</span><strong>{words.releaseSignedOnlineOrZip}</strong></div>
             </div>
+            <p className="settings-help">{words.releasePlaybackAutomaticUpdates}</p>
+            {playbackReleaseNotes ? (
+              <section className="release-notes-panel" aria-label={words.releaseUpdateNotes}>
+                <strong>{words.releaseUpdateNotes}</strong>
+                <p>{playbackReleaseNotes}</p>
+              </section>
+            ) : null}
+            {playbackUpdate.error ? <p className="release-error"><AlertIcon size={15} />{playbackUpdate.error}</p> : null}
             {playbackReleaseError ? <p className="release-error"><AlertIcon size={15} />{playbackReleaseError}</p> : null}
             <div className="release-actions">
-              <button className="primary-button" type="button" disabled={releaseBusy} onClick={onInstallPlaybackBundle}>
+              {playbackUpdate.phase === "available" ? (
+                <button className="primary-button" type="button" disabled={playbackUpdateBusy} onClick={onInstallLatestPlayback}>
+                  <ReplayIcon size={15} />{releaseAction === "installingOnline" ? words.releaseInstalling : words.releaseInstallLatestPlayback}
+                </button>
+              ) : (
+                <button className="secondary-button" type="button" disabled={playbackUpdateBusy} onClick={onCheckPlaybackUpdate}>
+                  <RefreshIcon className={playbackUpdate.phase === "checking" ? "release-spin" : undefined} size={15} />
+                  {playbackUpdate.phase === "checking" ? words.releaseChecking : words.releaseCheckNow}
+                </button>
+              )}
+              <button className="secondary-button" type="button" disabled={releaseBusy} onClick={onInstallPlaybackBundle}>
                 <FolderIcon size={15} />{releaseAction === "installingFile" ? words.releaseInstalling : words.releaseInstallFromZip}
               </button>
               <button className="text-button" type="button" disabled={releaseBusy || !playbackRelease?.canRollback} onClick={onRollbackPlayback}>

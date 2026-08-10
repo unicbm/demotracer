@@ -192,9 +192,10 @@ The desktop app checks the signed stable GUI manifest at
 `https://releases.detr.site/channels/stable/latest.json` on startup. A newer
 version is shown with localized release notes and is installed only after user
 confirmation. Tauri verifies the updater signature before starting the passive
-NSIS install. CSS bundles remain explicit local installs; their receipt and
-every recorded file hash are validated before changing CS2, with one rollback
-preserved.
+NSIS install. The same manifest advertises the matched CSS bundle. Its immutable
+release URL, SHA-256 digest, and minisign signature are verified before the
+existing receipt and per-file validation changes CS2, with one rollback
+preserved. Local CSS ZIP installation remains available as a fallback.
 
 ```powershell
 .\tooling\scripts\package-release.ps1 `
@@ -208,7 +209,7 @@ installer and CSS bundle, then creates two deliberately separate directories:
 
 - `dist/release-v<version>` contains only the public GitHub assets: the GUI EXE
   and CSS ZIP.
-- `dist/updater-v<version>` contains the signed GUI updater payload,
+- `dist/updater-v<version>` contains the signed GUI and CSS updater payloads,
   `latest.json`, and checksums for R2 publishing.
 
 Pass localized release notes while packaging, then publish only the updater

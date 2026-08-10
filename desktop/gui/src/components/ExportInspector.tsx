@@ -4,11 +4,9 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { type RefObject, useEffect, useRef } from "react";
-import { CloseIcon } from "../icons";
+import { type RefObject, useRef } from "react";
 import type { TextDictionary } from "../i18n";
 import type { ConverterSettings, SideChoice } from "../types";
-import { DialogPrimitive } from "./Dialog";
 
 interface SwitchControlProps {
   checked: boolean;
@@ -34,12 +32,9 @@ function SwitchControl({ checked, label, onChange }: SwitchControlProps) {
 interface ExportInspectorProps {
   words: TextDictionary;
   settings: ConverterSettings;
-  docked: boolean;
   disabled: boolean;
-  returnFocusRef: RefObject<HTMLElement | null>;
   onChange: (patch: Partial<ConverterSettings>) => void;
   onRequestCosmetics: () => void;
-  onClose: () => void;
   onRestoreDefaults: () => void;
 }
 
@@ -47,15 +42,12 @@ function InspectorContents({
   words,
   settings,
   firstControlRef,
-  dismissible,
   disabled,
   onChange,
   onRequestCosmetics,
-  onClose,
   onRestoreDefaults,
-}: Omit<ExportInspectorProps, "docked" | "returnFocusRef"> & {
+}: ExportInspectorProps & {
   firstControlRef: RefObject<HTMLButtonElement | null>;
-  dismissible: boolean;
 }) {
   const sideOptions: Array<{ value: SideChoice; label: string }> = [
     { value: "both", label: words.both },
@@ -67,11 +59,6 @@ function InspectorContents({
     <>
       <header className="inspector-header">
         <h2 id="export-inspector-title">{words.inspectorTitle}</h2>
-        {dismissible ? (
-          <button className="icon-button" type="button" onClick={onClose} aria-label={words.close} title={words.close}>
-            <CloseIcon size={17} />
-          </button>
-        ) : null}
       </header>
 
       <fieldset className="inspector-controls" disabled={disabled}>
@@ -174,36 +161,13 @@ function InspectorContents({
 
 export function ExportInspector(props: ExportInspectorProps) {
   const firstControlRef = useRef<HTMLButtonElement | null>(null);
-  const previousDockedRef = useRef(props.docked);
-
-  useEffect(() => {
-    if (props.docked && !previousDockedRef.current) {
-      firstControlRef.current?.focus({ preventScroll: true });
-    }
-    previousDockedRef.current = props.docked;
-  }, [props.docked]);
-
-  if (!props.docked) {
-    return (
-      <DialogPrimitive
-        labelledBy="export-inspector-title"
-        onDismiss={props.onClose}
-        initialFocusRef={firstControlRef}
-        returnFocusRef={props.returnFocusRef}
-        scrimClassName="inspector-scrim"
-        className="export-inspector is-sheet"
-      >
-        <InspectorContents {...props} dismissible firstControlRef={firstControlRef} />
-      </DialogPrimitive>
-    );
-  }
 
   return (
     <aside
       className="export-inspector is-docked"
       aria-labelledby="export-inspector-title"
     >
-      <InspectorContents {...props} dismissible={false} firstControlRef={firstControlRef} />
+      <InspectorContents {...props} firstControlRef={firstControlRef} />
     </aside>
   );
 }

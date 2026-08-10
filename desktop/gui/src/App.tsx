@@ -35,10 +35,9 @@ import { DEFAULT_PLAYBACK_ADVANCED_OPTIONS, type PlaybackPresetOptions } from ".
 import { playerSelectionKey } from "./components/PlayerRoster";
 import { RoundWorkspace } from "./components/RoundWorkspace";
 import { SettingsWorkspace } from "./components/SettingsWorkspace";
+import { SingleTaskPanel } from "./components/SingleTaskPanel";
 import {
   AnalysisFailedView,
-  AnalysisProgressView,
-  ConversionProgressView,
   type CopyTarget,
   OpeningArchiveView,
   ResultView,
@@ -109,6 +108,8 @@ import type {
   OutputPreflight,
   PlaybackInstallResult,
   PlaybackReleaseStatus,
+  PlaybackUpdateRelease,
+  PlaybackUpdateStatus,
   Phase,
   ProgressPhase,
   ProgressState,
@@ -578,6 +579,21 @@ function userFacingErrorMessage(error: { code: string; message: string; path?: s
   if (code.includes("cancel") || code.includes("stopping")) {
     return zh ? "任务已停止。已完成的输出会保留。" : "Task stopped. Completed output is kept.";
   }
+  if (code.includes("playback_update_check")) {
+    return zh ? "暂时无法连接回放组件更新服务。" : "The playback update service is temporarily unavailable.";
+  }
+  if (code.includes("playback_update_download")) {
+    return zh ? "回放组件下载失败，请稍后重试。" : "The playback component download failed. Try again later.";
+  }
+  if (code.includes("playback_update_manifest")) {
+    return zh ? "回放组件更新清单未通过安全检查。" : "The playback update manifest did not pass security validation.";
+  }
+  if (code.includes("playback_update_hash") || code.includes("playback_update_signature") || code.includes("playback_signing_key")) {
+    return zh ? "下载的回放组件未通过完整性或签名验证，未执行安装。" : "The downloaded playback component failed integrity or signature verification and was not installed.";
+  }
+  if (code.includes("cs2_running")) {
+    return zh ? "请先关闭 CS2，再安装或回滚回放组件。" : "Close CS2 before installing or rolling back playback components.";
+  }
   if (code.includes("not_found") || code.includes("unavailable") || code.includes("missing")) {
     return zh ? "找不到所选文件，请重新选择。" : "The selected file was not found. Choose it again.";
   }
@@ -672,6 +688,7 @@ function App() {
   const [customCss, setCustomCss] = useState(() => normalizeCustomCss(localStorage.getItem(CUSTOM_CSS_STORAGE_KEY)));
   const [phase, setPhase] = useState<Phase>("idle");
   const [singleTask, setSingleTask] = useState<"analysis" | "conversion" | null>(null);
+  const [singleTaskPanelOpen, setSingleTaskPanelOpen] = useState(false);
   const [activeTaskSourcePath, setActiveTaskSourcePath] = useState("");
   const [libraryWorkspace, dispatchLibraryWorkspace] = useReducer(
     libraryWorkspaceReducer,
@@ -737,8 +754,9 @@ function App() {
   });
   const [guiUpdateDialogOpen, setGuiUpdateDialogOpen] = useState(false);
   const [playbackRelease, setPlaybackRelease] = useState<PlaybackReleaseStatus | null>(null);
+  const [playbackUpdate, setPlaybackUpdate] = useState<PlaybackUpdateStatus>({ phase: "idle" });
   const [playbackReleaseError, setPlaybackReleaseError] = useState("");
-  const [releaseAction, setReleaseAction] = useState<"installingFile" | "rollingBack" | null>(null);
+  const [releaseAction, setReleaseAction] = useState<"installingOnline" | "installingFile" | "rollingBack" | null>(null);
   const [releaseNotice, setReleaseNotice] = useState("");
   const [serverConfigDocument, setServerConfigDocument] = useState<ServerConfigDocument | null>(null);
   const [serverConfigDraft, setServerConfigDraft] = useState("");
@@ -751,7 +769,6 @@ function App() {
   const [analysisError, setAnalysisError] = useState("");
   const [validationError, setValidationError] = useState("");
   const [globalError, setGlobalError] = useState<CommandErrorDto | null>(null);
-  const [inspectorSheetOpen, setInspectorSheetOpen] = useState(false);
   const [overwriteConflict, setOverwriteConflict] = useState<OutputPreflight | null>(null);
   const [conversionStartPending, setConversionStartPending] = useState(false);
   const [demoPreflightActive, setDemoPreflightActive] = useState(false);
@@ -790,7 +807,6 @@ function App() {
   const soundNotificationsRef = useRef(localEnvironment.soundNotifications);
   const retryButtonRef = useRef<HTMLButtonElement | null>(null);
   const resultHeadingRef = useRef<HTMLHeadingElement | null>(null);
-  const settingsTriggerRef = useRef<HTMLElement | null>(null);
   const cosmeticInputRef = useRef<HTMLInputElement | null>(null);
   const chooseOtherOutputRef = useRef<HTMLButtonElement | null>(null);
   const openExistingArchiveRef = useRef<HTMLButtonElement | null>(null);
@@ -815,8 +831,9 @@ function App() {
   isBusyRef.current = isBusy;
   const systemDark = useMediaQuery("(prefers-color-scheme: dark)");
   const resolvedTheme = resolveTheme(theme, systemDark);
-  const inspectorDocked = useMediaQuery("(min-width: 1320px)");
-  const inspectorVisible = selectedPlayer === null && (inspectorDocked || inspectorSheetOpen);
+  const inspectorVisible = selectedPlayer === null
+    && analysis !== null
+    && (phase === "selecting" || singleTask === "conversion");
   const elapsedSeconds = useElapsed(singleTask === "analysis");
   const sourceFileName = analysis?.fileName || fileName(sourcePath);
   const analysisSessionTitle = activeSection === "analysis" && phase === "archive" && archive
@@ -1116,10 +1133,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (inspectorDocked) setInspectorSheetOpen(false);
-  }, [inspectorDocked]);
-
-  useEffect(() => {
     const persisted = {
       ...settings,
       exportCosmetics: cosmeticConsentAccepted && settings.exportCosmetics,
@@ -1189,12 +1202,29 @@ function App() {
     const cs2Path = localEnvironment.cs2Path.trim();
     let disposed = false;
     setPlaybackReleaseError("");
+    setPlaybackUpdate(cs2Path ? { phase: "checking" } : { phase: "idle" });
     void invoke<PlaybackReleaseStatus>("playback_release_status", { cs2Path: cs2Path || null }).then((status) => {
       if (disposed) return;
       setPlaybackRelease(status);
     }).catch((reason) => {
       if (!disposed) setPlaybackReleaseError(userFacingErrorMessage(parseCommandError(reason), language));
     });
+    if (cs2Path) {
+      void invoke<PlaybackUpdateRelease>("playback_update_status", { cs2Path }).then((status) => {
+        if (disposed) return;
+        setPlaybackUpdate({
+          phase: status.updateAvailable ? "available" : "current",
+          latestVersion: status.latestVersion,
+          notes: status.notes,
+        });
+      }).catch((reason) => {
+        if (disposed) return;
+        setPlaybackUpdate({
+          phase: "error",
+          error: userFacingErrorMessage(parseCommandError(reason), language),
+        });
+      });
+    }
     return () => { disposed = true; };
   }, [language, localEnvironment.cs2Path]);
 
@@ -1439,19 +1469,12 @@ function App() {
     setAnalysisError("");
     setValidationError("");
     setSourcePath(path);
-    setAnalysis(null);
-    setResult(null);
-    if (!preserveArchive) dispatchLibraryWorkspace({ type: "clear" });
-    dispatchLibraryWorkspace({ type: "navigate", section: "analysis" });
-    setOutputRoot("");
-    setSelectedRounds(new Set());
-    setInspectorSheetOpen(false);
     setCosmeticPhrase("");
     setSettings((current) => ({ ...current, includeSuspicious: false }));
     setProgress({ ...emptyProgress(), phase: "parsing" });
     setSingleTask("analysis");
+    setSingleTaskPanelOpen(true);
     setActiveTaskSourcePath(path);
-    setPhase("analyzing");
     taskWarningsRef.current = [];
 
     const events = new Channel<TaskEvent>();
@@ -1469,6 +1492,8 @@ function App() {
       setSourcePath(next.sourcePath);
       setDemoSourceIndex((current) => rememberDemoSource(current, next.demoSha256, next.sourcePath));
       setAnalysis(next);
+      setResult(null);
+      setOutputRoot("");
       dispatchLibraryWorkspace({ type: "clear" });
       dispatchLibraryWorkspace({ type: "navigate", section: "analysis" });
       localStorage.removeItem(LIBRARY_SESSION_STORAGE_KEY);
@@ -1476,6 +1501,7 @@ function App() {
       setOutputDir((current) => current || libraryRoot);
       setPhase("selecting");
       setSingleTask(null);
+      setSingleTaskPanelOpen(false);
       setAnalysisCancelPending(false);
       playTaskSound("success");
     } catch (reason) {
@@ -1485,6 +1511,7 @@ function App() {
       if (error.code === "analysis_cancelled") {
         setAnalysisError("");
         setSingleTask(null);
+        setSingleTaskPanelOpen(false);
         if (preserveArchive) {
           setPhase("archive");
         } else {
@@ -1497,6 +1524,7 @@ function App() {
       }
       if (preserveArchive) {
         setSingleTask(null);
+        setSingleTaskPanelOpen(false);
         setPhase("archive");
         setGlobalError(error);
         playTaskSound("failure");
@@ -1508,6 +1536,7 @@ function App() {
       setAnalysisError(userFacingErrorMessage(error, language));
       setPhase("analysisFailed");
       setSingleTask(null);
+      setSingleTaskPanelOpen(false);
       playTaskSound("failure");
     }
   }, [absorbEvent, libraryRoot, playTaskSound, primeTaskSound, settings.maxRoundSeconds, words.invalidDemo]);
@@ -1732,7 +1761,6 @@ function App() {
     };
     setGlobalError(null);
     dispatchLibraryWorkspace({ type: "opening", path });
-    setInspectorSheetOpen(false);
     if (cached) {
       showArchive(cached);
       return;
@@ -2226,7 +2254,7 @@ function App() {
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== "o") return;
-      if (isBusy || overwriteConflict || duplicateDemoConflict || cosmeticOpen || closeOpen || inspectorSheetOpen) return;
+      if (isBusy || overwriteConflict || duplicateDemoConflict || cosmeticOpen || closeOpen) return;
       event.preventDefault();
       if (event.shiftKey) void chooseManifest();
       else void chooseDemos();
@@ -2787,6 +2815,42 @@ function App() {
       cs2Path: localEnvironment.cs2Path.trim(),
     });
     setPlaybackRelease(status);
+    await checkPlaybackUpdate(true);
+  }
+
+  async function checkPlaybackUpdate(ignoreBusy = false) {
+    const cs2Path = localEnvironment.cs2Path.trim();
+    if (!cs2Path || (!ignoreBusy && releaseAction)) return;
+    setPlaybackUpdate({ phase: "checking" });
+    try {
+      const status = await invoke<PlaybackUpdateRelease>("playback_update_status", { cs2Path });
+      setPlaybackUpdate({
+        phase: status.updateAvailable ? "available" : "current",
+        latestVersion: status.latestVersion,
+        notes: status.notes,
+      });
+    } catch (reason) {
+      setPlaybackUpdate({
+        phase: "error",
+        error: userFacingErrorMessage(parseCommandError(reason), language),
+      });
+    }
+  }
+
+  async function installLatestPlaybackBundle() {
+    const cs2Path = localEnvironment.cs2Path.trim();
+    if (!cs2Path || releaseAction) return;
+    setReleaseAction("installingOnline");
+    setPlaybackReleaseError("");
+    setReleaseNotice("");
+    try {
+      const result = await invoke<PlaybackInstallResult>("install_latest_playback_bundle", { cs2Path });
+      await finishPlaybackChange(result, "install");
+    } catch (reason) {
+      setPlaybackReleaseError(userFacingErrorMessage(parseCommandError(reason), language));
+    } finally {
+      setReleaseAction(null);
+    }
   }
 
   async function installPlaybackBundle() {
@@ -3074,10 +3138,10 @@ function App() {
     setValidationError("");
     setConversionWarnings([]);
     setOverwriteConflict(null);
-    setInspectorSheetOpen(false);
     setResult(null);
     setProgress(emptyProgress());
     setSingleTask("conversion");
+    setSingleTaskPanelOpen(true);
     setActiveTaskSourcePath(sourcePath);
     setPhase("converting");
 
@@ -3121,6 +3185,7 @@ function App() {
       setOutputDir(destination);
       void scanLibrary(withExportRoot(libraryRoots, destination));
       setPhase("complete");
+      setSingleTaskPanelOpen(false);
       playTaskSound("success");
     } catch (reason) {
       if (token !== taskTokenRef.current) return;
@@ -3135,6 +3200,7 @@ function App() {
         setGlobalError(error);
         setPhase("selecting");
       }
+      setSingleTaskPanelOpen(false);
       playTaskSound("failure");
     } finally {
       if (token === taskTokenRef.current) setSingleTask(null);
@@ -3257,10 +3323,7 @@ function App() {
 
   function resetSession() {
     if (singleTask) {
-      ++manifestReadTokenRef.current;
-      dispatchLibraryWorkspace({ type: "clear" });
-      setSourcePath(activeTaskSourcePath);
-      setPhase(singleTask === "analysis" ? "analyzing" : "converting");
+      setSingleTaskPanelOpen(true);
       return;
     }
     ++taskTokenRef.current;
@@ -3280,7 +3343,6 @@ function App() {
     setAnalysisError("");
     setValidationError("");
     setGlobalError(null);
-    setInspectorSheetOpen(false);
     setCosmeticPhrase("");
     setSettings((current) => ({ ...current, includeSuspicious: false }));
   }
@@ -3302,7 +3364,7 @@ function App() {
     }
   }
 
-  const selectingView = analysis && phase === "selecting" ? (
+  const selectingView = analysis && (phase === "selecting" || singleTask === "conversion") ? (
     <div className="selection-layout">
       <RoundWorkspace
         words={words}
@@ -3314,16 +3376,12 @@ function App() {
         outputRoot={outputRoot}
         copiedTarget={copiedTarget}
         selectedPlayer={selectedPlayer}
-        convertPending={conversionStartPending}
+        convertPending={conversionStartPending || singleTask === "conversion"}
         onToggleRound={toggleRound}
         onRestoreRecommended={restoreRecommended}
         onClearSelection={() => setSelectedRounds(new Set())}
         onAllowSuspiciousChange={handleAllowSuspicious}
         onChooseOutput={() => void chooseOutput()}
-        onOpenSettings={(trigger) => {
-          settingsTriggerRef.current = trigger;
-          setInspectorSheetOpen(true);
-        }}
         onConvert={() => void beginConvert()}
         onSelectPlayer={(player) => dispatchLibraryWorkspace({ type: "selectPlayer", player })}
         onClosePlayer={closePlayerAnalysis}
@@ -3336,12 +3394,9 @@ function App() {
         <ExportInspector
           words={words}
           settings={settings}
-          docked={inspectorDocked}
-          disabled={conversionStartPending}
-          returnFocusRef={settingsTriggerRef}
+          disabled={conversionStartPending || singleTask === "conversion"}
           onChange={updateSettings}
           onRequestCosmetics={requestCosmeticExport}
-          onClose={() => setInspectorSheetOpen(false)}
           onRestoreDefaults={restoreDefaultSettings}
         />
       ) : null}
@@ -3421,12 +3476,16 @@ function App() {
             <code title={demoPreflightProgress.fileName}>{demoPreflightProgress.fileName}</code>
           </div>
         ) : null}
-        {!demoPreflightProgress && singleTask && activeSection !== "analysis" ? (
-          <div className="background-task-strip" role="status" aria-live="polite">
+        {!demoPreflightProgress && singleTask && !singleTaskPanelOpen ? (
+          <button
+            className="background-task-strip batch-task-return"
+            type="button"
+            onClick={() => setSingleTaskPanelOpen(true)}
+          >
             <i aria-hidden="true" />
             <strong>{singleTask === "conversion" ? words.conversionTitle : words.analyzingTitle}</strong>
             <code title={activeTaskSourcePath}>{fileName(activeTaskSourcePath)}</code>
-          </div>
+          </button>
         ) : null}
         {!demoPreflightProgress && (batchInvocationActive || canResumeBatch || hasRetryableBatchJobs) && activeSection !== "batch" ? (
           <button
@@ -3472,6 +3531,7 @@ function App() {
             appVersion={appVersion}
             guiUpdate={guiUpdate}
             playbackRelease={playbackRelease}
+            playbackUpdate={playbackUpdate}
             playbackReleaseError={playbackReleaseError}
             releaseAction={releaseAction}
             releaseNotice={releaseNotice}
@@ -3492,6 +3552,8 @@ function App() {
             onInspectEnvironment={() => void runEnvironmentInspection()}
             onCheckGuiUpdate={() => void checkGuiApplicationUpdate()}
             onInstallGuiUpdate={() => setGuiUpdateDialogOpen(true)}
+            onCheckPlaybackUpdate={() => void checkPlaybackUpdate()}
+            onInstallLatestPlayback={() => void installLatestPlaybackBundle()}
             onInstallPlaybackBundle={() => void installPlaybackBundle()}
             onRollbackPlayback={() => void rollbackPlaybackInstall()}
             onLoadServerConfig={loadServerConfig}
@@ -3547,6 +3609,7 @@ function App() {
               onRepairEntry={(entry: DemoLibraryEntry) => void repairArchiveMetadata(entry)}
               onRevealManifest={(entry: DemoLibraryEntry) => void revealPath(entry.manifestPath)}
               onRevealDemo={(entry: DemoLibraryEntry) => void revealPath(entry.sourcePath || entry.demoPath)}
+              onCopyDemoPath={(entry: DemoLibraryEntry) => void copyText(entry.sourcePath || entry.demoPath, "demoPath")}
               onReparseEntry={(entry: DemoLibraryEntry) => setReparseTarget({ kind: "library", entry })}
               onDeleteEntry={setArchiveDeleteTarget}
             />
@@ -3629,21 +3692,10 @@ function App() {
             onChooseManifest={() => void chooseManifest()}
           />
         ) : null}
-        {phase === "analyzing" ? (
-          <AnalysisProgressView
-            words={words}
-            sourceFileName={sourceFileName}
-            elapsedSeconds={elapsedSeconds}
-            progressPhase={progress.phase}
-            cancelPending={analysisCancelPending}
-            onCancel={() => void cancelAnalysis()}
-          />
-        ) : null}
         {phase === "analysisFailed" ? (
           <AnalysisFailedView words={words} error={analysisError} retryButtonRef={retryButtonRef} onRetry={() => void runAnalysis(sourcePath)} onChangeDemo={() => void chooseDemo(sourcePath)} />
         ) : null}
         {selectingView}
-        {phase === "converting" ? <ConversionProgressView words={words} progress={progress} outputRoot={outputRoot} /> : null}
         {phase === "validationFailed" ? (
           <ValidationFailedView words={words} error={validationError} outputRoot={outputRoot} onOpenFolder={() => void openPath(outputRoot)} onBack={() => setPhase("selecting")} />
         ) : null}
@@ -3666,6 +3718,19 @@ function App() {
         ) : null}
           </>
         )}
+        {singleTask && singleTaskPanelOpen ? (
+          <SingleTaskPanel
+            words={words}
+            task={singleTask}
+            sourcePath={activeTaskSourcePath}
+            elapsedSeconds={elapsedSeconds}
+            progress={progress}
+            outputRoot={outputRoot}
+            cancelPending={analysisCancelPending}
+            onCancelAnalysis={() => void cancelAnalysis()}
+            onMinimize={() => setSingleTaskPanelOpen(false)}
+          />
+        ) : null}
         </main>
         <InventorySimulatorPanel
           available={inventorySimulatorPanelAvailable}

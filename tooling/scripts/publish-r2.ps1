@@ -32,7 +32,9 @@ if (-not [System.Uri]::TryCreate($releaseBase, [System.UriKind]::Absolute, [ref]
 }
 $installerName = "demotracer-gui-v$Version.exe"
 $signatureName = "$installerName.sig"
-$required = @($installerName, $signatureName, "latest.json", "SHA256SUMS.txt")
+$playbackName = "demotracer-css-v$Version.zip"
+$playbackSignatureName = "$playbackName.sig"
+$required = @($installerName, $signatureName, $playbackName, $playbackSignatureName, "latest.json", "SHA256SUMS.txt")
 
 function Invoke-Checked([string]$Command, [string[]]$Arguments) {
     Write-Host "> $Command $($Arguments -join ' ')"
@@ -52,6 +54,9 @@ function Content-TypeFor([string]$Name) {
     if ($Name.EndsWith(".txt", [System.StringComparison]::OrdinalIgnoreCase) -or
         $Name.EndsWith(".sig", [System.StringComparison]::OrdinalIgnoreCase)) {
         return "text/plain; charset=utf-8"
+    }
+    if ($Name.EndsWith(".zip", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return "application/zip"
     }
     return "application/vnd.microsoft.portable-executable"
 }
@@ -107,6 +112,19 @@ if (-not [System.StringComparer]::Ordinal.Equals(
         $expectedSignature)) {
     throw "Updater manifest signature does not match $signatureName."
 }
+$expectedPlaybackUrl = "$releaseBase/releases/v$Version/$playbackName"
+if ([string]$latest.playback.version -ne $Version -or
+    -not [System.StringComparer]::OrdinalIgnoreCase.Equals([string]$latest.playback.url, $expectedPlaybackUrl)) {
+    throw "Updater manifest playback asset does not point at the immutable v$Version R2 prefix."
+}
+$expectedPlaybackSignature = (Get-Content -LiteralPath (Join-Path $UpdaterRoot $playbackSignatureName) -Raw -Encoding UTF8).Trim()
+if (-not [System.StringComparer]::Ordinal.Equals([string]$latest.playback.signature, $expectedPlaybackSignature)) {
+    throw "Updater manifest playback signature does not match $playbackSignatureName."
+}
+$expectedPlaybackHash = (Get-FileHash -LiteralPath (Join-Path $UpdaterRoot $playbackName) -Algorithm SHA256).Hash.ToLowerInvariant()
+if (-not [System.StringComparer]::OrdinalIgnoreCase.Equals([string]$latest.playback.sha256, $expectedPlaybackHash)) {
+    throw "Updater manifest playback SHA-256 does not match $playbackName."
+}
 
 $wrangler = "wrangler@$WranglerVersion"
 Invoke-Checked "npx.cmd" @("--yes", $wrangler, "whoami")
@@ -132,6 +150,8 @@ foreach ($name in $required) {
 $aliases = [ordered]@{
     "demotracer-gui.exe" = $installerName
     "demotracer-gui.exe.sig" = $signatureName
+    "demotracer-css.zip" = $playbackName
+    "demotracer-css.zip.sig" = $playbackSignatureName
 }
 foreach ($alias in $aliases.GetEnumerator()) {
     $path = Join-Path $UpdaterRoot $alias.Value
@@ -166,5 +186,9 @@ if (-not $DryRun) {
     if ($remoteLatest.version -ne $Version) {
         throw "R2 verification returned a stale updater manifest."
     }
-    Write-Host "Published and verified the DemoTracer GUI v$Version updater at $releaseBase"
+    if ($remoteLatest.playback.version -ne $Version -or
+        $remoteLatest.playback.url -ne "$releaseBase/releases/v$Version/$playbackName") {
+        throw "R2 verification returned stale playback updater metadata."
+    }
+    Write-Host "Published and verified the DemoTracer GUI and CSS v$Version updater at $releaseBase"
 }

@@ -62,7 +62,8 @@ public sealed partial class DemoTracerPlugin
         _session.LoadedReplays.Clear();
         _session.ReplayIdentityGenerationBySlot.Clear();
         ClearStoppedReplayExecutionState();
-        _session.LoadoutSyncedSlots.Clear();
+        _session.WeaponLoadoutSyncedSlots.Clear();
+        _session.PawnEquipmentSync.Clear();
         _session.BalanceSyncedSlots.Clear();
         ResetCosmeticAlignState(resetCounters: true);
         ResetStickerAlignState(resetCounters: true);
@@ -140,7 +141,8 @@ public sealed partial class DemoTracerPlugin
             _session.ReplayHifiEventNextBySlot.Clear();
             _session.ReplayIdentityGenerationBySlot.Clear();
             ClearStoppedReplayExecutionState();
-            _session.LoadoutSyncedSlots.Clear();
+            _session.WeaponLoadoutSyncedSlots.Clear();
+            _session.PawnEquipmentSync.Clear();
             _session.BalanceSyncedSlots.Clear();
             ResetCosmeticAlignState(resetCounters: true);
             ResetStickerAlignState(resetCounters: true);

@@ -10,8 +10,8 @@
   },
   "bot_controller": {
     "abi_major": 18,
-    "min_abi_minor": 34,
-    "required_capabilities_hex": "0xc1ff"
+    "min_abi_minor": 35,
+    "required_capabilities_hex": "0x1c1ff"
   },
   "bot_hider": {
     "api": 1
