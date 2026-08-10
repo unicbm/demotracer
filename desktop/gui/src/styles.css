@@ -1293,8 +1293,10 @@ input[type="radio"] {
   font-size: 10px;
   line-height: 16px;
   white-space: nowrap;
-  scrollbar-width: thin;
+  scrollbar-width: none;
 }
+
+.playback-command-line code::-webkit-scrollbar { display: none; }
 
 .playback-command-line .primary-button {
   flex: none;

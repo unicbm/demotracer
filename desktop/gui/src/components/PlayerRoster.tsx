@@ -424,7 +424,6 @@ function ViewmodelEvidenceList({
         {commands.map((command, index) => (
           <li key={`${command}:${index}`}>
             <span>
-              <small>{words.viewmodelProfile} {index + 1}</small>
               <code>{command}</code>
             </span>
             <CopyAction value={command} target={targetFor(playerKey, "viewmodel", index)} copiedTarget={copiedTarget} label={words.copyCommand} copiedLabel={words.copied} onCopy={onCopy} />
@@ -633,7 +632,6 @@ function CrosshairEvidence({
             {codes.map((code, index) => (
               <li className={previewCode === code ? "is-selected" : ""} key={`${code}-${index}`}>
                 <button className="crosshair-code-select" type="button" onClick={() => setPreviewCode(code)}>
-                  <small>{words.sharedCrosshair} {index + 1}</small>
                   <code>{code}</code>
                 </button>
                 <CopyAction value={code} target={targetFor(playerKey, "crosshair", index)} copiedTarget={copiedTarget} label={words.copyCommand} copiedLabel={words.copied} onCopy={onCopy} />

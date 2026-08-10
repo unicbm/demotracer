@@ -615,6 +615,15 @@
   white-space: normal;
 }
 
+.player-analysis-dossier .player-config-command-list > li {
+  min-height: 44px;
+}
+
+.player-analysis-dossier .player-config-command-list > li > span {
+  min-height: 42px;
+  padding-block: 6px;
+}
+
 .player-analysis-dossier .roster-cosmetic-list {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 11px;
@@ -627,20 +636,13 @@
 .crosshair-code-select {
   display: grid;
   min-width: 0;
-  min-height: 56px;
+  min-height: 42px;
   align-content: center;
-  padding: 8px 4px 8px 11px;
-  gap: 3px;
+  padding: 6px 4px 6px 11px;
   color: inherit;
   background: transparent;
   border: 0;
   text-align: left;
-}
-
-.crosshair-code-select small {
-  color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 650;
 }
 
 .crosshair-code-select code {

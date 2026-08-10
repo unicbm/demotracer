@@ -4,8 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import type { ReactNode } from "react";
-import { CheckIcon, ChevronIcon, CopyIcon } from "../icons";
+import { CheckIcon, CopyIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
 import type { ConversionSummary } from "../types";
 
@@ -106,42 +105,6 @@ function PlaybackOption({
         <small>{description}</small>
       </span>
       <SwitchControl checked={checked} disabled={disabled} label={label} onChange={onChange} />
-    </div>
-  );
-}
-
-function PlaybackSelect({
-  label,
-  value,
-  children,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  children: ReactNode;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="playback-select-option">
-      <strong>{label}</strong>
-      <select value={value} onChange={(event) => onChange(event.target.value)}>{children}</select>
-    </label>
-  );
-}
-
-function PlaybackAdvancedSwitch({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <div className="playback-advanced-switch">
-      <strong>{label}</strong>
-      <SwitchControl checked={checked} label={label} onChange={onChange} />
     </div>
   );
 }
@@ -295,82 +258,6 @@ export function PlaybackCommandBuilder({
           <PlaybackOption checked={playoff} disabled={!sequenceMode} label={words.playoffBeta} description={words.playoffHelp} onChange={(checked) => onOptionsChange({ playoff: checked })} />
         </div>
 
-        <details className="playback-advanced">
-          <summary><strong>{words.advancedPlaybackSettings}</strong><ChevronIcon size={15} /></summary>
-          <div className="playback-override-grid" role="group" aria-label={words.playbackAdvancedOverrides}>
-            <PlaybackAdvancedSwitch
-              label={words.projectileAlignment}
-              checked={options.projectileAlignment === "on"}
-              onChange={(checked) => onOptionsChange({ projectileAlignment: checked ? "on" : "off" })}
-            />
-            <PlaybackAdvancedSwitch
-              label={words.crosshairAlignment}
-              checked={options.crosshairAlignment === "on"}
-              onChange={(checked) => onOptionsChange({ crosshairAlignment: checked ? "on" : "off" })}
-            />
-            <PlaybackAdvancedSwitch
-              label={words.leftHandAlignment}
-              checked={options.leftHandAlignment === "on"}
-              onChange={(checked) => onOptionsChange({ leftHandAlignment: checked ? "on" : "off" })}
-            />
-            <PlaybackAdvancedSwitch
-              label={words.matchPresentation}
-              checked={options.matchPresentation === "scoreboard"}
-              onChange={(checked) => onOptionsChange({ matchPresentation: checked ? "scoreboard" : "off" })}
-            />
-            <PlaybackAdvancedSwitch
-              label={words.partialReplay}
-              checked={options.allowPartial === "on"}
-              onChange={(checked) => onOptionsChange({ allowPartial: checked ? "on" : "off" })}
-            />
-            <PlaybackSelect
-              label={words.handoffMode}
-              value={options.handoffMode}
-              onChange={(value) => onOptionsChange({ handoffMode: value as PlaybackHandoffMode })}
-            >
-              <option value="death_contact_c4">{words.handoffDeathContactC4}</option>
-              <option value="death_or_contact">{words.handoffDeathOrContact}</option>
-              <option value="death">{words.handoffDeath}</option>
-              <option value="contact">{words.handoffContact}</option>
-              <option value="off">{words.disabled}</option>
-            </PlaybackSelect>
-            <PlaybackSelect
-              label={words.handoffScope}
-              value={options.handoffScope}
-              onChange={(value) => onOptionsChange({ handoffScope: value as "slot" | "all" })}
-            >
-              <option value="slot">{words.handoffScopeSlot}</option>
-              <option value="all">{words.handoffScopeAll}</option>
-            </PlaybackSelect>
-            <PlaybackAdvancedSwitch
-              label={words.threat360}
-              checked={options.threat360 === "on"}
-              onChange={(checked) => onOptionsChange({ threat360: checked ? "on" : "off" })}
-            />
-            {options.threat360 === "on" ? (
-              <div className="playback-360-fields">
-                <label>
-                  <span>{words.threat360Range}</span>
-                  <input
-                    type="number"
-                    min={150}
-                    max={800}
-                    step={10}
-                    value={options.threat360Range}
-                    onChange={(event) => {
-                      const value = Number(event.target.value);
-                      if (Number.isFinite(value) && value >= 150 && value <= 800) onOptionsChange({ threat360Range: value });
-                    }}
-                  />
-                </label>
-                <div className="playback-360-toggle">
-                  <span>{words.threat360RequireLos}</span>
-                  <SwitchControl checked={options.threat360Los} label={words.threat360RequireLos} onChange={(checked) => onOptionsChange({ threat360Los: checked })} />
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </details>
       </section>
     </section>
   );
