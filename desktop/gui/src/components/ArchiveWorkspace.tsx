@@ -5,7 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useEffect, useState } from "react";
-import { AlertIcon, ArrowIcon, CheckIcon, ChevronIcon, CopyIcon, FolderIcon, NoteIcon, RefreshIcon } from "../icons";
+import { AlertIcon, ArrowIcon, CheckIcon, ChevronIcon, FolderIcon, NoteIcon, RefreshIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
 import type { InventorySimulatorItem } from "../inventorySimulator";
 import { useInventorySimulatorSelection } from "../inventorySimulatorSelection";
@@ -76,24 +76,6 @@ function formatDuration(seconds: number | null | undefined): string {
     return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
   }
   return `${minutes}:${String(remainder).padStart(2, "0")}`;
-}
-
-function formatBytes(value: number | string): string {
-  const bytes = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(bytes) || bytes < 0) return String(value);
-  if (bytes < 1024) return `${Math.round(bytes)} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let amount = bytes / 1024;
-  let unit = 0;
-  while (amount >= 1024 && unit < units.length - 1) {
-    amount /= 1024;
-    unit += 1;
-  }
-  return `${amount >= 10 ? amount.toFixed(1) : amount.toFixed(2)} ${units[unit]}`;
-}
-
-function formatTickRate(tickRate: number): string {
-  return Number.isInteger(tickRate) ? String(tickRate) : tickRate.toFixed(2);
 }
 
 function formatDate(value: number | null | undefined): string {
@@ -601,25 +583,6 @@ export function ArchiveWorkspace({
 
               <ArchiveIssues archive={archive} words={words} language={language} />
 
-              <details className="archive-file-info">
-                <summary>{words.technicalDetails}<ChevronIcon size={14} /></summary>
-                <div className="archive-file-info-content">
-                  <div className="archive-manifest-row">
-                    <span>{words.manifest}</span>
-                    <code title={archive.manifestPath}>{archive.manifestPath}</code>
-                    <button className="icon-button" type="button" aria-label={words.copyPath} title={words.copyPath} onClick={() => onCopy(archive.manifestPath, "manifest")}>
-                      {copiedTarget === "manifest" ? <CheckIcon size={15} /> : <CopyIcon size={15} />}
-                    </button>
-                  </div>
-                  <dl>
-                    <div><dt>{words.source}</dt><dd title={archive.sourcePath || archive.demoPath}>{archive.sourcePath ? fileName(archive.sourcePath) : "—"}</dd></div>
-                    <div><dt>{words.manifestFormat}</dt><dd>DTR v{archive.formatVersion}</dd></div>
-                    <div><dt>{words.manifestAbi}</dt><dd>{archive.abi}</dd></div>
-                    <div><dt>{words.tickRate}</dt><dd>{formatTickRate(archive.tickRate)}</dd></div>
-                    <div><dt>{words.traceSize}</dt><dd>{formatBytes(archive.outputBytes)}</dd></div>
-                  </dl>
-                </div>
-              </details>
             </>
           ) : (
             <div className="archive-no-playable">

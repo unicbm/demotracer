@@ -63,17 +63,19 @@ import {
   normalizeSidebarCollapsed,
   normalizeTheme,
   normalizeThemeCustomization,
+  normalizeUiFontSize,
   normalizeUiScale,
   recommendedUiScale,
   resolveTheme,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
-  stepUiScale,
+  stepUiFontSize,
   themeBackground,
   THEME_CUSTOMIZATION_STORAGE_KEY,
   THEME_STORAGE_KEY,
+  UI_FONT_SIZE_DEFAULT,
+  UI_FONT_SIZE_STORAGE_KEY,
   type CustomCssProfile,
   type ThemeCustomization,
-  type UiScale,
 } from "./appearance";
 import {
   isReusableDemoArchive,
@@ -165,7 +167,7 @@ const DEFAULT_LOCAL_ENVIRONMENT: LocalEnvironmentSettings = {
 
 const BATCH_PREFERENCES_STORAGE_KEY = "demotracer.batch-preferences.v1";
 const COSMETIC_CONSENT_STORAGE_KEY = "demotracer.cosmetic-consent.v1";
-const UI_SCALE_STORAGE_KEY = "demotracer.ui-scale.v1";
+const LEGACY_UI_SCALE_STORAGE_KEY = "demotracer.ui-scale.v1";
 const INVENTORY_SIMULATOR_PANEL_WIDTH_KEY = "demotracer.inventory-simulator-panel-width.v1";
 const INVENTORY_SIMULATOR_PANEL_DEFAULT_WIDTH = 580;
 const INVENTORY_SIMULATOR_PANEL_MIN_WIDTH = 440;
@@ -359,10 +361,16 @@ function storedLanguage(): Language {
   return navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
-function storedUiScale(): UiScale {
-  const stored = localStorage.getItem(UI_SCALE_STORAGE_KEY);
-  if (stored !== null) return normalizeUiScale(stored) === 1.1 ? 1.1 : 1;
-  return recommendedUiScale(window.screen.width, window.screen.height, window.devicePixelRatio);
+function storedUiFontSize(): number {
+  const stored = localStorage.getItem(UI_FONT_SIZE_STORAGE_KEY);
+  if (stored !== null) return normalizeUiFontSize(stored);
+  const legacyScale = localStorage.getItem(LEGACY_UI_SCALE_STORAGE_KEY);
+  if (legacyScale !== null) {
+    const scale = normalizeUiScale(legacyScale);
+    return normalizeUiFontSize(UI_FONT_SIZE_DEFAULT + Math.round((scale - 1) * 10));
+  }
+  const recommendedScale = recommendedUiScale(window.screen.width, window.screen.height, window.devicePixelRatio);
+  return normalizeUiFontSize(UI_FONT_SIZE_DEFAULT + Math.round((recommendedScale - 1) * 10));
 }
 
 function storedCosmeticConsent(): boolean {
@@ -753,7 +761,7 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
     normalizeSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY))
   ));
-  const [uiScale, setUiScale] = useState<UiScale>(storedUiScale);
+  const [uiFontSize, setUiFontSize] = useState(storedUiFontSize);
   const [themeCustomization, setThemeCustomization] = useState<ThemeCustomization>(() => (
     normalizeThemeCustomization(localStorage.getItem(THEME_CUSTOMIZATION_STORAGE_KEY))
   ));
@@ -986,17 +994,18 @@ function App() {
     : activeSection === "analysis" && analysis
       ? [analysis.map || "—", `${analysis.rounds.length} ${words.rounds}`].join(" · ")
       : "";
-  const sessionTitle = analysisSessionTitle || (activeSection === "library" ? words.navLibrary
-    : activeSection === "batch" ? words.navImport
-      : activeSection === "logs" ? words.navLogs
-        : activeSection === "settings" ? words.navSettings
-          : activeSection === "faq" ? words.navFaq
-            : words.navAnalysis);
-  const sessionMeta = analysisSessionMeta || (activeSection === "library"
-    ? libraryLoading ? words.scanningLibrary : libraryScan ? `${libraryScan.entries.length} Demo` : ""
-    : activeSection === "batch"
-      ? batchInvocationActive ? (language === "zh" ? "导入任务进行中" : "Import task in progress") : batchScan ? `${batchScan.candidates.length} Demo` : ""
-      : "");
+  // The title bar is contextual chrome, not a second page heading. Pages with
+  // their own visible heading (library, import, and FAQ) deliberately leave it
+  // empty; analysis keeps match context and the heading-less utility pages keep
+  // a compact label.
+  const sessionTitle = activeSection === "analysis"
+    ? analysisSessionTitle || words.navAnalysis
+    : activeSection === "logs"
+      ? words.navLogs
+      : activeSection === "settings"
+        ? words.navSettings
+        : "";
+  const sessionMeta = activeSection === "analysis" ? analysisSessionMeta : "";
   const analysisAvailable = phase !== "idle" || archive !== null || analysis !== null || result !== null;
   soundNotificationsRef.current = localEnvironment.soundNotifications;
   const importedBatchSources = useMemo(() => new Set(
@@ -1171,14 +1180,13 @@ function App() {
   }, [sidebarCollapsed]);
 
   useEffect(() => {
-    localStorage.setItem(UI_SCALE_STORAGE_KEY, String(uiScale));
-    if ("__TAURI_INTERNALS__" in window) {
-      document.documentElement.style.zoom = "";
-      void getCurrentWebview().setZoom(uiScale).catch(() => undefined);
-    } else {
-      document.documentElement.style.zoom = String(uiScale);
-    }
-  }, [uiScale]);
+    const normalized = normalizeUiFontSize(uiFontSize);
+    localStorage.setItem(UI_FONT_SIZE_STORAGE_KEY, String(normalized));
+    localStorage.removeItem(LEGACY_UI_SCALE_STORAGE_KEY);
+    document.documentElement.style.zoom = "";
+    document.documentElement.style.setProperty("--ui-font-size", `${normalized}px`);
+    if ("__TAURI_INTERNALS__" in window) void getCurrentWebview().setZoom(1).catch(() => undefined);
+  }, [uiFontSize]);
 
   useEffect(() => {
     const normalized = normalizeThemeCustomization(themeCustomization);
@@ -1250,7 +1258,7 @@ function App() {
     inventorySimulatorPanelAvailable,
     inventorySimulatorPanelOpen,
     inventorySimulatorPanelResizing,
-    uiScale,
+    uiFontSize,
   ]);
 
   useEffect(() => {
@@ -1270,17 +1278,17 @@ function App() {
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
       if (event.key === "0") {
         event.preventDefault();
-        setUiScale(1);
+        setUiFontSize(UI_FONT_SIZE_DEFAULT);
         return;
       }
       if (event.key === "+" || event.key === "=" || event.code === "NumpadAdd") {
         event.preventDefault();
-        setUiScale((current) => stepUiScale(current, 1));
+        setUiFontSize((current) => stepUiFontSize(current, 1));
         return;
       }
       if (event.key === "-" || event.code === "NumpadSubtract") {
         event.preventDefault();
-        setUiScale((current) => stepUiScale(current, -1));
+        setUiFontSize((current) => stepUiFontSize(current, -1));
       }
     };
     window.addEventListener("keydown", handleZoomShortcut);
@@ -1327,7 +1335,7 @@ function App() {
     browserLogPreviewSeededRef.current = true;
     const now = Date.now();
     setActivityLogs([
-      { id: "preview-1", timestampMs: now - 42_000, level: "info", source: "app", message: "CS2 DemoTracer 1.0.11 started" },
+      { id: "preview-1", timestampMs: now - 42_000, level: "info", source: "app", message: "CS2 DemoTracer 1.1.0 started" },
       { id: "preview-2", timestampMs: now - 31_000, level: "debug", source: "analysis", message: "phase=parsing" },
       { id: "preview-3", timestampMs: now - 24_000, level: "info", source: "analysis", message: "Parsed match.dem.zst: 24 rounds · 10 players" },
       { id: "preview-4", timestampMs: now - 15_000, level: "warn", source: "conversion", message: "Round 12: partial player evidence was preserved" },
@@ -2023,6 +2031,16 @@ function App() {
       dispatchLibraryWorkspace({ type: "navigate", section: returnSection });
     }
   }, [activeSection, phase, words.invalidManifest]);
+
+  const inspectLibraryEntry = useCallback(async (entry: DemoLibraryEntry): Promise<ManifestArchive> => {
+    const cacheKey = normalizedDiagnosticPath(entry.manifestPath);
+    const cached = manifestCacheRef.current.get(cacheKey);
+    if (cached) return cached;
+    const inspected = await invoke<ManifestArchive>("read_manifest", { path: entry.manifestPath });
+    manifestCacheRef.current.set(cacheKey, inspected);
+    manifestCacheRef.current.set(normalizedDiagnosticPath(inspected.manifestPath), inspected);
+    return inspected;
+  }, []);
 
   async function saveArchiveNote(note: string): Promise<boolean> {
     if (!archive || savingArchiveNote) return false;
@@ -3782,7 +3800,7 @@ function App() {
             language={language}
             theme={theme}
             resolvedTheme={resolvedTheme}
-            uiScale={uiScale}
+            uiFontSize={uiFontSize}
             themeCustomization={themeCustomization}
             customCssProfiles={customCssProfiles}
             activeCustomCssProfileId={activeCustomCssProfileId}
@@ -3809,7 +3827,7 @@ function App() {
             playbackReleaseError={playbackReleaseError}
             releaseAction={releaseAction}
             releaseNotice={releaseNotice}
-            onUiScaleChange={setUiScale}
+            onUiFontSizeChange={setUiFontSize}
             onThemeCustomizationChange={setThemeCustomization}
             onSaveCustomCssProfile={(profile) => {
               const normalized = normalizeCustomCssProfiles([profile])[0];
@@ -3896,6 +3914,7 @@ function App() {
               onRepairLibrary={() => void repairLibraryMetadata()}
               onConvert={() => void chooseDemos()}
               onOpenEntry={(entry: DemoLibraryEntry) => void runManifest(entry.manifestPath)}
+              onInspectEntry={inspectLibraryEntry}
               onRepairEntry={(entry: DemoLibraryEntry) => void repairArchiveMetadata(entry)}
               onRevealManifest={(entry: DemoLibraryEntry) => void revealPath(entry.manifestPath)}
               onRevealDemo={(entry: DemoLibraryEntry) => void revealPath(entry.sourcePath || entry.demoPath)}

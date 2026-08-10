@@ -83,11 +83,7 @@ export function LogsWorkspace({
   ].filter(Boolean).join(" · ");
 
   return (
-    <section className="logs-workspace" aria-labelledby="logs-workspace-title">
-      <header className="logs-heading">
-        <h1 id="logs-workspace-title">{words.logsTitle}</h1>
-      </header>
-
+    <section className="logs-workspace" aria-label={words.logsTitle}>
       <section className={`gsi-status-strip is-${gsiTone}`} aria-label={words.gsiTitle}>
         <span className="gsi-status-dot" aria-hidden="true" />
         <strong>{words.gsiTitle}</strong>

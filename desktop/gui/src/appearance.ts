@@ -10,6 +10,10 @@ export type ResolvedTheme = Exclude<Theme, "system">;
 export const THEME_STORAGE_KEY = "demotracer.theme";
 export const SIDEBAR_COLLAPSED_STORAGE_KEY = "demotracer.sidebar-collapsed.v2";
 export const THEME_CUSTOMIZATION_STORAGE_KEY = "demotracer.theme-customization.v1";
+export const UI_FONT_SIZE_STORAGE_KEY = "demotracer.ui-font-size.v1";
+export const UI_FONT_SIZE_MIN = 13;
+export const UI_FONT_SIZE_MAX = 20;
+export const UI_FONT_SIZE_DEFAULT = 15;
 export const THEME_CUSTOMIZATION_STYLE_ID = "demotracer-theme-customization";
 export const CUSTOM_CSS_STORAGE_KEY = "demotracer.custom-css.v1";
 export const CUSTOM_CSS_STYLE_ID = "demotracer-custom-css";
@@ -42,6 +46,7 @@ export interface ThemeCustomization {
   light?: ThemePalette;
   dark?: ThemePalette;
   fontFamily?: string;
+  monoFontFamily?: string;
 }
 
 export interface CustomCssProfile {
@@ -116,6 +121,16 @@ export function normalizeUiScale(value: unknown): UiScale {
   return UI_SCALE_STEPS.reduce((nearest, candidate) => (
     Math.abs(candidate - numeric) < Math.abs(nearest - numeric) ? candidate : nearest
   ), 1 as UiScale);
+}
+
+export function normalizeUiFontSize(value: unknown): number {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return UI_FONT_SIZE_DEFAULT;
+  return Math.min(UI_FONT_SIZE_MAX, Math.max(UI_FONT_SIZE_MIN, Math.round(numeric)));
+}
+
+export function stepUiFontSize(current: number, direction: 1 | -1): number {
+  return normalizeUiFontSize(normalizeUiFontSize(current) + direction);
 }
 
 export function recommendedUiScale(
@@ -213,6 +228,10 @@ export function normalizeThemeCustomization(value: unknown): ThemeCustomization 
     const fontFamily = record.fontFamily.trim().slice(0, 200);
     if (fontFamily && isThemeFontFamily(fontFamily)) customization.fontFamily = fontFamily;
   }
+  if (typeof record.monoFontFamily === "string") {
+    const monoFontFamily = record.monoFontFamily.trim().slice(0, 200);
+    if (monoFontFamily && isThemeFontFamily(monoFontFamily)) customization.monoFontFamily = monoFontFamily;
+  }
   return customization;
 }
 
@@ -248,6 +267,7 @@ function paletteCss(palette: ThemePalette): string {
 export function themeCustomizationCss(customization: ThemeCustomization): string {
   const rules: string[] = [];
   if (customization.fontFamily) rules.push(`:root { --font-ui: ${customization.fontFamily}; }`);
+  if (customization.monoFontFamily) rules.push(`:root { --mono: ${customization.monoFontFamily}; }`);
   if (customization.light) {
     rules.push(`:root[data-color-mode="light"] {\n  ${paletteCss(customization.light)};\n}`);
   }

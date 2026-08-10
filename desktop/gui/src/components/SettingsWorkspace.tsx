@@ -24,11 +24,12 @@ import {
   isThemeColor,
   isThemeFontFamily,
   themePalette,
+  UI_FONT_SIZE_MAX,
+  UI_FONT_SIZE_MIN,
   type CustomCssProfile,
   type ResolvedTheme,
   type ThemeCustomization,
   type ThemePalette,
-  type UiScale,
 } from "../appearance";
 import { DEMOTRACER_CREDITS } from "../credits";
 import { LANGUAGE_OPTIONS, type TextDictionary } from "../i18n";
@@ -72,6 +73,7 @@ type ThemeColorKey = keyof ThemePalette;
 
 interface ThemeEditorDraft extends ThemePalette {
   fontFamily: string;
+  monoFontFamily: string;
 }
 
 const THEME_COLOR_KEYS: readonly ThemeColorKey[] = [
@@ -89,6 +91,7 @@ function themeEditorDraft(customization: ThemeCustomization, theme: ResolvedThem
   return {
     ...themePalette(customization, theme),
     fontFamily: customization.fontFamily ?? "",
+    monoFontFamily: customization.monoFontFamily ?? "",
   };
 }
 
@@ -102,7 +105,7 @@ interface SettingsWorkspaceProps {
   language: Language;
   theme: Theme;
   resolvedTheme: ResolvedTheme;
-  uiScale: UiScale;
+  uiFontSize: number;
   themeCustomization: ThemeCustomization;
   customCssProfiles: readonly CustomCssProfile[];
   activeCustomCssProfileId: string | null;
@@ -129,7 +132,7 @@ interface SettingsWorkspaceProps {
   playbackReleaseError: string;
   releaseAction: "installingOnline" | "installingFile" | "rollingBack" | null;
   releaseNotice: string;
-  onUiScaleChange: (scale: UiScale) => void;
+  onUiFontSizeChange: (fontSize: number) => void;
   onThemeCustomizationChange: (customization: ThemeCustomization) => void;
   onSaveCustomCssProfile: (profile: CustomCssProfile) => void;
   onActivateCustomCssProfile: (profileId: string | null) => void;
@@ -410,7 +413,7 @@ export function SettingsWorkspace({
   language,
   theme,
   resolvedTheme,
-  uiScale,
+  uiFontSize,
   themeCustomization,
   customCssProfiles,
   activeCustomCssProfileId,
@@ -437,7 +440,7 @@ export function SettingsWorkspace({
   playbackReleaseError,
   releaseAction,
   releaseNotice,
-  onUiScaleChange,
+  onUiFontSizeChange,
   onThemeCustomizationChange,
   onSaveCustomCssProfile,
   onActivateCustomCssProfile,
@@ -552,7 +555,8 @@ export function SettingsWorkspace({
     { key: "success", label: words.themeSuccessColor },
   ];
   const themeDraftValid = THEME_COLOR_KEYS.every((key) => isThemeColor(themeDraft[key]))
-    && isThemeFontFamily(themeDraft.fontFamily);
+    && isThemeFontFamily(themeDraft.fontFamily)
+    && isThemeFontFamily(themeDraft.monoFontFamily);
   const customCssProfileLabel = (profile: CustomCssProfile): string => {
     if (profile.id === "starter-hanbaiyu") return words.customCssPresetWhiteJade;
     if (profile.id === "starter-chinese-new-year") return words.customCssPresetChineseNewYear;
@@ -605,6 +609,9 @@ export function SettingsWorkspace({
     const fontFamily = themeDraft.fontFamily.trim();
     if (fontFamily) next.fontFamily = fontFamily;
     else delete next.fontFamily;
+    const monoFontFamily = themeDraft.monoFontFamily.trim();
+    if (monoFontFamily) next.monoFontFamily = monoFontFamily;
+    else delete next.monoFontFamily;
     onThemeCustomizationChange(next);
     setSettingsModal(null);
   };
@@ -634,21 +641,18 @@ export function SettingsWorkspace({
             ))}
           </div>
         </div>
-        <div className="settings-choice-row">
-          <div><strong>{words.uiScale}</strong></div>
-          <div className="segmented-control" role="group" aria-label={words.uiScale}>
-            {([1, 1.1] as const).map((scale) => (
-              <button
-                className={uiScale === scale ? "is-selected" : ""}
-                type="button"
-                aria-pressed={uiScale === scale}
-                key={scale}
-                onClick={() => onUiScaleChange(scale)}
-              >
-                {scale === 1 ? words.uiScaleStandard : words.uiScaleLarge}
-              </button>
-            ))}
-          </div>
+        <div className="settings-number-row">
+          <div><strong>{words.uiFontSize}</strong><small>{words.uiFontSizeHelp}</small></div>
+          <label>
+            <EditableNumberInput
+              value={uiFontSize}
+              min={UI_FONT_SIZE_MIN}
+              max={UI_FONT_SIZE_MAX}
+              step={1}
+              onChange={onUiFontSizeChange}
+            />
+            <em>px</em>
+          </label>
         </div>
         <SettingLine
           title={words.soundNotifications}
@@ -1534,6 +1538,17 @@ export function SettingsWorkspace({
           placeholder={words.themeFontPlaceholder}
           aria-invalid={!isThemeFontFamily(themeDraft.fontFamily)}
           onChange={(event) => setThemeDraft((current) => ({ ...current, fontFamily: event.target.value }))}
+        />
+      </label>
+      <label className={`settings-theme-font-row${isThemeFontFamily(themeDraft.monoFontFamily) ? "" : " is-invalid"}`}>
+        <strong>{words.themeMonoFontFamily}</strong>
+        <input
+          value={themeDraft.monoFontFamily}
+          maxLength={200}
+          spellCheck={false}
+          placeholder={words.themeMonoFontPlaceholder}
+          aria-invalid={!isThemeFontFamily(themeDraft.monoFontFamily)}
+          onChange={(event) => setThemeDraft((current) => ({ ...current, monoFontFamily: event.target.value }))}
         />
       </label>
       <div className="settings-theme-css-row">

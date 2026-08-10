@@ -15,7 +15,7 @@
   grid-template-columns: minmax(96px, 0.55fr) minmax(120px, 1fr) auto minmax(120px, 1fr) minmax(220px, 1.4fr);
   align-items: center;
   min-height: 58px;
-  padding: 7px 16px;
+  padding: 7px var(--space-4);
   gap: 14px;
   background: var(--surface-subtle);
 }
@@ -27,12 +27,12 @@
 }
 
 .analysis-map-identity small,
-.analysis-score-team small { color: var(--text-tertiary); font-size: 10.5px; }
+.analysis-score-team small { color: var(--text-tertiary); font-size: var(--type-tiny); }
 .analysis-map-identity strong,
 .analysis-score-team strong {
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 13.5px;
+  font-size: var(--type-label);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -40,11 +40,11 @@
 .analysis-score-team.is-team-a { padding-left: 9px; }
 .analysis-score-team.is-team-b { padding-right: 9px; text-align: right; }
 
-.analysis-scoreline { display: flex; align-items: baseline; justify-content: center; gap: 7px; font: 700 18px var(--mono); font-variant-numeric: tabular-nums; }
+.analysis-scoreline { display: flex; align-items: baseline; justify-content: center; gap: 7px; font: var(--weight-bold) var(--type-subheading) var(--mono); font-variant-numeric: tabular-nums; }
 .analysis-scoreline i { color: var(--text-tertiary); font-style: normal; }
 .analysis-scoreline em { color: var(--text-tertiary); font-style: normal; }
 
-.analysis-matchmeta { display: flex; justify-content: flex-end; min-width: 0; gap: 0; color: var(--text-tertiary); font-size: 10.5px; }
+.analysis-matchmeta { display: flex; justify-content: flex-end; min-width: 0; gap: 0; color: var(--text-tertiary); font-size: var(--type-tiny); }
 .analysis-matchmeta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .analysis-matchmeta span + span::before { margin-inline: 7px; content: "·"; color: var(--divider-strong); }
 
@@ -59,16 +59,16 @@
   align-items: center;
   justify-content: space-between;
   min-height: 42px;
-  padding: 8px 14px;
+  padding: var(--space-2) 14px;
   cursor: pointer;
   list-style: none;
 }
 
 .analysis-scoreboard > summary::-webkit-details-marker { display: none; }
 .analysis-scoreboard > summary:hover { background: var(--surface-subtle); }
-.analysis-scoreboard > summary > span { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.analysis-scoreboard > summary h2 { font-size: 14px; font-weight: 680; }
-.analysis-scoreboard > summary small { color: var(--text-tertiary); font-size: 11.5px; }
+.analysis-scoreboard > summary > span { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
+.analysis-scoreboard > summary h2 { font-size: var(--type-label); font-weight: var(--weight-semibold); }
+.analysis-scoreboard > summary small { color: var(--text-tertiary); font-size: var(--type-micro); }
 .analysis-scoreboard > summary > svg { color: var(--text-tertiary); transition: transform var(--duration-base) ease; }
 .analysis-scoreboard[open] > summary { border-bottom: 1px solid var(--divider); }
 .analysis-scoreboard[open] > summary > svg { transform: rotate(180deg); }
@@ -91,8 +91,8 @@
   color: var(--text-tertiary);
   background: var(--surface-subtle);
   border-bottom: 1px solid var(--divider);
-  font-size: 10.5px;
-  font-weight: 650;
+  font-size: var(--type-tiny);
+  font-weight: var(--weight-semibold);
 }
 
 .analysis-scoreboard-columns > span:not(:first-child) { text-align: right; }
@@ -107,14 +107,14 @@
   align-items: baseline;
   min-height: 34px;
   padding: 7px 14px 6px;
-  gap: 8px;
+  gap: var(--space-2);
   background: color-mix(in srgb, var(--team-color) 6%, var(--surface-muted));
 }
 
-.analysis-team-heading strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.analysis-team-heading em { color: var(--team-color); font-size: 10.5px; font-style: normal; font-weight: 800; }
-.analysis-team-heading span { color: var(--text-tertiary); font-size: 10.5px; }
-.analysis-team-heading b { margin-left: auto; color: var(--text-primary); font: 700 16px var(--mono); }
+.analysis-team-heading strong { overflow: hidden; font-size: var(--type-support); text-overflow: ellipsis; white-space: nowrap; }
+.analysis-team-heading em { color: var(--team-color); font-size: var(--type-tiny); font-style: normal; font-weight: var(--weight-bold); }
+.analysis-team-heading span { color: var(--text-tertiary); font-size: var(--type-tiny); }
+.analysis-team-heading b { margin-left: auto; color: var(--text-primary); font: var(--weight-bold) var(--type-section) var(--mono); }
 .analysis-team-block > ul { margin: 0; padding: 0; list-style: none; }
 .analysis-team-block > ul > li + li { border-top: 1px solid color-mix(in srgb, var(--divider) 72%, transparent); }
 
@@ -126,8 +126,8 @@
   background: transparent;
   border: 0;
   border-radius: 0;
-  font-family: "Noto Sans SC Local", "Segoe UI Variable", sans-serif;
-  font-size: 12.5px;
+  font-family: var(--font-ui);
+  font-size: var(--type-support);
   font-variant-numeric: tabular-nums;
   text-align: right;
   cursor: pointer;
@@ -150,15 +150,15 @@
 .analysis-player-identity .steam-player-name-row > strong {
   overflow: hidden;
   color: var(--text-primary);
-  font-family: "Noto Sans SC Local", "Segoe UI Variable", sans-serif;
-  font-size: 13.5px;
-  font-weight: 680;
+  font-family: var(--font-ui);
+  font-size: var(--type-label);
+  font-weight: var(--weight-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .analysis-stat-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.analysis-stat-value.is-kda { color: var(--text-primary); font-weight: 700; }
+.analysis-stat-value.is-kda { color: var(--text-primary); font-weight: var(--weight-bold); }
 .analysis-stat-value.is-adr,
 .analysis-stat-value.is-kd { color: color-mix(in srgb, var(--text-primary) 88%, var(--team-color)); }
 
@@ -173,5 +173,5 @@
   .analysis-scoreboard-columns,
   .analysis-player-stat-row { column-gap: 7px; }
 
-  .analysis-player-identity code { font-size: 10.5px; }
+  .analysis-player-identity code { font-size: var(--type-tiny); }
 }

@@ -168,7 +168,7 @@ dependencies = [
 
 [[package]]
 name = "cs2-demotracer"
-version = "1.0.11"
+version = "1.1.0"
 dependencies = [
  "ahash",
  "brotli",

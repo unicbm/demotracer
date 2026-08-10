@@ -4,7 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
 import steamMarkUrl from "../assets/steam-mark.svg";
 import { ArrowIcon, CheckIcon, CopyIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
@@ -85,10 +85,31 @@ export function PlayerAnalysisWorkspace({
   const selectedKey = playerSelectionKey(selectedPlayer);
   const selectedEntry = entries.find((entry) => entry.key === selectedKey);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollPositionsRef = useRef(new Map<string, number>());
+  const lastScrollTopRef = useRef(0);
+  const focusedHeadingRef = useRef(false);
 
   useEffect(() => {
-    headingRef.current?.focus();
+    if (focusedHeadingRef.current || !selectedEntry) return;
+    focusedHeadingRef.current = true;
+    headingRef.current?.focus({ preventScroll: true });
   }, [selectedEntry?.key, selectedKey]);
+
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll || !selectedEntry) return;
+    scroll.scrollTop = scrollPositionsRef.current.get(selectedKey) ?? lastScrollTopRef.current;
+  }, [selectedEntry?.key, selectedKey]);
+
+  const selectPlayer = (selection: PlayerSelection) => {
+    const scroll = scrollRef.current;
+    if (scroll && selectedEntry) {
+      scrollPositionsRef.current.set(selectedKey, scroll.scrollTop);
+      lastScrollTopRef.current = scroll.scrollTop;
+    }
+    onSelectPlayer(selection);
+  };
 
   if (!selectedEntry) {
     return (
@@ -160,7 +181,15 @@ export function PlayerAnalysisWorkspace({
         </div>
       </header>
 
-      <div className="player-analysis-scroll">
+      <div
+        className="player-analysis-scroll"
+        ref={scrollRef}
+        onScroll={(event) => {
+          const top = event.currentTarget.scrollTop;
+          lastScrollTopRef.current = top;
+          scrollPositionsRef.current.set(selectedKey, top);
+        }}
+      >
         <div className="player-analysis-layout">
           <aside className="player-analysis-index" aria-label={words.choosePlayer}>
             <nav aria-label={words.choosePlayer}>
@@ -179,7 +208,7 @@ export function PlayerAnalysisWorkspace({
                           type="button"
                           aria-current={selected ? "page" : undefined}
                           aria-label={teamPlayer.name}
-                          onClick={() => onSelectPlayer(selection)}
+                          onClick={() => selectPlayer(selection)}
                           key={entryKey}
                           style={playerColor
                             ? ({ "--player-color": playerColor } as CSSProperties)

@@ -20,9 +20,10 @@ import {
   SOURCE_LINK_NOTE_DISMISSED_STORAGE_KEY,
 } from "../library";
 import { resolveProfessionalPlayer } from "../professionalPlayers";
-import type { DemoLibraryEntry, DemoLibraryScan, Language, LibraryPlayerSummary } from "../types";
+import type { DemoLibraryEntry, DemoLibraryScan, Language, LibraryPlayerSummary, ManifestArchive } from "../types";
 import { displayMap, MapArtwork, mapArtworkStyle } from "./MapArtwork";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
+import { DialogPrimitive } from "./Dialog";
 import { SteamAvatar, teamRepresentative, useSteamProfiles, type SteamProfileMap } from "./SteamProfile";
 import "./library-workspace.css";
 
@@ -57,6 +58,7 @@ interface LibraryWorkspaceProps {
   onRepairLibrary: () => void;
   onConvert: () => void;
   onOpenEntry: (entry: DemoLibraryEntry) => void;
+  onInspectEntry: (entry: DemoLibraryEntry) => Promise<ManifestArchive>;
   onRepairEntry: (entry: DemoLibraryEntry) => void;
   onRevealManifest: (entry: DemoLibraryEntry) => void;
   onRevealDemo: (entry: DemoLibraryEntry) => void;
@@ -92,6 +94,24 @@ function formatDuration(value: number | null | undefined): string | null {
   return hours > 0
     ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
     : `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatBytes(value: number | string): string {
+  const bytes = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) return String(value);
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let amount = bytes / 1024;
+  let unit = 0;
+  while (amount >= 1024 && unit < units.length - 1) {
+    amount /= 1024;
+    unit += 1;
+  }
+  return `${amount >= 10 ? amount.toFixed(1) : amount.toFixed(2)} ${units[unit]}`;
+}
+
+function formatTickRate(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
 function platformName(value: string): string {
@@ -224,6 +244,7 @@ function LibraryRow({
   words,
   language,
   onOpen,
+  onInspect,
   onRepair,
   onRevealManifest,
   onRevealDemo,
@@ -240,6 +261,7 @@ function LibraryRow({
   words: TextDictionary;
   language: Language;
   onOpen: () => void;
+  onInspect: () => void;
   onRepair: () => void;
   onRevealManifest: () => void;
   onRevealDemo: () => void;
@@ -311,6 +333,7 @@ function LibraryRow({
       label: words.archiveContextMenu,
       items: [
         { label: words.openArchive, icon: <ReplayIcon size={15} />, disabled, onSelect: onOpen },
+        { label: words.viewDtrProperties, icon: <TraceMark size={15} />, onSelect: onInspect },
         { label: words.openManifestLocation, icon: <FolderIcon size={15} />, onSelect: onRevealManifest },
         { label: words.openDemoLocation, icon: <FolderIcon size={15} />, disabled: needsSourceLink, onSelect: onRevealDemo },
         { label: words.copyDemoPath, icon: <CopyIcon size={15} />, disabled: needsSourceLink, onSelect: onCopyDemoPath },
@@ -706,6 +729,7 @@ export function LibraryWorkspace({
   onRepairLibrary,
   onConvert,
   onOpenEntry,
+  onInspectEntry,
   onRepairEntry,
   onRevealManifest,
   onRevealDemo,
@@ -713,6 +737,11 @@ export function LibraryWorkspace({
   onReparseEntry,
   onDeleteEntry,
 }: LibraryWorkspaceProps) {
+  const [propertiesEntry, setPropertiesEntry] = useState<DemoLibraryEntry | null>(null);
+  const [propertiesArchive, setPropertiesArchive] = useState<ManifestArchive | null>(null);
+  const [propertiesLoading, setPropertiesLoading] = useState(false);
+  const [propertiesError, setPropertiesError] = useState(false);
+  const propertiesRequestRef = useRef(0);
   const [sourceLinkNoteDismissed, setSourceLinkNoteDismissed] = useState(() => {
     try {
       return normalizeSourceLinkNoteDismissed(localStorage.getItem(SOURCE_LINK_NOTE_DISMISSED_STORAGE_KEY));
@@ -750,6 +779,30 @@ export function LibraryWorkspace({
   }, []);
   const closeRootsMenu = () => {
     if (rootsMenuRef.current) rootsMenuRef.current.open = false;
+  };
+  const inspectEntry = (entry: DemoLibraryEntry) => {
+    const request = ++propertiesRequestRef.current;
+    setPropertiesEntry(entry);
+    setPropertiesArchive(null);
+    setPropertiesError(false);
+    setPropertiesLoading(true);
+    void onInspectEntry(entry).then((archive) => {
+      if (request !== propertiesRequestRef.current) return;
+      setPropertiesArchive(archive);
+    }).catch(() => {
+      if (request !== propertiesRequestRef.current) return;
+      setPropertiesError(true);
+    }).finally(() => {
+      if (request !== propertiesRequestRef.current) return;
+      setPropertiesLoading(false);
+    });
+  };
+  const closeProperties = () => {
+    propertiesRequestRef.current += 1;
+    setPropertiesEntry(null);
+    setPropertiesArchive(null);
+    setPropertiesLoading(false);
+    setPropertiesError(false);
   };
   const maps = [...new Set((scan?.entries ?? []).map((entry) => entry.map).filter(Boolean))]
     .sort((left, right) => left.localeCompare(right));
@@ -811,6 +864,7 @@ export function LibraryWorkspace({
       words={words}
       language={language}
       onOpen={() => onOpenEntry(entry)}
+      onInspect={() => inspectEntry(entry)}
       onRepair={() => onRepairEntry(entry)}
       onRevealManifest={() => onRevealManifest(entry)}
       onRevealDemo={() => onRevealDemo(entry)}
@@ -980,6 +1034,54 @@ export function LibraryWorkspace({
           )}
         </>
       )}
+      {propertiesEntry ? (
+        <DialogPrimitive
+          labelledBy="dtr-properties-title"
+          onDismiss={closeProperties}
+          className="dialog-surface dtr-properties-dialog"
+        >
+          <header>
+            <div>
+              <span>{words.dtrPropertiesTitle}</span>
+              <h2 id="dtr-properties-title">{propertiesEntry.displayName || propertiesEntry.demoId}</h2>
+            </div>
+            <button className="icon-button" type="button" onClick={closeProperties} aria-label={words.close} title={words.close}>
+              <CloseIcon size={17} />
+            </button>
+          </header>
+          {propertiesLoading ? (
+            <div className="dtr-properties-state">{words.loadingDtrProperties}</div>
+          ) : propertiesArchive ? (
+            <div className="dtr-properties-content">
+              <dl>
+                <div><dt>{words.manifestFormat}</dt><dd>DTR v{propertiesArchive.formatVersion}</dd></div>
+                <div><dt>{words.manifestAbi}</dt><dd>{propertiesArchive.abi}</dd></div>
+                <div><dt>{words.tickRate}</dt><dd>{formatTickRate(propertiesArchive.tickRate)}</dd></div>
+                <div><dt>{words.traceSize}</dt><dd>{formatBytes(propertiesArchive.outputBytes)}</dd></div>
+                <div><dt>{words.rounds}</dt><dd>{propertiesArchive.rounds.length}</dd></div>
+                <div><dt>{words.availableFiles}</dt><dd>{propertiesArchive.playableFiles} / {propertiesArchive.totalFiles}</dd></div>
+                <div><dt>{words.converterVersion}</dt><dd>{propertiesArchive.converterVersion || "—"}</dd></div>
+              </dl>
+              <div className="dtr-properties-path">
+                <span>{words.manifest}</span>
+                <code title={propertiesArchive.manifestPath}>{propertiesArchive.manifestPath}</code>
+              </div>
+              <div className="dtr-properties-path">
+                <span>{words.source}</span>
+                <code title={propertiesArchive.sourcePath || propertiesArchive.demoPath}>{propertiesArchive.sourcePath || propertiesArchive.demoPath || "—"}</code>
+              </div>
+            </div>
+          ) : propertiesError ? (
+            <div className="dtr-properties-state is-error">{words.dtrPropertiesUnavailable}</div>
+          ) : null}
+          <footer>
+            <button className="secondary-button" type="button" onClick={() => onRevealManifest(propertiesEntry)}>
+              <FolderIcon size={15} />{words.openManifestLocation}
+            </button>
+            <button className="primary-button" type="button" onClick={closeProperties}>{words.close}</button>
+          </footer>
+        </DialogPrimitive>
+      ) : null}
     </section>
   );
 }

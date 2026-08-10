@@ -8,7 +8,7 @@
   display: flex;
   align-items: center;
   min-width: 0;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .steam-avatar {
@@ -23,21 +23,21 @@
   background:
     linear-gradient(145deg, color-mix(in srgb, var(--trace) 12%, var(--surface-muted)), var(--surface-subtle));
   border: 1px solid color-mix(in srgb, var(--divider-strong) 82%, var(--trace));
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 720;
+  border-radius: var(--radius-sm);
+  font-size: var(--type-micro);
+  font-weight: var(--weight-bold);
   line-height: 1;
 }
 
-.steam-avatar.is-compact { width: 27px; height: 27px; border-radius: 6px; font-size: 10px; }
-.steam-avatar.is-hero { width: 44px; height: 44px; border-width: 2px; border-radius: 9px; font-size: 16px; }
-.steam-avatar.is-large { width: 62px; height: 62px; border-radius: 11px; font-size: 22px; }
+.steam-avatar.is-compact { width: 27px; height: 27px; border-radius: var(--radius-sm); font-size: var(--type-tiny); }
+.steam-avatar.is-hero { width: 44px; height: 44px; border-width: 2px; border-radius: var(--radius-md); font-size: var(--type-section); }
+.steam-avatar.is-large { width: 62px; height: 62px; border-radius: var(--radius-lg); font-size: var(--type-heading-large); }
 .steam-avatar.is-profile {
   width: 96px;
   height: 96px;
   border-width: 2px;
   border-radius: var(--radius-lg);
-  font-size: 30px;
+  font-size: var(--type-page);
 }
 
 .steam-avatar.has-player-color {
@@ -87,6 +87,6 @@
 .steam-player-name-row > small {
   flex: 0 1 auto;
   color: var(--accent);
-  font-size: 10.5px;
-  font-weight: 650;
+  font-size: var(--type-tiny);
+  font-weight: var(--weight-semibold);
 }

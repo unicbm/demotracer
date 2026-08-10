@@ -1,13 +1,13 @@
 {
   "name": "cs2-demotracer-desktop",
   "private": true,
-  "version": "1.0.11",
+  "version": "1.1.0",
   "packageManager": "pnpm@11.9.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "test": "pnpm run check:test && node --test src/*.test.ts",
-    "check": "node scripts/check-tauri-config.mjs && node scripts/check-pro-steamid-catalog.mjs && tsc --noEmit --pretty false && tsc --noEmit --pretty false -p tsconfig.node.json",
+    "check": "node scripts/check-tauri-config.mjs && node scripts/check-pro-steamid-catalog.mjs && node scripts/check-design-tokens.mjs && tsc --noEmit --pretty false && tsc --noEmit --pretty false -p tsconfig.node.json",
     "check:test": "tsc --noEmit --pretty false -p tsconfig.test.json",
     "build:vite": "vite build",
     "build": "pnpm run check && pnpm run build:vite",

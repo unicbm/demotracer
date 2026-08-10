@@ -18,11 +18,13 @@ import {
   normalizeCustomCssProfiles,
   normalizeActiveCustomCssProfileId,
   normalizeThemeCustomization,
+  normalizeUiFontSize,
   normalizeUiScale,
   normalizeTheme,
   recommendedUiScale,
   resolveTheme,
   stepUiScale,
+  stepUiFontSize,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
   THEME_CUSTOMIZATION_STORAGE_KEY,
   THEME_PALETTE_DEFAULTS,
@@ -85,6 +87,15 @@ describe("appearance preferences", () => {
     assert.equal(cycleUiScale(1.25), 0.9);
   });
 
+  it("normalizes editable UI font sizes without blocking intermediate input", () => {
+    assert.equal(normalizeUiFontSize("15"), 15);
+    assert.equal(normalizeUiFontSize(12), 13);
+    assert.equal(normalizeUiFontSize(24), 20);
+    assert.equal(normalizeUiFontSize("invalid"), 15);
+    assert.equal(stepUiFontSize(15, 1), 16);
+    assert.equal(stepUiFontSize(13, -1), 13);
+  });
+
   it("recommends the larger first-run scale only for high-resolution displays", () => {
     assert.equal(recommendedUiScale(1920, 1080, 1), 1);
     assert.equal(recommendedUiScale(2560, 1440, 1), 1);
@@ -117,10 +128,12 @@ describe("appearance preferences", () => {
     const customization = normalizeThemeCustomization(JSON.stringify({
       dark: { ...THEME_PALETTE_DEFAULTS.dark, primary: "#0a84ff" },
       fontFamily: '"Segoe UI Variable", sans-serif',
+      monoFontFamily: '"Cascadia Mono", Consolas',
     }));
     assert.equal(THEME_CUSTOMIZATION_STORAGE_KEY, "demotracer.theme-customization.v1");
     assert.equal(customization.dark?.primary, "#0A84FF");
     assert.equal(customization.fontFamily, '"Segoe UI Variable", sans-serif');
+    assert.equal(customization.monoFontFamily, '"Cascadia Mono", Consolas');
     assert.equal(isThemeColor("#EBEBE599"), true);
     assert.equal(isThemeColor("red; color: white"), false);
     assert.equal(normalizeThemeCustomization({

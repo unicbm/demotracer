@@ -19,7 +19,7 @@
   background: var(--surface-raised);
   border: 1px solid var(--divider-strong);
   border-radius: var(--radius-md);
-  box-shadow: 0 16px 44px color-mix(in srgb, #000 20%, transparent);
+  box-shadow: 0 16px 44px color-mix(in srgb, var(--media-shadow-ink) 20%, transparent);
 }
 
 .single-task-heading {
@@ -27,14 +27,14 @@
   align-items: center;
   justify-content: space-between;
   min-height: 50px;
-  padding: 7px 8px 7px 16px;
-  gap: 12px;
+  padding: 7px var(--space-2) 7px var(--space-4);
+  gap: var(--space-3);
   border-bottom: 1px solid var(--divider);
 }
 
 .single-task-heading h2 {
   overflow: hidden;
-  font-size: 14px;
+  font-size: var(--type-label);
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -43,7 +43,7 @@
 .single-task-body {
   display: grid;
   min-height: 0;
-  padding: 15px 16px 17px;
+  padding: 15px var(--space-4) 17px;
   gap: 14px;
   overflow: auto;
 }
@@ -52,7 +52,7 @@
   overflow: hidden;
   color: var(--text-secondary);
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--type-tiny);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -71,8 +71,8 @@
 .analysis-task-status strong,
 .conversion-task-current strong {
   overflow: hidden;
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--type-micro);
+  font-weight: var(--weight-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -81,7 +81,7 @@
 .conversion-task-current time {
   color: var(--text-secondary);
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--type-tiny);
   font-variant-numeric: tabular-nums;
 }
 
@@ -114,17 +114,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .conversion-task-progress-copy {
   color: var(--text-secondary);
-  font-size: 9.5px;
+  font-size: var(--type-caption);
 }
 
 .conversion-task-progress-copy b {
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   text-align: right;
 }
 
@@ -132,7 +132,7 @@
 .single-task-output {
   overflow: hidden;
   color: var(--text-tertiary);
-  font-size: 9.5px;
+  font-size: var(--type-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -141,7 +141,7 @@
   display: flex;
   justify-content: flex-end;
   min-height: 52px;
-  padding: 7px 8px;
+  padding: 7px var(--space-2);
   border-top: 1px solid var(--divider);
 }
 

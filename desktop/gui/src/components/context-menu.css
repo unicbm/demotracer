@@ -19,8 +19,8 @@
 }
 
 .context-menu > div.has-divider {
-  margin-top: 4px;
-  padding-top: 4px;
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
   border-top: 1px solid var(--divider);
 }
 
@@ -31,7 +31,7 @@
   width: 100%;
   min-height: 34px;
   padding: 5px 9px;
-  gap: 8px;
+  gap: var(--space-2);
   color: inherit;
   background: transparent;
   border: 0;
@@ -79,8 +79,8 @@
 
 .context-menu button strong {
   overflow: hidden;
-  font-size: 13px;
-  font-weight: 620;
+  font-size: var(--type-support);
+  font-weight: var(--weight-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
