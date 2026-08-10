@@ -13,6 +13,7 @@ export type SteamProfileMap = ReadonlyMap<string, SteamProfile>;
 
 const memoryProfileCache = new Map<string, SteamProfile>();
 const pendingProfileRequests = new Map<string, Promise<SteamProfile | null>>();
+const PROFILE_REQUEST_BATCH_SIZE = 32;
 const demoPlayerColors: Readonly<Record<string, string>> = {
   blue: "#62a8f5",
   green: "#69bd5b",
@@ -35,14 +36,15 @@ function cachedProfileMap(steamIds: string[]): Map<string, SteamProfile> {
 function requestProfiles(steamIds: string[]): Promise<SteamProfile[]> {
   const missing = steamIds.filter((steamId) =>
     !memoryProfileCache.has(steamId) && !pendingProfileRequests.has(steamId));
-  if (missing.length > 0) {
-    const batch = invoke<SteamProfile[]>("load_steam_profiles", { steamIds: missing })
+  for (let offset = 0; offset < missing.length; offset += PROFILE_REQUEST_BATCH_SIZE) {
+    const batchSteamIds = missing.slice(offset, offset + PROFILE_REQUEST_BATCH_SIZE);
+    const batch = invoke<SteamProfile[]>("load_steam_profiles", { steamIds: batchSteamIds })
       .then((profiles) => {
         profiles.forEach((profile) => memoryProfileCache.set(profile.steamId, profile));
         return new Map(profiles.map((profile) => [profile.steamId, profile]));
       })
       .catch(() => new Map<string, SteamProfile>());
-    missing.forEach((steamId) => {
+    batchSteamIds.forEach((steamId) => {
       const request = batch
         .then((profiles) => profiles.get(steamId) ?? null)
         .finally(() => pendingProfileRequests.delete(steamId));
@@ -57,7 +59,9 @@ function requestProfiles(steamIds: string[]): Promise<SteamProfile[]> {
 }
 
 export function useSteamProfiles(steamIds: string[]): SteamProfileMap {
-  const requestKey = useMemo(() => [...new Set(steamIds.filter((steamId) => /^[1-9]\d{16}$/.test(steamId)))].sort().join(","), [steamIds]);
+  const requestKey = useMemo(() => [...new Set(steamIds
+    .map((steamId) => steamId.trim())
+    .filter((steamId) => /^[1-9]\d{16}$/.test(steamId)))].sort().join(","), [steamIds]);
   const [profiles, setProfiles] = useState<SteamProfileMap>(() => cachedProfileMap(requestKey ? requestKey.split(",") : []));
 
   useEffect(() => {

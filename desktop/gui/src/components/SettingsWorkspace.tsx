@@ -45,6 +45,7 @@ import type {
   PlaybackUpdateStatus,
   ServerConfigDocument,
   ServerConfigValidation,
+  Theme,
 } from "../types";
 import { releaseNotesForLanguage } from "../releaseNotes";
 import { SERVER_CONFIG_GUIDE, type ServerConfigGuideGroup } from "../serverConfigGuide";
@@ -52,7 +53,18 @@ import type { PlaybackHandoffMode, PlaybackPresetOptions } from "./PlaybackComma
 import { DialogPrimitive } from "./Dialog";
 import "./settings-workspace.css";
 
-type SettingsModal = "desktopUpdate" | "playbackInstall" | "advanced" | "about" | "theme" | "customCss" | null;
+type SettingsModal =
+  | "desktopUpdate"
+  | "playbackInstall"
+  | "environment"
+  | "storage"
+  | "conversion"
+  | "playback"
+  | "serverConfig"
+  | "about"
+  | "theme"
+  | "customCss"
+  | null;
 
 type ThemeColorKey = keyof ThemePalette;
 
@@ -81,6 +93,7 @@ function themeEditorDraft(customization: ThemeCustomization, theme: ResolvedThem
 interface SettingsWorkspaceProps {
   words: TextDictionary;
   language: Language;
+  theme: Theme;
   resolvedTheme: ResolvedTheme;
   uiScale: UiScale;
   themeCustomization: ThemeCustomization;
@@ -112,7 +125,7 @@ interface SettingsWorkspaceProps {
   onThemeCustomizationChange: (customization: ThemeCustomization) => void;
   onCustomCssChange: (css: string) => void;
   onLanguageChange: (language: Language) => void;
-  onToggleTheme: () => void;
+  onThemeChange: (theme: Theme) => void;
   onCs2PathChange: (path: string) => void;
   onBrowseCs2: () => void;
   onDetectCs2: () => void;
@@ -134,6 +147,7 @@ interface SettingsWorkspaceProps {
   onAddDemoRoot: () => void;
   onRemoveDemoRoot: (root: string) => void;
   onOpenPath: (path: string) => void;
+  onOpenLogDirectory: () => void;
   onOpenExternal: (url: string) => void;
   onEnvironmentChange: (patch: Partial<LocalEnvironmentSettings>) => void;
   onConverterChange: (patch: Partial<ConverterSettings>) => void;
@@ -265,20 +279,114 @@ function SettingSelectLine({
   );
 }
 
+function LanguageSelectLine({
+  title,
+  value,
+  onChange,
+}: {
+  title: string;
+  value: Language;
+  onChange: (value: Language) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+  const optionRefs = useRef<Record<Language, HTMLButtonElement | null>>({ zh: null, en: null });
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!pickerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  const choose = (language: Language) => {
+    onChange(language);
+    setOpen(false);
+  };
+
+  const focusSelectedOption = () => {
+    requestAnimationFrame(() => optionRefs.current[value]?.focus());
+  };
+
+  return (
+    <div className="settings-select-line settings-language-line">
+      <span><strong>{title}</strong></span>
+      <div className={`settings-language-picker${open ? " is-open" : ""}`} ref={pickerRef}>
+        <button
+          className="settings-language-trigger"
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls="settings-language-options"
+          onClick={() => setOpen((current) => !current)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              setOpen(true);
+              focusSelectedOption();
+            }
+          }}
+        >
+          <span>{LANGUAGE_OPTIONS[value].label}</span>
+          <ChevronIcon size={14} />
+        </button>
+        {open ? (
+          <div className="settings-language-menu" id="settings-language-options" role="listbox" aria-label={title}>
+            {(["zh", "en"] as const).map((option, index, options) => (
+              <button
+                className={value === option ? "is-selected" : ""}
+                type="button"
+                role="option"
+                aria-selected={value === option}
+                key={option}
+                ref={(element) => { optionRefs.current[option] = element; }}
+                onClick={() => choose(option)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    const direction = event.key === "ArrowDown" ? 1 : -1;
+                    const next = options[(index + direction + options.length) % options.length];
+                    optionRefs.current[next]?.focus();
+                  }
+                }}
+              >
+                {LANGUAGE_OPTIONS[option].label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function SettingsSubpageRow({
   title,
   status,
+  kind = "subpage",
+  disabled = false,
   onClick,
 }: {
   title: string;
   status?: string;
+  kind?: "subpage" | "folder" | "external";
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
-    <button className="settings-subpage-row" type="button" onClick={onClick}>
+    <button className={`settings-subpage-row is-${kind}`} type="button" disabled={disabled} onClick={onClick}>
       <span><strong>{title}</strong></span>
       {status ? <em>{status}</em> : null}
-      <ChevronIcon size={15} />
+      {kind === "folder" ? <FolderIcon size={14} /> : kind === "external" ? <ExternalLinkIcon size={14} /> : <ChevronIcon size={15} />}
     </button>
   );
 }
@@ -317,6 +425,7 @@ function PathRow({
 export function SettingsWorkspace({
   words,
   language,
+  theme,
   resolvedTheme,
   uiScale,
   themeCustomization,
@@ -348,7 +457,7 @@ export function SettingsWorkspace({
   onThemeCustomizationChange,
   onCustomCssChange,
   onLanguageChange,
-  onToggleTheme,
+  onThemeChange,
   onCs2PathChange,
   onBrowseCs2,
   onDetectCs2,
@@ -370,6 +479,7 @@ export function SettingsWorkspace({
   onAddDemoRoot,
   onRemoveDemoRoot,
   onOpenPath,
+  onOpenLogDirectory,
   onOpenExternal,
   onEnvironmentChange,
   onConverterChange,
@@ -429,7 +539,7 @@ export function SettingsWorkspace({
 
   useEffect(() => {
     const path = environment.cs2Path.trim();
-    if (settingsModal !== "advanced" || !path || serverConfigDocument || loadingServerConfig) return;
+    if (settingsModal !== "serverConfig" || !path || serverConfigDocument || loadingServerConfig) return;
     if (autoLoadedConfigPath.current === path) return;
     autoLoadedConfigPath.current = path;
     void handleLoadServerConfig();
@@ -486,21 +596,25 @@ export function SettingsWorkspace({
   const appearanceView = (
     <div className="settings-pane settings-appearance-pane">
       <section className="settings-card settings-form-card" aria-label={words.settingsNavAppearance}>
-        <div className="settings-choice-row">
-          <div><strong>{words.language}</strong></div>
-          <div className="segmented-control" role="group" aria-label={words.language}>
-            {(["zh", "en"] as const).map((option) => (
-              <button className={language === option ? "is-selected" : ""} type="button" aria-pressed={language === option} key={option} onClick={() => onLanguageChange(option)}>
-                {LANGUAGE_OPTIONS[option].label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <LanguageSelectLine
+          title={words.language}
+          value={language}
+          onChange={onLanguageChange}
+        />
         <div className="settings-choice-row">
           <div><strong>{words.theme}</strong></div>
           <div className="segmented-control" role="group" aria-label={words.theme}>
-            <button className={resolvedTheme === "light" ? "is-selected" : ""} type="button" aria-pressed={resolvedTheme === "light"} onClick={resolvedTheme === "light" ? undefined : onToggleTheme}>{words.lightTheme}</button>
-            <button className={resolvedTheme === "dark" ? "is-selected" : ""} type="button" aria-pressed={resolvedTheme === "dark"} onClick={resolvedTheme === "dark" ? undefined : onToggleTheme}>{words.darkTheme}</button>
+            {(["light", "dark", "system"] as const).map((option) => (
+              <button
+                className={theme === option ? "is-selected" : ""}
+                type="button"
+                aria-pressed={theme === option}
+                key={option}
+                onClick={() => onThemeChange(option)}
+              >
+                {option === "light" ? words.lightTheme : option === "dark" ? words.darkTheme : words.systemTheme}
+              </button>
+            ))}
           </div>
         </div>
         <div className="settings-choice-row">
@@ -1008,11 +1122,8 @@ export function SettingsWorkspace({
           </div>
         ) : null}
 
-        <details className="playback-settings-advanced conversion-settings-advanced">
-          <summary>
-            <strong>{words.compatibilityOptions}</strong>
-            <ChevronIcon size={15} />
-          </summary>
+        <div className="playback-settings-advanced conversion-settings-advanced">
+          <div className="playback-settings-advanced-heading">{words.compatibilityOptions}</div>
           <div className="playback-settings-advanced-body">
             <div className="settings-number-row">
               <div><strong>{words.freezePreroll}</strong><small>{words.freezePrerollDefaultHelp}</small></div>
@@ -1050,7 +1161,7 @@ export function SettingsWorkspace({
               </label>
             </div>
           </div>
-        </details>
+        </div>
       </section>
 
     </div>
@@ -1077,11 +1188,8 @@ export function SettingsWorkspace({
           checked={playback.cosmetics}
           onChange={(cosmetics) => onPlaybackChange(cosmetics ? { cosmetics: true, weapons: true } : { cosmetics: false })}
         />
-        <details className="playback-settings-advanced">
-          <summary>
-            <strong>{words.playbackAdvancedOverrides}</strong>
-            <ChevronIcon size={15} />
-          </summary>
+        <div className="playback-settings-advanced">
+          <div className="playback-settings-advanced-heading">{words.playbackAdvancedOverrides}</div>
           <div className="playback-settings-advanced-body">
             <SettingLine
               title={words.syncAvatar}
@@ -1126,7 +1234,7 @@ export function SettingsWorkspace({
               </div>
             ) : null}
           </div>
-        </details>
+        </div>
       </section>
 
     </div>
@@ -1270,12 +1378,15 @@ export function SettingsWorkspace({
   ];
   const aboutView = (
     <div className="settings-pane settings-about-pane">
-      <header className="settings-pane-header credits-page-header">
-        <h2>{words.aboutTitle}</h2>
-        <code className="credits-version">v{aboutVersion}</code>
+      <header className="credits-product-hero">
+        <TraceMark size={36} />
+        <span className="credits-product-copy">
+          <strong>{words.appName}</strong>
+          <code className="credits-version">v{aboutVersion}</code>
+        </span>
       </header>
 
-      <section className="credits-section" aria-labelledby="credits-contributors-title">
+      <section className="credits-section is-contributors" aria-labelledby="credits-contributors-title">
         <header className="credits-section-heading">
           <h3 id="credits-contributors-title">{words.creditsContributorsTitle}</h3>
         </header>
@@ -1300,14 +1411,13 @@ export function SettingsWorkspace({
                 />
               </span>
               <span className="credits-person-identity"><strong>{person.name}</strong><small>@{person.githubHandle}</small></span>
-              <span className="credits-contribution">{person.githubHandle === DEMOTRACER_CREDITS.creator.githubHandle ? words.creditsCreatorRole : ""}</span>
-              <ExternalLinkIcon className="credits-external-icon" size={14} />
+              {person.githubHandle === DEMOTRACER_CREDITS.creator.githubHandle ? <span className="credits-contribution">{words.creditsCreatorRole}</span> : null}
             </button>
           ))}
         </div>
       </section>
 
-      <section className="credits-section" aria-labelledby="credits-foundations-title">
+      <section className="credits-section is-foundations" aria-labelledby="credits-foundations-title">
         <header className="credits-section-heading">
           <h3 id="credits-foundations-title">{words.creditsFoundationsTitle}</h3>
         </header>
@@ -1412,20 +1522,32 @@ export function SettingsWorkspace({
     </div>
   );
 
+  const compactPathStatus = (path: string) => {
+    const normalized = path.trim().replace(/[\\/]+$/, "");
+    return normalized.split(/[\\/]/).at(-1) || words.notSelected;
+  };
   const playbackReleaseStatus = !environment.cs2Path.trim()
     ? words.releaseUnverified
     : playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy;
   const modalTitle = settingsModal === "desktopUpdate" ? words.releaseDesktopApp
     : settingsModal === "playbackInstall" ? words.releasePlayback
-    : settingsModal === "advanced" ? words.serverConfigTitle
-      : settingsModal === "about" ? words.settingsNavAbout
-        : settingsModal === "theme" ? words.themeSettingsTitle
-          : words.customCssEditorTitle;
+      : settingsModal === "environment" ? words.advancedEnvironmentDiagnostics
+        : settingsModal === "storage" ? words.advancedStorage
+          : settingsModal === "conversion" ? words.advancedConversion
+            : settingsModal === "playback" ? words.advancedPlayback
+              : settingsModal === "serverConfig" ? words.serverConfigTitle
+                : settingsModal === "about" ? words.settingsNavAbout
+                  : settingsModal === "theme" ? words.themeSettingsTitle
+                    : words.customCssEditorTitle;
   const modalContent = settingsModal === "desktopUpdate" ? desktopUpdateView
     : settingsModal === "playbackInstall" ? playbackInstallView
-    : settingsModal === "advanced" ? serverConfigView
-      : settingsModal === "about" ? aboutView
-        : null;
+      : settingsModal === "environment" ? environmentView
+        : settingsModal === "storage" ? pathsView
+          : settingsModal === "conversion" ? exportView
+            : settingsModal === "playback" ? playbackView
+              : settingsModal === "serverConfig" ? serverConfigView
+                : settingsModal === "about" ? aboutView
+                  : null;
 
   return (
     <section className="settings-workspace" aria-label={words.settingsTitle}>
@@ -1435,6 +1557,45 @@ export function SettingsWorkspace({
             <section className="settings-dashboard-panel is-general">
               <header><strong>{words.settingsNavAppearance}</strong></header>
               <div className="settings-dashboard-panel-body">{appearanceView}</div>
+            </section>
+            <section className="settings-dashboard-panel">
+              <header><strong>CS2</strong></header>
+              <div className="settings-subpage-list">
+                <SettingsSubpageRow
+                  title={words.releaseCs2Directory}
+                  status={compactPathStatus(environment.cs2Path)}
+                  kind="folder"
+                  disabled={!environment.cs2Path.trim()}
+                  onClick={() => onOpenPath(environment.cs2Path)}
+                />
+                <SettingsSubpageRow
+                  title={words.advancedEnvironmentDiagnostics}
+                  status={reportCopy?.[0] ?? (environment.cs2Path.trim() ? words.releaseUnverified : words.notSelected)}
+                  onClick={() => setSettingsModal("environment")}
+                />
+              </div>
+            </section>
+            <section className="settings-dashboard-panel">
+              <header><strong>{words.settingsNavPaths}</strong></header>
+              <div className="settings-subpage-list">
+                <SettingsSubpageRow
+                  title={words.defaultOutputDirectory}
+                  status={compactPathStatus(exportRoot)}
+                  kind="folder"
+                  disabled={!exportRoot.trim()}
+                  onClick={() => onOpenPath(exportRoot)}
+                />
+                <SettingsSubpageRow
+                  title={words.archiveLibraryDirectories}
+                  status={words.advancedConfiguredFolders.replace("{count}", String(archiveRoots.length))}
+                  onClick={() => setSettingsModal("storage")}
+                />
+                <SettingsSubpageRow
+                  title={words.rawDemoDirectories}
+                  status={words.advancedConfiguredFolders.replace("{count}", String(environment.demoRoots.length))}
+                  onClick={() => setSettingsModal("storage")}
+                />
+              </div>
             </section>
           </div>
           <div className="settings-dashboard-column">
@@ -1448,26 +1609,34 @@ export function SettingsWorkspace({
                 <SettingsSubpageRow title={words.releasePlayback} status={playbackReleaseStatus} onClick={() => setSettingsModal("playbackInstall")} />
               </div>
             </section>
-            <section className="settings-dashboard-panel settings-subpage-list" aria-label={words.settingsSections}>
-              <SettingsSubpageRow title={words.settingsNavServerConfig} onClick={() => setSettingsModal("advanced")} />
-              <SettingsSubpageRow title={words.settingsNavAbout} onClick={() => setSettingsModal("about")} />
+            <section className="settings-dashboard-panel" aria-label={words.demoTracerAdvancedSettings}>
+              <header><strong>{words.demoTracerAdvancedSettings}</strong></header>
+              <div className="settings-subpage-list">
+                <SettingsSubpageRow title={words.advancedServerConfig} onClick={() => setSettingsModal("serverConfig")} />
+                <SettingsSubpageRow title={words.advancedConversion} onClick={() => setSettingsModal("conversion")} />
+                <SettingsSubpageRow title={words.advancedPlayback} onClick={() => setSettingsModal("playback")} />
+                <SettingsSubpageRow title={words.advancedLogDirectory} kind="folder" onClick={onOpenLogDirectory} />
+              </div>
+            </section>
+            <section className="settings-dashboard-panel" aria-label={words.settingsNavAbout}>
+              <header><strong>{words.settingsNavAbout}</strong></header>
+              <div className="settings-subpage-list">
+                <SettingsSubpageRow title={words.aboutTitle} status={`v${aboutVersion}`} onClick={() => setSettingsModal("about")} />
+                <SettingsSubpageRow title="GitHub" kind="external" onClick={() => onOpenExternal("https://github.com/unicbm/demotracer")} />
+              </div>
             </section>
           </div>
-          <div className="settings-dashboard-inline settings-dashboard-environment">{environmentView}</div>
-          <div className="settings-dashboard-inline settings-dashboard-storage">{pathsView}</div>
-          <div className="settings-dashboard-inline">{exportView}</div>
-          <div className="settings-dashboard-inline">{playbackView}</div>
         </div>
       </div>
 
       {settingsModal && settingsModal !== "theme" && settingsModal !== "customCss" ? (
-        <DialogPrimitive labelledBy="settings-modal-title" onDismiss={() => setSettingsModal(null)} className={`dialog-surface settings-modal is-${settingsModal}`}>
+        <DialogPrimitive labelledBy="settings-modal-title" onDismiss={() => setSettingsModal(null)} className={`dialog-surface settings-modal is-${settingsModal}${settingsModal === "serverConfig" ? " is-advanced" : ""}`}>
           <header className="settings-modal-header">
             <h2 id="settings-modal-title">{modalTitle}</h2>
             <button className="icon-button" type="button" onClick={() => setSettingsModal(null)} aria-label={words.close} title={words.close}><CloseIcon size={16} /></button>
           </header>
           <div className="settings-modal-body">{modalContent}</div>
-          {settingsModal === "playbackInstall" ? null : (
+          {settingsModal === "playbackInstall" || settingsModal === "about" ? null : (
             <footer className="settings-modal-footer"><button className="secondary-button" type="button" onClick={() => setSettingsModal(null)}>{words.close}</button></footer>
           )}
         </DialogPrimitive>

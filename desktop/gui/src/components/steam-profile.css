@@ -23,15 +23,15 @@
   background:
     linear-gradient(145deg, color-mix(in srgb, var(--trace) 12%, var(--surface-muted)), var(--surface-subtle));
   border: 1px solid color-mix(in srgb, var(--divider-strong) 82%, var(--trace));
-  border-radius: var(--radius-circle);
+  border-radius: 7px;
   font-size: 12px;
   font-weight: 720;
   line-height: 1;
 }
 
-.steam-avatar.is-compact { width: 27px; height: 27px; font-size: 10px; }
-.steam-avatar.is-hero { width: 44px; height: 44px; border-width: 2px; font-size: 16px; }
-.steam-avatar.is-large { width: 62px; height: 62px; font-size: 22px; }
+.steam-avatar.is-compact { width: 27px; height: 27px; border-radius: 6px; font-size: 10px; }
+.steam-avatar.is-hero { width: 44px; height: 44px; border-width: 2px; border-radius: 9px; font-size: 16px; }
+.steam-avatar.is-large { width: 62px; height: 62px; border-radius: 11px; font-size: 22px; }
 .steam-avatar.is-profile {
   width: 96px;
   height: 96px;

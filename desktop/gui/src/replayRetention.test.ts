@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildReplayRetentionCommand,
+  canPrioritizeReplayRoster,
   encodeReplayRetentionPermutation,
   moveReplayRetentionPlayer,
   normalizeReplayRetentionOrder,
@@ -28,6 +29,12 @@ describe("replay retention priority", () => {
 
   it("builds one manifest-plan command", () => {
     assert.equal(buildReplayRetentionCommand({ a, b }), `dtr_retain ${a.join(",")} ${b.join(",")}`);
+  });
+
+  it("does not emit five-player retention commands for a larger casual roster", () => {
+    const casual = Array.from({ length: 10 }, (_, index) => `765611980000000${String(index + 1).padStart(2, "0")}`);
+    assert.equal(canPrioritizeReplayRoster(casual), false);
+    assert.equal(buildReplayRetentionCommand({ a: casual, b: [] }), null);
   });
 
   it("encodes each complete five-player side as one permutation number", () => {

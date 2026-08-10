@@ -10,21 +10,18 @@ import {
   CloseIcon,
   GithubIcon,
   HelpIcon,
-  LanguageIcon,
   LibraryIcon,
   MaximizeIcon,
   MinimizeIcon,
-  MoonIcon,
+  NoteIcon,
   PlusIcon,
   ReplayIcon,
   RestoreIcon,
   SidebarIcon,
   SlidersIcon,
-  SunIcon,
   TraceMark,
 } from "../icons";
-import { LANGUAGE_OPTIONS, type TextDictionary } from "../i18n";
-import type { Language } from "../types";
+import type { TextDictionary } from "../i18n";
 
 interface AppChromeProps {
   words: TextDictionary;
@@ -38,22 +35,20 @@ interface AppChromeProps {
 
 interface AppSidebarProps {
   words: TextDictionary;
-  language: Language;
-  resolvedTheme: "light" | "dark";
   appVersion: string;
   busy: boolean;
   importActive: boolean;
   libraryActive: boolean;
   analysisActive: boolean;
   analysisAvailable: boolean;
+  logsActive: boolean;
   settingsActive: boolean;
   collapsed: boolean;
   onOpenImport: () => void;
   onOpenLibrary: () => void;
   onOpenAnalysis: () => void;
+  onOpenLogs: () => void;
   onOpenSettings: () => void;
-  onLanguageChange: (language: Language) => void;
-  onToggleTheme: () => void;
   onToggleCollapsed: () => void;
 }
 
@@ -146,27 +141,22 @@ export function AppChrome({
 
 export function AppSidebar({
   words,
-  language,
-  resolvedTheme,
   appVersion,
   busy,
   importActive,
   libraryActive,
   analysisActive,
   analysisAvailable,
+  logsActive,
   settingsActive,
   collapsed,
   onOpenImport,
   onOpenLibrary,
   onOpenAnalysis,
+  onOpenLogs,
   onOpenSettings,
-  onLanguageChange,
-  onToggleTheme,
   onToggleCollapsed,
 }: AppSidebarProps) {
-  const languageOption = LANGUAGE_OPTIONS[language];
-  const nextLanguageOption = LANGUAGE_OPTIONS[languageOption.next];
-
   const itemClass = (active: boolean) => `sidebar-nav-item${active ? " is-active" : ""}`;
   return (
     <aside className={`app-sidebar${collapsed ? " is-collapsed" : ""}`} aria-label={words.mainNavigation}>
@@ -205,6 +195,10 @@ export function AppSidebar({
           <ReplayIcon size={17} />
           <span>{words.navAnalysis}</span>
         </button>
+        <button className={itemClass(logsActive)} type="button" onClick={onOpenLogs} aria-current={logsActive ? "page" : undefined} title={words.navLogs}>
+          <NoteIcon size={17} />
+          <span>{words.navLogs}</span>
+        </button>
 
         <span className="sidebar-section-divider" />
         <button className={itemClass(settingsActive)} type="button" onClick={onOpenSettings} aria-current={settingsActive ? "page" : undefined} title={words.navSettings}>
@@ -215,23 +209,6 @@ export function AppSidebar({
 
       <div className="sidebar-footer">
         <span className="sidebar-version">v{appVersion}</span>
-        <button
-          className="sidebar-language"
-          type="button"
-          onClick={() => onLanguageChange(languageOption.next)}
-          aria-label={languageOption.switchLabel}
-          title={languageOption.switchLabel}
-        >
-          <span className="sidebar-language-icon" aria-hidden="true">
-            <LanguageIcon size={16} />
-          </span>
-          <span className="sidebar-language-copy"><strong>{languageOption.label}</strong></span>
-          <span className="sidebar-language-target" aria-hidden="true">{nextLanguageOption.shortLabel}</span>
-        </button>
-        <button className="sidebar-theme" type="button" onClick={onToggleTheme} aria-label={resolvedTheme === "dark" ? words.lightTheme : words.darkTheme} title={resolvedTheme === "dark" ? words.lightTheme : words.darkTheme}>
-          {resolvedTheme === "dark" ? <SunIcon size={16} /> : <MoonIcon size={16} />}
-          <span>{resolvedTheme === "dark" ? words.lightTheme : words.darkTheme}</span>
-        </button>
       </div>
     </aside>
   );

@@ -7,8 +7,41 @@
 export type Language = "zh" | "en";
 export type Theme = "system" | "light" | "dark";
 export type SideChoice = "both" | "t" | "ct";
-export type WorkspaceSection = "library" | "analysis" | "batch" | "settings" | "faq";
+export type WorkspaceSection = "library" | "analysis" | "batch" | "logs" | "settings" | "faq";
 export type SubtickMode = "auto" | "off";
+
+export type ActivityLogLevel = "debug" | "info" | "warn" | "error";
+
+export interface AppLogEntry {
+  id: string;
+  timestampMs: number;
+  level: ActivityLogLevel;
+  source: string;
+  message: string;
+}
+
+export interface ActivityLogMaintenance {
+  checkedFiles: number;
+  removedFiles: number;
+  repairedLines: number;
+}
+
+export interface GsiStatus {
+  listening: boolean;
+  configured: boolean;
+  connected: boolean;
+  port: number;
+  configPath?: string | null;
+  lastUpdateMs?: number | null;
+  provider?: string | null;
+  map?: string | null;
+  mapPhase?: string | null;
+  round?: number | null;
+  roundPhase?: string | null;
+  playerActivity?: string | null;
+  playerHealth?: number | null;
+  error?: string | null;
+}
 
 export type Phase =
   | "idle"

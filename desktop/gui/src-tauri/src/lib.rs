@@ -4,10 +4,12 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+mod activity_log;
 mod archive_info;
 mod batch;
 mod catalog;
 mod diagnostics;
+mod gsi;
 mod http_client;
 mod inventory_simulator;
 mod playback_manager;
@@ -15,6 +17,10 @@ mod server_config;
 mod steam_profile;
 mod target_lock;
 
+use activity_log::{
+    append_activity_log, clear_activity_logs, list_activity_logs, maintain_activity_logs,
+    ActivityLogLevel, ActivityLogState,
+};
 use batch::{
     cancel_batch_import, choose_demo_batch_dir, list_batch_imports, read_batch_import,
     resume_batch_import, scan_demo_folder, start_batch_import,
@@ -44,6 +50,7 @@ use cs2_demotracer::quality::AnalysisOptions;
 use cs2_demotracer::validate::validate_dtr_path;
 use cs2_demotracer::voice_export::export_round_voice_sidecars;
 use diagnostics::{choose_cs2_dir, detect_cs2_installations, inspect_cs2_install};
+use gsi::{configure_gsi, gsi_status, GsiState};
 use inventory_simulator::{set_inventory_simulator_panel, start_inventory_simulator_batch};
 use playback_manager::{
     choose_playback_bundle, install_latest_playback_bundle, install_playback_bundle,
@@ -1450,6 +1457,20 @@ async fn open_output(request: OpenOutputRequest) -> CommandResult<()> {
         .await
         .map_err(|error| CommandErrorDto::new("open_output_worker_failed", error.to_string()))?
         .map_err(|error| CommandErrorDto::at_path("open_output_failed", error.to_string(), &path))
+}
+
+#[tauri::command]
+async fn open_activity_log_directory(state: State<'_, ActivityLogState>) -> CommandResult<()> {
+    let path = state.root().to_path_buf();
+    let worker_path = path.clone();
+    tauri::async_runtime::spawn_blocking(move || open_folder_path(&worker_path))
+        .await
+        .map_err(|error| {
+            CommandErrorDto::new("open_activity_log_worker_failed", error.to_string())
+        })?
+        .map_err(|error| {
+            CommandErrorDto::at_path("open_activity_log_failed", error.to_string(), &path)
+        })
 }
 
 #[tauri::command]
@@ -5437,6 +5458,19 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            let activity_root = app.path().app_local_data_dir()?.join("logs");
+            let activity = ActivityLogState::new(activity_root)
+                .map_err(|error| std::io::Error::other(error.message))?;
+            let _ = activity.maintain();
+            let _ = activity.append(
+                ActivityLogLevel::Info,
+                "app",
+                format!("CS2 DemoTracer {} started", env!("CARGO_PKG_VERSION")),
+            );
+            let gsi = GsiState::new(activity.clone());
+            gsi.start();
+            app.manage(activity);
+            app.manage(gsi);
             if let (Some(window), Some(icon)) = (
                 app.get_webview_window("main"),
                 app.default_window_icon().cloned(),
@@ -5497,7 +5531,14 @@ pub fn run() {
             open_external,
             start_inventory_simulator_batch,
             set_inventory_simulator_panel,
-            load_steam_profiles
+            load_steam_profiles,
+            list_activity_logs,
+            append_activity_log,
+            maintain_activity_logs,
+            clear_activity_logs,
+            open_activity_log_directory,
+            configure_gsi,
+            gsi_status
         ])
         .run(tauri::generate_context!())
         .expect("failed to run CS2 DemoTracer desktop app");

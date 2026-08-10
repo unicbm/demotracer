@@ -19,6 +19,7 @@ const STANDARD_REPLAY_TEAM_SIZE = 5;
 
 export function canPrioritizeReplayRoster(steamIds: readonly string[]): boolean {
   return steamIds.length > 1
+    && steamIds.length <= STANDARD_REPLAY_TEAM_SIZE
     && steamIds.every((steamId) => STEAM_ID64_PATTERN.test(steamId))
     && new Set(steamIds).size === steamIds.length;
 }

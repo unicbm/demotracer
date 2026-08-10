@@ -29,6 +29,7 @@ import { DialogPrimitive } from "./components/Dialog";
 import { ExportInspector } from "./components/ExportInspector";
 import { FaqWorkspace } from "./components/FaqWorkspace";
 import { LibraryWorkspace, type LibrarySort } from "./components/LibraryWorkspace";
+import { LogsWorkspace } from "./components/LogsWorkspace";
 import { InventorySimulatorPanel } from "./components/InventorySimulatorPanel";
 import { releaseNotesForLanguage } from "./releaseNotes";
 import { DEFAULT_PLAYBACK_ADVANCED_OPTIONS, type PlaybackPresetOptions } from "./components/PlaybackCommandBuilder";
@@ -62,7 +63,6 @@ import {
   themeBackground,
   THEME_CUSTOMIZATION_STORAGE_KEY,
   THEME_STORAGE_KEY,
-  toggleResolvedTheme,
   type ThemeCustomization,
   type UiScale,
 } from "./appearance";
@@ -89,6 +89,9 @@ import {
 } from "./librarySession";
 import type {
   AnalysisResult,
+  ActivityLogLevel,
+  ActivityLogMaintenance,
+  AppLogEntry,
   BatchEvent,
   BatchItem,
   BatchItemPhase,
@@ -105,6 +108,7 @@ import type {
   DemoSourcePreflight,
   EnvironmentDiagnosticReport,
   GuiUpdateStatus,
+  GsiStatus,
   ImportArchivesResult,
   Language,
   LocalEnvironmentSettings,
@@ -157,6 +161,7 @@ const INVENTORY_SIMULATOR_PANEL_WIDTH_KEY = "demotracer.inventory-simulator-pane
 const INVENTORY_SIMULATOR_PANEL_DEFAULT_WIDTH = 580;
 const INVENTORY_SIMULATOR_PANEL_MIN_WIDTH = 440;
 const INVENTORY_SIMULATOR_PANEL_MAX_WIDTH = 900;
+const ACTIVITY_LOG_LIMIT = 5_000;
 
 const INITIAL_LIBRARY_SESSION = readStoredLibrarySession(localStorage);
 
@@ -693,6 +698,14 @@ function useMediaQuery(query: string): boolean {
   return matches;
 }
 
+function mergeActivityLogs(current: AppLogEntry[], incoming: AppLogEntry[]): AppLogEntry[] {
+  const merged = new Map(current.map((entry) => [entry.id, entry]));
+  for (const entry of incoming) merged.set(entry.id, entry);
+  return [...merged.values()]
+    .sort((left, right) => left.timestampMs - right.timestampMs || left.id.localeCompare(right.id))
+    .slice(-ACTIVITY_LOG_LIMIT);
+}
+
 function App() {
   const [language, setLanguage] = useState<Language>(storedLanguage);
   const [theme, setTheme] = useState<Theme>(() => normalizeTheme(localStorage.getItem(THEME_STORAGE_KEY)));
@@ -781,6 +794,9 @@ function App() {
   const [serverConfigValidation, setServerConfigValidation] = useState<ServerConfigValidation | null>(null);
   const [loadingServerConfig, setLoadingServerConfig] = useState(false);
   const [savingServerConfig, setSavingServerConfig] = useState(false);
+  const [activityLogs, setActivityLogs] = useState<AppLogEntry[]>([]);
+  const [activityLogsLoading, setActivityLogsLoading] = useState(false);
+  const [gsiRuntimeStatus, setGsiRuntimeStatus] = useState<GsiStatus | null>(null);
   const [progress, setProgress] = useState<ProgressState>(emptyProgress);
   const [result, setResult] = useState<ConversionSummary | null>(null);
   const [conversionWarnings, setConversionWarnings] = useState<string[]>([]);
@@ -832,6 +848,7 @@ function App() {
   const guiUpdateLaterRef = useRef<HTMLButtonElement | null>(null);
   const cancelArchiveDeleteRef = useRef<HTMLButtonElement | null>(null);
   const inventorySimulatorHostRef = useRef<HTMLDivElement | null>(null);
+  const browserLogPreviewSeededRef = useRef(false);
 
   const invalidateManifestCache = useCallback((path?: string) => {
     manifestCacheGenerationRef.current += 1;
@@ -840,6 +857,63 @@ function App() {
   }, []);
 
   const words = TEXT[language];
+  const recordActivityLog = useCallback((
+    level: ActivityLogLevel,
+    source: string,
+    message: string,
+  ) => {
+    if (!message.trim()) return;
+    if (!("__TAURI_INTERNALS__" in window)) {
+      const timestampMs = Date.now();
+      setActivityLogs((current) => mergeActivityLogs(current, [{
+        id: `${timestampMs}-${Math.random().toString(16).slice(2)}`,
+        timestampMs,
+        level,
+        source,
+        message,
+      }]));
+      return;
+    }
+    void invoke<AppLogEntry>("append_activity_log", {
+      request: { level, source, message },
+    }).then((entry) => {
+      setActivityLogs((current) => mergeActivityLogs(current, [entry]));
+    }).catch(() => undefined);
+  }, []);
+  const refreshActivityLogs = useCallback(async () => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    setActivityLogsLoading(true);
+    try {
+      const [entries, status] = await Promise.all([
+        invoke<AppLogEntry[]>("list_activity_logs", { limit: ACTIVITY_LOG_LIMIT }),
+        invoke<GsiStatus>("gsi_status"),
+      ]);
+      setActivityLogs(entries);
+      setGsiRuntimeStatus(status);
+    } finally {
+      setActivityLogsLoading(false);
+    }
+  }, []);
+  const openActivityLogDirectory = useCallback(() => {
+    if ("__TAURI_INTERNALS__" in window) {
+      void invoke<void>("open_activity_log_directory").catch((reason) => {
+        setGlobalError(parseCommandError(reason));
+      });
+    }
+  }, []);
+  const clearActivityLogs = useCallback(() => {
+    if (!window.confirm(TEXT[language].logsClearConfirm)) return;
+    if (!("__TAURI_INTERNALS__" in window)) {
+      setActivityLogs([]);
+      return;
+    }
+    setActivityLogsLoading(true);
+    void invoke<number>("clear_activity_logs").then(() => {
+      setActivityLogs([]);
+    }).catch((reason) => {
+      setGlobalError(parseCommandError(reason));
+    }).finally(() => setActivityLogsLoading(false));
+  }, [language]);
   const libraryRoot = libraryPreferences.exportRoot;
   const libraryRoots = libraryPreferences.roots;
   const numberFormat = useMemo(() => new Intl.NumberFormat(language === "zh" ? "zh-CN" : "en-US"), [language]);
@@ -864,9 +938,10 @@ function App() {
       : "";
   const sessionTitle = analysisSessionTitle || (activeSection === "library" ? words.navLibrary
     : activeSection === "batch" ? words.navImport
-      : activeSection === "settings" ? words.navSettings
-        : activeSection === "faq" ? words.navFaq
-          : words.navAnalysis);
+      : activeSection === "logs" ? words.navLogs
+        : activeSection === "settings" ? words.navSettings
+          : activeSection === "faq" ? words.navFaq
+            : words.navAnalysis);
   const sessionMeta = analysisSessionMeta || (activeSection === "library"
     ? libraryLoading ? words.scanningLibrary : libraryScan ? `${libraryScan.entries.length} Demo` : ""
     : activeSection === "batch"
@@ -1184,6 +1259,66 @@ function App() {
   }, [localEnvironment]);
 
   useEffect(() => {
+    if ("__TAURI_INTERNALS__" in window || !import.meta.env.DEV || browserLogPreviewSeededRef.current) return;
+    browserLogPreviewSeededRef.current = true;
+    const now = Date.now();
+    setActivityLogs([
+      { id: "preview-1", timestampMs: now - 42_000, level: "info", source: "app", message: "CS2 DemoTracer 1.0.11 started" },
+      { id: "preview-2", timestampMs: now - 31_000, level: "debug", source: "analysis", message: "phase=parsing" },
+      { id: "preview-3", timestampMs: now - 24_000, level: "info", source: "analysis", message: "Parsed match.dem.zst: 24 rounds · 10 players" },
+      { id: "preview-4", timestampMs: now - 15_000, level: "warn", source: "conversion", message: "Round 12: partial player evidence was preserved" },
+      { id: "preview-5", timestampMs: now - 4_000, level: "info", source: "gsi", message: "map=de_anubis · round=7 · roundPhase=freezetime · activity=playing" },
+    ]);
+    setGsiRuntimeStatus({
+      listening: true,
+      configured: true,
+      connected: true,
+      port: 32123,
+      lastUpdateMs: now - 4_000,
+      provider: "Counter-Strike 2",
+      map: "de_anubis",
+      mapPhase: "live",
+      round: 7,
+      roundPhase: "freezetime",
+      playerActivity: "playing",
+      playerHealth: 100,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    void refreshActivityLogs();
+    void invoke<ActivityLogMaintenance>("maintain_activity_logs").catch(() => undefined);
+    const timer = window.setInterval(() => {
+      void invoke<ActivityLogMaintenance>("maintain_activity_logs").catch(() => undefined);
+    }, 15 * 60 * 1_000);
+    return () => window.clearInterval(timer);
+  }, [refreshActivityLogs]);
+
+  useEffect(() => {
+    if (activeSection !== "logs" || !("__TAURI_INTERNALS__" in window)) return;
+    void refreshActivityLogs();
+    const timer = window.setInterval(() => void refreshActivityLogs(), 2_500);
+    return () => window.clearInterval(timer);
+  }, [activeSection, refreshActivityLogs]);
+
+  useEffect(() => {
+    const cs2Path = localEnvironment.cs2Path.trim();
+    if (!cs2Path || !("__TAURI_INTERNALS__" in window)) return;
+    let disposed = false;
+    void invoke<GsiStatus>("configure_gsi", { cs2Path }).then((status) => {
+      if (!disposed) setGsiRuntimeStatus(status);
+    }).catch(async (reason) => {
+      const error = parseCommandError(reason);
+      const status = await invoke<GsiStatus>("gsi_status").catch(() => null);
+      if (disposed) return;
+      setGsiRuntimeStatus(status ? { ...status, error: error.message } : null);
+      recordActivityLog("warn", "gsi", `GSI configuration skipped: ${error.code}`);
+    });
+    return () => { disposed = true; };
+  }, [localEnvironment.cs2Path, recordActivityLog]);
+
+  useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
     let disposed = false;
     void getVersion().then((currentVersion) => {
@@ -1382,10 +1517,11 @@ function App() {
     }
   }, [phase]);
 
-  const absorbEvent = useCallback((raw: TaskEvent, token: number) => {
+  const absorbEvent = useCallback((raw: TaskEvent, token: number, source: "analysis" | "conversion") => {
     if (token !== taskTokenRef.current) return;
 
     if (raw.kind === "phase") {
+      recordActivityLog("debug", source, `phase=${raw.phase}`);
       setProgress((current) => ({
         ...current,
         phase: phaseFromBackend(raw.phase, current.phase),
@@ -1397,6 +1533,11 @@ function App() {
     }
 
     if (raw.kind === "log") {
+      recordActivityLog(
+        raw.level === "warning" ? "warn" : raw.level,
+        source,
+        raw.message,
+      );
       if (raw.level === "warning" && !taskWarningsRef.current.includes(raw.message) && taskWarningsRef.current.length < 6) {
         taskWarningsRef.current = [...taskWarningsRef.current, raw.message];
       }
@@ -1471,7 +1612,7 @@ function App() {
           return { ...current, currentItem: fileName(event.manifestPath) };
       }
     });
-  }, [words]);
+  }, [recordActivityLog, words]);
 
   const runAnalysis = useCallback(async (
     path: string,
@@ -1501,9 +1642,10 @@ function App() {
     setSingleTaskPanelOpen(true);
     setActiveTaskSourcePath(path);
     taskWarningsRef.current = [];
+    recordActivityLog("info", "analysis", `Started parsing ${fileName(path) || path}`);
 
     const events = new Channel<TaskEvent>();
-    events.onmessage = (event) => absorbEvent(event, token);
+    events.onmessage = (event) => absorbEvent(event, token, "analysis");
     try {
       const next = await invoke<AnalysisResult>("analyze_demo", {
         request: {
@@ -1528,12 +1670,18 @@ function App() {
       setSingleTask(null);
       setSingleTaskPanelOpen(false);
       setAnalysisCancelPending(false);
+      recordActivityLog(
+        "info",
+        "analysis",
+        `Parsed ${next.fileName}: ${next.rounds.length} rounds · ${next.players.length} players`,
+      );
       playTaskSound("success");
     } catch (reason) {
       if (token !== taskTokenRef.current) return;
       const error = parseCommandError(reason);
       setAnalysisCancelPending(false);
       if (error.code === "analysis_cancelled") {
+        recordActivityLog("warn", "analysis", `Parsing cancelled: ${fileName(path) || path}`);
         setAnalysisError("");
         setSingleTask(null);
         setSingleTaskPanelOpen(false);
@@ -1548,6 +1696,7 @@ function App() {
         return;
       }
       if (preserveArchive) {
+        recordActivityLog("error", "analysis", `Parsing failed (${error.code}): ${fileName(path) || path}`);
         setSingleTask(null);
         setSingleTaskPanelOpen(false);
         setPhase("archive");
@@ -1558,13 +1707,14 @@ function App() {
       dispatchLibraryWorkspace({ type: "clear" });
       dispatchLibraryWorkspace({ type: "navigate", section: "analysis" });
       localStorage.removeItem(LIBRARY_SESSION_STORAGE_KEY);
+      recordActivityLog("error", "analysis", `Parsing failed (${error.code}): ${fileName(path) || path}`);
       setAnalysisError(userFacingErrorMessage(error, language));
       setPhase("analysisFailed");
       setSingleTask(null);
       setSingleTaskPanelOpen(false);
       playTaskSound("failure");
     }
-  }, [absorbEvent, libraryRoot, playTaskSound, primeTaskSound, settings.maxRoundSeconds, words.invalidDemo]);
+  }, [absorbEvent, language, libraryRoot, playTaskSound, primeTaskSound, recordActivityLog, settings.maxRoundSeconds, words.invalidDemo]);
 
   async function cancelAnalysis() {
     if (singleTask !== "analysis" || analysisCancelPending) return;
@@ -1944,6 +2094,7 @@ function App() {
     batchIdRef.current = event.batchId;
     switch (event.kind) {
       case "started":
+        recordActivityLog("info", "batch", `Batch ${event.batchId} started`);
         void refreshBatchLedger(event.batchId, generation);
         if (batchStopPendingRef.current) void requestBatchCancel(event.batchId, generation);
         break;
@@ -1961,6 +2112,13 @@ function App() {
         }));
         break;
       case "itemTask":
+        if (event.task.kind === "log") {
+          recordActivityLog(
+            event.task.level === "warning" ? "warn" : event.task.level,
+            "batch",
+            `${event.itemId}: ${event.task.message}`,
+          );
+        }
         setBatchProgressByItem((current) => ({
           ...current,
           [event.itemId]: nextBatchItemProgress(current[event.itemId], event.task),
@@ -1970,6 +2128,7 @@ function App() {
         void refreshBatchLedger(event.batchId, generation);
         break;
       case "itemCompleted":
+        recordActivityLog("info", "batch", `Completed ${fileName(event.manifestPath) || event.itemId}`);
         invalidateManifestCache(event.manifestPath);
         updateBatchLedgerItem(event.batchId, event.itemId, {
           status: "completed",
@@ -1989,6 +2148,7 @@ function App() {
         void refreshBatchLedger(event.batchId, generation);
         break;
       case "itemFailed":
+        recordActivityLog("error", "batch", `${event.itemId}: ${event.error.message || event.error.code}`);
         updateBatchLedgerItem(event.batchId, event.itemId, {
           status: "failed",
           phase: "failed",
@@ -2004,10 +2164,16 @@ function App() {
         void refreshBatchLedger(event.batchId, generation);
         break;
       case "paused":
+        recordActivityLog("warn", "batch", `Batch ${event.batchId} paused`);
         setBatchLedger((current) => current?.batchId === event.batchId ? { ...current, status: "paused" } : current);
         void refreshBatchLedger(event.batchId, generation);
         break;
       case "finished":
+        recordActivityLog(
+          event.failed > 0 ? "warn" : "info",
+          "batch",
+          `Batch ${event.batchId} finished: ${event.completed} completed · ${event.failed} failed`,
+        );
         setBatchLedger((current) => current?.batchId === event.batchId
           ? { ...current, status: event.failed > 0 ? "completedWithErrors" : "completed" }
           : current);
@@ -3166,9 +3332,14 @@ function App() {
     setSingleTaskPanelOpen(true);
     setActiveTaskSourcePath(sourcePath);
     setPhase("converting");
+    recordActivityLog(
+      "info",
+      "conversion",
+      `Started conversion: ${selectedRounds.size} rounds · ${fileName(sourcePath) || sourcePath}`,
+    );
 
     const events = new Channel<TaskEvent>();
-    events.onmessage = (event) => absorbEvent(event, token);
+    events.onmessage = (event) => absorbEvent(event, token, "conversion");
     try {
       const summary = await invoke<ConversionSummary>("convert_demo", {
         request: {
@@ -3208,10 +3379,16 @@ function App() {
       void scanLibrary(withExportRoot(libraryRoots, destination));
       setPhase("complete");
       setSingleTaskPanelOpen(false);
+      recordActivityLog(
+        "info",
+        "conversion",
+        `Conversion completed: ${summary.roundsExported} rounds · ${summary.filesWritten} files`,
+      );
       playTaskSound("success");
     } catch (reason) {
       if (token !== taskTokenRef.current) return;
       const error = parseCommandError(reason);
+      recordActivityLog("error", "conversion", `Conversion failed (${error.code}): ${fileName(sourcePath) || sourcePath}`);
       if (error.code === "output_exists") {
         setOverwriteConflict({ root: error.path || outputRoot, exists: true });
         setPhase("selecting");
@@ -3451,14 +3628,13 @@ function App() {
       <div className="app-body">
         <AppSidebar
           words={words}
-          language={language}
-          resolvedTheme={resolvedTheme}
           appVersion={appVersion}
           busy={isBusy}
           importActive={activeSection === "batch"}
           libraryActive={activeSection === "library"}
           analysisActive={activeSection === "analysis"}
           analysisAvailable={analysisAvailable}
+          logsActive={activeSection === "logs"}
           settingsActive={activeSection === "settings"}
           collapsed={sidebarCollapsed}
           onOpenImport={() => {
@@ -3470,9 +3646,8 @@ function App() {
           }}
           onOpenLibrary={() => dispatchLibraryWorkspace({ type: "navigate", section: "library" })}
           onOpenAnalysis={() => dispatchLibraryWorkspace({ type: "navigate", section: "analysis" })}
+          onOpenLogs={() => dispatchLibraryWorkspace({ type: "navigate", section: "logs" })}
           onOpenSettings={() => dispatchLibraryWorkspace({ type: "navigate", section: "settings" })}
-          onLanguageChange={setLanguage}
-          onToggleTheme={() => setTheme(toggleResolvedTheme(theme, systemDark))}
           onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
         />
         <main className="app-workspace">
@@ -3527,10 +3702,21 @@ function App() {
 
         {activeSection === "faq" ? (
           <FaqWorkspace language={language} />
+        ) : activeSection === "logs" ? (
+          <LogsWorkspace
+            words={words}
+            entries={activityLogs}
+            gsiStatus={gsiRuntimeStatus}
+            loading={activityLogsLoading}
+            onRefresh={() => void refreshActivityLogs()}
+            onOpenFolder={openActivityLogDirectory}
+            onClear={clearActivityLogs}
+          />
         ) : activeSection === "settings" ? (
           <SettingsWorkspace
             words={words}
             language={language}
+            theme={theme}
             resolvedTheme={resolvedTheme}
             uiScale={uiScale}
             themeCustomization={themeCustomization}
@@ -3562,7 +3748,7 @@ function App() {
             onThemeCustomizationChange={setThemeCustomization}
             onCustomCssChange={setCustomCss}
             onLanguageChange={setLanguage}
-            onToggleTheme={() => setTheme(toggleResolvedTheme(theme, systemDark))}
+            onThemeChange={setTheme}
             onCs2PathChange={(cs2Path) => {
               setLocalEnvironment((current) => ({ ...current, cs2Path }));
               setEnvironmentReport(null);
@@ -3593,6 +3779,7 @@ function App() {
             onAddDemoRoot={() => void addDemoRoot()}
             onRemoveDemoRoot={removeDemoRoot}
             onOpenPath={(path) => void openPath(path)}
+            onOpenLogDirectory={openActivityLogDirectory}
             onOpenExternal={(url) => void openExternal(url)}
             onEnvironmentChange={(patch) => setLocalEnvironment((current) => ({ ...current, ...patch }))}
             onConverterChange={updateSettings}
