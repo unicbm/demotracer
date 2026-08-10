@@ -4,7 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertIcon,
   ArrowIcon,
@@ -24,6 +24,7 @@ import {
   isThemeColor,
   isThemeFontFamily,
   themePalette,
+  type CustomCssProfile,
   type ResolvedTheme,
   type ThemeCustomization,
   type ThemePalette,
@@ -51,6 +52,7 @@ import { releaseNotesForLanguage } from "../releaseNotes";
 import { SERVER_CONFIG_GUIDE, type ServerConfigGuideGroup } from "../serverConfigGuide";
 import type { PlaybackHandoffMode, PlaybackPresetOptions } from "./PlaybackCommandBuilder";
 import { DialogPrimitive } from "./Dialog";
+import { SelectControl, type SelectControlOption } from "./SelectControl";
 import "./settings-workspace.css";
 
 type SettingsModal =
@@ -90,6 +92,11 @@ function themeEditorDraft(customization: ThemeCustomization, theme: ResolvedThem
   };
 }
 
+function newCustomCssProfileId(): string {
+  if (typeof crypto.randomUUID === "function") return `custom-css-${crypto.randomUUID()}`;
+  return `custom-css-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 interface SettingsWorkspaceProps {
   words: TextDictionary;
   language: Language;
@@ -97,7 +104,8 @@ interface SettingsWorkspaceProps {
   resolvedTheme: ResolvedTheme;
   uiScale: UiScale;
   themeCustomization: ThemeCustomization;
-  customCss: string;
+  customCssProfiles: readonly CustomCssProfile[];
+  activeCustomCssProfileId: string | null;
   environment: LocalEnvironmentSettings;
   exportRoot: string;
   archiveRoots: string[];
@@ -123,7 +131,9 @@ interface SettingsWorkspaceProps {
   releaseNotice: string;
   onUiScaleChange: (scale: UiScale) => void;
   onThemeCustomizationChange: (customization: ThemeCustomization) => void;
-  onCustomCssChange: (css: string) => void;
+  onSaveCustomCssProfile: (profile: CustomCssProfile) => void;
+  onActivateCustomCssProfile: (profileId: string | null) => void;
+  onDeleteCustomCssProfile: (profileId: string) => void;
   onLanguageChange: (language: Language) => void;
   onThemeChange: (theme: Theme) => void;
   onCs2PathChange: (path: string) => void;
@@ -262,109 +272,19 @@ function SettingSelectLine({
   title,
   description,
   value,
-  children,
+  options,
   onChange,
 }: {
   title: string;
   description?: string;
   value: string;
-  children: ReactNode;
+  options: readonly SelectControlOption[];
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="settings-select-line">
+    <div className="settings-select-line">
       <span><strong>{title}</strong>{description ? <small>{description}</small> : null}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)}>{children}</select>
-    </label>
-  );
-}
-
-function LanguageSelectLine({
-  title,
-  value,
-  onChange,
-}: {
-  title: string;
-  value: Language;
-  onChange: (value: Language) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const pickerRef = useRef<HTMLDivElement | null>(null);
-  const optionRefs = useRef<Record<Language, HTMLButtonElement | null>>({ zh: null, en: null });
-
-  useEffect(() => {
-    if (!open) return;
-    const closeOutside = (event: PointerEvent) => {
-      if (!pickerRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open]);
-
-  const choose = (language: Language) => {
-    onChange(language);
-    setOpen(false);
-  };
-
-  const focusSelectedOption = () => {
-    requestAnimationFrame(() => optionRefs.current[value]?.focus());
-  };
-
-  return (
-    <div className="settings-select-line settings-language-line">
-      <span><strong>{title}</strong></span>
-      <div className={`settings-language-picker${open ? " is-open" : ""}`} ref={pickerRef}>
-        <button
-          className="settings-language-trigger"
-          type="button"
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-controls="settings-language-options"
-          onClick={() => setOpen((current) => !current)}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-              event.preventDefault();
-              setOpen(true);
-              focusSelectedOption();
-            }
-          }}
-        >
-          <span>{LANGUAGE_OPTIONS[value].label}</span>
-          <ChevronIcon size={14} />
-        </button>
-        {open ? (
-          <div className="settings-language-menu" id="settings-language-options" role="listbox" aria-label={title}>
-            {(["zh", "en"] as const).map((option, index, options) => (
-              <button
-                className={value === option ? "is-selected" : ""}
-                type="button"
-                role="option"
-                aria-selected={value === option}
-                key={option}
-                ref={(element) => { optionRefs.current[option] = element; }}
-                onClick={() => choose(option)}
-                onKeyDown={(event) => {
-                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                    event.preventDefault();
-                    const direction = event.key === "ArrowDown" ? 1 : -1;
-                    const next = options[(index + direction + options.length) % options.length];
-                    optionRefs.current[next]?.focus();
-                  }
-                }}
-              >
-                {LANGUAGE_OPTIONS[option].label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </div>
+      <SelectControl value={value} options={options} label={title} onChange={onChange} />
     </div>
   );
 }
@@ -429,7 +349,8 @@ export function SettingsWorkspace({
   resolvedTheme,
   uiScale,
   themeCustomization,
-  customCss,
+  customCssProfiles,
+  activeCustomCssProfileId,
   environment,
   exportRoot,
   archiveRoots,
@@ -455,7 +376,9 @@ export function SettingsWorkspace({
   releaseNotice,
   onUiScaleChange,
   onThemeCustomizationChange,
-  onCustomCssChange,
+  onSaveCustomCssProfile,
+  onActivateCustomCssProfile,
+  onDeleteCustomCssProfile,
   onLanguageChange,
   onThemeChange,
   onCs2PathChange,
@@ -488,7 +411,9 @@ export function SettingsWorkspace({
 }: SettingsWorkspaceProps) {
   const [settingsModal, setSettingsModal] = useState<SettingsModal>(null);
   const [themeDraft, setThemeDraft] = useState<ThemeEditorDraft>(() => themeEditorDraft(themeCustomization, resolvedTheme));
-  const [customCssDraft, setCustomCssDraft] = useState(customCss);
+  const [customCssDraft, setCustomCssDraft] = useState("");
+  const [customCssNameDraft, setCustomCssNameDraft] = useState("");
+  const [editingCustomCssProfileId, setEditingCustomCssProfileId] = useState<string | null>(null);
   const [serverGuideQuery, setServerGuideQuery] = useState("");
   const [validatingServerConfig, setValidatingServerConfig] = useState(false);
   const [serverConfigFeedback, setServerConfigFeedback] = useState<{ tone: "progress" | "success" | "error"; message: string } | null>(null);
@@ -565,11 +490,30 @@ export function SettingsWorkspace({
   ];
   const themeDraftValid = THEME_COLOR_KEYS.every((key) => isThemeColor(themeDraft[key]))
     && isThemeFontFamily(themeDraft.fontFamily);
-  const themeCustomized = Object.keys(themeCustomization).length > 0 || Boolean(customCss.trim());
+  const activeCustomCssProfile = customCssProfiles.find((profile) => profile.id === activeCustomCssProfileId);
+  const themeStatus = activeCustomCssProfile?.name
+    ?? (Object.keys(themeCustomization).length > 0 ? words.themeCustomized : words.themeDefault);
 
   const openThemeEditor = () => {
     setThemeDraft(themeEditorDraft(themeCustomization, resolvedTheme));
-    setCustomCssDraft(customCss);
+    setSettingsModal("theme");
+  };
+
+  const openCustomCssEditor = (profile?: CustomCssProfile) => {
+    setEditingCustomCssProfileId(profile?.id ?? null);
+    setCustomCssNameDraft(profile?.name ?? "");
+    setCustomCssDraft(profile?.css ?? "");
+    setSettingsModal("customCss");
+  };
+
+  const saveCustomCssProfile = () => {
+    const name = customCssNameDraft.trim().slice(0, 64);
+    if (!name || !customCssDraft.trim()) return;
+    onSaveCustomCssProfile({
+      id: editingCustomCssProfileId ?? newCustomCssProfileId(),
+      name,
+      css: customCssDraft,
+    });
     setSettingsModal("theme");
   };
 
@@ -596,10 +540,11 @@ export function SettingsWorkspace({
   const appearanceView = (
     <div className="settings-pane settings-appearance-pane">
       <section className="settings-card settings-form-card" aria-label={words.settingsNavAppearance}>
-        <LanguageSelectLine
+        <SettingSelectLine
           title={words.language}
           value={language}
-          onChange={onLanguageChange}
+          options={(["zh", "en"] as const).map((option) => ({ value: option, label: LANGUAGE_OPTIONS[option].label }))}
+          onChange={(value) => onLanguageChange(value as Language)}
         />
         <div className="settings-choice-row">
           <div><strong>{words.theme}</strong></div>
@@ -644,7 +589,7 @@ export function SettingsWorkspace({
           onClick={openThemeEditor}
         >
           <span><strong>{words.themeSettingsTitle}</strong></span>
-          <em>{themeCustomized ? words.themeCustomized : words.themeDefault}</em>
+          <em>{themeStatus}</em>
           <ChevronIcon size={15} />
         </button>
       </section>
@@ -1203,16 +1148,29 @@ export function SettingsWorkspace({
             <SettingLine title={words.leftHandAlignment} description={words.leftHandAlignmentHelp} checked={playback.leftHandAlignment === "on"} onChange={(checked) => onPlaybackChange({ leftHandAlignment: checked ? "on" : "off" })} />
             <SettingLine title={words.matchPresentation} description={words.matchPresentationHelp} checked={playback.matchPresentation === "scoreboard"} onChange={(checked) => onPlaybackChange({ matchPresentation: checked ? "scoreboard" : "off" })} />
             <SettingLine title={words.partialReplay} description={words.partialReplayHelp} checked={playback.allowPartial === "on"} onChange={(checked) => onPlaybackChange({ allowPartial: checked ? "on" : "off" })} />
-            <SettingSelectLine title={words.handoffMode} description={words.handoffModeHelp} value={playback.handoffMode} onChange={(value) => onPlaybackChange({ handoffMode: value as PlaybackHandoffMode })}>
-              <option value="death_contact_c4">{words.handoffDeathContactC4}</option>
-              <option value="death_or_contact">{words.handoffDeathOrContact}</option>
-              <option value="death">{words.handoffDeath}</option>
-              <option value="contact">{words.handoffContact}</option>
-              <option value="off">{words.disabled}</option>
-            </SettingSelectLine>
-            <SettingSelectLine title={words.handoffScope} description={words.handoffScopeHelp} value={playback.handoffScope} onChange={(value) => onPlaybackChange({ handoffScope: value as "slot" | "all" })}>
-              <option value="slot">{words.handoffScopeSlot}</option><option value="all">{words.handoffScopeAll}</option>
-            </SettingSelectLine>
+            <SettingSelectLine
+              title={words.handoffMode}
+              description={words.handoffModeHelp}
+              value={playback.handoffMode}
+              options={[
+                { value: "death_contact_c4", label: words.handoffDeathContactC4 },
+                { value: "death_or_contact", label: words.handoffDeathOrContact },
+                { value: "death", label: words.handoffDeath },
+                { value: "contact", label: words.handoffContact },
+                { value: "off", label: words.disabled },
+              ]}
+              onChange={(value) => onPlaybackChange({ handoffMode: value as PlaybackHandoffMode })}
+            />
+            <SettingSelectLine
+              title={words.handoffScope}
+              description={words.handoffScopeHelp}
+              value={playback.handoffScope}
+              options={[
+                { value: "slot", label: words.handoffScopeSlot },
+                { value: "all", label: words.handoffScopeAll },
+              ]}
+              onChange={(value) => onPlaybackChange({ handoffScope: value as "slot" | "all" })}
+            />
             <SettingLine title={words.threat360} description={words.threat360Help} checked={playback.threat360 === "on"} onChange={(checked) => onPlaybackChange({ threat360: checked ? "on" : "off" })} />
             {playback.threat360 === "on" ? (
               <div className="settings-advanced-inline">
@@ -1464,6 +1422,18 @@ export function SettingsWorkspace({
 
   const themeView = (
     <div className="settings-theme-form">
+      <div className="settings-theme-profile-row">
+        <strong>{words.customCssStyles}</strong>
+        <SelectControl
+          value={activeCustomCssProfileId ?? ""}
+          options={[
+            { value: "", label: words.customCssDefaultStyle },
+            ...customCssProfiles.map((profile) => ({ value: profile.id, label: profile.name })),
+          ]}
+          label={words.customCssStyles}
+          onChange={(profileId) => onActivateCustomCssProfile(profileId || null)}
+        />
+      </div>
       {themeColorFields.map(({ key, label }) => {
         const color = themeDraft[key];
         const valid = isThemeColor(color);
@@ -1508,16 +1478,16 @@ export function SettingsWorkspace({
       </label>
       <div className="settings-theme-css-row">
         <strong>{words.themeCssInjection}</strong>
-        <button
-          className="secondary-button"
-          type="button"
-          onClick={() => {
-            setCustomCssDraft(customCss);
-            setSettingsModal("customCss");
-          }}
-        >
-          {words.themeEditCss}
-        </button>
+        <span className="settings-theme-css-actions">
+          {activeCustomCssProfile ? (
+            <button className="secondary-button" type="button" onClick={() => openCustomCssEditor(activeCustomCssProfile)}>
+              {words.themeEditCss}
+            </button>
+          ) : null}
+          <button className="secondary-button" type="button" onClick={() => openCustomCssEditor()}>
+            {words.customCssCreate}
+          </button>
+        </span>
       </div>
     </div>
   );
@@ -1664,13 +1634,35 @@ export function SettingsWorkspace({
           </header>
           <div className="settings-css-editor">
             <p>{words.customCssHelp}</p>
+            <label className="settings-css-name-field">
+              <strong>{words.customCssName}</strong>
+              <input
+                value={customCssNameDraft}
+                maxLength={64}
+                autoFocus
+                placeholder={words.customCssNamePlaceholder}
+                onChange={(event) => setCustomCssNameDraft(event.target.value)}
+              />
+            </label>
             <textarea value={customCssDraft} spellCheck={false} maxLength={65_536} placeholder={words.customCssPlaceholder} onChange={(event) => setCustomCssDraft(event.target.value)} />
           </div>
           <footer className="settings-modal-footer">
-            <button className="text-button" type="button" onClick={() => setCustomCssDraft("")}>{words.customCssReset}</button>
+            {editingCustomCssProfileId ? (
+              <button
+                className="danger-button"
+                type="button"
+                onClick={() => {
+                  onDeleteCustomCssProfile(editingCustomCssProfileId);
+                  setSettingsModal("theme");
+                }}
+              >
+                {words.customCssDelete}
+              </button>
+            ) : null}
+            <button className="text-button" type="button" onClick={() => setCustomCssDraft("")}>{words.customCssClear}</button>
             <span />
-            <button className="secondary-button" type="button" onClick={() => { setCustomCssDraft(customCss); setSettingsModal("theme"); }}>{words.cancel}</button>
-            <button className="primary-button" type="button" onClick={() => { onCustomCssChange(customCssDraft); setSettingsModal("theme"); }}>{words.customCssSave}</button>
+            <button className="secondary-button" type="button" onClick={() => setSettingsModal("theme")}>{words.cancel}</button>
+            <button className="primary-button" type="button" disabled={!customCssNameDraft.trim() || !customCssDraft.trim()} onClick={saveCustomCssProfile}>{words.customCssSave}</button>
           </footer>
         </DialogPrimitive>
       ) : null}

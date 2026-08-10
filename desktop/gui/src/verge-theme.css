@@ -391,6 +391,97 @@ textarea {
   border-radius: var(--radius-sm);
 }
 
+.app-select {
+  position: relative;
+  width: min(240px, 44vw);
+  min-width: 152px;
+  justify-self: end;
+}
+
+.app-select-trigger {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px 0 12px;
+  gap: 12px;
+  overflow: hidden;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--divider-strong);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 400;
+  text-align: left;
+}
+
+.app-select-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-select-trigger svg {
+  color: var(--text-tertiary);
+  transition: transform var(--duration-fast) ease;
+}
+
+.app-select.is-open .app-select-trigger {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 22%, transparent);
+}
+
+.app-select.is-open .app-select-trigger svg {
+  transform: rotate(180deg);
+}
+
+.app-select-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 5px);
+  right: 0;
+  display: grid;
+  width: 100%;
+  min-width: 172px;
+  overflow: hidden;
+  padding: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sheet);
+}
+
+.app-select-option {
+  min-height: 38px;
+  padding: 0 12px;
+  overflow: hidden;
+  color: var(--text-primary);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 400;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-select-option:hover:not(:disabled),
+.app-select-option:focus-visible {
+  background: var(--hover-row);
+  outline: 0;
+}
+
+.app-select-option.is-selected {
+  background: var(--selected-row);
+}
+
+.app-select-option:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
 .segmented-control {
   display: inline-flex;
   min-height: 36px;
@@ -2296,6 +2387,7 @@ textarea {
 
 .settings-theme-color-row,
 .settings-theme-font-row,
+.settings-theme-profile-row,
 .settings-theme-css-row {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) minmax(240px, 0.85fr);
@@ -2306,9 +2398,15 @@ textarea {
 
 .settings-theme-color-row strong,
 .settings-theme-font-row strong,
+.settings-theme-profile-row strong,
 .settings-theme-css-row strong {
   font-size: 14px;
   font-weight: 400;
+}
+
+.settings-theme-profile-row {
+  margin-bottom: 5px;
+  border-bottom: 1px solid var(--divider);
 }
 
 .settings-theme-color-control {
@@ -2369,8 +2467,13 @@ textarea {
   margin-top: 2px;
 }
 
-.settings-theme-css-row .secondary-button {
-  justify-self: end;
+.settings-theme-css-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-theme-css-actions .secondary-button {
   min-width: 112px;
   color: var(--accent);
 }
@@ -2398,6 +2501,29 @@ textarea {
 .settings-css-editor p {
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+.settings-css-name-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-css-name-field strong {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.settings-css-name-field input {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--divider-strong);
+  border-radius: var(--radius-sm);
 }
 
 .settings-css-editor textarea {
@@ -2444,6 +2570,7 @@ textarea {
 
   .settings-theme-color-row,
   .settings-theme-font-row,
+  .settings-theme-profile-row,
   .settings-theme-css-row {
     grid-template-columns: minmax(130px, 1fr) minmax(190px, 1fr);
     gap: 12px;

@@ -47,11 +47,19 @@ import {
 import { AlertIcon, ArrowIcon, CheckIcon, CloseIcon, CopyIcon, FolderIcon, RefreshIcon, ReplayIcon } from "./icons";
 import { COSMETIC_PHRASE, TEXT } from "./i18n";
 import {
+  CUSTOM_CSS_STARTER_PROFILES_STORAGE_KEY,
+  STARTER_CUSTOM_CSS_PROFILES,
+} from "./customCssPresets";
+import {
+  ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY,
   applyCustomCss,
   applyThemeCustomization,
+  CUSTOM_CSS_PROFILES_STORAGE_KEY,
   CUSTOM_CSS_STORAGE_KEY,
   LEGACY_APPEARANCE_STORAGE_KEYS,
+  normalizeActiveCustomCssProfileId,
   normalizeCustomCss,
+  normalizeCustomCssProfiles,
   normalizeSidebarCollapsed,
   normalizeTheme,
   normalizeThemeCustomization,
@@ -63,6 +71,7 @@ import {
   themeBackground,
   THEME_CUSTOMIZATION_STORAGE_KEY,
   THEME_STORAGE_KEY,
+  type CustomCssProfile,
   type ThemeCustomization,
   type UiScale,
 } from "./appearance";
@@ -706,6 +715,38 @@ function mergeActivityLogs(current: AppLogEntry[], incoming: AppLogEntry[]): App
     .slice(-ACTIVITY_LOG_LIMIT);
 }
 
+function loadCustomCssProfiles(): CustomCssProfile[] {
+  const stored = normalizeCustomCssProfiles(localStorage.getItem(CUSTOM_CSS_PROFILES_STORAGE_KEY));
+  const legacyCss = normalizeCustomCss(localStorage.getItem(CUSTOM_CSS_STORAGE_KEY));
+  const profiles = stored.length > 0
+    ? stored
+    : legacyCss.trim()
+      ? [{ id: "migrated-custom-css", name: "Custom CSS", css: legacyCss }]
+      : [];
+  const starterById = new Map(STARTER_CUSTOM_CSS_PROFILES.map((profile) => [profile.id, profile]));
+  const starterProfilesSeeded = localStorage.getItem(CUSTOM_CSS_STARTER_PROFILES_STORAGE_KEY) === "1";
+  const isLegacyStarter = (profile: CustomCssProfile, starter: CustomCssProfile) => (
+    profile.css.includes(`/* DemoTracer · ${starter.name} */`)
+    && !profile.css.includes("@media (prefers-color-scheme: dark)")
+  );
+  const refreshedProfiles = profiles.map((profile) => {
+    const starter = starterById.get(profile.id);
+    if (!starter) return profile;
+    return !starterProfilesSeeded || isLegacyStarter(profile, starter) ? starter : profile;
+  });
+  if (starterProfilesSeeded && refreshedProfiles.every((profile, index) => profile === profiles[index])) {
+    return profiles;
+  }
+  const existingIds = new Set(refreshedProfiles.map((profile) => profile.id));
+  const existingNames = new Set(refreshedProfiles.map((profile) => profile.name.toLocaleLowerCase()));
+  return [
+    ...refreshedProfiles,
+    ...STARTER_CUSTOM_CSS_PROFILES.filter((profile) => (
+      !existingIds.has(profile.id) && !existingNames.has(profile.name.toLocaleLowerCase())
+    )),
+  ];
+}
+
 function App() {
   const [language, setLanguage] = useState<Language>(storedLanguage);
   const [theme, setTheme] = useState<Theme>(() => normalizeTheme(localStorage.getItem(THEME_STORAGE_KEY)));
@@ -716,7 +757,16 @@ function App() {
   const [themeCustomization, setThemeCustomization] = useState<ThemeCustomization>(() => (
     normalizeThemeCustomization(localStorage.getItem(THEME_CUSTOMIZATION_STORAGE_KEY))
   ));
-  const [customCss, setCustomCss] = useState(() => normalizeCustomCss(localStorage.getItem(CUSTOM_CSS_STORAGE_KEY)));
+  const [customCssProfiles, setCustomCssProfiles] = useState<CustomCssProfile[]>(loadCustomCssProfiles);
+  const [activeCustomCssProfileId, setActiveCustomCssProfileId] = useState<string | null>(() => {
+    const storedActive = normalizeActiveCustomCssProfileId(
+      localStorage.getItem(ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY),
+      customCssProfiles,
+    );
+    if (storedActive) return storedActive;
+    const legacyCss = normalizeCustomCss(localStorage.getItem(CUSTOM_CSS_STORAGE_KEY));
+    return customCssProfiles.find((profile) => legacyCss && profile.css === legacyCss)?.id ?? null;
+  });
   const [phase, setPhase] = useState<Phase>("idle");
   const [singleTask, setSingleTask] = useState<"analysis" | "conversion" | null>(null);
   const [singleTaskPanelOpen, setSingleTaskPanelOpen] = useState(false);
@@ -1141,11 +1191,25 @@ function App() {
   }, [themeCustomization]);
 
   useEffect(() => {
-    const normalized = normalizeCustomCss(customCss);
-    applyCustomCss(normalized);
-    if (normalized) localStorage.setItem(CUSTOM_CSS_STORAGE_KEY, normalized);
+    const normalizedProfiles = normalizeCustomCssProfiles(customCssProfiles);
+    if (STARTER_CUSTOM_CSS_PROFILES.every((starter) => (
+      normalizedProfiles.some((profile) => profile.id === starter.id && profile.css === starter.css)
+    ))) {
+      localStorage.setItem(CUSTOM_CSS_STARTER_PROFILES_STORAGE_KEY, "1");
+    }
+    if (normalizedProfiles.length > 0) {
+      localStorage.setItem(CUSTOM_CSS_PROFILES_STORAGE_KEY, JSON.stringify(normalizedProfiles));
+    } else {
+      localStorage.removeItem(CUSTOM_CSS_PROFILES_STORAGE_KEY);
+    }
+    const normalizedActiveId = normalizeActiveCustomCssProfileId(activeCustomCssProfileId, normalizedProfiles);
+    if (normalizedActiveId) localStorage.setItem(ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY, normalizedActiveId);
+    else localStorage.removeItem(ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY);
+    const activeCss = normalizedProfiles.find((profile) => profile.id === normalizedActiveId)?.css ?? "";
+    applyCustomCss(activeCss);
+    if (activeCss) localStorage.setItem(CUSTOM_CSS_STORAGE_KEY, activeCss);
     else localStorage.removeItem(CUSTOM_CSS_STORAGE_KEY);
-  }, [customCss]);
+  }, [activeCustomCssProfileId, customCssProfiles]);
 
   useEffect(() => {
     if (!inventorySimulatorPanelAvailable) return;
@@ -3720,7 +3784,8 @@ function App() {
             resolvedTheme={resolvedTheme}
             uiScale={uiScale}
             themeCustomization={themeCustomization}
-            customCss={customCss}
+            customCssProfiles={customCssProfiles}
+            activeCustomCssProfileId={activeCustomCssProfileId}
             environment={localEnvironment}
             exportRoot={libraryRoot}
             archiveRoots={libraryRoots}
@@ -3746,7 +3811,21 @@ function App() {
             releaseNotice={releaseNotice}
             onUiScaleChange={setUiScale}
             onThemeCustomizationChange={setThemeCustomization}
-            onCustomCssChange={setCustomCss}
+            onSaveCustomCssProfile={(profile) => {
+              const normalized = normalizeCustomCssProfiles([profile])[0];
+              if (!normalized) return;
+              setCustomCssProfiles((current) => {
+                const index = current.findIndex((candidate) => candidate.id === normalized.id);
+                if (index < 0) return [...current, normalized];
+                return current.map((candidate) => candidate.id === normalized.id ? normalized : candidate);
+              });
+              setActiveCustomCssProfileId(normalized.id);
+            }}
+            onActivateCustomCssProfile={setActiveCustomCssProfileId}
+            onDeleteCustomCssProfile={(profileId) => {
+              setCustomCssProfiles((current) => current.filter((profile) => profile.id !== profileId));
+              setActiveCustomCssProfileId((current) => current === profileId ? null : current);
+            }}
             onLanguageChange={setLanguage}
             onThemeChange={setTheme}
             onCs2PathChange={(cs2Path) => {

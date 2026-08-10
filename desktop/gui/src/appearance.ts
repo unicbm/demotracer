@@ -13,6 +13,8 @@ export const THEME_CUSTOMIZATION_STORAGE_KEY = "demotracer.theme-customization.v
 export const THEME_CUSTOMIZATION_STYLE_ID = "demotracer-theme-customization";
 export const CUSTOM_CSS_STORAGE_KEY = "demotracer.custom-css.v1";
 export const CUSTOM_CSS_STYLE_ID = "demotracer-custom-css";
+export const CUSTOM_CSS_PROFILES_STORAGE_KEY = "demotracer.custom-css-profiles.v1";
+export const ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY = "demotracer.active-custom-css-profile.v1";
 export const LEGACY_APPEARANCE_STORAGE_KEYS = [
   "demotracer.ui-skin.v1",
   "demotracer.sidebar-width.v1",
@@ -40,6 +42,12 @@ export interface ThemeCustomization {
   light?: ThemePalette;
   dark?: ThemePalette;
   fontFamily?: string;
+}
+
+export interface CustomCssProfile {
+  id: string;
+  name: string;
+  css: string;
 }
 
 export const THEME_PALETTE_DEFAULTS: Record<ResolvedTheme, ThemePalette> = {
@@ -125,6 +133,41 @@ export function recommendedUiScale(
 
 export function normalizeCustomCss(value: unknown): string {
   return typeof value === "string" ? value.slice(0, 65_536) : "";
+}
+
+export function normalizeCustomCssProfiles(value: unknown): CustomCssProfile[] {
+  let candidate = value;
+  if (typeof value === "string") {
+    if (!value.trim()) return [];
+    try {
+      candidate = JSON.parse(value) as unknown;
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(candidate)) return [];
+  const profiles: CustomCssProfile[] = [];
+  const ids = new Set<string>();
+  for (const item of candidate.slice(0, 24)) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const record = item as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id.trim().slice(0, 96) : "";
+    const name = typeof record.name === "string" ? record.name.trim().slice(0, 64) : "";
+    const css = normalizeCustomCss(record.css);
+    if (!id || !/^[A-Za-z0-9._-]+$/.test(id) || ids.has(id) || !name || !css.trim()) continue;
+    ids.add(id);
+    profiles.push({ id, name, css });
+  }
+  return profiles;
+}
+
+export function normalizeActiveCustomCssProfileId(
+  value: unknown,
+  profiles: readonly CustomCssProfile[],
+): string | null {
+  if (typeof value !== "string") return null;
+  const id = value.trim();
+  return profiles.some((profile) => profile.id === id) ? id : null;
 }
 
 export function isThemeColor(value: unknown): value is string {

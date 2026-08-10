@@ -8,11 +8,15 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   cycleUiScale,
+  ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY,
+  CUSTOM_CSS_PROFILES_STORAGE_KEY,
   CUSTOM_CSS_STORAGE_KEY,
   isThemeColor,
   LEGACY_APPEARANCE_STORAGE_KEYS,
   normalizeSidebarCollapsed,
   normalizeCustomCss,
+  normalizeCustomCssProfiles,
+  normalizeActiveCustomCssProfileId,
   normalizeThemeCustomization,
   normalizeUiScale,
   normalizeTheme,
@@ -93,6 +97,20 @@ describe("appearance preferences", () => {
     assert.equal(normalizeCustomCss(".card { border-radius: 18px; }"), ".card { border-radius: 18px; }");
     assert.equal(normalizeCustomCss(null), "");
     assert.equal(normalizeCustomCss("x".repeat(70_000)).length, 65_536);
+  });
+
+  it("normalizes named custom CSS profiles and their active selection", () => {
+    const profiles = normalizeCustomCssProfiles(JSON.stringify([
+      { id: "hanbaiyu", name: " 汉白玉 ", css: ":root { --accent: #24765f; }" },
+      { id: "hanbaiyu", name: "duplicate", css: "body {}" },
+      { id: "bad id", name: "invalid", css: "body {}" },
+      { id: "empty", name: "", css: "body {}" },
+    ]));
+    assert.equal(CUSTOM_CSS_PROFILES_STORAGE_KEY, "demotracer.custom-css-profiles.v1");
+    assert.equal(ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY, "demotracer.active-custom-css-profile.v1");
+    assert.deepEqual(profiles, [{ id: "hanbaiyu", name: "汉白玉", css: ":root { --accent: #24765f; }" }]);
+    assert.equal(normalizeActiveCustomCssProfileId("hanbaiyu", profiles), "hanbaiyu");
+    assert.equal(normalizeActiveCustomCssProfileId("missing", profiles), null);
   });
 
   it("normalizes visual theme settings without accepting CSS fragments", () => {
