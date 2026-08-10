@@ -170,7 +170,9 @@ by view angles, render/player tick and fraction fields, client/server/player
 interpolation fields, frame and target indexes, shoot position, and the three
 target check vectors in protobuf field order. At most 64 entries are allowed
 per tick. Attack indexes are `-1` or index the same tick's retained entries.
-All stored floats must be finite.
+All stored floats must be finite. Converter output retains only valid entries
+referenced by `attack1_start_history_index` or `attack2_start_history_index`,
+deduplicates shared references, and remaps both indexes to the retained order.
 
 At injection, render/player and interpolation source/destination ticks use
 `live_client_tick + (stored_tick - source_client_tick)`. Fractions and spatial

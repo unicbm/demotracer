@@ -228,20 +228,46 @@ fn sanitize_input_history(
         return (ReplayInputHistoryTick::default(), Vec::new());
     }
 
-    let mut remap = vec![None; row.input_history.len()];
-    let mut entries = Vec::with_capacity(row.input_history.len().min(MAX_INPUT_HISTORY_PER_TICK));
-    for (source_index, entry) in row.input_history.iter().enumerate() {
-        if entries.len() >= MAX_INPUT_HISTORY_PER_TICK || !input_history_entry_is_valid(entry) {
+    // Only attack start indexes consume replay input history. Keeping every
+    // command entry would duplicate several high-entropy snapshots on nearly
+    // every player tick even though no shot references them.
+    let source_attack_indexes = [
+        row.usercmd_attack1_start_history_index,
+        row.usercmd_attack2_start_history_index,
+    ];
+    let mut referenced_source_indexes = source_attack_indexes
+        .iter()
+        .filter_map(|source_index| usize::try_from(*source_index).ok())
+        .collect::<Vec<_>>();
+    referenced_source_indexes.sort_unstable();
+    referenced_source_indexes.dedup();
+
+    let mut retained_source_indexes = Vec::with_capacity(referenced_source_indexes.len());
+    let mut entries = Vec::with_capacity(referenced_source_indexes.len());
+    for source_index in referenced_source_indexes {
+        let Some(entry) = row.input_history.get(source_index) else {
+            continue;
+        };
+        if !input_history_entry_is_valid(entry) {
             continue;
         }
-        remap[source_index] = Some(entries.len() as i32);
+        retained_source_indexes.push(source_index);
         entries.push(*entry);
+    }
+
+    if entries.is_empty() {
+        return (ReplayInputHistoryTick::default(), entries);
     }
 
     let remap_attack_index = |source_index: i32| -> i32 {
         usize::try_from(source_index)
             .ok()
-            .and_then(|index| remap.get(index).copied().flatten())
+            .and_then(|index| {
+                retained_source_indexes
+                    .iter()
+                    .position(|retained| *retained == index)
+            })
+            .and_then(|index| i32::try_from(index).ok())
             .unwrap_or(-1)
     };
     (
@@ -647,17 +673,76 @@ mod tests {
     }
 
     #[test]
-    fn synthesis_keeps_valid_shooting_history_and_remaps_attack_indexes() {
+    fn synthesis_keeps_only_referenced_shooting_history_and_remaps_attack_indexes() {
         let mut first = row(500, 7);
         first.usercmd_client_tick = Some(700);
-        first.usercmd_attack1_start_history_index = 0;
+        first.usercmd_attack1_start_history_index = 2;
         first.usercmd_attack2_start_history_index = 1;
         first.input_history = vec![
+            ReplayInputHistoryEntry {
+                fields: crate::model::INPUT_HISTORY_FIELD_RENDER_TICK_COUNT,
+                render_tick_count: 650,
+                ..ReplayInputHistoryEntry::default()
+            },
+            ReplayInputHistoryEntry {
+                fields: crate::model::INPUT_HISTORY_FIELD_RENDER_TICK_COUNT
+                    | crate::model::INPUT_HISTORY_FIELD_RENDER_TICK_FRACTION,
+                render_tick_count: 698,
+                render_tick_fraction: 0.5,
+                ..ReplayInputHistoryEntry::default()
+            },
             ReplayInputHistoryEntry {
                 fields: crate::model::INPUT_HISTORY_FIELD_RENDER_TICK_COUNT
                     | crate::model::INPUT_HISTORY_FIELD_RENDER_TICK_FRACTION,
                 render_tick_count: 699,
                 render_tick_fraction: 0.75,
+                ..ReplayInputHistoryEntry::default()
+            },
+        ];
+
+        let rec = synthesize_player_rec(&[first, row(501, 7)], "de_nuke", 64.0, 1).unwrap();
+
+        assert_eq!(rec.input_history_ticks.len(), 1);
+        assert_eq!(rec.input_history_ticks[0].source_client_tick, 700);
+        assert_eq!(rec.input_history_ticks[0].attack1_start_history_index, 1);
+        assert_eq!(rec.input_history_ticks[0].attack2_start_history_index, 0);
+        assert_eq!(rec.input_history_ticks[0].num_entries, 2);
+        assert_eq!(rec.input_history_entries.len(), 2);
+        assert_eq!(rec.input_history_entries[0].render_tick_count, 698);
+        assert_eq!(rec.input_history_entries[1].render_tick_count, 699);
+    }
+
+    #[test]
+    fn synthesis_deduplicates_shared_attack_history_entry() {
+        let mut first = row(500, 7);
+        first.usercmd_attack1_start_history_index = 1;
+        first.usercmd_attack2_start_history_index = 1;
+        first.input_history = vec![
+            ReplayInputHistoryEntry::default(),
+            ReplayInputHistoryEntry {
+                fields: crate::model::INPUT_HISTORY_FIELD_RENDER_TICK_FRACTION,
+                render_tick_fraction: 0.25,
+                ..ReplayInputHistoryEntry::default()
+            },
+        ];
+
+        let rec = synthesize_player_rec(&[first, row(501, 7)], "de_nuke", 64.0, 1).unwrap();
+
+        assert_eq!(rec.input_history_ticks[0].attack1_start_history_index, 0);
+        assert_eq!(rec.input_history_ticks[0].attack2_start_history_index, 0);
+        assert_eq!(rec.input_history_ticks[0].num_entries, 1);
+        assert_eq!(rec.input_history_entries.len(), 1);
+    }
+
+    #[test]
+    fn synthesis_omits_history_without_valid_attack_reference() {
+        let mut first = row(500, 7);
+        first.usercmd_client_tick = Some(700);
+        first.usercmd_attack1_start_history_index = 1;
+        first.input_history = vec![
+            ReplayInputHistoryEntry {
+                fields: crate::model::INPUT_HISTORY_FIELD_RENDER_TICK_COUNT,
+                render_tick_count: 699,
                 ..ReplayInputHistoryEntry::default()
             },
             ReplayInputHistoryEntry {
@@ -668,14 +753,11 @@ mod tests {
 
         let rec = synthesize_player_rec(&[first, row(501, 7)], "de_nuke", 64.0, 1).unwrap();
 
-        assert_eq!(rec.input_history_ticks.len(), 1);
-        assert_eq!(rec.input_history_ticks[0].source_client_tick, 700);
-        assert_eq!(rec.input_history_ticks[0].attack1_start_history_index, 0);
-        assert_eq!(rec.input_history_ticks[0].attack2_start_history_index, -1);
-        assert_eq!(rec.input_history_ticks[0].num_entries, 1);
-        assert_eq!(rec.input_history_entries.len(), 1);
-        assert_eq!(rec.input_history_entries[0].render_tick_count, 699);
-        assert_eq!(rec.input_history_entries[0].render_tick_fraction, 0.75);
+        assert_eq!(
+            rec.input_history_ticks[0],
+            ReplayInputHistoryTick::default()
+        );
+        assert!(rec.input_history_entries.is_empty());
     }
 
     #[test]
