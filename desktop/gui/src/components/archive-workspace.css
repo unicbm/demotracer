@@ -1826,6 +1826,12 @@
   .playback-advanced > summary strong { font-size: var(--type-tiny); }
 }
 
+@media (max-height: 900px) and (min-width: 881px) {
+  .archive-workspace .archive-roster-grid {
+    max-height: 228px;
+  }
+}
+
 @media (max-height: 760px) and (min-width: 881px) {
   .archive-workspace {
     display: block;
