@@ -289,6 +289,69 @@ function SettingSelectLine({
   );
 }
 
+function EditableNumberInput({
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const parsedDraft = Number(draft);
+  const draftInvalid = draft.trim() !== ""
+    && (!Number.isFinite(parsedDraft) || parsedDraft < min || parsedDraft > max);
+
+  const updateDraft = (nextDraft: string) => {
+    setDraft(nextDraft);
+    if (!nextDraft.trim()) return;
+    const nextValue = Number(nextDraft);
+    if (Number.isFinite(nextValue) && nextValue >= min && nextValue <= max) onChange(nextValue);
+  };
+
+  const finalizeDraft = (nextDraft: string) => {
+    if (!nextDraft.trim()) {
+      setDraft(String(value));
+      return;
+    }
+    const nextValue = Number(nextDraft);
+    if (!Number.isFinite(nextValue)) {
+      setDraft(String(value));
+      return;
+    }
+    const validatedValue = Math.min(max, Math.max(min, nextValue));
+    setDraft(String(validatedValue));
+    if (validatedValue !== value) onChange(validatedValue);
+  };
+
+  return (
+    <input
+      type="number"
+      inputMode="decimal"
+      min={min}
+      max={max}
+      step={step}
+      value={draft}
+      aria-invalid={draftInvalid || undefined}
+      onChange={(event) => updateDraft(event.target.value)}
+      onBlur={(event) => finalizeDraft(event.currentTarget.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+      }}
+    />
+  );
+}
+
 function SettingsSubpageRow({
   title,
   status,
@@ -490,9 +553,18 @@ export function SettingsWorkspace({
   ];
   const themeDraftValid = THEME_COLOR_KEYS.every((key) => isThemeColor(themeDraft[key]))
     && isThemeFontFamily(themeDraft.fontFamily);
+  const customCssProfileLabel = (profile: CustomCssProfile): string => {
+    if (profile.id === "starter-hanbaiyu") return words.customCssPresetWhiteJade;
+    if (profile.id === "starter-chinese-new-year") return words.customCssPresetChineseNewYear;
+    if (profile.id === "starter-black-gold") return words.customCssPresetBlackGold;
+    if (profile.id === "starter-ultraviolet") return words.customCssPresetUltraviolet;
+    if (profile.id === "starter-monet") return words.customCssPresetMonet;
+    return profile.name;
+  };
   const activeCustomCssProfile = customCssProfiles.find((profile) => profile.id === activeCustomCssProfileId);
-  const themeStatus = activeCustomCssProfile?.name
-    ?? (Object.keys(themeCustomization).length > 0 ? words.themeCustomized : words.themeDefault);
+  const themeStatus = activeCustomCssProfile
+    ? customCssProfileLabel(activeCustomCssProfile)
+    : (Object.keys(themeCustomization).length > 0 ? words.themeCustomized : words.themeDefault);
 
   const openThemeEditor = () => {
     setThemeDraft(themeEditorDraft(themeCustomization, resolvedTheme));
@@ -501,7 +573,7 @@ export function SettingsWorkspace({
 
   const openCustomCssEditor = (profile?: CustomCssProfile) => {
     setEditingCustomCssProfileId(profile?.id ?? null);
-    setCustomCssNameDraft(profile?.name ?? "");
+    setCustomCssNameDraft(profile ? customCssProfileLabel(profile) : "");
     setCustomCssDraft(profile?.css ?? "");
     setSettingsModal("customCss");
   };
@@ -1073,16 +1145,12 @@ export function SettingsWorkspace({
             <div className="settings-number-row">
               <div><strong>{words.freezePreroll}</strong><small>{words.freezePrerollDefaultHelp}</small></div>
               <label>
-                <input
-                  type="number"
+                <EditableNumberInput
                   min={0}
                   max={120}
                   step={1}
                   value={converter.freezePrerollSeconds}
-                  onChange={(event) => {
-                    const value = Number(event.target.value);
-                    if (Number.isFinite(value) && value >= 0 && value <= 120) onConverterChange({ freezePrerollSeconds: value });
-                  }}
+                  onChange={(freezePrerollSeconds) => onConverterChange({ freezePrerollSeconds })}
                 />
                 <span>{words.seconds}</span>
               </label>
@@ -1091,16 +1159,12 @@ export function SettingsWorkspace({
             <div className="settings-number-row">
               <div><strong>{words.maxRoundDuration}</strong><small>{words.maxRoundDurationHelp}</small></div>
               <label>
-                <input
-                  type="number"
+                <EditableNumberInput
                   min={30}
                   max={1800}
                   step={10}
                   value={converter.maxRoundSeconds}
-                  onChange={(event) => {
-                    const value = Number(event.target.value);
-                    if (Number.isFinite(value) && value >= 30 && value <= 1800) onConverterChange({ maxRoundSeconds: value });
-                  }}
+                  onChange={(maxRoundSeconds) => onConverterChange({ maxRoundSeconds })}
                 />
                 <span>{words.seconds}</span>
               </label>
@@ -1176,16 +1240,12 @@ export function SettingsWorkspace({
               <div className="settings-advanced-inline">
                 <label>
                   <span><strong>{words.threat360Range}</strong><small>150–800</small></span>
-                  <input
-                    type="number"
+                  <EditableNumberInput
                     min={150}
                     max={800}
                     step={10}
                     value={playback.threat360Range}
-                    onChange={(event) => {
-                      const value = Number(event.target.value);
-                      if (Number.isFinite(value) && value >= 150 && value <= 800) onPlaybackChange({ threat360Range: value });
-                    }}
+                    onChange={(threat360Range) => onPlaybackChange({ threat360Range })}
                   />
                 </label>
                 <SettingLine title={words.threat360RequireLos} checked={playback.threat360Los} onChange={(threat360Los) => onPlaybackChange({ threat360Los })} />
@@ -1428,7 +1488,7 @@ export function SettingsWorkspace({
           value={activeCustomCssProfileId ?? ""}
           options={[
             { value: "", label: words.customCssDefaultStyle },
-            ...customCssProfiles.map((profile) => ({ value: profile.id, label: profile.name })),
+            ...customCssProfiles.map((profile) => ({ value: profile.id, label: customCssProfileLabel(profile) })),
           ]}
           label={words.customCssStyles}
           onChange={(profileId) => onActivateCustomCssProfile(profileId || null)}

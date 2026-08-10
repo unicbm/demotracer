@@ -1006,7 +1006,7 @@
 .settings-advanced-inline label:first-child { display: grid; grid-template-columns: minmax(0, 1fr) auto; min-width: 260px; }
 .settings-advanced-inline label:first-child > span { display: grid; }
 .settings-advanced-inline small { color: var(--text-tertiary); font-size: 10.5px; }
-.settings-advanced-inline input[type="number"] { width: 84px; height: 32px; padding: 0 8px; background: var(--workspace); border: 1px solid var(--divider-strong); border-radius: var(--radius-sm); }
+.settings-advanced-inline input[type="number"] { width: 84px; height: 32px; padding: 0 8px; color: var(--text-primary); background: var(--surface-raised); border: 1px solid var(--divider-strong); border-radius: var(--radius-sm); }
 .settings-advanced-inline input[type="checkbox"] { accent-color: var(--trace); }
 
 .settings-path-row:last-child { border-bottom: 0; }
@@ -1090,12 +1090,38 @@
   height: 33px;
   padding: 0 8px;
   color: var(--text-primary);
-  background: var(--workspace);
+  background: var(--surface-raised);
   border: 1px solid var(--divider-strong);
   border-radius: var(--radius-sm);
   font-family: var(--mono);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+
+.settings-advanced-inline input[type="number"]:hover:not(:disabled),
+.settings-number-row input:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--divider-strong));
+}
+
+.settings-advanced-inline input[type="number"]:focus,
+.settings-number-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.settings-advanced-inline input[type="number"][aria-invalid="true"],
+.settings-number-row input[aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px var(--danger-soft);
+}
+
+.settings-advanced-inline input[type="number"]:disabled,
+.settings-number-row input:disabled {
+  color: var(--text-disabled);
+  background: var(--disabled-bg);
+  border-color: var(--divider);
+  cursor: not-allowed;
 }
 
 .settings-number-row label span {
