@@ -579,6 +579,9 @@ function userFacingErrorMessage(error: { code: string; message: string; path?: s
   if (code.includes("cancel") || code.includes("stopping")) {
     return zh ? "任务已停止。已完成的输出会保留。" : "Task stopped. Completed output is kept.";
   }
+  if (code.includes("playback_update_unavailable")) {
+    return zh ? "稳定通道暂未发布回放组件更新。" : "The stable channel has not published a playback component update yet.";
+  }
   if (code.includes("playback_update_check")) {
     return zh ? "暂时无法连接回放组件更新服务。" : "The playback update service is temporarily unavailable.";
   }
@@ -621,6 +624,14 @@ function userFacingErrorMessage(error: { code: string; message: string; path?: s
   return zh
     ? `操作失败（${error.code}）。请检查当前选择后重试。`
     : `The operation failed (${error.code}). Check the current selection and try again.`;
+}
+
+function playbackUpdateFailureStatus(reason: unknown, language: Language): PlaybackUpdateStatus {
+  const error = parseCommandError(reason);
+  if (error.code.toLocaleLowerCase().includes("playback_update_unavailable")) {
+    return { phase: "unavailable" };
+  }
+  return { phase: "error", error: userFacingErrorMessage(error, language) };
 }
 
 function userFacingErrorTitle(error: { code: string }, language: Language): string {
@@ -1219,10 +1230,7 @@ function App() {
         });
       }).catch((reason) => {
         if (disposed) return;
-        setPlaybackUpdate({
-          phase: "error",
-          error: userFacingErrorMessage(parseCommandError(reason), language),
-        });
+        setPlaybackUpdate(playbackUpdateFailureStatus(reason, language));
       });
     }
     return () => { disposed = true; };
@@ -2830,10 +2838,7 @@ function App() {
         notes: status.notes,
       });
     } catch (reason) {
-      setPlaybackUpdate({
-        phase: "error",
-        error: userFacingErrorMessage(parseCommandError(reason), language),
-      });
+      setPlaybackUpdate(playbackUpdateFailureStatus(reason, language));
     }
   }
 

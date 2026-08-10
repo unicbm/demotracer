@@ -467,7 +467,7 @@ export interface PlaybackUpdateRelease {
   notes?: string | null;
 }
 
-export type PlaybackUpdatePhase = "idle" | "checking" | "current" | "available" | "error";
+export type PlaybackUpdatePhase = "idle" | "checking" | "current" | "available" | "unavailable" | "error";
 
 export interface PlaybackUpdateStatus {
   phase: PlaybackUpdatePhase;

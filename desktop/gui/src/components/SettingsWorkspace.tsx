@@ -676,9 +676,9 @@ export function SettingsWorkspace({
   const playbackUpdateLabel = playbackUpdate.phase === "checking" ? words.releaseChecking
     : playbackUpdate.phase === "current" ? words.releaseUpToDate
       : playbackUpdate.phase === "available" ? words.releaseUpdateAvailable
-        : playbackUpdate.phase === "error" ? words.releaseCheckUnavailable
-          : words.releaseNotChecked;
-  const playbackReleaseNotes = releaseNotesForLanguage(playbackUpdate.notes, language);
+        : playbackUpdate.phase === "unavailable" ? words.releasePlaybackUnavailable
+          : playbackUpdate.phase === "error" ? words.releaseCheckUnavailable
+            : words.releaseNotChecked;
   const guiUpdateBusy = guiUpdate.phase === "checking"
     || guiUpdate.phase === "downloading"
     || guiUpdate.phase === "installing";
@@ -759,60 +759,68 @@ export function SettingsWorkspace({
 
   const playbackInstallView = (
     <div className="settings-pane release-manager-pane">
-      <section className="settings-card release-card" aria-label={words.releasePlayback}>
-        <div className="settings-card-heading release-compact-heading">
-          <strong>{words.releasePlayback}</strong>
-          <span className={`release-status-pill is-${playbackUpdate.phase}`} role="status">
-            <i aria-hidden="true" />{playbackUpdateLabel}
-          </span>
-        </div>
-
+      <section className="playback-settings-list" aria-label={words.releasePlayback}>
         {!environment.cs2Path.trim() ? (
           <div className="release-callout"><FolderIcon size={18} /><span>{words.releaseChooseCs2Folder}</span></div>
         ) : (
           <>
-            <code className="release-target-path">{environment.cs2Path}</code>
-            <div className="release-version-grid">
-              <div><span>{words.releaseInstalledBundle}</span><strong>{playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy}</strong></div>
-              <div><span>{words.releaseLoadedPlugin}</span><strong>{playbackRelease?.loadedPluginVersion ? `v${playbackRelease.loadedPluginVersion}` : words.releaseNotRunning}</strong></div>
-              <div><span>{words.releaseLatestVersion}</span><strong>{playbackUpdate.latestVersion ? `v${playbackUpdate.latestVersion}` : "—"}</strong></div>
-              <div><span>{words.releaseInstallSource}</span><strong>{words.releaseSignedOnlineOrZip}</strong></div>
+            <div className="playback-settings-row is-path">
+              <span>{words.releaseCs2Directory}</span>
+              <code title={environment.cs2Path}>{environment.cs2Path}</code>
             </div>
-            <p className="settings-help">{words.releasePlaybackAutomaticUpdates}</p>
-            {playbackReleaseNotes ? (
-              <section className="release-notes-panel" aria-label={words.releaseUpdateNotes}>
-                <strong>{words.releaseUpdateNotes}</strong>
-                <p>{playbackReleaseNotes}</p>
-              </section>
-            ) : null}
-            {playbackUpdate.error ? <p className="release-error"><AlertIcon size={15} />{playbackUpdate.error}</p> : null}
-            {playbackReleaseError ? <p className="release-error"><AlertIcon size={15} />{playbackReleaseError}</p> : null}
-            <div className="release-actions">
-              {playbackUpdate.phase === "available" ? (
-                <button className="primary-button" type="button" disabled={playbackUpdateBusy} onClick={onInstallLatestPlayback}>
-                  <ReplayIcon size={15} />{releaseAction === "installingOnline" ? words.releaseInstalling : words.releaseInstallLatestPlayback}
-                </button>
-              ) : (
+            <div className="playback-settings-row">
+              <span>{words.releaseInstalledBundle}</span>
+              <strong>{playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy}</strong>
+            </div>
+            <div className={`playback-settings-row${playbackReleaseError ? " has-error" : ""}`}>
+              <div>
+                <span>{words.releaseLoadedPlugin}</span>
+                {playbackReleaseError ? <small>{playbackReleaseError}</small> : null}
+              </div>
+              <strong>{playbackRelease?.loadedPluginVersion ? `v${playbackRelease.loadedPluginVersion}` : words.releaseNotRunning}</strong>
+            </div>
+            <div className="playback-settings-row">
+              <span>{words.releaseLatestVersion}</span>
+              <strong>{playbackUpdate.latestVersion ? `v${playbackUpdate.latestVersion}` : "—"}</strong>
+            </div>
+            <div className={`playback-settings-row is-action${playbackUpdate.error ? " has-error" : ""}`}>
+              <div>
+                <span>{words.releaseUpdateStatus}</span>
+                {playbackUpdate.error ? <small>{playbackUpdate.error}</small> : null}
+              </div>
+              <div className="playback-row-action">
+                <span className={`release-status-pill is-${playbackUpdate.phase}`} role="status">
+                  <i aria-hidden="true" />{playbackUpdateLabel}
+                </span>
                 <button className="secondary-button" type="button" disabled={playbackUpdateBusy} onClick={onCheckPlaybackUpdate}>
                   <RefreshIcon className={playbackUpdate.phase === "checking" ? "release-spin" : undefined} size={15} />
                   {playbackUpdate.phase === "checking" ? words.releaseChecking : words.releaseCheckNow}
                 </button>
-              )}
+              </div>
+            </div>
+            {playbackUpdate.phase === "available" ? (
+              <div className="playback-settings-row is-action">
+                <span>{words.releaseInstallLatestPlayback}</span>
+                <button className="primary-button" type="button" disabled={playbackUpdateBusy} onClick={onInstallLatestPlayback}>
+                  <ReplayIcon size={15} />{releaseAction === "installingOnline" ? words.releaseInstalling : words.releaseInstallNow}
+                </button>
+              </div>
+            ) : null}
+            <div className="playback-settings-row is-action">
+              <span>{words.releaseLocalPackage}</span>
               <button className="secondary-button" type="button" disabled={releaseBusy} onClick={onInstallPlaybackBundle}>
                 <FolderIcon size={15} />{releaseAction === "installingFile" ? words.releaseInstalling : words.releaseInstallFromZip}
               </button>
-              <button className="text-button" type="button" disabled={releaseBusy || !playbackRelease?.canRollback} onClick={onRollbackPlayback}>
-                {releaseAction === "rollingBack" ? words.releaseRollingBack : words.releaseRollback}
+            </div>
+            <div className="playback-settings-row is-action">
+              <span>{words.releaseRollback}</span>
+              <button className="secondary-button" type="button" disabled={releaseBusy || !playbackRelease?.canRollback} onClick={onRollbackPlayback}>
+                {releaseAction === "rollingBack" ? words.releaseRollingBack : words.releaseRollbackAction}
               </button>
             </div>
           </>
         )}
       </section>
-
-      <aside className="safe-defaults-note">
-        <span><AlertIcon size={17} /></span>
-        <div><strong>{words.releaseCloseCs2}</strong><p>{words.releaseConfigPreserved}</p></div>
-      </aside>
     </div>
   );
 
@@ -1324,7 +1332,9 @@ export function SettingsWorkspace({
             <button className="icon-button" type="button" onClick={() => setSettingsModal(null)} aria-label={words.close} title={words.close}><CloseIcon size={16} /></button>
           </header>
           <div className="settings-modal-body">{modalContent}</div>
-          <footer className="settings-modal-footer"><button className="secondary-button" type="button" onClick={() => setSettingsModal(null)}>{words.close}</button></footer>
+          {settingsModal === "playbackInstall" ? null : (
+            <footer className="settings-modal-footer"><button className="secondary-button" type="button" onClick={() => setSettingsModal(null)}>{words.close}</button></footer>
+          )}
         </DialogPrimitive>
       ) : null}
 

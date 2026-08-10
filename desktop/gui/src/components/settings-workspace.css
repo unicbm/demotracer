@@ -408,6 +408,74 @@
   white-space: nowrap;
 }
 
+.playback-settings-list {
+  display: grid;
+  background: var(--surface-raised);
+}
+
+.playback-settings-list > .release-callout {
+  margin: 16px 20px 20px;
+}
+
+.playback-settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 58px;
+  padding: 10px 20px;
+  gap: 18px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.playback-settings-row > span,
+.playback-settings-row > div > span {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.playback-settings-row > div {
+  display: grid;
+  min-width: 0;
+}
+
+.playback-settings-row > strong {
+  color: var(--text-secondary);
+  font: 680 11.5px/18px var(--mono);
+  text-align: right;
+}
+
+.playback-settings-row small {
+  max-width: 380px;
+  margin-top: 2px;
+  color: var(--danger);
+  font-size: 9.5px;
+  line-height: 14px;
+}
+
+.playback-settings-row.is-path code {
+  display: block;
+  overflow: hidden;
+  max-width: 430px;
+  color: var(--text-secondary);
+  font: 600 10px/16px var(--mono);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playback-row-action {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.playback-settings-row.has-error {
+  background: color-mix(in srgb, var(--danger-soft) 42%, transparent);
+}
+
 .count-badge {
   display: inline-flex;
   flex: none;
@@ -1366,4 +1434,30 @@
   .credits-contributor-list { grid-template-columns: 1fr; }
   .release-product-hero { grid-template-columns: auto minmax(0, 1fr); }
   .release-status-pill { grid-column: 1 / -1; justify-self: start; }
+
+  .playback-settings-row.is-path {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .playback-settings-row.is-path code {
+    max-width: none;
+    text-align: left;
+  }
+}
+
+@media (max-width: 480px) {
+  .playback-settings-row.is-action {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .playback-settings-row.is-action button {
+    width: 100%;
+  }
+
+  .playback-row-action {
+    justify-content: stretch;
+  }
 }

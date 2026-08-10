@@ -1967,6 +1967,19 @@ textarea {
   width: min(720px, calc(100vw - 52px));
 }
 
+.settings-modal.is-playbackInstall {
+  width: min(680px, calc(100vw - 52px));
+}
+
+.settings-modal.is-playbackInstall .settings-modal-header {
+  min-height: 56px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.settings-modal.is-playbackInstall .settings-modal-body {
+  max-height: calc(100vh - 108px);
+}
+
 .settings-modal.is-environment,
 .settings-modal.is-advanced {
   width: min(900px, calc(100vw - 52px));
@@ -2123,7 +2136,6 @@ textarea {
   margin-top: 0;
 }
 
-.settings-modal.is-playbackInstall .safe-defaults-note,
 .settings-modal.is-environment .vendor-warning,
 .settings-modal.is-environment .diagnostic-overview {
   margin: 0;

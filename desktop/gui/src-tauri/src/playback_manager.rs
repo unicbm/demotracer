@@ -107,7 +107,8 @@ struct RemoteReleaseManifest {
     version: String,
     #[serde(default)]
     notes: Option<String>,
-    playback: RemotePlaybackAsset,
+    #[serde(default)]
+    playback: Option<RemotePlaybackAsset>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -358,7 +359,13 @@ fn validate_remote_playback_release(
     manifest: RemoteReleaseManifest,
 ) -> CommandResult<ValidatedRemotePlaybackRelease> {
     let release_version = parse_version(&manifest.version)?;
-    let playback_version = parse_version(&manifest.playback.version)?;
+    let playback = manifest.playback.ok_or_else(|| {
+        CommandErrorDto::new(
+            "playback_update_unavailable",
+            "The stable channel does not publish a playback bundle yet.",
+        )
+    })?;
+    let playback_version = parse_version(&playback.version)?;
     if release_version != playback_version {
         return Err(CommandErrorDto::new(
             "playback_update_manifest_invalid",
@@ -368,19 +375,19 @@ fn validate_remote_playback_release(
     let version = playback_version.to_string();
     let expected_url =
         format!("{PLAYBACK_RELEASE_BASE_URL}/releases/v{version}/demotracer-css-v{version}.zip");
-    if manifest.playback.url != expected_url {
+    if playback.url != expected_url {
         return Err(CommandErrorDto::new(
             "playback_update_manifest_invalid",
             "Playback release URL is outside the immutable DemoTracer release path.",
         ));
     }
-    validate_sha256_text(&manifest.playback.sha256)?;
-    if decode_playback_signature(
-        &manifest.playback.signature,
-        "playback_update_manifest_invalid",
-    )
-    .is_err()
-    {
+    validate_sha256_text(&playback.sha256).map_err(|_| {
+        CommandErrorDto::new(
+            "playback_update_manifest_invalid",
+            "Playback release SHA-256 is missing or invalid.",
+        )
+    })?;
+    if decode_playback_signature(&playback.signature, "playback_update_manifest_invalid").is_err() {
         return Err(CommandErrorDto::new(
             "playback_update_manifest_invalid",
             "Playback release signature is missing or invalid.",
@@ -389,9 +396,9 @@ fn validate_remote_playback_release(
     Ok(ValidatedRemotePlaybackRelease {
         version,
         notes: manifest.notes,
-        url: manifest.playback.url,
-        signature: manifest.playback.signature,
-        sha256: manifest.playback.sha256.to_ascii_lowercase(),
+        url: playback.url,
+        signature: playback.signature,
+        sha256: playback.sha256.to_ascii_lowercase(),
     })
 }
 
@@ -1323,16 +1330,26 @@ mod tests {
         let manifest = RemoteReleaseManifest {
             version: "1.0.11".to_string(),
             notes: Some("fix".to_string()),
-            playback: RemotePlaybackAsset {
+            playback: Some(RemotePlaybackAsset {
                 version: "1.0.11".to_string(),
                 url: "https://evil.example/demotracer-css-v1.0.11.zip".to_string(),
                 signature: "not a signature".to_string(),
                 sha256: "0".repeat(64),
-            },
+            }),
         };
 
         let error = validate_remote_playback_release(manifest).unwrap_err();
         assert_eq!(error.code, "playback_update_manifest_invalid");
         assert!(error.message.contains("immutable DemoTracer release path"));
+    }
+
+    #[test]
+    fn legacy_stable_manifest_without_playback_is_not_a_security_failure() {
+        let manifest: RemoteReleaseManifest =
+            serde_json::from_str(r#"{"version":"1.0.10","notes":"desktop only","platforms":{}}"#)
+                .unwrap();
+
+        let error = validate_remote_playback_release(manifest).unwrap_err();
+        assert_eq!(error.code, "playback_update_unavailable");
     }
 }
