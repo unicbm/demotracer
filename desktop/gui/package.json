@@ -1,7 +1,7 @@
 {
   "name": "cs2-demotracer-desktop",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "packageManager": "pnpm@11.9.0",
   "type": "module",
   "scripts": {
