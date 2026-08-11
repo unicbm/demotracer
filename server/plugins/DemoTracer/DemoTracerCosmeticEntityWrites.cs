@@ -124,31 +124,34 @@ public sealed partial class DemoTracerPlugin
             replaySteamId,
             cosmetic);
         if (_appliedWeaponCosmeticWrites.TryGetValue(writeKey, out var currentWrite) &&
-            currentWrite == writeStamp)
+            currentWrite == writeStamp &&
+            (!paintClaimed || HasExpectedWeaponPaintState(weapon, cosmetic)))
         {
             return true;
         }
 
-        var paintApplied = !paintClaimed || TryApplyItemCosmetic(
-                player,
-                weapon,
-                new ReplayItemCosmetic
-                {
-                    ItemDefIndex = cosmetic.WeaponDefIndex,
-                    PaintKit = cosmetic.PaintKit,
-                    Seed = cosmetic.Seed,
-                    SeedKnown = null,
-                    Wear = cosmetic.Wear,
-                    OriginalOwnerSteamId = cosmetic.OriginalOwnerSteamId,
-                    ItemAccountId = cosmetic.ItemAccountId,
-                    ItemId = cosmetic.ItemId,
-                    CustomName = cosmetic.CustomName
-                },
-                replaySteamId,
-                DemoTracerCosmeticWriteField.WeaponPaint,
-                allowSubclassChange: false,
-                applyPaint: true,
-                applyCustomName: _cosmeticNamesEnabled);
+        var paintApplied = !paintClaimed ||
+            (TryApplyItemCosmetic(
+                 player,
+                 weapon,
+                 new ReplayItemCosmetic
+                 {
+                     ItemDefIndex = cosmetic.WeaponDefIndex,
+                     PaintKit = cosmetic.PaintKit,
+                     Seed = cosmetic.Seed,
+                     SeedKnown = null,
+                     Wear = cosmetic.Wear,
+                     OriginalOwnerSteamId = cosmetic.OriginalOwnerSteamId,
+                     ItemAccountId = cosmetic.ItemAccountId,
+                     ItemId = cosmetic.ItemId,
+                     CustomName = cosmetic.CustomName
+                 },
+                 replaySteamId,
+                 DemoTracerCosmeticWriteField.WeaponPaint,
+                 allowSubclassChange: false,
+                 applyPaint: true,
+                 applyCustomName: _cosmeticNamesEnabled) &&
+             HasExpectedWeaponPaintState(weapon, cosmetic));
         var stattrakApplied = !paintClaimed ||
             ApplyWeaponStattrakEvidence(player.Slot, replaySteamId, weapon, cosmetic);
         var stickersApplied = !stickersClaimed ||
@@ -160,6 +163,42 @@ public sealed partial class DemoTracerPlugin
             _appliedWeaponCosmeticWrites[writeKey] = writeStamp;
         return applied;
     }
+
+    private bool HasExpectedWeaponPaintState(
+        CBasePlayerWeapon weapon,
+        ReplayWeaponCosmetic cosmetic)
+    {
+        try
+        {
+            return WeaponPaintStateMatches(
+                NormalizeWeaponDefIndex(weapon.AttributeManager.Item.ItemDefinitionIndex),
+                weapon.FallbackPaintKit,
+                weapon.FallbackSeed,
+                weapon.FallbackWear,
+                cosmetic.WeaponDefIndex,
+                (int)Math.Min(cosmetic.PaintKit, int.MaxValue),
+                (int)Math.Min(cosmetic.Seed, int.MaxValue),
+                cosmetic.Wear);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    internal static bool WeaponPaintStateMatches(
+        int actualWeaponDefIndex,
+        int actualPaintKit,
+        int actualSeed,
+        float actualWear,
+        int expectedWeaponDefIndex,
+        int expectedPaintKit,
+        int expectedSeed,
+        float expectedWear)
+        => actualWeaponDefIndex == expectedWeaponDefIndex &&
+           actualPaintKit == expectedPaintKit &&
+           actualSeed == expectedSeed &&
+           actualWear.Equals(expectedWear);
 
     private bool TryApplyKnifeCosmetic(
         CCSPlayerController player,
