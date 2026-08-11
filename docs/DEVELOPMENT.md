@@ -90,6 +90,24 @@ cd ..\..
 .\tooling\scripts\check-release-contract.ps1
 ```
 
+Run the desktop development application with its real Rust backend and Vite
+hot reload:
+
+```powershell
+cd desktop\gui
+pnpm dev
+```
+
+This is the normal GUI development entry point. It starts Vite on
+`127.0.0.1:1420` and opens that frontend inside the Tauri WebView, so Tauri
+commands, the converter, the local library, avatar cache, and filesystem access
+remain available. The Rust backend uses the release profile for realistic demo
+parsing performance while frontend edits still hot-reload. Use
+`pnpm run dev:debug` only when debugging Rust itself. `pnpm run dev:web` starts
+only the frontend server and is useful for isolated layout work; a regular
+browser at that address does not have Tauri IPC and therefore cannot provide a
+functional application backend.
+
 Refresh `shared/econ/cs2-lib-econ-index.v1.json` only by updating the exact
 `@ianlucas/cs2-lib` dependency and lockfile under `tooling/cs2-lib-data`, then
 running `npm.cmd run generate` there. Do not add or patch item IDs in the

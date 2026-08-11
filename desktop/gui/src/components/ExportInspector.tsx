@@ -5,6 +5,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { type RefObject, useRef } from "react";
+import { Button, Group, Stack, Text } from "@mantine/core";
+import { ArrowIcon, FolderIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
 import type { ConverterSettings, SideChoice } from "../types";
 import { SwitchControl } from "./SwitchControl";
@@ -12,20 +14,36 @@ import { SwitchControl } from "./SwitchControl";
 interface ExportInspectorProps {
   words: TextDictionary;
   settings: ConverterSettings;
+  selectedRoundCount: number;
+  outputDir: string;
+  outputRoot: string;
   disabled: boolean;
   onChange: (patch: Partial<ConverterSettings>) => void;
   onRequestCosmetics: () => void;
   onRestoreDefaults: () => void;
+  onChooseOutput: () => void;
+  onConvert: () => void;
+}
+
+function compactPath(path: string, limit = 42): string {
+  if (path.length <= limit) return path;
+  const keep = Math.floor((limit - 1) / 2);
+  return `${path.slice(0, keep)}…${path.slice(-keep)}`;
 }
 
 function InspectorContents({
   words,
   settings,
+  selectedRoundCount,
+  outputDir,
+  outputRoot,
   firstControlRef,
   disabled,
   onChange,
   onRequestCosmetics,
   onRestoreDefaults,
+  onChooseOutput,
+  onConvert,
 }: ExportInspectorProps & {
   firstControlRef: RefObject<HTMLButtonElement | null>;
 }) {
@@ -34,6 +52,7 @@ function InspectorContents({
     { value: "t", label: words.t },
     { value: "ct", label: words.ct },
   ];
+  const canConvert = selectedRoundCount > 0 && Boolean(outputDir) && !disabled;
 
   return (
     <>
@@ -63,17 +82,32 @@ function InspectorContents({
             </div>
           </div>
 
-          <fieldset className="choice-fieldset">
-            <legend>{words.playbackRange}</legend>
-            <label className="radio-choice">
-              <input type="radio" name="playback-range" checked={!settings.fullRound} onChange={() => onChange({ fullRound: false })} />
-              <span><strong>{words.cutBeforePlant}</strong><small>{words.cutBeforePlantHelp}</small></span>
-            </label>
-            <label className="radio-choice compact">
-              <input type="radio" name="playback-range" checked={settings.fullRound} onChange={() => onChange({ fullRound: true })} />
-              <span><strong>{words.fullRoundLabel}</strong></span>
-            </label>
-          </fieldset>
+          <div className="field-group playback-range-control">
+            <span className="field-label">{words.playbackRange}</span>
+            <div className="segmented-control" role="group" aria-label={words.playbackRange}>
+              <button
+                className={!settings.fullRound ? "is-selected" : ""}
+                type="button"
+                aria-pressed={!settings.fullRound}
+                onClick={() => onChange({ fullRound: false })}
+              >
+                {words.cutBeforePlant}
+              </button>
+              <button
+                className={settings.fullRound ? "is-selected" : ""}
+                type="button"
+                aria-pressed={settings.fullRound}
+                onClick={() => onChange({ fullRound: true })}
+              >
+                {words.fullRoundLabel}
+              </button>
+            </div>
+          </div>
+          {!settings.fullRound ? (
+            <Text className="inspector-field-help" size="xs" c="var(--text-tertiary)">
+              {words.cutBeforePlantHelp}
+            </Text>
+          ) : null}
         </section>
 
         <section className="inspector-section">
@@ -117,8 +151,51 @@ function InspectorContents({
         </section>
       </div>
 
-      <footer className="inspector-footer">
-        <button className="text-button" type="button" onClick={onRestoreDefaults}>{words.restoreDefaults}</button>
+      <footer className="inspector-footer inspector-export-footer">
+        <Stack gap="sm">
+          <Group justify="space-between" gap="sm" wrap="nowrap">
+            <Text size="sm" fw={700} aria-live="polite">
+              {selectedRoundCount > 0
+                ? words.selectedCount.replace("{count}", String(selectedRoundCount))
+                : words.selectAtLeastOne}
+            </Text>
+            <Button
+              type="button"
+              variant="subtle"
+              color="gray"
+              size="compact-sm"
+              leftSection={<FolderIcon size={14} />}
+              onClick={onChooseOutput}
+            >
+              {outputDir ? words.changeOutput : words.chooseOutput}
+            </Button>
+          </Group>
+          <div className="inspector-output-path">
+            <Text size="xs" c="var(--text-tertiary)">{words.outputParent}</Text>
+            <Text component="code" size="xs" title={outputDir}>
+              {outputDir ? compactPath(outputDir) : words.notSelected}
+            </Text>
+            {outputRoot ? (
+              <Text size="xs" c="var(--text-tertiary)" title={outputRoot}>
+                {words.outputTarget}: {compactPath(outputRoot)}
+              </Text>
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            fullWidth
+            size="md"
+            rightSection={<ArrowIcon size={16} />}
+            disabled={!canConvert}
+            loading={disabled}
+            onClick={onConvert}
+          >
+            {disabled ? words.preparing : words.convertCount.replace("{count}", String(selectedRoundCount))}
+          </Button>
+          <Button type="button" variant="subtle" color="gray" size="compact-sm" onClick={onRestoreDefaults}>
+            {words.restoreDefaults}
+          </Button>
+        </Stack>
       </footer>
       </fieldset>
     </>

@@ -378,19 +378,21 @@ export function ArchiveWorkspace({
           ) : null}
         </div>
         <div className="archive-toolbar-actions">
-          <details className="archive-actions-menu">
-            <summary>
-              <span>{words.archiveContextMenu}</span><ChevronIcon size={14} />
-            </summary>
-            <div>
-              <button type="button" onClick={onOpenFolder} disabled={busy}>
-                <FolderIcon size={15} /><span>{words.openFolder}</span>
-              </button>
-              <button type="button" onClick={onReconvert} disabled={busy} title={words.reconvertArchiveHelp}>
-                <RefreshIcon size={15} /><span>{busy ? words.readingSourceDemo : words.reconvertArchive}</span>
-              </button>
-            </div>
-          </details>
+          {!busy ? (
+            <details className="archive-actions-menu">
+              <summary>
+                <span>{words.archiveContextMenu}</span><ChevronIcon size={14} />
+              </summary>
+              <div>
+                <button type="button" onClick={onOpenFolder}>
+                  <FolderIcon size={15} /><span>{words.openFolder}</span>
+                </button>
+                <button type="button" onClick={onReconvert} title={words.reconvertArchiveHelp}>
+                  <RefreshIcon size={15} /><span>{words.reconvertArchive}</span>
+                </button>
+              </div>
+            </details>
+          ) : null}
         </div>
       </header>
 

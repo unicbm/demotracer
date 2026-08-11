@@ -4,7 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Button, Group, SegmentedControl, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
+import { Group, SimpleGrid, Stack, Tabs, Text, Tooltip } from "@mantine/core";
 import { CheckIcon, CopyIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
 import type { ConversionSummary, FriendlyFireSummary } from "../types";
@@ -108,15 +108,7 @@ export function PlaybackCommandBuilder({
     : options.friendlyFire === "off"
       ? false
       : friendlyFire?.enabled ?? null;
-  const friendlyFireDescription = options.friendlyFire === "auto"
-    ? effectiveFriendlyFire === true
-      ? words.friendlyFireAutoOn
-      : effectiveFriendlyFire === false
-        ? words.friendlyFireAutoOff
-        : words.friendlyFireAutoUnknown
-    : effectiveFriendlyFire
-      ? words.friendlyFireManualOn
-      : words.friendlyFireManualOff;
+  const friendlyFireStatus = effectiveFriendlyFire ? words.friendlyFireOn : words.friendlyFireOff;
 
   return (
     <section className="playback-command-builder" aria-label={words.playDemoCommand}>
@@ -136,16 +128,20 @@ export function PlaybackCommandBuilder({
           </div>
           {result.rounds.length > 1 ? (
             <Tooltip label={words.sequenceUnavailable} disabled={!sequenceDisabled} position="top" withArrow>
-              <SegmentedControl<CommandMode>
-                aria-label={words.playDemoMode}
-                data={[
-                  { value: "sequence", label: words.sequenceMode, disabled: sequenceDisabled },
-                  { value: "round", label: words.roundMode },
-                ]}
+              <Tabs
                 value={effectiveCommandMode}
-                size="sm"
-                onChange={onCommandModeChange}
-              />
+                variant="pills"
+                radius="sm"
+                color="blue"
+                onChange={(value) => {
+                  if (value === "sequence" || value === "round") onCommandModeChange(value);
+                }}
+              >
+                <Tabs.List aria-label={words.playDemoMode}>
+                  <Tabs.Tab value="sequence" disabled={sequenceDisabled}>{words.sequenceMode}</Tabs.Tab>
+                  <Tabs.Tab value="round">{words.roundMode}</Tabs.Tab>
+                </Tabs.List>
+              </Tabs>
             </Tooltip>
           ) : null}
         </header>
@@ -187,26 +183,17 @@ export function PlaybackCommandBuilder({
               : { avatar: false })}
           />
           <PlaybackOption checked={playoff} disabled={!sequenceMode} label={words.playoffBeta} description={words.playoffHelp} onChange={(checked) => onOptionsChange({ playoff: checked })} />
-          <Tooltip label={friendlyFireDescription} openDelay={450} position="top" withArrow>
-            <Group justify="space-between" wrap="nowrap" gap="xs" px="xs" py={4}>
-              <Stack gap={0}>
-                <Text span size="sm" fw={600} c="var(--text-secondary)">{words.friendlyFirePlayback}</Text>
-                <Text span size="xs" c="var(--text-tertiary)">{friendlyFireDescription}</Text>
-              </Stack>
-              <Group wrap="nowrap" gap={4}>
-              {options.friendlyFire !== "auto" ? (
-                <Button variant="subtle" size="compact-xs" onClick={() => onOptionsChange({ friendlyFire: "auto" })}>
-                  {words.friendlyFireUseDemo}
-                </Button>
-              ) : null}
-              <SwitchControl
-                checked={effectiveFriendlyFire ?? false}
-                label={words.friendlyFirePlayback}
-                onChange={(checked) => onOptionsChange({ friendlyFire: checked ? "on" : "off" })}
-              />
-              </Group>
-            </Group>
-          </Tooltip>
+          <Group justify="space-between" wrap="nowrap" gap="xs" px="xs" py={4}>
+            <Stack gap={0}>
+              <Text span size="sm" fw={600} c="var(--text-secondary)">{words.friendlyFirePlayback}</Text>
+              <Text span size="xs" c="var(--text-tertiary)">{friendlyFireStatus}</Text>
+            </Stack>
+            <SwitchControl
+              checked={effectiveFriendlyFire ?? false}
+              label={words.friendlyFirePlayback}
+              onChange={(checked) => onOptionsChange({ friendlyFire: checked ? "on" : "off" })}
+            />
+          </Group>
         </SimpleGrid>
 
       </section>

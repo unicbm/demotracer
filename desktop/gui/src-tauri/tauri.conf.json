@@ -4,7 +4,7 @@
   "version": "1.1.0",
   "identifier": "com.cs2demotracer.desktop",
   "build": {
-    "beforeDevCommand": "pnpm run dev",
+    "beforeDevCommand": "pnpm run dev:web",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "pnpm run build",
     "frontendDist": "../dist"

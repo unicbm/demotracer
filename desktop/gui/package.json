@@ -5,7 +5,9 @@
   "packageManager": "pnpm@11.9.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "tauri dev --release",
+    "dev:debug": "tauri dev",
+    "dev:web": "vite",
     "test": "pnpm run check:test && node --test src/*.test.ts",
     "check": "node scripts/check-tauri-config.mjs && node scripts/check-pro-steamid-catalog.mjs && node scripts/check-design-tokens.mjs && tsc --noEmit --pretty false && tsc --noEmit --pretty false -p tsconfig.node.json",
     "check:test": "tsc --noEmit --pretty false -p tsconfig.test.json",
@@ -14,7 +16,7 @@
     "format:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml",
     "icon:windows": "node scripts/generate-windows-icon.mjs",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
+    "tauri:dev": "pnpm run dev",
     "tauri:build": "tauri build --bundles nsis"
   },
   "dependencies": {

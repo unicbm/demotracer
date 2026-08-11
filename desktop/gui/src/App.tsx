@@ -446,9 +446,7 @@ function storedPlaybackPreset(): PlaybackPresetOptions {
         ? saved.threat360Range
         : DEFAULT_PLAYBACK_PRESET.threat360Range,
       threat360Los: readBoolean("threat360Los"),
-      friendlyFire: saved.friendlyFire === "auto" || saved.friendlyFire === "on" || saved.friendlyFire === "off"
-        ? saved.friendlyFire
-        : DEFAULT_PLAYBACK_PRESET.friendlyFire,
+      friendlyFire: saved.friendlyFire === "on" ? "on" : "off",
     };
   } catch {
     return { ...DEFAULT_PLAYBACK_PRESET };
@@ -981,8 +979,7 @@ function App() {
   isBusyRef.current = isBusy;
   const systemDark = useMediaQuery("(prefers-color-scheme: dark)");
   const resolvedTheme = resolveTheme(theme, systemDark);
-  const inspectorVisible = selectedPlayer === null
-    && analysis !== null
+  const inspectorVisible = analysis !== null
     && (phase === "selecting" || singleTask === "conversion");
   const elapsedSeconds = useElapsed(singleTask === "analysis");
   const sourceFileName = analysis?.fileName || fileName(sourcePath);
@@ -3655,36 +3652,29 @@ function App() {
     <div className="selection-layout">
       <RoundWorkspace
         words={words}
-        language={language}
         analysis={analysis}
         selectedRounds={selectedRounds}
         allowSuspicious={settings.includeSuspicious}
-        outputDir={outputDir}
-        outputRoot={outputRoot}
-        copiedTarget={copiedTarget}
-        selectedPlayer={selectedPlayer}
         convertPending={conversionStartPending || singleTask === "conversion"}
         onToggleRound={toggleRound}
         onRestoreRecommended={restoreRecommended}
         onClearSelection={() => setSelectedRounds(new Set())}
         onAllowSuspiciousChange={handleAllowSuspicious}
-        onChooseOutput={() => void chooseOutput()}
-        onConvert={() => void beginConvert()}
-        onSelectPlayer={(player) => dispatchLibraryWorkspace({ type: "selectPlayer", player })}
-        onClosePlayer={closePlayerAnalysis}
-        onCopy={(value, target) => void copyText(value, target)}
-        onOpenExternal={(url) => void openExternal(url)}
-        onSyncInventorySimulator={startInventorySimulatorBatch}
         formatNumber={(value) => numberFormat.format(value)}
       />
       {inspectorVisible ? (
         <ExportInspector
           words={words}
           settings={settings}
+          selectedRoundCount={selectedRounds.size}
+          outputDir={outputDir}
+          outputRoot={outputRoot}
           disabled={conversionStartPending || singleTask === "conversion"}
           onChange={updateSettings}
           onRequestCosmetics={requestCosmeticExport}
           onRestoreDefaults={restoreDefaultSettings}
+          onChooseOutput={() => void chooseOutput()}
+          onConvert={() => void beginConvert()}
         />
       ) : null}
     </div>
@@ -3976,7 +3966,7 @@ function App() {
             language={language}
             archive={archive}
             seriesEntries={activeArchiveSeries}
-            busy={Boolean(repairingManifest)}
+            busy={Boolean(repairingManifest) || singleTask !== null}
             selectedRound={selectedArchiveRound ?? -1}
             commandMode={commandMode}
             playbackPreset={playbackPreset}

@@ -2170,7 +2170,7 @@ textarea {
 
 /* DTR round selection is one continuous workspace, not a stack of cards. */
 .round-selection-panel {
-  grid-template-rows: auto auto auto;
+  grid-template-rows: auto auto auto auto;
   background: var(--surface-raised);
 }
 
@@ -2185,6 +2185,8 @@ textarea {
 }
 
 .round-selection-heading h1 { font-size: var(--type-body); line-height: 1.25; }
+.round-selection-heading-copy { display: grid; gap: 3px; }
+.round-selection-heading-copy p { color: var(--text-secondary); font-size: var(--type-tiny); }
 .round-selection-count {
   display: inline-flex;
   flex: none;
@@ -2209,6 +2211,13 @@ textarea {
 .round-selection-panel .round-batch-actions .text-button { min-height: 26px; font-size: var(--type-tiny); }
 .round-selection-panel .allow-suspicious-control { min-height: 28px; font-size: var(--type-tiny); }
 
+.round-selection-subheading {
+  min-height: 48px;
+  padding: 12px 18px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--divider);
+}
+
 .round-list-scroll {
   min-width: 0;
   overflow-x: auto;
@@ -2220,15 +2229,12 @@ textarea {
 .round-list-scroll::-webkit-scrollbar {
   display: none;
 }
-.round-export-table { min-width: 600px; }
+.round-export-table { min-width: 360px; }
 .round-export-table thead th { height: 34px; padding-inline: 10px; color: var(--text-tertiary); background: var(--surface-subtle); font-size: var(--type-caption); font-weight: var(--weight-semibold); letter-spacing: .02em; }
 .round-export-table thead th:nth-child(1) { width: 42px; }
 .round-export-table thead th:nth-child(2) { width: 64px; }
 .round-export-table thead th:nth-child(3) { width: 112px; }
-.round-export-table thead th:nth-child(4) { width: 72px; }
-.round-export-table thead th:nth-child(5) { width: 94px; }
-.round-export-table thead th:nth-child(6) { width: 94px; }
-.round-export-table thead th:nth-child(7) { width: auto; }
+.round-export-table thead th:nth-child(4) { width: auto; }
 .round-export-table .round-data-row > th,
 .round-export-table .round-data-row > td { height: 40px; padding-inline: 10px; background: var(--surface-raised); font-size: var(--type-tiny); }
 .round-export-table .round-data-row:hover > th,
@@ -2243,26 +2249,34 @@ textarea {
 .round-list-status.is-recommended { color: var(--success); }
 .round-list-status.is-partial { color: var(--accent); }
 .round-list-status.is-suspicious { color: var(--warning); }
-.round-team-count,
-.round-record-count { color: var(--text-secondary); font-family: var(--mono); font-size: var(--type-caption) !important; }
-.round-issue-cell { max-width: 0; overflow: hidden; color: var(--text-tertiary); text-overflow: ellipsis; white-space: nowrap; }
-
-.round-workspace > .export-status-bar {
-  min-height: 72px;
-  padding: 9px 14px 9px 18px;
-  background: var(--surface-raised);
-  border-top-color: var(--divider);
-}
-.round-workspace .selection-status > strong { font-size: var(--type-tiny); }
-.round-workspace .convert-button { min-width: 190px; }
+.round-issue-cell { overflow: hidden; color: var(--text-tertiary); text-overflow: ellipsis; white-space: nowrap; }
 
 .export-inspector.is-docked { flex-basis: 312px; width: 312px; }
 
+.inspector-export-footer {
+  display: block;
+  min-height: 0;
+  padding: 14px 16px 16px;
+  background: var(--surface-raised);
+}
+
+.inspector-output-path {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.inspector-output-path code,
+.inspector-output-path > :last-child {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 1080px) {
-  .round-workspace > .export-status-bar { grid-template-columns: minmax(180px, 1fr) auto; }
-  .round-workspace .output-button { width: 36px; padding: 0; overflow: hidden; color: transparent; gap: 0; }
-  .round-workspace .output-button svg { flex: none; color: var(--text-primary); }
-  .round-workspace .convert-button { min-width: 164px; }
+  .export-inspector.is-docked { flex-basis: 292px; width: 292px; }
 }
 
 .settings-modal.is-environment .settings-environment-pane > .diagnostic-empty {

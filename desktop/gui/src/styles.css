@@ -669,13 +669,11 @@ input[type="radio"] {
 
 /* Round workspace */
 .selection-layout {
-  display: block;
+  display: flex;
   flex: 1;
   min-width: 0;
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-width: none;
+  overflow: hidden;
 }
 
 .app-workspace .selection-layout {
@@ -690,16 +688,21 @@ input[type="radio"] {
 
 .round-workspace {
   display: grid;
-  grid-template-rows: auto auto auto;
+  flex: 1 1 auto;
+  grid-template-rows: auto;
   min-width: 0;
   min-height: 100%;
   align-content: start;
+  overflow-y: auto;
   background: var(--workspace);
+  scrollbar-width: none;
 }
+
+.round-workspace::-webkit-scrollbar { display: none; }
 
 .round-selection-panel {
   display: grid;
-  grid-template-rows: auto auto auto;
+  grid-template-rows: auto auto;
   min-width: 0;
   overflow: visible;
   container: round-selection / inline-size;
@@ -811,35 +814,10 @@ input[type="radio"] {
   vertical-align: middle;
 }
 
-.round-data-row.is-selection-locked .round-select-cell::before {
-  position: absolute;
-  top: 18px;
-  right: 3px;
-  width: 7px;
-  height: 6px;
-  content: "";
-  border: 1.5px solid var(--warning);
-  border-radius: 1px;
-}
-
-.round-data-row.is-selection-locked .round-select-cell::after {
-  position: absolute;
-  top: 14px;
-  right: 4.5px;
-  width: 4px;
-  height: 5px;
-  content: "";
-  border: 1.5px solid var(--warning);
-  border-bottom: 0;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-}
-
 .round-number-cell {
   color: var(--text-primary);
   font-weight: var(--weight-semibold);
 }
-
-.round-duration-cell { color: var(--text-secondary); }
 
 .export-status-bar {
   display: grid;
@@ -970,8 +948,7 @@ input[type="radio"] {
   gap: 10px;
 }
 
-.field-label,
-.choice-fieldset legend {
+.field-label {
   color: var(--text-secondary);
   font-size: var(--type-support);
   font-weight: var(--weight-semibold);
@@ -986,53 +963,14 @@ input[type="radio"] {
   min-width: 0;
 }
 
-.choice-fieldset {
-  min-width: 0;
-  margin: 18px 0 0;
-  padding: 0;
-  border: 0;
-}
-
-.choice-fieldset legend {
-  margin-bottom: var(--space-2);
-}
-
-.radio-choice {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  padding: var(--space-2) 6px;
-  gap: var(--space-2);
-  border-radius: var(--radius-sm);
-}
-
-.radio-choice:hover {
-  background: var(--surface-subtle);
-}
-
-.radio-choice.compact {
-  padding-block: 6px;
-}
-
-.radio-choice input {
-  width: 15px;
-  height: 15px;
-  margin: 2px 0 0;
-}
-
-.radio-choice span {
-  display: grid;
-}
-
-.radio-choice strong {
-  font-weight: var(--weight-semibold);
-}
-
-.radio-choice small,
 .setting-line small {
   margin-top: 2px;
   color: var(--text-tertiary);
   line-height: 17px;
 }
+
+.playback-range-control { margin-top: 18px; }
+.inspector-field-help { margin-top: 6px; padding-left: 84px; line-height: 17px; }
 
 .setting-line {
   display: grid;

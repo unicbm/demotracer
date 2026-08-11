@@ -6,7 +6,7 @@
 
 .single-task-panel {
   position: absolute;
-  z-index: 22;
+  z-index: 40;
   top: 10px;
   right: 10px;
   display: grid;
