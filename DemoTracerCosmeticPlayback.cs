@@ -267,7 +267,13 @@ public sealed partial class DemoTracerPlugin
         if (isActiveWeapon &&
             _session.ActiveWeaponCosmetics.TryGetValue(slot, out var applied) &&
             applied.WeaponDefIndex == normalized &&
-            applied.WeaponHandle == weaponHandle)
+            applied.WeaponHandle == weaponHandle &&
+            (!HasActiveBotRandomizerClaim(
+                 slot,
+                 replay.SteamId,
+                 DemoTracerCosmeticWriteField.WeaponPaint,
+                 normalized) ||
+             HasExpectedWeaponPaintState(weapon, cosmetic)))
         {
             return false;
         }
