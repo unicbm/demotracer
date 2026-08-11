@@ -421,8 +421,9 @@ mod demoparser_impl {
     use crate::model::{
         AvatarImageFormat, ParsedAvatarOverride, ParsedEconItem, ParsedGameEvent,
         ParsedInventoryWeaponAttribute, ParsedInventoryWeaponCosmetic, ParsedPlayerTick,
-        ParsedProjectile, ParsedScoreboardFlair, ParsedVoiceFrame, ParsedWeaponSticker,
-        ProjectileEffectSource, ProjectileKind, ReplayInputHistoryEntry, SubtickMove,
+        ParsedProjectile, ParsedScoreboardFlair, ParsedServerConVar, ParsedVoiceFrame,
+        ParsedWeaponSticker, ProjectileEffectSource, ProjectileKind, ReplayInputHistoryEntry,
+        SubtickMove,
     };
     use ahash::AHashMap;
     use parser::first_pass::parser_settings::{
@@ -1118,6 +1119,7 @@ mod demoparser_impl {
                 "player_death".to_string(),
                 "chat_message".to_string(),
                 "server_message".to_string(),
+                "server_cvar".to_string(),
                 "smokegrenade_detonate".to_string(),
                 "flashbang_detonate".to_string(),
                 "hegrenade_detonate".to_string(),
@@ -1435,6 +1437,7 @@ mod demoparser_impl {
         bomb_planted_ticks.sort_unstable();
         bomb_planted_ticks.dedup();
         let events = parse_game_events(&output.game_events);
+        let server_convars = parse_server_convars(&output.game_events);
         let projectiles =
             parse_projectile_records(&output.projectiles, tick_rate, &output.game_events);
         let mut voice_frames = Vec::new();
@@ -1497,6 +1500,7 @@ mod demoparser_impl {
             projectiles,
             voice_frames,
             events,
+            server_convars,
             avatar_overrides,
             econ_items,
         })
@@ -2004,6 +2008,7 @@ mod demoparser_impl {
             attacker_steam_id: event_field_u64(event, "attacker_steamid")
                 .or_else(|| event_field_u64(event, "attacker")),
             victim_steam_id: event_field_u64(event, "victim_steamid")
+                .or_else(|| event_field_u64(event, "user_steamid"))
                 .or_else(|| event_field_u64(event, "userid")),
             weapon_def_index: event_field_i32(event, "defindex")
                 .or_else(|| event_field_i32(event, "item_def_index"))
@@ -2019,10 +2024,29 @@ mod demoparser_impl {
             winner_side: (event.name == "round_end")
                 .then(|| event_winner_side(event))
                 .flatten(),
+            round_end_reason: (event.name == "round_end")
+                .then(|| event_field_string(event, "reason").map(normalize_round_end_reason))
+                .flatten(),
             chat_text,
             chat_scope,
             chat_message_name,
         })
+    }
+
+    fn parse_server_convars(events: &[GameEvent]) -> Vec<ParsedServerConVar> {
+        let mut values = events
+            .iter()
+            .filter(|event| event.name == "server_cvar")
+            .filter_map(|event| {
+                Some(ParsedServerConVar {
+                    tick: event.tick,
+                    name: event_field_string(event, "name")?,
+                    value: event_field_string(event, "value")?,
+                })
+            })
+            .collect::<Vec<_>>();
+        values.sort_by_key(|value| value.tick);
+        values
     }
 
     fn event_winner_side(event: &GameEvent) -> Option<u8> {
@@ -2038,6 +2062,35 @@ mod demoparser_impl {
             "3" | "ct" | "counterterrorist" | "counterterrorists" => Some(3),
             _ => None,
         }
+    }
+
+    fn normalize_round_end_reason(value: String) -> String {
+        let normalized = value.trim().to_ascii_lowercase();
+        match normalized.as_str() {
+            "0" => "still_in_progress",
+            "1" => "bomb_exploded",
+            "2" => "vip_escaped",
+            "3" => "vip_killed",
+            "4" => "t_saved",
+            "5" => "ct_stopped_escape",
+            "6" => "terrorists_stopped",
+            "7" => "bomb_defused",
+            "8" => "t_killed",
+            "9" => "ct_killed",
+            "10" => "draw",
+            "11" => "hostage_rescued",
+            "12" => "time_ran_out",
+            "13" => "hostages_not_rescued",
+            "14" => "terrorists_not_escaped",
+            "15" => "vip_not_escaped",
+            "16" => "game_start",
+            "17" => "t_surrender",
+            "18" => "ct_surrender",
+            "19" => "t_planted",
+            "20" => "ct_reached_hostage",
+            _ => normalized.as_str(),
+        }
+        .to_string()
     }
 
     fn normalize_chat_text(value: String) -> Option<String> {
@@ -3021,6 +3074,35 @@ mod demoparser_impl {
                 Some(3)
             );
             assert_eq!(event_winner_side(&round_end(Variant::I32(1))), None);
+        }
+
+        #[test]
+        fn player_death_uses_enriched_user_steamid_for_the_victim() {
+            use parser::second_pass::game_events::EventField;
+
+            let event = GameEvent {
+                name: "player_death".to_string(),
+                tick: 100,
+                fields: vec![
+                    EventField {
+                        name: "userid".to_string(),
+                        data: Some(Variant::I32(17)),
+                    },
+                    EventField {
+                        name: "user_steamid".to_string(),
+                        data: Some(Variant::String("76561198000000002".to_string())),
+                    },
+                    EventField {
+                        name: "attacker_steamid".to_string(),
+                        data: Some(Variant::String("76561198000000001".to_string())),
+                    },
+                ],
+            };
+
+            let parsed = parsed_game_event(&event).unwrap();
+
+            assert_eq!(parsed.attacker_steam_id, Some(76561198000000001));
+            assert_eq!(parsed.victim_steam_id, Some(76561198000000002));
         }
 
         #[test]

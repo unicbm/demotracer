@@ -35,7 +35,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-pub const DEFAULT_FREEZE_PREROLL_SECONDS: f32 = 10.0;
+// A generous internal ceiling lets export retain the complete freeze phase
+// observed in the demo. The actual pre-roll begins at the contiguous freeze
+// suffix connected to the live start, so this is a safety cap rather than a
+// fixed amount of padding.
+pub const DEFAULT_FREEZE_PREROLL_SECONDS: f32 = 120.0;
 const STEAM_ID64_BASE: u64 = 76_561_197_960_265_728;
 const KEYCHAIN_SLOT_0_ID_ATTR: u32 = 299;
 const KEYCHAIN_SLOT_0_OFFSET_X_ATTR: u32 = 300;
@@ -1505,19 +1509,41 @@ fn recording_start_tick_for_round(
         return live_start_tick;
     }
     let floor_tick = live_start_tick.saturating_sub(cap_ticks);
-    round_rows
-        .iter()
-        .copied()
-        .filter(|row| {
-            row.tick >= floor_tick
-                && row.tick < live_start_tick
-                && row.is_freeze_period
-                && row.is_alive
-                && row.steam_id != 0
-                && matches!(row.team_num, 2 | 3)
-        })
-        .map(|row| row.tick)
-        .min()
+    let mut ticks_by_player = BTreeMap::<u64, BTreeSet<i32>>::new();
+    for row in round_rows.iter().copied().filter(|row| {
+        row.tick >= floor_tick
+            && row.tick <= live_start_tick
+            && (row.tick == live_start_tick || row.is_freeze_period)
+            && row.is_alive
+            && row.steam_id != 0
+            && matches!(row.team_num, 2 | 3)
+    }) {
+        ticks_by_player
+            .entry(row.steam_id)
+            .or_default()
+            .insert(row.tick);
+    }
+
+    let mut common_start_tick = floor_tick;
+    let mut found_live_player = false;
+    for ticks in ticks_by_player.values() {
+        if !ticks.contains(&live_start_tick) {
+            // A freeze-only player would otherwise create an isolated replay
+            // fragment. Dropping pre-roll for this round is safer than
+            // synthesizing across a missing interval.
+            return live_start_tick;
+        }
+        found_live_player = true;
+        let mut player_start_tick = live_start_tick;
+        while player_start_tick > floor_tick && ticks.contains(&player_start_tick.saturating_sub(1))
+        {
+            player_start_tick = player_start_tick.saturating_sub(1);
+        }
+        common_start_tick = common_start_tick.max(player_start_tick);
+    }
+
+    found_live_player
+        .then_some(common_start_tick)
         .unwrap_or(live_start_tick)
 }
 
@@ -5296,6 +5322,24 @@ mod tests {
     }
 
     #[test]
+    fn freeze_preroll_uses_only_the_contiguous_suffix_before_live_start() {
+        let mut rows = Vec::new();
+        for tick in 100..=199 {
+            rows.push(freeze_row(tick));
+        }
+        for tick in 400..600 {
+            rows.push(freeze_row(tick));
+        }
+        rows.push(sample_row(600));
+        let row_refs = rows.iter().collect::<Vec<_>>();
+
+        assert_eq!(
+            recording_start_tick_for_round(&row_refs, 64.0, 600, DEFAULT_FREEZE_PREROLL_SECONDS,),
+            400
+        );
+    }
+
+    #[test]
     fn export_caps_freeze_preroll_before_pause_tail() {
         let mut parsed = sample_demo();
         parsed.rows = vec![
@@ -5817,6 +5861,7 @@ mod tests {
             projectiles: Vec::new(),
             voice_frames: Vec::new(),
             events: Vec::new(),
+            server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
         };
