@@ -17,7 +17,7 @@ import {
   resolveStickerCatalog,
   type CosmeticCatalogEntry,
 } from "../cosmeticCatalog";
-import { ArrowIcon, CheckIcon, CloseIcon, CopyIcon, ExternalLinkIcon, PlusIcon, ReplayIcon } from "../icons";
+import { CheckIcon, CloseIcon, CopyIcon, ExternalLinkIcon, PlusIcon, ReplayIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
 import {
   INVENTORY_SIMULATOR_BATCH_LIMIT,
@@ -808,7 +808,7 @@ export function PlayerDossier({
   );
 }
 
-type RosterStatKey = "kda" | "adr" | "kd" | "kpr" | "headshots" | "hs" | "mvps";
+type RosterStatKey = "kills" | "deaths" | "assists" | "adr" | "kd" | "kpr" | "headshots" | "hs" | "mvps";
 
 export function RosterTeam<T extends RosterPlayer>({
   teamId,
@@ -838,9 +838,9 @@ export function RosterTeam<T extends RosterPlayer>({
     const rounds = player.details?.statsRounds ?? matchRounds;
     const validRounds = rounds !== null && rounds !== undefined && rounds > 0 ? rounds : null;
     return {
-      kda: !hasValue(kills) && !hasValue(deaths) && !hasValue(assists)
-        ? null
-        : `${stat(kills)} / ${stat(deaths)} / ${stat(assists)}`,
+      kills: hasValue(kills) ? stat(kills) : null,
+      deaths: hasValue(deaths) ? stat(deaths) : null,
+      assists: hasValue(assists) ? stat(assists) : null,
       adr: hasValue(totalDamage) && validRounds !== null
         ? (totalDamage / validRounds).toFixed(1)
         : null,
@@ -858,7 +858,9 @@ export function RosterTeam<T extends RosterPlayer>({
     };
   });
   const allColumns: Array<{ key: RosterStatKey; label: string; width: string }> = [
-    { key: "kda", label: words.kda, width: "minmax(70px, .9fr)" },
+    { key: "kills", label: "K", width: "minmax(24px, .32fr)" },
+    { key: "deaths", label: "D", width: "minmax(24px, .32fr)" },
+    { key: "assists", label: "A", width: "minmax(24px, .32fr)" },
     { key: "adr", label: words.adr, width: "minmax(36px, .48fr)" },
     { key: "kd", label: words.kd, width: "minmax(36px, .46fr)" },
     { key: "kpr", label: "KPR", width: "minmax(40px, .5fr)" },
@@ -867,7 +869,7 @@ export function RosterTeam<T extends RosterPlayer>({
     { key: "mvps", label: "MVP", width: "minmax(34px, .42fr)" },
   ];
   const columns = allColumns.filter((column) => playerStats.some((values) => values[column.key] !== null));
-  const gridTemplateColumns = `minmax(160px, 1.45fr) ${columns.map((column) => column.width).join(" ")} 12px`;
+  const gridTemplateColumns = `minmax(160px, 1.45fr) ${columns.map((column) => column.width).join(" ")}`;
   const openPlayerMenu = (
     event: ReactMouseEvent,
     player: T,
@@ -915,7 +917,6 @@ export function RosterTeam<T extends RosterPlayer>({
         <div className="archive-roster-stat-head" style={{ gridTemplateColumns }} aria-hidden="true">
           <span>{words.playerColumn}</span>
           {columns.map((column) => <span key={column.key}>{column.label}</span>)}
-          <span />
         </div>
       </div>
       <ul>
@@ -964,13 +965,13 @@ export function RosterTeam<T extends RosterPlayer>({
                   steamId={player.steamId}
                   playerColor={player.playerColor}
                   size="compact"
+                  showAlias={false}
                 />
                 {columns.map((column) => (
                   <span className={`archive-roster-stat is-${column.key}`} key={column.key}>
                     {values[column.key] ?? "—"}
                   </span>
                 ))}
-                <ArrowIcon size={13} />
               </button>
             </li>
           );

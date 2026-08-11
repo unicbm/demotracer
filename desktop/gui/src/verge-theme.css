@@ -638,6 +638,7 @@ textarea {
   border-radius: var(--radius-md);
   font-size: var(--type-label);
   font-weight: var(--weight-semibold);
+  text-align: left;
   box-shadow: 0 3px 12px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
@@ -1402,18 +1403,12 @@ textarea {
 
 .analysis-stat,
 .round-summary-item,
-.playback-option,
 .result-path-row,
 .command-box,
 .activity-log,
 .output-root-readout,
 .result-details {
   border-radius: var(--radius-md);
-}
-
-.playback-option.is-selected {
-  background: var(--selected-row);
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--divider));
 }
 
 .background-task-strip {

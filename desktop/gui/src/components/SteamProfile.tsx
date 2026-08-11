@@ -196,6 +196,7 @@ export function SteamPlayerIdentity({
   playerColor,
   size = "normal",
   className = "",
+  showAlias = true,
 }: {
   profile?: SteamProfile;
   demoName: string;
@@ -203,8 +204,9 @@ export function SteamPlayerIdentity({
   playerColor?: string | null;
   size?: "compact" | "normal" | "hero" | "large" | "profile";
   className?: string;
+  showAlias?: boolean;
 }) {
-  const alias = currentSteamAlias(profile, demoName);
+  const alias = showAlias ? currentSteamAlias(profile, demoName) : null;
   return (
     <span className={`steam-player-identity ${className}`.trim()} title={`SteamID ${steamId}`}>
       <SteamAvatar profile={profile} fallbackName={demoName} playerColor={playerColor} size={size} />

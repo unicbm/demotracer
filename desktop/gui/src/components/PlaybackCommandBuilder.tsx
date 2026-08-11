@@ -4,6 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { Button, Group, SegmentedControl, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
 import { CheckIcon, CopyIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
 import type { ConversionSummary, FriendlyFireSummary } from "../types";
@@ -54,13 +55,12 @@ function PlaybackOption({
   onChange,
 }: SwitchControlProps & { description: string }) {
   return (
-    <div className={`playback-option${disabled ? " is-disabled" : ""}`} title={description}>
-      <span>
-        <strong>{label}</strong>
-        <small>{description}</small>
-      </span>
-      <SwitchControl checked={checked} disabled={disabled} label={label} onChange={onChange} />
-    </div>
+    <Tooltip label={description} openDelay={450} position="top" withArrow>
+      <Group justify="space-between" wrap="nowrap" gap="xs" px="xs" py={6} opacity={disabled ? 0.5 : 1}>
+        <Text span size="sm" fw={600} c="var(--text-secondary)" truncate>{label}</Text>
+        <SwitchControl checked={checked} disabled={disabled} label={label} onChange={onChange} />
+      </Group>
+    </Tooltip>
   );
 }
 
@@ -135,30 +135,22 @@ export function PlaybackCommandBuilder({
             <code>Preset {formatPlaybackPreset(mask)}</code>
           </div>
           {result.rounds.length > 1 ? (
-            <div className="playback-mode-tabs" role="group" aria-label={words.playDemoMode}>
-              <button
-                className={sequenceMode ? "is-selected" : ""}
-                type="button"
-                aria-pressed={sequenceMode}
-                disabled={sequenceDisabled}
-                title={sequenceDisabled ? words.sequenceUnavailable : undefined}
-                onClick={() => onCommandModeChange("sequence")}
-              >
-                {words.sequenceMode}
-              </button>
-              <button
-                className={!sequenceMode ? "is-selected" : ""}
-                type="button"
-                aria-pressed={!sequenceMode}
-                onClick={() => onCommandModeChange("round")}
-              >
-                {words.roundMode}
-              </button>
-            </div>
+            <Tooltip label={words.sequenceUnavailable} disabled={!sequenceDisabled} position="top" withArrow>
+              <SegmentedControl<CommandMode>
+                aria-label={words.playDemoMode}
+                data={[
+                  { value: "sequence", label: words.sequenceMode, disabled: sequenceDisabled },
+                  { value: "round", label: words.roundMode },
+                ]}
+                value={effectiveCommandMode}
+                size="sm"
+                onChange={onCommandModeChange}
+              />
+            </Tooltip>
           ) : null}
         </header>
 
-        <div className="playback-option-grid" role="group" aria-label={words.playbackOptions}>
+        <SimpleGrid minColWidth={150} spacing="md" verticalSpacing="xs" p="sm" role="group" aria-label={words.playbackOptions}>
           <PlaybackOption
             checked={weapons}
             label={words.syncWeapons}
@@ -195,25 +187,27 @@ export function PlaybackCommandBuilder({
               : { avatar: false })}
           />
           <PlaybackOption checked={playoff} disabled={!sequenceMode} label={words.playoffBeta} description={words.playoffHelp} onChange={(checked) => onOptionsChange({ playoff: checked })} />
-          <div className="playback-option">
-            <span>
-              <strong>{words.friendlyFirePlayback}</strong>
-              <small>{friendlyFireDescription}</small>
-            </span>
-            <div className="playback-option-control">
+          <Tooltip label={friendlyFireDescription} openDelay={450} position="top" withArrow>
+            <Group justify="space-between" wrap="nowrap" gap="xs" px="xs" py={4}>
+              <Stack gap={0}>
+                <Text span size="sm" fw={600} c="var(--text-secondary)">{words.friendlyFirePlayback}</Text>
+                <Text span size="xs" c="var(--text-tertiary)">{friendlyFireDescription}</Text>
+              </Stack>
+              <Group wrap="nowrap" gap={4}>
               {options.friendlyFire !== "auto" ? (
-                <button className="text-button" type="button" onClick={() => onOptionsChange({ friendlyFire: "auto" })}>
+                <Button variant="subtle" size="compact-xs" onClick={() => onOptionsChange({ friendlyFire: "auto" })}>
                   {words.friendlyFireUseDemo}
-                </button>
+                </Button>
               ) : null}
               <SwitchControl
                 checked={effectiveFriendlyFire ?? false}
                 label={words.friendlyFirePlayback}
                 onChange={(checked) => onOptionsChange({ friendlyFire: checked ? "on" : "off" })}
               />
-            </div>
-          </div>
-        </div>
+              </Group>
+            </Group>
+          </Tooltip>
+        </SimpleGrid>
 
       </section>
     </section>

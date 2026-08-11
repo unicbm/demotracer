@@ -6,7 +6,7 @@
 
 import { useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
 import steamMarkUrl from "../assets/steam-mark.svg";
-import { ArrowIcon, CheckIcon, CopyIcon } from "../icons";
+import { CheckIcon, CopyIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
 import type { InventorySimulatorSelectionController } from "../inventorySimulatorSelection";
 import { resolveProfessionalPlayer } from "../professionalPlayers";
@@ -22,6 +22,7 @@ import {
 } from "./PlayerRoster";
 import type { CopyTarget } from "./TaskViews";
 import { currentSteamAlias, demoPlayerColorValue, SteamAvatar, type SteamProfileMap } from "./SteamProfile";
+import { WorkspaceBackButton } from "./WorkspaceBackButton";
 import "flag-icons/css/flag-icons.min.css";
 import "./archive-workspace.css";
 import "./player-analysis.css";
@@ -121,10 +122,7 @@ export function PlayerAnalysisWorkspace({
     return (
       <section className="player-analysis-workspace" aria-labelledby="player-analysis-title">
         <header className="player-analysis-toolbar">
-          <button className="player-analysis-back" type="button" onClick={onBack}>
-            <ArrowIcon size={16} />
-            <span>{words.backToMatch}</span>
-          </button>
+          <WorkspaceBackButton label={words.backToMatch} onClick={onBack} />
           <div>
             <span>{words.playerAnalysis}</span>
             <strong>{words.playerAnalysisUnavailable}</strong>
@@ -177,10 +175,7 @@ export function PlayerAnalysisWorkspace({
         : undefined}
     >
       <header className="player-analysis-toolbar">
-        <button className="player-analysis-back" type="button" onClick={onBack}>
-          <ArrowIcon size={16} />
-          <span>{words.backToMatch}</span>
-        </button>
+        <WorkspaceBackButton label={words.backToMatch} onClick={onBack} />
         <div>
           <span>{words.matchRoster}</span>
           <strong>{words.playerAnalysis}</strong>

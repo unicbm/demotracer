@@ -1330,37 +1330,6 @@ input[type="radio"] {
   justify-content: center;
 }
 
-.playback-mode-tabs {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px;
-  gap: 2px;
-  background: var(--surface-subtle);
-  border: 1px solid var(--divider);
-  border-radius: var(--radius-sm);
-}
-
-.playback-mode-tabs button {
-  min-height: 28px;
-  padding: 0 10px;
-  color: var(--text-tertiary);
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-sm);
-  font-size: var(--type-tiny);
-  font-weight: var(--weight-semibold);
-}
-
-.playback-mode-tabs button:hover:not(:disabled) { color: var(--text-primary); }
-
-.playback-mode-tabs button.is-selected {
-  color: var(--text-primary);
-  background: var(--surface-raised);
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--text-primary) 10%, transparent);
-}
-
-.playback-mode-tabs button:disabled { color: var(--text-disabled); }
-
 .playback-config {
   overflow: hidden;
   background: transparent;
@@ -1396,63 +1365,6 @@ input[type="radio"] {
   color: var(--text-tertiary);
   font-size: var(--type-caption);
 }
-
-.playback-option-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  padding: 0;
-  gap: 0;
-}
-
-.playback-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 56px;
-  padding: var(--space-2) 10px;
-  gap: var(--space-3);
-  background: transparent;
-  border: 0;
-  border-right: 1px solid var(--divider);
-  border-bottom: 1px solid var(--divider);
-  border-radius: 0;
-}
-
-.playback-option > span {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.playback-option strong {
-  color: var(--text-secondary);
-  font-size: var(--type-tiny);
-  font-weight: var(--weight-medium);
-}
-
-.playback-option small {
-  color: var(--text-tertiary);
-  font-size: var(--type-caption);
-  font-weight: var(--weight-regular);
-  line-height: 13px;
-}
-
-.playback-option .app-switch { flex: none; }
-
-.playback-option-control {
-  display: flex;
-  align-items: center;
-  flex: none;
-  gap: 7px;
-}
-
-.playback-option-control .text-button {
-  min-height: 26px;
-  padding-inline: 5px;
-  font-size: var(--type-caption);
-}
-
-.playback-option.is-disabled { opacity: 0.52; }
 
 .playback-advanced {
   border-top: 0;

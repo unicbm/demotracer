@@ -5,7 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useEffect, useState } from "react";
-import { AlertIcon, ArrowIcon, CheckIcon, ChevronIcon, FolderIcon, RefreshIcon } from "../icons";
+import { AlertIcon, CheckIcon, ChevronIcon, FolderIcon, RefreshIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
 import type { InventorySimulatorItem } from "../inventorySimulator";
 import { useInventorySimulatorSelection } from "../inventorySimulatorSelection";
@@ -26,6 +26,7 @@ import { PlayerAnalysisWorkspace, type PlayerAnalysisTeam } from "./PlayerAnalys
 import { RosterTeam, type PlayerSelection } from "./PlayerRoster";
 import { SteamAvatar, teamRepresentative, useSteamProfiles } from "./SteamProfile";
 import type { CommandMode, CopyTarget } from "./TaskViews";
+import { WorkspaceBackButton } from "./WorkspaceBackButton";
 import "./archive-workspace.css";
 
 interface ArchiveWorkspaceProps {
@@ -352,10 +353,7 @@ export function ArchiveWorkspace({
     <section className="archive-workspace" aria-label={archiveTitle} style={mapArtworkStyle(archive.map)}>
       <header className="archive-toolbar">
         <div className="archive-toolbar-context">
-          <button className="archive-library-back" type="button" onClick={onBackToLibrary}>
-            <ArrowIcon size={15} />
-            <span>{words.backToLibrary}</span>
-          </button>
+          <WorkspaceBackButton label={words.backToLibrary} onClick={onBackToLibrary} />
           {seriesEntries.length > 1 ? (
             <nav className="archive-series-switcher" aria-label={words.seriesMapNavigation}>
               {seriesEntries.map((entry) => {
@@ -438,13 +436,7 @@ export function ArchiveWorkspace({
       </section>
 
       {rosterPlayers.length > 0 ? (
-        <section className="archive-roster" aria-labelledby="archive-roster-title">
-          <header className="archive-roster-heading">
-            <span>
-              <strong id="archive-roster-title">{words.matchRoster}</strong>
-            </span>
-            <b>{words.rosterPlayerCount.replace("{count}", String(rosterPlayers.length))}</b>
-          </header>
+        <section className="archive-roster" aria-label={words.matchRoster}>
           <div className="archive-roster-grid">
             <RosterTeam teamId="a" name={teamAName} players={teamARoster} words={words} metaLabel={teamAOpeningSide === "t" ? words.startsAsT : teamAOpeningSide === "ct" ? words.startsAsCt : undefined} matchRounds={matchRounds} steamProfiles={steamProfiles} retentionPriority={canPrioritizeReplayRoster(teamASteamIds)} onSetPlayerPriority={(playerIndex, priority) => setRetentionPriority("a", playerIndex, priority)} onSelectPlayer={onSelectPlayer} onCopy={onCopy} onOpenExternal={onOpenExternal} />
             <RosterTeam teamId="b" name={teamBName} players={teamBRoster} words={words} metaLabel={teamBOpeningSide === "t" ? words.startsAsT : teamBOpeningSide === "ct" ? words.startsAsCt : undefined} matchRounds={matchRounds} className="is-team-b" steamProfiles={steamProfiles} retentionPriority={canPrioritizeReplayRoster(teamBSteamIds)} onSetPlayerPriority={(playerIndex, priority) => setRetentionPriority("b", playerIndex, priority)} onSelectPlayer={onSelectPlayer} onCopy={onCopy} onOpenExternal={onOpenExternal} />

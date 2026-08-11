@@ -42,29 +42,6 @@
   gap: 14px;
 }
 
-.archive-library-back {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 9px;
-  gap: 7px;
-  color: var(--text-secondary);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  font-size: var(--type-micro);
-  font-weight: var(--weight-semibold);
-}
-
-.archive-library-back svg { transform: rotate(180deg); }
-
-.archive-library-back:hover {
-  color: var(--text-primary);
-  background: var(--surface-subtle);
-  border-color: var(--divider-strong);
-}
-
 .archive-series-switcher {
   display: inline-flex;
   flex: 0 1 auto;
@@ -470,43 +447,6 @@
   container-type: inline-size;
 }
 
-.archive-roster-heading {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  min-height: 42px;
-  padding: 7px 18px;
-  gap: 10px;
-}
-
-.archive-roster-heading > span {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 9px;
-}
-
-.archive-roster-heading strong {
-  flex: none;
-  color: var(--text-primary);
-  font-size: var(--type-body);
-  font-weight: var(--weight-bold);
-}
-
-.archive-roster-heading small {
-  overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: var(--type-support);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.archive-roster-heading > b {
-  color: var(--text-secondary);
-  font-size: var(--type-support);
-  font-weight: var(--weight-semibold);
-}
-
 .archive-roster-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -680,19 +620,11 @@
   overflow: hidden;
   color: var(--text-primary);
   font-size: var(--type-support);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-bold);
   line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.roster-player-summary > svg {
-  flex: none;
-  color: var(--text-tertiary);
-  transition: transform 120ms ease;
-}
-
-.roster-player.is-expanded .roster-player-summary > svg { transform: rotate(180deg); }
 
 .archive-roster-stat {
   min-width: 0;
@@ -708,7 +640,9 @@
   white-space: nowrap;
 }
 
-.archive-roster-stat.is-kda { color: var(--text-primary); font-weight: var(--weight-bold); }
+.archive-roster-stat.is-kills,
+.archive-roster-stat.is-deaths,
+.archive-roster-stat.is-assists { color: var(--text-primary); font-weight: var(--weight-bold); }
 
 .archive-roster-stat.is-hs { font-size: inherit; }
 
@@ -1388,7 +1322,7 @@
 
 .archive-round-pane {
   display: grid;
-  grid-template-rows: auto auto;
+  grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   border-right: 1px solid var(--divider-strong);
 }
@@ -1420,10 +1354,15 @@
   display: grid;
   align-content: start;
   min-width: 0;
+  max-height: clamp(300px, 42vh, 420px);
   padding: 0 var(--space-3) var(--space-2);
   gap: 0;
-  overflow: visible;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
 }
+
+.archive-round-list::-webkit-scrollbar { display: none; }
 
 .archive-round-option {
   display: grid;
@@ -1620,8 +1559,6 @@
 }
 
 .archive-toolbar-context { gap: 9px; }
-.archive-library-back { min-height: 30px; padding: 0 7px; font-size: var(--type-tiny); }
-.archive-library-back:hover { background: var(--surface-subtle); }
 .archive-note-panel { min-height: 34px; padding: 3px 13px; background: var(--surface-subtle); }
 
 .archive-match-hero {
@@ -1647,9 +1584,6 @@
 .archive-match-facts dd { font-size: var(--type-tiny); font-weight: var(--weight-semibold); }
 
 .archive-roster { background: var(--surface-raised); border-bottom-color: var(--divider); }
-.archive-roster-heading { min-height: 34px; padding: 5px 13px; }
-.archive-roster-heading strong { font-size: var(--type-body); font-weight: var(--weight-bold); letter-spacing: -.01em; }
-.archive-roster-heading > b { font-size: var(--type-tiny); font-weight: var(--weight-medium); }
 .archive-roster-grid { padding: 0 13px 9px; }
 .archive-roster-team { padding-top: 7px; }
 .archive-roster-team > header > div strong { font-size: var(--type-support); font-weight: var(--weight-semibold); }
@@ -1670,7 +1604,7 @@
 .archive-round-pane { background: transparent; border-right-color: var(--divider); }
 .archive-pane-heading { min-height: 40px; padding: 0 var(--space-3); }
 .archive-pane-heading h2 { font-size: var(--type-label); font-weight: var(--weight-bold); letter-spacing: -.01em; }
-.archive-round-option { min-height: 42px; border-radius: 0; }
+.archive-round-option { min-height: 36px; border-radius: 0; }
 .archive-playback-pane { padding: 0; background: transparent; }
 
 .archive-no-playable .archive-issues { width: 100%; }
@@ -1730,8 +1664,6 @@
   .archive-match-summary { padding-inline: 14px; }
   .archive-score-team strong { font-size: var(--type-support); }
   .archive-score-numbers b { font-size: var(--type-title); }
-  .archive-roster-heading { padding-inline: 14px; }
-  .archive-roster-heading small { display: none; }
   .archive-roster-grid { grid-template-columns: 1fr; padding-inline: 14px; }
   .archive-roster-team,
   .archive-roster-team.is-team-b { padding: 10px 0 0; border-left: 0; }
@@ -1742,8 +1674,7 @@
   .playback-command-line { grid-template-columns: 1fr; }
   .playback-command-line .primary-button { width: 100%; }
   .playback-config-heading { align-items: flex-start; flex-direction: column; }
-  .playback-option-grid,
-  .playback-override-grid { grid-template-columns: 1fr; padding: 7px; gap: 7px; }
+  .playback-override-grid { grid-template-columns: 1fr; padding: 0; gap: 0; }
   .playback-select-option { grid-template-columns: minmax(0, 1fr) minmax(112px, auto); }
 }
 
@@ -1754,7 +1685,6 @@
     gap: 18px;
   }
 
-  .archive-back-button { min-height: 38px; padding-inline: 10px; font-size: var(--type-support); }
   .archive-toolbar-title > span { font-size: var(--type-tiny); line-height: 15px; }
   .archive-toolbar-title h1 { font-size: var(--type-section-large); line-height: 22px; }
   .archive-toolbar-actions .quiet-button { min-height: 38px; font-size: var(--type-support); }
@@ -1779,9 +1709,6 @@
   .archive-match-facts dt { font-size: var(--type-tiny); }
   .archive-match-facts dd { font-size: var(--type-label); }
 
-  .archive-roster-heading { min-height: 48px; padding: var(--space-2) 22px; }
-  .archive-roster-heading strong { font-size: var(--type-section-large); }
-  .archive-roster-heading > b { font-size: var(--type-label); }
   .archive-roster-grid { padding: 0 22px 15px; }
   .archive-roster-team { padding: var(--space-3) 18px 0 0; }
   .archive-roster-team.is-team-b { padding-right: 0; padding-left: 18px; }
@@ -1803,7 +1730,7 @@
   .archive-round-list { padding-inline: 14px; }
   .archive-round-option {
     grid-template-columns: 48px 60px minmax(90px, 1fr) 20px;
-    min-height: 44px;
+    min-height: 38px;
     padding-inline: 9px;
     gap: 9px;
   }
@@ -1819,10 +1746,6 @@
   .playback-config-heading { min-height: 52px; padding-inline: 15px 12px; }
   .playback-config-heading strong { font-size: var(--type-support); }
   .playback-config-heading code { font-size: var(--type-tiny); }
-  .playback-option-grid { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); padding: 10px; gap: var(--space-2); }
-  .playback-option { min-height: 64px; padding: 10px var(--space-3); }
-  .playback-option strong { font-size: var(--type-support); }
-  .playback-option small { font-size: var(--type-tiny); line-height: 15px; }
   .playback-advanced > summary { min-height: 44px; padding-inline: 15px; }
   .playback-advanced > summary strong { font-size: var(--type-tiny); }
 }

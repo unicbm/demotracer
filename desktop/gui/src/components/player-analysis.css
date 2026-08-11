@@ -29,29 +29,6 @@
   border-bottom: 1px solid var(--divider-strong);
 }
 
-.player-analysis-back {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 10px 0 var(--space-2);
-  gap: 7px;
-  color: var(--text-secondary);
-  background: transparent;
-  border: 1px solid var(--divider);
-  border-radius: var(--radius-xs);
-  font-size: var(--type-support);
-  font-weight: var(--weight-semibold);
-}
-
-.player-analysis-back svg { transform: rotate(180deg); }
-
-.player-analysis-back:hover {
-  color: var(--text-primary);
-  background: var(--surface-subtle);
-  border-color: var(--divider-strong);
-}
-
 .player-analysis-toolbar > div {
   display: grid;
   min-width: 0;
