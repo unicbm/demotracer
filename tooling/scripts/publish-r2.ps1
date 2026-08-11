@@ -128,7 +128,7 @@ if (-not [System.StringComparer]::OrdinalIgnoreCase.Equals([string]$latest.playb
 
 $wrangler = "wrangler@$WranglerVersion"
 Invoke-Checked "npx.cmd" @("--yes", $wrangler, "whoami", "--json")
-Invoke-Checked "npx.cmd" @("--yes", $wrangler, "r2", "bucket", "info", $Bucket)
+Invoke-Checked "npx.cmd" @("--yes", $wrangler, "r2", "bucket", "info", $Bucket, "--json")
 
 foreach ($name in $required) {
     $path = Join-Path $UpdaterRoot $name
