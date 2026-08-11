@@ -127,7 +127,7 @@ if (-not [System.StringComparer]::OrdinalIgnoreCase.Equals([string]$latest.playb
 }
 
 $wrangler = "wrangler@$WranglerVersion"
-Invoke-Checked "npx.cmd" @("--yes", $wrangler, "whoami")
+Invoke-Checked "npx.cmd" @("--yes", $wrangler, "whoami", "--json")
 Invoke-Checked "npx.cmd" @("--yes", $wrangler, "r2", "bucket", "info", $Bucket)
 
 foreach ($name in $required) {
