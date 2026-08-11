@@ -98,7 +98,24 @@ export interface AnalysisResult {
   converterVersion: string;
   players: AnalysisPlayerSummary[];
   score?: MatchScoreSummary | null;
+  roundOutcomes?: RoundOutcome[];
+  friendlyFire?: FriendlyFireSummary | null;
   rounds: RoundInfo[];
+}
+
+export interface RoundOutcome {
+  round: number;
+  tick: number;
+  winnerSide: number;
+  winnerTeam: "a" | "b" | string;
+  reason?: string | null;
+}
+
+export interface FriendlyFireSummary {
+  enabled?: boolean | null;
+  evidence: "serverConVar" | "serverConVarChanged" | "observedDamage" | "conflictingEvidence" | "unavailable" | string;
+  damageEvents: number;
+  damage: number;
 }
 
 export interface MatchTeamScore {
@@ -146,6 +163,12 @@ export interface PlayerDetails {
   headshotKills?: number | null;
   totalDamage?: number | null;
   statsRounds?: number | null;
+  firstKills?: number | null;
+  firstDeaths?: number | null;
+  twoKRounds?: number | null;
+  threeKRounds?: number | null;
+  fourKRounds?: number | null;
+  fiveKRounds?: number | null;
   crosshairCodes?: string[];
   viewmodels?: ViewmodelEvidence[];
   cosmetics?: CosmeticEvidence[];
@@ -458,6 +481,8 @@ export interface ManifestArchive {
   demoVersionName?: string | null;
   demoSource?: DemoSource | null;
   score?: MatchScoreSummary | null;
+  roundOutcomes?: RoundOutcome[];
+  friendlyFire?: FriendlyFireSummary | null;
   converterVersion?: string | null;
 }
 

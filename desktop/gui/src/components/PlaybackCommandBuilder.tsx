@@ -6,45 +6,22 @@
 
 import { CheckIcon, CopyIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
-import type { ConversionSummary } from "../types";
-
-export interface PlaybackPresetOptions {
-  weapons: boolean;
-  cosmetics: boolean;
-  steamIdentity: boolean;
-  avatar: boolean;
-  voice: boolean;
-  playoff: boolean;
-  projectileAlignment: PlaybackToggleOverride;
-  crosshairAlignment: PlaybackToggleOverride;
-  leftHandAlignment: PlaybackToggleOverride;
-  matchPresentation: PlaybackMatchOverride;
-  allowPartial: PlaybackToggleOverride;
-  handoffMode: PlaybackHandoffMode;
-  handoffScope: "slot" | "all";
-  threat360: PlaybackToggleOverride;
-  threat360Range: number;
-  threat360Los: boolean;
-}
-
-export type PlaybackToggleOverride = "on" | "off";
-export type PlaybackMatchOverride = "off" | "scoreboard";
-export type PlaybackHandoffMode = "off" | "death" | "contact" | "death_or_contact" | "death_contact_c4";
-
-type PlaybackAdvancedOptions = Omit<PlaybackPresetOptions, "weapons" | "cosmetics" | "steamIdentity" | "avatar" | "voice" | "playoff">;
-
-export const DEFAULT_PLAYBACK_ADVANCED_OPTIONS: PlaybackAdvancedOptions = {
-  projectileAlignment: "on",
-  crosshairAlignment: "on",
-  leftHandAlignment: "on",
-  matchPresentation: "off",
-  allowPartial: "on",
-  handoffMode: "death_contact_c4",
-  handoffScope: "slot",
-  threat360: "on",
-  threat360Range: 420,
-  threat360Los: true,
-};
+import type { ConversionSummary, FriendlyFireSummary } from "../types";
+import { SwitchControl, type SwitchControlProps } from "./SwitchControl";
+import {
+  buildPlaybackCommand,
+  formatPlaybackPreset,
+  type PlaybackPresetOptions,
+} from "../playbackCommand";
+export {
+  buildPlaybackCommand,
+  DEFAULT_PLAYBACK_ADVANCED_OPTIONS,
+  type PlaybackFriendlyFireOverride,
+  type PlaybackHandoffMode,
+  type PlaybackMatchOverride,
+  type PlaybackPresetOptions,
+  type PlaybackToggleOverride,
+} from "../playbackCommand";
 
 type CommandMode = "sequence" | "round";
 
@@ -55,6 +32,7 @@ interface PlaybackCommandBuilderProps {
   commandMode: CommandMode;
   sequenceDisabled?: boolean;
   retentionCommand?: string | null;
+  friendlyFire?: FriendlyFireSummary | null;
   copied: boolean;
   onOptionsChange: (patch: Partial<PlaybackPresetOptions>) => void;
   onCommandModeChange: (mode: CommandMode) => void;
@@ -68,29 +46,6 @@ const PRESET_AVATAR = 0x08;
 const PRESET_VOICE = 0x10;
 const PRESET_PLAYOFF = 0x20;
 
-interface SwitchControlProps {
-  checked: boolean;
-  disabled?: boolean;
-  label: string;
-  onChange: (checked: boolean) => void;
-}
-
-function SwitchControl({ checked, disabled = false, label, onChange }: SwitchControlProps) {
-  return (
-    <button
-      className="switch-control"
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-    >
-      <span />
-    </button>
-  );
-}
-
 function PlaybackOption({
   checked,
   disabled,
@@ -99,7 +54,7 @@ function PlaybackOption({
   onChange,
 }: SwitchControlProps & { description: string }) {
   return (
-    <div className={`playback-option${disabled ? " is-disabled" : ""}`}>
+    <div className={`playback-option${disabled ? " is-disabled" : ""}`} title={description}>
       <span>
         <strong>{label}</strong>
         <small>{description}</small>
@@ -109,37 +64,6 @@ function PlaybackOption({
   );
 }
 
-function formatPreset(mask: number): string {
-  return `0x${mask.toString(16).toUpperCase().padStart(2, "0")}`;
-}
-
-export function buildPlaybackCommand(
-  goCommand: string,
-  mask: number,
-  options: PlaybackPresetOptions,
-  retentionCommand?: string | null,
-): string {
-  const defaults = DEFAULT_PLAYBACK_ADVANCED_OPTIONS;
-  const commands = [`dtr_preset ${formatPreset(mask)}`];
-  if (options.projectileAlignment !== defaults.projectileAlignment) commands.push(`dtr_align projectiles ${options.projectileAlignment}`);
-  if (options.crosshairAlignment !== defaults.crosshairAlignment) commands.push(`dtr_align crosshair ${options.crosshairAlignment}`);
-  if (options.leftHandAlignment !== defaults.leftHandAlignment) commands.push(`dtr_align left_hand ${options.leftHandAlignment}`);
-  if (options.matchPresentation !== defaults.matchPresentation) commands.push(`dtr_match ${options.matchPresentation}`);
-  if (options.allowPartial !== defaults.allowPartial) commands.push(`dtr_partial ${options.allowPartial === "on" ? 1 : 0}`);
-  if (options.handoffMode !== defaults.handoffMode || options.handoffScope !== defaults.handoffScope) {
-    commands.push(`dtr_handoff ${options.handoffMode} ${options.handoffScope}`);
-  }
-  if (options.threat360 !== defaults.threat360) {
-    commands.push(`dtr_handoff_360 ${options.threat360}`);
-  } else if (options.threat360 === "on"
-    && (options.threat360Range !== defaults.threat360Range || options.threat360Los !== defaults.threat360Los)) {
-    commands.push(`dtr_handoff_360 on ${options.threat360Range} ${options.threat360Los ? "los" : "nolos"}`);
-  }
-  if (retentionCommand) commands.push(retentionCommand);
-  commands.push(goCommand);
-  return commands.join("; ");
-}
-
 export function PlaybackCommandBuilder({
   words,
   result,
@@ -147,6 +71,7 @@ export function PlaybackCommandBuilder({
   commandMode,
   sequenceDisabled = false,
   retentionCommand = null,
+  friendlyFire = null,
   copied,
   onOptionsChange,
   onCommandModeChange,
@@ -177,7 +102,21 @@ export function PlaybackCommandBuilder({
   const goCommand = effectiveCommandMode === "round"
     ? result.commands.goRound
     : result.commands.goSequence;
-  const command = buildPlaybackCommand(goCommand, mask, options, retentionCommand);
+  const command = buildPlaybackCommand(goCommand, mask, options, retentionCommand, friendlyFire);
+  const effectiveFriendlyFire = options.friendlyFire === "on"
+    ? true
+    : options.friendlyFire === "off"
+      ? false
+      : friendlyFire?.enabled ?? null;
+  const friendlyFireDescription = options.friendlyFire === "auto"
+    ? effectiveFriendlyFire === true
+      ? words.friendlyFireAutoOn
+      : effectiveFriendlyFire === false
+        ? words.friendlyFireAutoOff
+        : words.friendlyFireAutoUnknown
+    : effectiveFriendlyFire
+      ? words.friendlyFireManualOn
+      : words.friendlyFireManualOff;
 
   return (
     <section className="playback-command-builder" aria-label={words.playDemoCommand}>
@@ -193,7 +132,7 @@ export function PlaybackCommandBuilder({
         <header className="playback-config-heading">
           <div>
             <strong id="playback-config-title">{words.playbackOptions}</strong>
-            <code>Preset {formatPreset(mask)}</code>
+            <code>Preset {formatPlaybackPreset(mask)}</code>
           </div>
           {result.rounds.length > 1 ? (
             <div className="playback-mode-tabs" role="group" aria-label={words.playDemoMode}>
@@ -256,6 +195,24 @@ export function PlaybackCommandBuilder({
               : { avatar: false })}
           />
           <PlaybackOption checked={playoff} disabled={!sequenceMode} label={words.playoffBeta} description={words.playoffHelp} onChange={(checked) => onOptionsChange({ playoff: checked })} />
+          <div className="playback-option">
+            <span>
+              <strong>{words.friendlyFirePlayback}</strong>
+              <small>{friendlyFireDescription}</small>
+            </span>
+            <div className="playback-option-control">
+              {options.friendlyFire !== "auto" ? (
+                <button className="text-button" type="button" onClick={() => onOptionsChange({ friendlyFire: "auto" })}>
+                  {words.friendlyFireUseDemo}
+                </button>
+              ) : null}
+              <SwitchControl
+                checked={effectiveFriendlyFire ?? false}
+                label={words.friendlyFirePlayback}
+                onChange={(checked) => onOptionsChange({ friendlyFire: checked ? "on" : "off" })}
+              />
+            </div>
+          </div>
         </div>
 
       </section>

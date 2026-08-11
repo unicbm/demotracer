@@ -61,6 +61,12 @@ function playerMetricCards(player: RosterPlayer, words: TextDictionary) {
     { key: "kpr", label: "KPR", value: hasValue(player.kills) && validRounds !== null ? (player.kills / validRounds).toFixed(2) : null },
     { key: "headshots", label: words.headshotKillsShort, value: hasValue(headshots) ? String(headshots) : null },
     { key: "hs", label: "HS%", value: hasValue(player.kills) && player.kills > 0 && hasValue(headshots) && headshots <= player.kills ? `${(headshots / player.kills * 100).toFixed(1)}%` : null },
+    { key: "first-kills", label: words.firstKills, value: hasValue(player.details?.firstKills) ? String(player.details.firstKills) : null },
+    { key: "first-deaths", label: words.firstDeaths, value: hasValue(player.details?.firstDeaths) ? String(player.details.firstDeaths) : null },
+    { key: "five-k", label: "5K", value: hasValue(player.details?.fiveKRounds) ? String(player.details.fiveKRounds) : null },
+    { key: "four-k", label: "4K", value: hasValue(player.details?.fourKRounds) ? String(player.details.fourKRounds) : null },
+    { key: "three-k", label: "3K", value: hasValue(player.details?.threeKRounds) ? String(player.details.threeKRounds) : null },
+    { key: "two-k", label: "2K", value: hasValue(player.details?.twoKRounds) ? String(player.details.twoKRounds) : null },
     { key: "mvps", label: "MVP", value: hasValue(player.mvps) ? String(player.mvps) : null },
   ].filter((metric): metric is { key: string; label: string; value: string } => metric.value !== null);
 }

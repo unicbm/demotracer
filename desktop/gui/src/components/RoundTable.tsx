@@ -13,6 +13,7 @@ export interface RoundTableLabels {
   round: string;
   status: string;
   duration: string;
+  result: string;
   teams: string;
   validRows: string;
   problems: string;
@@ -32,6 +33,7 @@ interface RoundTableProps {
   onToggle: (round: RoundInfo) => void;
   formatNumber?: (value: number) => string;
   formatDuration?: (seconds: number) => string;
+  roundOutcomeLabel?: (round: number) => string | null;
 }
 
 function defaultFormatDuration(seconds: number): string {
@@ -49,6 +51,7 @@ export function RoundTable({
   onToggle,
   formatNumber = (value) => value.toLocaleString(),
   formatDuration = defaultFormatDuration,
+  roundOutcomeLabel,
 }: RoundTableProps) {
   const tableRef = useRef<HTMLTableElement>(null);
 
@@ -80,6 +83,7 @@ export function RoundTable({
             <th scope="col">{labels.round}</th>
             <th scope="col">{labels.status}</th>
             <th scope="col">{labels.duration}</th>
+            <th scope="col">{labels.result}</th>
             <th scope="col">{labels.teams}</th>
             <th scope="col">{labels.validRows}</th>
             <th scope="col">{labels.problems}</th>
@@ -92,6 +96,7 @@ export function RoundTable({
             const selectionDisabled = suspicious && !allowSuspicious;
             const selected = selectedRounds.has(round.round);
             const statusLabel = suspicious ? labels.suspicious : partial ? labels.partial : labels.recommended;
+            const outcomeLabel = roundOutcomeLabel?.(round.round) ?? "—";
             return (
               <tr
                 className={`round-data-row${selected ? " is-selected" : ""}${selectionDisabled ? " is-selection-locked" : ""}`}
@@ -113,6 +118,7 @@ export function RoundTable({
                 <th className="round-number-cell" scope="row">{String(round.round).padStart(2, "0")}</th>
                 <td><span className={`round-list-status is-${round.status}`}><i aria-hidden="true" />{statusLabel}</span></td>
                 <td className="round-duration-cell">{formatDuration(round.durationSeconds)}</td>
+                <td className="round-outcome-cell" title={outcomeLabel}>{outcomeLabel}</td>
                 <td className="round-team-count">T {round.tPlayers} / CT {round.ctPlayers}</td>
                 <td className="round-record-count">{formatNumber(round.validRows)}</td>
                 <td className="round-issue-cell" title={round.problems.join(" · ")}>

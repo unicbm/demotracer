@@ -5,7 +5,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 use cs2_demotracer::browser_analysis::{
-    BrowserDemoAnalysis, BrowserDemoSource, BrowserPlayerSummary, BrowserScoreSummary,
+    BrowserDemoAnalysis, BrowserDemoSource, BrowserFriendlyFireSummary, BrowserPlayerSummary,
+    BrowserRoundOutcome, BrowserScoreSummary,
 };
 use cs2_demotracer::demo_reader::is_supported_demo_path;
 use cs2_demotracer::model::ParsedDemo;
@@ -71,6 +72,10 @@ pub(crate) struct DemoArchiveInfo {
     pub demo_source: Option<BrowserDemoSource>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<BrowserScoreSummary>,
+    #[serde(default)]
+    pub round_outcomes: Vec<BrowserRoundOutcome>,
+    #[serde(default)]
+    pub friendly_fire: BrowserFriendlyFireSummary,
     pub score_evidence: String,
     pub players: Vec<BrowserPlayerSummary>,
     pub manifest_abi: i32,
@@ -196,6 +201,8 @@ impl DemoArchiveInfo {
             server_name: None,
             demo_source: browser.demo_source.clone(),
             score: browser.score.clone(),
+            round_outcomes: browser.round_outcomes.clone(),
+            friendly_fire: browser.friendly_fire.clone(),
             score_evidence: if browser.score.is_some() {
                 "roundEndEvents".to_string()
             } else {
@@ -917,6 +924,8 @@ mod tests {
             demo_source: None,
             players: Vec::new(),
             score: None,
+            round_outcomes: Vec::new(),
+            friendly_fire: Default::default(),
         };
 
         let info = DemoArchiveInfo::from_analysis(
@@ -1011,6 +1020,8 @@ mod tests {
             demo_source: None,
             score: None,
             score_evidence: "unavailable".to_string(),
+            round_outcomes: Vec::new(),
+            friendly_fire: Default::default(),
             players: vec![BrowserPlayerSummary {
                 name: "Alpha".to_string(),
                 steam_id: "76561198000000000".to_string(),

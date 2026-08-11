@@ -6,7 +6,6 @@
 
 import type { TextDictionary } from "../i18n";
 import type { AnalysisPlayerSummary, AnalysisResult } from "../types";
-import { ChevronIcon } from "../icons";
 import { displayMap } from "./MapArtwork";
 import { playerSelectionKey, type PlayerSelection } from "./PlayerRoster";
 import { SteamPlayerIdentity, type SteamProfileMap } from "./SteamProfile";
@@ -87,13 +86,17 @@ function playerMetrics(player: AnalysisPlayerSummary, matchRounds: number | null
       ? `${(headshots / kills * 100).toFixed(1)}%`
       : null,
     mvps: player.mvps,
+    twoK: player.details?.twoKRounds,
+    threeK: player.details?.threeKRounds,
+    fourK: player.details?.fourKRounds,
+    fiveK: player.details?.fiveKRounds,
   };
 }
 
 type PlayerMetrics = ReturnType<typeof playerMetrics>;
 
 interface AnalysisMetricColumn {
-  key: "kda" | "adr" | "kd" | "kr" | "headshots" | "hs" | "mvps";
+  key: "kills" | "deaths" | "assists" | "adr" | "kd" | "kr" | "headshots" | "hs" | "fiveK" | "fourK" | "threeK" | "twoK" | "mvps";
   label: string;
   width: string;
   value: (metrics: PlayerMetrics) => string | null;
@@ -103,28 +106,22 @@ function metricValue(value: number | string | null | undefined): string | null {
   return value === null || value === undefined ? null : String(value);
 }
 
-function analysisMetricColumns(players: AnalysisPlayerSummary[], words: TextDictionary, matchRounds: number | null): AnalysisMetricColumn[] {
-  const metrics = players.map((player) => playerMetrics(player, matchRounds));
-  const stat = (value: number | null | undefined) => value === null || value === undefined ? "—" : String(value);
-  const columns: AnalysisMetricColumn[] = [
-    {
-      key: "kda",
-      label: words.kda,
-      width: "minmax(78px, .9fr)",
-      value: (values) => (values.kills === null || values.kills === undefined)
-        && (values.deaths === null || values.deaths === undefined)
-        && (values.assists === null || values.assists === undefined)
-        ? null
-        : `${stat(values.kills)} / ${stat(values.deaths)} / ${stat(values.assists)}`,
-    },
-    { key: "adr", label: words.adr, width: "minmax(45px, .55fr)", value: (values) => metricValue(values.adr) },
-    { key: "kd", label: words.kd, width: "minmax(45px, .55fr)", value: (values) => metricValue(values.kd) },
-    { key: "kr", label: "KPR", width: "minmax(45px, .55fr)", value: (values) => metricValue(values.kr) },
-    { key: "headshots", label: words.headshotKillsShort, width: "minmax(44px, .5fr)", value: (values) => metricValue(values.headshots) },
-    { key: "hs", label: "HS%", width: "minmax(56px, .62fr)", value: (values) => metricValue(values.hs) },
-    { key: "mvps", label: "MVP", width: "minmax(44px, .5fr)", value: (values) => metricValue(values.mvps) },
+function analysisMetricColumns(words: TextDictionary): AnalysisMetricColumn[] {
+  return [
+    { key: "kills", label: "K", width: "minmax(28px, .32fr)", value: (values) => metricValue(values.kills) },
+    { key: "deaths", label: "D", width: "minmax(28px, .32fr)", value: (values) => metricValue(values.deaths) },
+    { key: "assists", label: "A", width: "minmax(28px, .32fr)", value: (values) => metricValue(values.assists) },
+    { key: "adr", label: words.adr, width: "minmax(42px, .48fr)", value: (values) => metricValue(values.adr) },
+    { key: "kd", label: "K/D", width: "minmax(42px, .48fr)", value: (values) => metricValue(values.kd) },
+    { key: "kr", label: "K/R", width: "minmax(42px, .48fr)", value: (values) => metricValue(values.kr) },
+    { key: "headshots", label: words.headshotKillsShort, width: "minmax(30px, .34fr)", value: (values) => metricValue(values.headshots) },
+    { key: "hs", label: "HS%", width: "minmax(50px, .55fr)", value: (values) => metricValue(values.hs) },
+    { key: "fiveK", label: "5K", width: "minmax(28px, .3fr)", value: (values) => metricValue(values.fiveK) },
+    { key: "fourK", label: "4K", width: "minmax(28px, .3fr)", value: (values) => metricValue(values.fourK) },
+    { key: "threeK", label: "3K", width: "minmax(28px, .3fr)", value: (values) => metricValue(values.threeK) },
+    { key: "twoK", label: "2K", width: "minmax(28px, .3fr)", value: (values) => metricValue(values.twoK) },
+    { key: "mvps", label: "MVP", width: "minmax(34px, .36fr)", value: (values) => metricValue(values.mvps) },
   ];
-  return columns.filter((column) => metrics.some((values) => column.value(values) !== null));
 }
 
 function AnalysisTeamRows({
@@ -156,6 +153,10 @@ function AnalysisTeamRows({
         <span>{words.rosterPlayerCount.replace("{count}", String(players.length))}</span>
         {score !== undefined ? <b>{score}</b> : null}
       </header>
+      <div className="analysis-scoreboard-columns" style={{ gridTemplateColumns }}>
+        <span>{words.playerColumn}</span>
+        {columns.map((column) => <span key={column.key}>{column.label}</span>)}
+      </div>
       <ul>
         {players.map((player, playerIndex) => {
           const metrics = playerMetrics(player, matchRounds);
@@ -206,8 +207,7 @@ export function AnalysisOverview({
   const matchRounds = analysis.score
     ? analysis.score.teamA.score + analysis.score.teamB.score
     : null;
-  const metricColumns = analysisMetricColumns(sortedPlayers, words, matchRounds);
-  const metricGrid = `minmax(190px, 1.8fr) ${metricColumns.map((column) => column.width).join(" ")}`;
+  const metricColumns = analysisMetricColumns(words);
   return (
     <div className="analysis-overview">
       <section className="analysis-matchbar" aria-label={words.matchAnalysis}>
@@ -228,26 +228,21 @@ export function AnalysisOverview({
       </section>
 
       {sortedPlayers.length > 0 ? (
-        <details className="analysis-scoreboard">
-          <summary>
+        <section className="analysis-scoreboard">
+          <header className="analysis-scoreboard-heading">
             <span>
               <h2>{words.matchRoster}</h2>
               <small>{words.rosterPlayerCount.replace("{count}", String(sortedPlayers.length))}</small>
             </span>
-            <ChevronIcon size={15} />
-          </summary>
+          </header>
           <div className="analysis-scoreboard-content">
-            <div className="analysis-scoreboard-columns" style={{ gridTemplateColumns: metricGrid }}>
-              <span>{words.playerColumn}</span>
-              {metricColumns.map((column) => <span key={column.key}>{column.label}</span>)}
-            </div>
             <div className="analysis-scoreboard-teams">
               <AnalysisTeamRows teamId="a" name={teamAName} score={analysis.score?.teamA.score} players={teamA} columns={metricColumns} matchRounds={matchRounds} steamProfiles={steamProfiles} words={words} onSelectPlayer={onSelectPlayer} />
               <AnalysisTeamRows teamId="b" name={teamBName} score={analysis.score?.teamB.score} players={teamB} columns={metricColumns} matchRounds={matchRounds} steamProfiles={steamProfiles} words={words} onSelectPlayer={onSelectPlayer} />
               {unassigned.length > 0 ? <AnalysisTeamRows teamId="unknown" name={words.unassignedPlayers} players={unassigned} columns={metricColumns} matchRounds={matchRounds} steamProfiles={steamProfiles} words={words} onSelectPlayer={onSelectPlayer} /> : null}
             </div>
           </div>
-        </details>
+        </section>
       ) : null}
     </div>
   );

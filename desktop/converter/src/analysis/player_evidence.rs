@@ -29,6 +29,18 @@ pub struct BrowserPlayerDetails {
     pub total_damage: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stats_rounds: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_kills: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_deaths: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub two_k_rounds: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub three_k_rounds: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub four_k_rounds: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub five_k_rounds: Option<u32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub crosshair_codes: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -44,6 +56,12 @@ impl BrowserPlayerDetails {
         self.headshot_kills.is_none()
             && self.total_damage.is_none()
             && self.stats_rounds.is_none()
+            && self.first_kills.is_none()
+            && self.first_deaths.is_none()
+            && self.two_k_rounds.is_none()
+            && self.three_k_rounds.is_none()
+            && self.four_k_rounds.is_none()
+            && self.five_k_rounds.is_none()
             && self.crosshair_codes.is_empty()
             && self.viewmodels.is_empty()
             && self.cosmetics.is_empty()
@@ -562,6 +580,12 @@ fn finish_details(
                 *value > 0 && usize::try_from(*value) == Ok(accumulator.rounds.len())
             }),
         ),
+        first_kills: None,
+        first_deaths: None,
+        two_k_rounds: None,
+        three_k_rounds: None,
+        four_k_rounds: None,
+        five_k_rounds: None,
         crosshair_codes: accumulator.crosshair_codes.into_iter().collect(),
         viewmodels: accumulator
             .viewmodels

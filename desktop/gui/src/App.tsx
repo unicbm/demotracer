@@ -147,7 +147,7 @@ import type {
 const DEFAULT_SETTINGS: ConverterSettings = {
   side: "both",
   fullRound: false,
-  freezePrerollSeconds: 10,
+  freezePrerollSeconds: 120,
   subtickMode: "auto",
   maxRoundSeconds: 240,
   exportVoice: true,
@@ -385,12 +385,9 @@ function storedSettings(): ConverterSettings {
       ...DEFAULT_SETTINGS,
       side: saved.side === "both" || saved.side === "t" || saved.side === "ct" ? saved.side : DEFAULT_SETTINGS.side,
       fullRound: typeof saved.fullRound === "boolean" ? saved.fullRound : DEFAULT_SETTINGS.fullRound,
-      freezePrerollSeconds: typeof saved.freezePrerollSeconds === "number"
-        && Number.isFinite(saved.freezePrerollSeconds)
-        && saved.freezePrerollSeconds >= 0
-        && saved.freezePrerollSeconds <= 120
-        ? saved.freezePrerollSeconds
-        : DEFAULT_SETTINGS.freezePrerollSeconds,
+      // Freeze pre-roll is demo-derived now. Ignore the legacy user-selected
+      // value and keep only the internal safety ceiling.
+      freezePrerollSeconds: DEFAULT_SETTINGS.freezePrerollSeconds,
       subtickMode: saved.subtickMode === "auto" || saved.subtickMode === "off"
         ? saved.subtickMode
         : DEFAULT_SETTINGS.subtickMode,
@@ -449,6 +446,9 @@ function storedPlaybackPreset(): PlaybackPresetOptions {
         ? saved.threat360Range
         : DEFAULT_PLAYBACK_PRESET.threat360Range,
       threat360Los: readBoolean("threat360Los"),
+      friendlyFire: saved.friendlyFire === "auto" || saved.friendlyFire === "on" || saved.friendlyFire === "off"
+        ? saved.friendlyFire
+        : DEFAULT_PLAYBACK_PRESET.friendlyFire,
     };
   } catch {
     return { ...DEFAULT_PLAYBACK_PRESET };
@@ -2042,17 +2042,23 @@ function App() {
     return inspected;
   }, []);
 
-  async function saveArchiveNote(note: string): Promise<boolean> {
-    if (!archive || savingArchiveNote) return false;
+  async function saveArchiveNote(manifestPath: string, note: string): Promise<boolean> {
+    if (!manifestPath || savingArchiveNote) return false;
     setSavingArchiveNote(true);
     setGlobalError(null);
     try {
       const saved = await invoke<SaveArchiveNoteResult>("save_archive_note", {
-        request: { manifestPath: archive.manifestPath, note },
+        request: { manifestPath, note },
       });
-      const updated = { ...archive, note: saved.note };
-      dispatchLibraryWorkspace({ type: "replaceArchive", archive: updated });
-      manifestCacheRef.current.set(normalizedDiagnosticPath(updated.manifestPath), updated);
+      if (archive && normalizedDiagnosticPath(archive.manifestPath) === normalizedDiagnosticPath(saved.manifestPath)) {
+        const updated = { ...archive, note: saved.note };
+        dispatchLibraryWorkspace({ type: "replaceArchive", archive: updated });
+        manifestCacheRef.current.set(normalizedDiagnosticPath(updated.manifestPath), updated);
+      } else {
+        const cacheKey = normalizedDiagnosticPath(saved.manifestPath);
+        const cached = manifestCacheRef.current.get(cacheKey);
+        if (cached) manifestCacheRef.current.set(cacheKey, { ...cached, note: saved.note });
+      }
       setLibraryScan((current) => current ? {
         ...current,
         entries: current.entries.map((entry) => (
@@ -3918,7 +3924,9 @@ function App() {
               onRepairEntry={(entry: DemoLibraryEntry) => void repairArchiveMetadata(entry)}
               onRevealManifest={(entry: DemoLibraryEntry) => void revealPath(entry.manifestPath)}
               onRevealDemo={(entry: DemoLibraryEntry) => void revealPath(entry.sourcePath || entry.demoPath)}
+              onCopyManifestPath={(entry: DemoLibraryEntry) => void copyText(entry.manifestPath, "manifest")}
               onCopyDemoPath={(entry: DemoLibraryEntry) => void copyText(entry.sourcePath || entry.demoPath, "demoPath")}
+              onSaveNote={(entry, note) => saveArchiveNote(entry.manifestPath, note)}
               onReparseEntry={(entry: DemoLibraryEntry) => setReparseTarget({ kind: "library", entry })}
               onDeleteEntry={setArchiveDeleteTarget}
             />
@@ -3969,7 +3977,6 @@ function App() {
             archive={archive}
             seriesEntries={activeArchiveSeries}
             busy={Boolean(repairingManifest)}
-            savingNote={savingArchiveNote}
             selectedRound={selectedArchiveRound ?? -1}
             commandMode={commandMode}
             playbackPreset={playbackPreset}
@@ -3997,7 +4004,6 @@ function App() {
             }}
             onBackToLibrary={() => dispatchLibraryWorkspace({ type: "navigate", section: "library" })}
             onReconvert={() => setReparseTarget({ kind: "archive", archive })}
-            onSaveNote={saveArchiveNote}
             onChooseManifest={() => void chooseManifest()}
           />
         ) : null}

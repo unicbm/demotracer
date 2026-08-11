@@ -15,8 +15,8 @@
   position: relative;
   display: grid;
   flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   place-items: center;
   overflow: hidden;
   color: color-mix(in srgb, var(--text-secondary) 78%, var(--trace));
@@ -29,12 +29,12 @@
   line-height: 1;
 }
 
-.steam-avatar.is-compact { width: 27px; height: 27px; border-radius: var(--radius-sm); font-size: var(--type-tiny); }
-.steam-avatar.is-hero { width: 44px; height: 44px; border-width: 2px; border-radius: var(--radius-md); font-size: var(--type-section); }
-.steam-avatar.is-large { width: 62px; height: 62px; border-radius: var(--radius-lg); font-size: var(--type-heading-large); }
+.steam-avatar.is-compact { width: 30px; height: 30px; border-radius: var(--radius-sm); font-size: var(--type-tiny); }
+.steam-avatar.is-hero { width: 48px; height: 48px; border-width: 2px; border-radius: var(--radius-md); font-size: var(--type-section); }
+.steam-avatar.is-large { width: 66px; height: 66px; border-radius: var(--radius-lg); font-size: var(--type-heading-large); }
 .steam-avatar.is-profile {
-  width: 96px;
-  height: 96px;
+  width: 100px;
+  height: 100px;
   border-width: 2px;
   border-radius: var(--radius-lg);
   font-size: var(--type-page);

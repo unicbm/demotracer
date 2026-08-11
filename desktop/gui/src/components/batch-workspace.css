@@ -221,7 +221,7 @@
 .batch-concurrency-options button.is-active { color: var(--trace); background: var(--surface-raised); box-shadow: 0 1px 3px color-mix(in srgb, var(--text-primary) 10%, transparent); }
 
 .batch-toggle-list { display: grid; }
-.batch-toggle-row .switch-control { flex: none; }
+.batch-toggle-row .app-switch { flex: none; }
 
 .batch-monitor {
   display: grid;

@@ -27,6 +27,29 @@ pub struct BrowserDemoAnalysis {
     pub demo_source: Option<BrowserDemoSource>,
     pub players: Vec<BrowserPlayerSummary>,
     pub score: Option<BrowserScoreSummary>,
+    #[serde(default)]
+    pub round_outcomes: Vec<BrowserRoundOutcome>,
+    #[serde(default)]
+    pub friendly_fire: BrowserFriendlyFireSummary,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserFriendlyFireSummary {
+    pub enabled: Option<bool>,
+    pub evidence: String,
+    pub damage_events: u32,
+    pub damage: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserRoundOutcome {
+    pub round: u32,
+    pub tick: i32,
+    pub winner_side: u8,
+    pub winner_team: String,
+    pub reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -86,6 +109,17 @@ pub fn analyze_browser_demo(parsed: &ParsedDemo, options: AnalysisOptions) -> Br
             .checked_add(score.team_b.score)
             .filter(|rounds| *rounds > 0)
     });
+    let combat_stats = summarize_combat_stats(
+        parsed,
+        &match_summary.team_by_steam_id,
+        match_summary.match_window,
+        &match_summary.round_outcomes,
+    );
+    let friendly_fire = summarize_friendly_fire(
+        parsed,
+        &match_summary.team_by_steam_id,
+        match_summary.match_window,
+    );
     BrowserDemoAnalysis {
         duration_seconds: summarize_duration(parsed, &analysis),
         demo_patch_version: parsed.demo_patch_version,
@@ -98,8 +132,11 @@ pub fn analyze_browser_demo(parsed: &ParsedDemo, options: AnalysisOptions) -> Br
             &match_summary.team_by_steam_id,
             match_summary.match_window,
             stats_rounds,
+            combat_stats.as_ref(),
         ),
         score: match_summary.score,
+        round_outcomes: match_summary.round_outcomes,
+        friendly_fire,
     }
 }
 
@@ -153,7 +190,7 @@ fn summarize_players(
     parsed: &ParsedDemo,
     team_by_steam_id: &BTreeMap<u64, PersistentTeam>,
 ) -> Vec<BrowserPlayerSummary> {
-    summarize_players_in_window(parsed, team_by_steam_id, None, None)
+    summarize_players_in_window(parsed, team_by_steam_id, None, None, None)
 }
 
 fn summarize_players_in_window(
@@ -161,9 +198,21 @@ fn summarize_players_in_window(
     team_by_steam_id: &BTreeMap<u64, PersistentTeam>,
     match_window: Option<(i32, i32)>,
     stats_rounds: Option<u32>,
+    combat_stats: Option<&BTreeMap<u64, CombatPlayerStats>>,
 ) -> Vec<BrowserPlayerSummary> {
     let mut players: BTreeMap<u64, PlayerAccumulator> = BTreeMap::new();
     let mut details = summarize_player_details(parsed, match_window, stats_rounds);
+    if let Some(combat_stats) = combat_stats {
+        for (&steam_id, stats) in combat_stats {
+            let details = details.entry(steam_id).or_default();
+            details.first_kills = Some(stats.first_kills);
+            details.first_deaths = Some(stats.first_deaths);
+            details.two_k_rounds = Some(stats.two_k_rounds);
+            details.three_k_rounds = Some(stats.three_k_rounds);
+            details.four_k_rounds = Some(stats.four_k_rounds);
+            details.five_k_rounds = Some(stats.five_k_rounds);
+        }
+    }
     for row in parsed.rows.iter().filter(|row| {
         match_window
             .is_none_or(|(start_tick, end_tick)| row.tick >= start_tick && row.tick <= end_tick)
@@ -232,12 +281,24 @@ struct MatchSummary {
     score: Option<BrowserScoreSummary>,
     team_by_steam_id: BTreeMap<u64, PersistentTeam>,
     match_window: Option<(i32, i32)>,
+    round_outcomes: Vec<BrowserRoundOutcome>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct CompletedRound {
     tick: i32,
     winner_side: u8,
+    reason: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct CombatPlayerStats {
+    first_kills: u32,
+    first_deaths: u32,
+    two_k_rounds: u32,
+    three_k_rounds: u32,
+    four_k_rounds: u32,
+    five_k_rounds: u32,
 }
 
 fn summarize_match(parsed: &ParsedDemo) -> MatchSummary {
@@ -260,7 +321,7 @@ fn summarize_match(parsed: &ParsedDemo) -> MatchSummary {
         .map(|event| event.tick)
         .min();
 
-    let mut winners_by_tick = BTreeMap::<i32, u8>::new();
+    let mut winners_by_tick = BTreeMap::<i32, (u8, Option<String>)>::new();
     for event in parsed.events.iter().filter(|event| {
         event.name == "round_end"
             && event.tick >= match_start_tick
@@ -272,11 +333,18 @@ fn summarize_match(parsed: &ParsedDemo) -> MatchSummary {
         let Some(winner_side) = event.winner_side else {
             continue;
         };
-        if winners_by_tick
-            .insert(event.tick, winner_side)
-            .is_some_and(|existing| existing != winner_side)
-        {
-            return MatchSummary::default();
+        match winners_by_tick.entry(event.tick) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert((winner_side, event.round_end_reason.clone()));
+            }
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                if entry.get().0 != winner_side {
+                    return MatchSummary::default();
+                }
+                if entry.get().1.is_none() && event.round_end_reason.is_some() {
+                    entry.get_mut().1 = event.round_end_reason.clone();
+                }
+            }
         }
     }
     if winners_by_tick.is_empty() {
@@ -284,7 +352,11 @@ fn summarize_match(parsed: &ParsedDemo) -> MatchSummary {
     }
     let rounds = winners_by_tick
         .into_iter()
-        .map(|(tick, winner_side)| CompletedRound { tick, winner_side })
+        .map(|(tick, (winner_side, reason))| CompletedRound {
+            tick,
+            winner_side,
+            reason,
+        })
         .collect::<Vec<_>>();
     let last_round_tick = rounds.last().map(|round| round.tick).unwrap_or_default();
 
@@ -389,20 +461,31 @@ fn summarize_match(parsed: &ParsedDemo) -> MatchSummary {
 
     let mut team_a_score = 0_u32;
     let mut team_b_score = 0_u32;
-    for (round, sides) in rounds.iter().zip(&identity_sides) {
+    let mut round_outcomes = Vec::with_capacity(rounds.len());
+    for (round_index, (round, sides)) in rounds.iter().zip(&identity_sides).enumerate() {
         let Some(sides) = sides else {
             return MatchSummary {
                 score: None,
                 team_by_steam_id,
                 match_window: Some((match_start_tick, match_end_tick.unwrap_or(last_round_tick))),
+                round_outcomes: Vec::new(),
             };
         };
         let winning_identity = if sides[0] == round.winner_side { 2 } else { 3 };
-        if winning_identity == team_a_identity {
+        let winning_team = if winning_identity == team_a_identity {
             team_a_score += 1;
+            PersistentTeam::A
         } else {
             team_b_score += 1;
-        }
+            PersistentTeam::B
+        };
+        round_outcomes.push(BrowserRoundOutcome {
+            round: u32::try_from(round_index + 1).unwrap_or(u32::MAX),
+            tick: round.tick,
+            winner_side: round.winner_side,
+            winner_team: winning_team.as_str().to_string(),
+            reason: round.reason.clone(),
+        });
     }
 
     let is_final = match_end_tick.is_some_and(|end_tick| end_tick >= last_round_tick);
@@ -432,6 +515,219 @@ fn summarize_match(parsed: &ParsedDemo) -> MatchSummary {
         }),
         team_by_steam_id,
         match_window: Some((match_start_tick, match_end_tick.unwrap_or(last_round_tick))),
+        round_outcomes,
+    }
+}
+
+fn summarize_combat_stats(
+    parsed: &ParsedDemo,
+    team_by_steam_id: &BTreeMap<u64, PersistentTeam>,
+    match_window: Option<(i32, i32)>,
+    round_outcomes: &[BrowserRoundOutcome],
+) -> Option<BTreeMap<u64, CombatPlayerStats>> {
+    let (match_start_tick, match_end_tick) = match_window?;
+    if team_by_steam_id.is_empty() || round_outcomes.is_empty() {
+        return None;
+    }
+
+    let mut stats = team_by_steam_id
+        .keys()
+        .copied()
+        .map(|steam_id| (steam_id, CombatPlayerStats::default()))
+        .collect::<BTreeMap<_, _>>();
+    let mut kills_by_player_round = BTreeMap::<(u64, usize), u32>::new();
+    let mut opened_rounds = BTreeSet::<usize>::new();
+    let mut deaths = parsed
+        .events
+        .iter()
+        .filter(|event| {
+            event.name == "player_death"
+                && event.tick >= match_start_tick
+                && event.tick <= match_end_tick
+        })
+        .collect::<Vec<_>>();
+    deaths.sort_by_key(|event| event.tick);
+    let has_death_events = !deaths.is_empty();
+    let mut attributed_enemy_deaths = 0_u32;
+
+    for event in deaths {
+        let (Some(attacker), Some(victim)) = (event.attacker_steam_id, event.victim_steam_id)
+        else {
+            continue;
+        };
+        if attacker == 0 || victim == 0 || attacker == victim {
+            continue;
+        }
+        let (Some(attacker_team), Some(victim_team)) = (
+            team_by_steam_id.get(&attacker),
+            team_by_steam_id.get(&victim),
+        ) else {
+            // A missing persistent identity means zero-valued multi-kill and
+            // opening-duel totals would be misleading, so omit the metric set.
+            return None;
+        };
+        if attacker_team == victim_team {
+            continue;
+        }
+        let round_index = round_outcomes.partition_point(|round| round.tick < event.tick);
+        if round_index >= round_outcomes.len() {
+            continue;
+        }
+
+        attributed_enemy_deaths += 1;
+        *kills_by_player_round
+            .entry((attacker, round_index))
+            .or_default() += 1;
+        if opened_rounds.insert(round_index) {
+            stats.entry(attacker).or_default().first_kills += 1;
+            stats.entry(victim).or_default().first_deaths += 1;
+        }
+    }
+
+    // If the demo exposes death events but their player identities cannot be
+    // attributed, reporting a full table of zeroes is materially misleading.
+    // Keep the metric unavailable until there is at least one usable enemy kill.
+    if has_death_events && attributed_enemy_deaths == 0 {
+        return None;
+    }
+
+    for ((steam_id, _), kills) in kills_by_player_round {
+        let player = stats.entry(steam_id).or_default();
+        match kills {
+            2 => player.two_k_rounds += 1,
+            3 => player.three_k_rounds += 1,
+            4 => player.four_k_rounds += 1,
+            5.. => player.five_k_rounds += 1,
+            _ => {}
+        }
+    }
+    Some(stats)
+}
+
+fn summarize_friendly_fire(
+    parsed: &ParsedDemo,
+    team_by_steam_id: &BTreeMap<u64, PersistentTeam>,
+    match_window: Option<(i32, i32)>,
+) -> BrowserFriendlyFireSummary {
+    let mut damage_events = 0_u32;
+    let mut damage = 0_u32;
+    if let Some((match_start_tick, match_end_tick)) = match_window {
+        for event in parsed.events.iter().filter(|event| {
+            event.name == "player_hurt"
+                && event.tick >= match_start_tick
+                && event.tick <= match_end_tick
+        }) {
+            let (Some(attacker), Some(victim), Some(event_damage)) =
+                (event.attacker_steam_id, event.victim_steam_id, event.damage)
+            else {
+                continue;
+            };
+            if attacker == 0 || victim == 0 || attacker == victim || event_damage <= 0 {
+                continue;
+            }
+            if team_by_steam_id.get(&attacker).is_some_and(|team| {
+                team_by_steam_id
+                    .get(&victim)
+                    .is_some_and(|victim_team| victim_team == team)
+            }) {
+                damage_events = damage_events.saturating_add(1);
+                damage = damage.saturating_add(u32::try_from(event_damage).unwrap_or(u32::MAX));
+            }
+        }
+    }
+
+    let convar = friendly_fire_convar_evidence(parsed, match_window);
+    match convar {
+        FriendlyFireConVarEvidence::Stable(enabled) if !enabled && damage_events > 0 => {
+            BrowserFriendlyFireSummary {
+                enabled: None,
+                evidence: "conflictingEvidence".to_string(),
+                damage_events,
+                damage,
+            }
+        }
+        FriendlyFireConVarEvidence::Stable(enabled) => BrowserFriendlyFireSummary {
+            enabled: Some(enabled),
+            evidence: "serverConVar".to_string(),
+            damage_events,
+            damage,
+        },
+        FriendlyFireConVarEvidence::Changed => BrowserFriendlyFireSummary {
+            enabled: None,
+            evidence: "serverConVarChanged".to_string(),
+            damage_events,
+            damage,
+        },
+        FriendlyFireConVarEvidence::Missing if damage_events > 0 => BrowserFriendlyFireSummary {
+            enabled: Some(true),
+            evidence: "observedDamage".to_string(),
+            damage_events,
+            damage,
+        },
+        FriendlyFireConVarEvidence::Missing => BrowserFriendlyFireSummary {
+            enabled: None,
+            evidence: "unavailable".to_string(),
+            damage_events,
+            damage,
+        },
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FriendlyFireConVarEvidence {
+    Stable(bool),
+    Changed,
+    Missing,
+}
+
+fn friendly_fire_convar_evidence(
+    parsed: &ParsedDemo,
+    match_window: Option<(i32, i32)>,
+) -> FriendlyFireConVarEvidence {
+    let mut observations = parsed
+        .server_convars
+        .iter()
+        .filter(|value| value.name.trim().eq_ignore_ascii_case("mp_friendlyfire"))
+        .filter_map(|value| parse_convar_bool(&value.value).map(|enabled| (value.tick, enabled)))
+        .collect::<Vec<_>>();
+    observations.sort_by_key(|(tick, _)| *tick);
+    if observations.is_empty() {
+        return FriendlyFireConVarEvidence::Missing;
+    }
+
+    let relevant = if let Some((start_tick, end_tick)) = match_window {
+        let baseline = observations
+            .iter()
+            .rev()
+            .find(|(tick, _)| *tick <= start_tick)
+            .copied();
+        baseline
+            .into_iter()
+            .chain(
+                observations
+                    .iter()
+                    .copied()
+                    .filter(|(tick, _)| *tick > start_tick && *tick <= end_tick),
+            )
+            .collect::<Vec<_>>()
+    } else {
+        observations
+    };
+    let Some((_, first)) = relevant.first().copied() else {
+        return FriendlyFireConVarEvidence::Missing;
+    };
+    if relevant.iter().all(|(_, enabled)| *enabled == first) {
+        FriendlyFireConVarEvidence::Stable(first)
+    } else {
+        FriendlyFireConVarEvidence::Changed
+    }
+}
+
+fn parse_convar_bool(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "on" | "yes" => Some(true),
+        "0" | "false" | "off" | "no" => Some(false),
+        _ => None,
     }
 }
 
@@ -803,7 +1099,7 @@ impl PlayerScoreboardSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ParsedDemo, ParsedGameEvent, ParsedPlayerTick};
+    use crate::model::{ParsedDemo, ParsedGameEvent, ParsedPlayerTick, ParsedServerConVar};
 
     fn row(round: u32, tick: i32, team_num: u8, steam_id: u64, name: &str) -> ParsedPlayerTick {
         ParsedPlayerTick {
@@ -1187,6 +1483,7 @@ mod tests {
             &summary.team_by_steam_id,
             summary.match_window,
             None,
+            None,
         );
         let alpha = players
             .iter()
@@ -1242,6 +1539,143 @@ mod tests {
         assert_eq!((score.team_a.score, score.team_b.score), (13, 8));
         assert_eq!(summary.team_by_steam_id.get(&1), Some(&PersistentTeam::A));
         assert_eq!(summary.team_by_steam_id.get(&2), Some(&PersistentTeam::B));
+    }
+
+    #[test]
+    fn preserves_round_win_reason_for_the_desktop_boundary() {
+        let mut parsed = scored_demo(1, 0, true);
+        parsed
+            .events
+            .iter_mut()
+            .find(|event| event.name == "round_end")
+            .unwrap()
+            .round_end_reason = Some("bomb_exploded".to_string());
+
+        let summary = summarize_match(&parsed);
+
+        assert_eq!(summary.round_outcomes.len(), 1);
+        assert_eq!(summary.round_outcomes[0].winner_team, "a");
+        assert_eq!(
+            summary.round_outcomes[0].reason.as_deref(),
+            Some("bomb_exploded")
+        );
+    }
+
+    #[test]
+    fn derives_opening_duels_and_exact_multi_kill_rounds_from_enemy_deaths() {
+        let mut parsed = scored_demo(2, 0, true);
+        for (round, tick) in [(0, 80), (1, 180)] {
+            parsed.rows.extend([
+                row(round, tick, 2, 3, "alpha-2"),
+                row(round, tick, 3, 4, "bravo-2"),
+                row(round, tick, 2, 5, "alpha-3"),
+                row(round, tick, 3, 6, "bravo-3"),
+            ]);
+        }
+        for (tick, victim) in [(30, 2), (40, 4), (50, 6), (130, 2), (140, 4)] {
+            parsed.events.push(ParsedGameEvent {
+                tick,
+                name: "player_death".to_string(),
+                attacker_steam_id: Some(1),
+                victim_steam_id: Some(victim),
+                ..ParsedGameEvent::default()
+            });
+        }
+        // Same-team deaths must not pollute either opening-duel or multi-kill totals.
+        parsed.events.push(ParsedGameEvent {
+            tick: 20,
+            name: "player_death".to_string(),
+            attacker_steam_id: Some(3),
+            victim_steam_id: Some(1),
+            ..ParsedGameEvent::default()
+        });
+
+        let analysis = analyze_browser_demo(&parsed, AnalysisOptions::default());
+        let alpha = analysis
+            .players
+            .iter()
+            .find(|player| player.steam_id == "1")
+            .unwrap();
+        let bravo = analysis
+            .players
+            .iter()
+            .find(|player| player.steam_id == "2")
+            .unwrap();
+        let alpha_details = alpha.details.as_ref().unwrap();
+        let bravo_details = bravo.details.as_ref().unwrap();
+
+        assert_eq!(alpha_details.first_kills, Some(2));
+        assert_eq!(alpha_details.two_k_rounds, Some(1));
+        assert_eq!(alpha_details.three_k_rounds, Some(1));
+        assert_eq!(alpha_details.four_k_rounds, Some(0));
+        assert_eq!(alpha_details.five_k_rounds, Some(0));
+        assert_eq!(bravo_details.first_deaths, Some(2));
+    }
+
+    #[test]
+    fn omits_combat_metrics_when_death_identities_cannot_be_attributed() {
+        let mut parsed = scored_demo(1, 0, true);
+        parsed.events.push(ParsedGameEvent {
+            tick: 50,
+            name: "player_death".to_string(),
+            attacker_steam_id: Some(1),
+            victim_steam_id: None,
+            ..ParsedGameEvent::default()
+        });
+
+        let analysis = analyze_browser_demo(&parsed, AnalysisOptions::default());
+        let alpha = analysis
+            .players
+            .iter()
+            .find(|player| player.steam_id == "1")
+            .unwrap();
+
+        assert!(alpha.details.is_none());
+    }
+
+    #[test]
+    fn friendly_fire_prefers_stable_server_convar_evidence() {
+        let mut parsed = scored_demo(1, 0, true);
+        parsed.server_convars.push(ParsedServerConVar {
+            tick: 0,
+            name: "mp_friendlyfire".to_string(),
+            value: "0".to_string(),
+        });
+
+        let analysis = analyze_browser_demo(&parsed, AnalysisOptions::default());
+
+        assert_eq!(analysis.friendly_fire.enabled, Some(false));
+        assert_eq!(analysis.friendly_fire.evidence, "serverConVar");
+        assert_eq!(analysis.friendly_fire.damage_events, 0);
+    }
+
+    #[test]
+    fn friendly_fire_can_be_proven_on_by_observed_team_damage() {
+        let mut parsed = scored_demo(1, 0, true);
+        parsed.rows.push(row(0, 80, 2, 3, "alpha-2"));
+        parsed.events.push(ParsedGameEvent {
+            tick: 50,
+            name: "player_hurt".to_string(),
+            attacker_steam_id: Some(1),
+            victim_steam_id: Some(3),
+            damage: Some(27),
+            ..ParsedGameEvent::default()
+        });
+
+        let analysis = analyze_browser_demo(&parsed, AnalysisOptions::default());
+
+        assert_eq!(analysis.friendly_fire.enabled, Some(true));
+        assert_eq!(analysis.friendly_fire.evidence, "observedDamage");
+        assert_eq!(analysis.friendly_fire.damage_events, 1);
+        assert_eq!(analysis.friendly_fire.damage, 27);
+    }
+
+    #[test]
+    fn friendly_fire_remains_unknown_without_positive_evidence() {
+        let analysis = analyze_browser_demo(&scored_demo(1, 0, true), AnalysisOptions::default());
+
+        assert_eq!(analysis.friendly_fire.enabled, None);
+        assert_eq!(analysis.friendly_fire.evidence, "unavailable");
     }
 
     #[test]

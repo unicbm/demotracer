@@ -343,6 +343,7 @@ fn merge_parsed_demo_parts(
     let mut projectiles = Vec::new();
     let mut voice_frames = Vec::new();
     let mut events = Vec::new();
+    let mut server_convars = Vec::new();
     let mut round_freeze_end_ticks = Vec::new();
     let mut bomb_beginplant_ticks = Vec::new();
     let mut bomb_planted_ticks = Vec::new();
@@ -400,6 +401,7 @@ fn merge_parsed_demo_parts(
         projectiles.extend(part.projectiles);
         voice_frames.extend(part.voice_frames);
         events.extend(part.events);
+        server_convars.extend(part.server_convars);
         round_freeze_end_ticks.extend(part.round_freeze_end_ticks);
         bomb_beginplant_ticks.extend(part.bomb_beginplant_ticks);
         bomb_planted_ticks.extend(part.bomb_planted_ticks);
@@ -409,6 +411,7 @@ fn merge_parsed_demo_parts(
     projectiles.sort_by_key(|projectile| projectile.tick);
     voice_frames.sort_by_key(|frame| (frame.xuid, frame.tick));
     events.sort_by_key(|event| event.tick);
+    server_convars.sort_by_key(|convar| convar.tick);
     round_freeze_end_ticks.sort_unstable();
     round_freeze_end_ticks.dedup();
     bomb_beginplant_ticks.sort_unstable();
@@ -442,6 +445,7 @@ fn merge_parsed_demo_parts(
         projectiles,
         voice_frames,
         events,
+        server_convars,
         avatar_overrides: avatars.into_values().collect(),
         econ_items: econ_items.into_values().collect(),
     })
@@ -1015,6 +1019,9 @@ fn shift_part_ticks(part: &mut ParsedDemo, offset: i64, part_number: u32) -> Res
     }
     for event in &mut part.events {
         event.tick = checked_shift_tick(event.tick, offset, part_number)?;
+    }
+    for convar in &mut part.server_convars {
+        convar.tick = checked_shift_tick(convar.tick, offset, part_number)?;
     }
     for tick in &mut part.round_freeze_end_ticks {
         *tick = checked_shift_tick(*tick, offset, part_number)?;

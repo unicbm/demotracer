@@ -661,6 +661,7 @@ mod tests {
             projectiles: Vec::new(),
             voice_frames: Vec::new(),
             events: Vec::new(),
+            server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
         };
@@ -719,6 +720,7 @@ mod tests {
                 })
                 .into_iter()
                 .collect(),
+            server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
         }
@@ -776,6 +778,7 @@ mod tests {
             projectiles: Vec::new(),
             voice_frames: Vec::new(),
             events: Vec::new(),
+            server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
         };
@@ -831,6 +834,7 @@ mod tests {
             projectiles: Vec::new(),
             voice_frames: Vec::new(),
             events: Vec::new(),
+            server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
         };
@@ -869,6 +873,7 @@ mod tests {
             projectiles: Vec::new(),
             voice_frames: Vec::new(),
             events: Vec::new(),
+            server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
         };
@@ -914,6 +919,7 @@ mod tests {
             projectiles: Vec::new(),
             voice_frames: Vec::new(),
             events: Vec::new(),
+            server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
         };
@@ -959,6 +965,7 @@ mod tests {
             projectiles: Vec::new(),
             voice_frames: Vec::new(),
             events: Vec::new(),
+            server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
         };

@@ -7,27 +7,7 @@
 import { type RefObject, useRef } from "react";
 import type { TextDictionary } from "../i18n";
 import type { ConverterSettings, SideChoice } from "../types";
-
-interface SwitchControlProps {
-  checked: boolean;
-  label: string;
-  onChange: (checked: boolean) => void;
-}
-
-function SwitchControl({ checked, label, onChange }: SwitchControlProps) {
-  return (
-    <button
-      className="switch-control"
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={() => onChange(!checked)}
-    >
-      <span />
-    </button>
-  );
-}
+import { SwitchControl } from "./SwitchControl";
 
 interface ExportInspectorProps {
   words: TextDictionary;
@@ -106,24 +86,10 @@ function InspectorContents({
 
         <details className="inspector-disclosure">
           <summary>{words.advanced}</summary>
-          <label className="number-setting" htmlFor="freeze-preroll">
-            <span>{words.freezePreroll}</span>
-            <span className="number-input-wrap">
-              <input
-                id="freeze-preroll"
-                type="number"
-                min="0"
-                max="120"
-                step="1"
-                value={settings.freezePrerollSeconds}
-                onChange={(event) => {
-                  const value = Math.min(120, Math.max(0, Number(event.target.value) || 0));
-                  onChange({ freezePrerollSeconds: value });
-                }}
-              />
-              <i>{words.seconds}</i>
-            </span>
-          </label>
+          <div className="setting-line">
+            <div><strong>{words.freezePreroll}</strong><small>{words.freezePrerollDefaultHelp}</small></div>
+            <span className="setting-value-badge">{words.freezePrerollAutoValue}</span>
+          </div>
         </details>
 
         <section className="inspector-section risk-section">

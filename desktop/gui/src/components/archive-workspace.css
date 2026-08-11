@@ -5,13 +5,24 @@
  *--------------------------------------------------------------------------------------------*/
 
 .archive-workspace {
-  display: grid;
+  display: block;
   flex: 1;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--workspace);
+  scrollbar-width: none;
+}
+
+.app-workspace .archive-workspace {
+  scrollbar-width: none;
+}
+
+.app-workspace .archive-workspace::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .archive-toolbar {
@@ -668,8 +679,8 @@
 .roster-player-identity .steam-player-name-row > strong {
   overflow: hidden;
   color: var(--text-primary);
-  font-size: var(--type-micro);
-  font-weight: var(--weight-medium);
+  font-size: var(--type-support);
+  font-weight: var(--weight-semibold);
   line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -688,8 +699,8 @@
   overflow: hidden;
   color: var(--text-secondary);
   font-family: var(--font-ui);
-  font-size: var(--type-micro);
-  font-weight: var(--weight-medium);
+  font-size: var(--type-support);
+  font-weight: var(--weight-semibold);
   font-variant-numeric: tabular-nums;
   line-height: 17px;
   text-align: right;
@@ -699,7 +710,7 @@
 
 .archive-roster-stat.is-kda { color: var(--text-primary); font-weight: var(--weight-bold); }
 
-.archive-roster-stat.is-hs { font-size: var(--type-tiny); }
+.archive-roster-stat.is-hs { font-size: inherit; }
 
 .roster-player-drawer {
   display: grid;
@@ -710,10 +721,8 @@
 
 .archive-workspace .archive-roster-grid,
 .analysis-overview .archive-roster-grid {
-  max-height: 380px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
+  max-height: none;
+  overflow: visible;
 }
 
 .roster-profile-line,
@@ -1372,18 +1381,15 @@
 
 .archive-split-view {
   display: grid;
-  grid-row: 5;
   grid-template-columns: clamp(330px, 28vw, 560px) minmax(0, 1fr);
   min-width: 0;
-  min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .archive-round-pane {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
   min-width: 0;
-  min-height: 0;
   border-right: 1px solid var(--divider-strong);
 }
 
@@ -1414,10 +1420,9 @@
   display: grid;
   align-content: start;
   min-width: 0;
-  min-height: 0;
   padding: 0 var(--space-3) var(--space-2);
   gap: 0;
-  overflow: auto;
+  overflow: visible;
 }
 
 .archive-round-option {
@@ -1523,9 +1528,8 @@
 
 .archive-playback-pane {
   min-width: 0;
-  min-height: 0;
   padding: 14px var(--space-6) var(--space-5);
-  overflow-y: auto;
+  overflow: visible;
   background: var(--workspace);
 }
 
@@ -1649,11 +1653,11 @@
 .archive-roster-grid { padding: 0 13px 9px; }
 .archive-roster-team { padding-top: 7px; }
 .archive-roster-team > header > div strong { font-size: var(--type-support); font-weight: var(--weight-semibold); }
-.archive-roster-stat-head { font-size: var(--type-caption); font-weight: var(--weight-semibold); text-transform: none; }
+.archive-roster-stat-head { font-size: var(--type-tiny); font-weight: var(--weight-semibold); text-transform: none; }
 .archive-roster-team > ul { gap: 0; border: 0; border-top: 1px solid var(--divider); }
-.archive-roster-team > ul > li { min-height: 34px; background: transparent; border: 0; border-bottom: 1px solid var(--divider); border-radius: 0; }
+.archive-roster-team > ul > li { min-height: 38px; background: transparent; border: 0; border-bottom: 1px solid var(--divider); border-radius: 0; }
 .archive-roster-team > ul > li.is-expanded { background: var(--surface-subtle); border-color: var(--divider); }
-.roster-player-summary { min-height: 34px; }
+.roster-player-summary { min-height: 38px; }
 
 .archive-split-view {
   grid-template-columns: clamp(285px, 27vw, 390px) minmax(0, 1fr);
@@ -1693,9 +1697,6 @@
   }
 
   .archive-toolbar {
-    position: sticky;
-    z-index: 5;
-    top: 0;
     background: var(--workspace);
   }
 
@@ -1788,12 +1789,12 @@
   .archive-roster-team > header > div strong { font-size: var(--type-section); }
   .archive-roster-team > header > div small { font-size: var(--type-tiny); }
   .archive-roster-team > header > span { font-size: var(--type-label); }
-  .archive-roster-stat-head { min-height: 28px; font-size: var(--type-micro); }
+  .archive-roster-stat-head { min-height: 28px; font-size: var(--type-support); }
   .archive-roster-team > ul > li { min-height: 42px; }
   .roster-player-summary { min-height: 42px; }
-  .roster-player-identity .steam-player-name-row > strong { font-size: var(--type-label); }
-  .archive-roster-stat { font-size: var(--type-support); }
-  .archive-roster-stat.is-hs { font-size: var(--type-micro); }
+  .roster-player-identity .steam-player-name-row > strong { font-size: var(--type-body); }
+  .archive-roster-stat { font-size: var(--type-label); }
+  .archive-roster-stat.is-hs { font-size: var(--type-support); }
 
   .archive-split-view { grid-template-columns: clamp(420px, 27vw, 600px) minmax(0, 1fr); }
   .archive-pane-heading { min-height: 56px; padding-inline: 20px 16px; }
@@ -1826,17 +1827,6 @@
   .playback-advanced > summary strong { font-size: var(--type-tiny); }
 }
 
-@media (max-height: 900px) and (min-width: 881px) {
-  .archive-workspace .archive-roster-grid {
-    max-height: 228px;
-  }
-}
-
 @media (max-height: 760px) and (min-width: 881px) {
-  .archive-workspace {
-    display: block;
-    overflow-y: auto;
-  }
-
   .archive-split-view { min-height: 420px; }
 }

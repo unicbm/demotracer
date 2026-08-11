@@ -26,8 +26,8 @@ use batch::{
     resume_batch_import, scan_demo_folder, start_batch_import,
 };
 use cs2_demotracer::browser_analysis::{
-    analyze_browser_demo, BrowserDemoAnalysis, BrowserDemoSource, BrowserPlayerDetails,
-    BrowserPlayerSummary, BrowserScoreSummary,
+    analyze_browser_demo, BrowserDemoAnalysis, BrowserDemoSource, BrowserFriendlyFireSummary,
+    BrowserPlayerDetails, BrowserPlayerSummary, BrowserRoundOutcome, BrowserScoreSummary,
 };
 use cs2_demotracer::demo_id::sha256_hex;
 use cs2_demotracer::demo_reader::{
@@ -342,6 +342,8 @@ pub struct AnalysisDto {
     pub converter_version: String,
     pub players: Vec<BrowserPlayerSummary>,
     pub score: Option<BrowserScoreSummary>,
+    pub round_outcomes: Vec<BrowserRoundOutcome>,
+    pub friendly_fire: BrowserFriendlyFireSummary,
     pub rounds: Vec<RoundDto>,
 }
 
@@ -660,6 +662,8 @@ pub struct ManifestArchiveDto {
     pub demo_source: Option<BrowserDemoSource>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<BrowserScoreSummary>,
+    pub round_outcomes: Vec<BrowserRoundOutcome>,
+    pub friendly_fire: BrowserFriendlyFireSummary,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub converter_version: Option<String>,
 }
@@ -3133,6 +3137,8 @@ fn read_manifest_for(value: &str) -> CommandResult<ManifestArchiveDto> {
     let mut demo_version_name = None;
     let mut demo_source = None;
     let mut score = None;
+    let mut round_outcomes = Vec::new();
+    let mut friendly_fire = BrowserFriendlyFireSummary::default();
     let mut converter_version = None;
     let mut voice_requested = None;
     let mut cosmetic_requested = None;
@@ -3163,6 +3169,8 @@ fn read_manifest_for(value: &str) -> CommandResult<ManifestArchiveDto> {
                 demo_version_name = info.demo_version_name.clone();
                 demo_source = info.demo_source.clone();
                 score = info.score.clone();
+                round_outcomes = info.round_outcomes.clone();
+                friendly_fire = info.friendly_fire.clone();
                 let bound_conversion = info.conversion.as_ref().filter(|conversion| {
                     conversion
                         .manifest_sha256
@@ -3231,6 +3239,8 @@ fn read_manifest_for(value: &str) -> CommandResult<ManifestArchiveDto> {
         demo_version_name,
         demo_source,
         score,
+        round_outcomes,
+        friendly_fire,
         converter_version,
     })
 }
@@ -3649,6 +3659,8 @@ fn analysis_dto(
         converter_version: env!("CARGO_PKG_VERSION").to_string(),
         players: Vec::new(),
         score: None,
+        round_outcomes: Vec::new(),
+        friendly_fire: BrowserFriendlyFireSummary::default(),
         rounds: analysis
             .rounds
             .iter()
@@ -3694,6 +3706,8 @@ fn browser_analysis_dto(
     dto.demo_source = browser.demo_source.clone();
     dto.players = browser.players.clone();
     dto.score = browser.score.clone();
+    dto.round_outcomes = browser.round_outcomes.clone();
+    dto.friendly_fire = browser.friendly_fire.clone();
     dto
 }
 
@@ -5455,6 +5469,12 @@ fn open_external_url(url: &str) -> std::io::Result<()> {
 
 pub fn run() {
     tauri::Builder::default()
+        .register_uri_scheme_protocol("steam-avatar", |context, request| {
+            steam_profile::serve_cached_asset(
+                context.app_handle().path().app_local_data_dir().ok(),
+                &request,
+            )
+        })
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {

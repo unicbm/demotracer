@@ -15,6 +15,7 @@ import {
   ReplayIcon,
 } from "../icons";
 import type { Language } from "../types";
+import { SwitchControl } from "./SwitchControl";
 import "./batch-workspace.css";
 
 export const BATCH_SELECTION_LIMIT = 8;
@@ -274,32 +275,6 @@ function isJobActive(phase: BatchJobPhase): boolean {
   return ["decompressing", "parsing", "analyzing", "selecting", "converting", "validating"].includes(phase);
 }
 
-function BatchSwitch({
-  checked,
-  disabled = false,
-  label,
-  onChange,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  label: string;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <button
-      className="switch-control"
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-    >
-      <span />
-    </button>
-  );
-}
-
 export function BatchWorkspace({
   words,
   language,
@@ -439,7 +414,7 @@ export function BatchWorkspace({
             <div className="batch-toggle-list">
               <div className="batch-toggle-row">
                 <span>{copy.cosmetics}</span>
-                <BatchSwitch
+                <SwitchControl
                   checked={exportCosmetics}
                   disabled={working || cosmeticOptionsLocked}
                   label={copy.cosmetics}
@@ -453,17 +428,17 @@ export function BatchWorkspace({
                 <>
                   <div className="batch-toggle-row is-dependent">
                     <span>{copy.stickers}</span>
-                    <BatchSwitch checked={exportStickers} disabled={working || cosmeticOptionsLocked} label={copy.stickers} onChange={(checked) => onCosmeticOptionsChange({ exportStickers: checked })} />
+                    <SwitchControl checked={exportStickers} disabled={working || cosmeticOptionsLocked} label={copy.stickers} onChange={(checked) => onCosmeticOptionsChange({ exportStickers: checked })} />
                   </div>
                   <div className="batch-toggle-row is-dependent">
                     <span>{copy.charms}</span>
-                    <BatchSwitch checked={exportCharms} disabled={working || cosmeticOptionsLocked} label={copy.charms} onChange={(checked) => onCosmeticOptionsChange({ exportCharms: checked })} />
+                    <SwitchControl checked={exportCharms} disabled={working || cosmeticOptionsLocked} label={copy.charms} onChange={(checked) => onCosmeticOptionsChange({ exportCharms: checked })} />
                   </div>
                 </>
               ) : null}
               <div className="batch-toggle-row">
                 <span>{copy.sound}</span>
-                <BatchSwitch checked={soundNotifications} disabled={working} label={copy.sound} onChange={onSoundNotificationsChange} />
+                <SwitchControl checked={soundNotifications} disabled={working} label={copy.sound} onChange={onSoundNotificationsChange} />
               </div>
             </div>
           </section>

@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowIcon, CloseIcon, CopyIcon, FolderIcon, PlusIcon, RefreshIcon, ReplayIcon, SearchIcon, TraceMark, TrashIcon } from "../icons";
+import { AlertIcon, ArrowIcon, CloseIcon, CopyIcon, FolderIcon, NoteIcon, PlusIcon, RefreshIcon, ReplayIcon, SearchIcon, TraceMark, TrashIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
 import {
   demoLibraryTimestamp,
@@ -62,7 +62,9 @@ interface LibraryWorkspaceProps {
   onRepairEntry: (entry: DemoLibraryEntry) => void;
   onRevealManifest: (entry: DemoLibraryEntry) => void;
   onRevealDemo: (entry: DemoLibraryEntry) => void;
+  onCopyManifestPath: (entry: DemoLibraryEntry) => void;
   onCopyDemoPath: (entry: DemoLibraryEntry) => void;
+  onSaveNote: (entry: DemoLibraryEntry, note: string) => Promise<boolean>;
   onReparseEntry: (entry: DemoLibraryEntry) => void;
   onDeleteEntry: (entry: DemoLibraryEntry) => void;
 }
@@ -248,7 +250,9 @@ function LibraryRow({
   onRepair,
   onRevealManifest,
   onRevealDemo,
+  onCopyManifestPath,
   onCopyDemoPath,
+  onEditNote,
   onReparse,
   onDelete,
   repairing,
@@ -265,7 +269,9 @@ function LibraryRow({
   onRepair: () => void;
   onRevealManifest: () => void;
   onRevealDemo: () => void;
+  onCopyManifestPath: () => void;
   onCopyDemoPath: () => void;
+  onEditNote: () => void;
   onReparse: () => void;
   onDelete: () => void;
   repairing: boolean;
@@ -334,7 +340,9 @@ function LibraryRow({
       items: [
         { label: words.openArchive, icon: <ReplayIcon size={15} />, disabled, onSelect: onOpen },
         { label: words.viewDtrProperties, icon: <TraceMark size={15} />, onSelect: onInspect },
+        { label: words.archiveCustomNote, icon: <NoteIcon size={15} />, onSelect: onEditNote },
         { label: words.openManifestLocation, icon: <FolderIcon size={15} />, onSelect: onRevealManifest },
+        { label: `${words.copyPath} · ${words.manifest}`, icon: <CopyIcon size={15} />, onSelect: onCopyManifestPath },
         { label: words.openDemoLocation, icon: <FolderIcon size={15} />, disabled: needsSourceLink, onSelect: onRevealDemo },
         { label: words.copyDemoPath, icon: <CopyIcon size={15} />, disabled: needsSourceLink, onSelect: onCopyDemoPath },
         { label: words.reparseDemo, icon: <RefreshIcon size={15} />, dividerBefore: true, disabled: disabled || taskBusy, onSelect: onReparse },
@@ -386,16 +394,27 @@ function LibraryRow({
             </div>
           </button>
           <div className="library-series-map-badges">
-            {entry.compatibility !== "current" ? <em className={`library-series-map-warning is-${entry.compatibility}`}>{compatibilityLabel(entry, words)}</em> : null}
+            {entry.compatibility !== "current" ? (
+              <span
+                className={`library-series-map-indicator is-${entry.compatibility}${entry.compatibility === "unsupported" ? " has-label" : ""}`}
+                title={compatibilityLabel(entry, words)}
+                aria-label={compatibilityLabel(entry, words)}
+                role="img"
+              >
+                <AlertIcon size={12} />
+                {entry.compatibility === "unsupported" ? <span>{compatibilityLabel(entry, words)}</span> : null}
+              </span>
+            ) : null}
             {needsRepair ? (
               <button
-                className="library-series-map-warning is-action"
+                className="library-series-map-indicator is-action"
                 type="button"
                 disabled={repairing || disabled || taskBusy}
                 title={repairHelp}
+                aria-label={repairActionLabel}
                 onClick={onRepair}
               >
-                {repairActionLabel}
+                {needsMetadata ? <RefreshIcon size={12} /> : <FolderIcon size={12} />}
               </button>
             ) : null}
           </div>
@@ -461,9 +480,27 @@ function LibraryRow({
         <small>
           <span>{words.archiveRoundsShort.replace("{count}", String(entry.rounds))}</span>
           {duration ? <span>{duration}</span> : null}
+          {entry.compatibility !== "current" || needsRepair ? (
+            <span className="library-row-indicators">
+              {entry.compatibility !== "current" ? (
+                <span
+                  className={`library-row-indicator is-${entry.compatibility}${entry.compatibility === "unsupported" ? " has-label" : ""}`}
+                  title={compatibilityLabel(entry, words)}
+                  aria-label={compatibilityLabel(entry, words)}
+                  role="img"
+                >
+                  <AlertIcon size={11} />
+                  {entry.compatibility === "unsupported" ? <span>{compatibilityLabel(entry, words)}</span> : null}
+                </span>
+              ) : null}
+              {needsRepair ? (
+                <span className="library-row-indicator is-repair" title={repairHelp} aria-label={repairActionLabel} role="img">
+                  {needsMetadata ? <RefreshIcon size={11} /> : <FolderIcon size={11} />}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
         </small>
-        {entry.compatibility !== "current" ? <em className={`is-${entry.compatibility}`}>{compatibilityLabel(entry, words)}</em> : null}
-        {needsRepair ? <em title={repairHelp}>{repairActionLabel}</em> : null}
       </div>
       <div className="library-row-map">
         <MapArtwork map={entry.map} className="library-row-map-artwork" />
@@ -733,7 +770,9 @@ export function LibraryWorkspace({
   onRepairEntry,
   onRevealManifest,
   onRevealDemo,
+  onCopyManifestPath,
   onCopyDemoPath,
+  onSaveNote,
   onReparseEntry,
   onDeleteEntry,
 }: LibraryWorkspaceProps) {
@@ -741,6 +780,9 @@ export function LibraryWorkspace({
   const [propertiesArchive, setPropertiesArchive] = useState<ManifestArchive | null>(null);
   const [propertiesLoading, setPropertiesLoading] = useState(false);
   const [propertiesError, setPropertiesError] = useState(false);
+  const [noteEntry, setNoteEntry] = useState<DemoLibraryEntry | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
   const propertiesRequestRef = useRef(0);
   const [sourceLinkNoteDismissed, setSourceLinkNoteDismissed] = useState(() => {
     try {
@@ -803,6 +845,15 @@ export function LibraryWorkspace({
     setPropertiesArchive(null);
     setPropertiesLoading(false);
     setPropertiesError(false);
+  };
+  const editNote = (entry: DemoLibraryEntry) => {
+    setNoteEntry(entry);
+    setNoteDraft(entry.note ?? "");
+  };
+  const closeNote = () => {
+    if (noteSaving) return;
+    setNoteEntry(null);
+    setNoteDraft("");
   };
   const maps = [...new Set((scan?.entries ?? []).map((entry) => entry.map).filter(Boolean))]
     .sort((left, right) => left.localeCompare(right));
@@ -868,7 +919,9 @@ export function LibraryWorkspace({
       onRepair={() => onRepairEntry(entry)}
       onRevealManifest={() => onRevealManifest(entry)}
       onRevealDemo={() => onRevealDemo(entry)}
+      onCopyManifestPath={() => onCopyManifestPath(entry)}
       onCopyDemoPath={() => onCopyDemoPath(entry)}
+      onEditNote={() => editNote(entry)}
       onReparse={() => onReparseEntry(entry)}
       onDelete={() => onDeleteEntry(entry)}
       repairing={repairingManifest === entry.manifestPath}
@@ -1080,6 +1133,53 @@ export function LibraryWorkspace({
             </button>
             <button className="primary-button" type="button" onClick={closeProperties}>{words.close}</button>
           </footer>
+        </DialogPrimitive>
+      ) : null}
+      {noteEntry ? (
+        <DialogPrimitive
+          labelledBy="archive-note-title"
+          onDismiss={closeNote}
+          className="dialog-surface archive-note-dialog"
+        >
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            if (noteSaving) return;
+            setNoteSaving(true);
+            void onSaveNote(noteEntry, noteDraft).then((saved) => {
+              if (saved) {
+                setNoteEntry(null);
+                setNoteDraft("");
+              }
+            }).finally(() => setNoteSaving(false));
+          }}>
+            <header>
+              <div>
+                <span>{words.archiveCustomNote}</span>
+                <h2 id="archive-note-title">{noteEntry.displayName || noteEntry.demoId}</h2>
+              </div>
+              <button className="icon-button" type="button" disabled={noteSaving} onClick={closeNote} aria-label={words.close} title={words.close}>
+                <CloseIcon size={17} />
+              </button>
+            </header>
+            <div className="archive-note-dialog-body">
+              <textarea
+                autoFocus
+                value={noteDraft}
+                maxLength={240}
+                disabled={noteSaving}
+                aria-label={words.archiveCustomNote}
+                placeholder={words.archiveNotePlaceholder}
+                onChange={(event) => setNoteDraft(event.target.value)}
+              />
+              <small>{noteDraft.length}/240</small>
+            </div>
+            <footer>
+              <button className="secondary-button" type="button" disabled={noteSaving} onClick={closeNote}>{words.cancel}</button>
+              <button className="primary-button" type="submit" disabled={noteSaving || noteDraft.trim() === (noteEntry.note ?? "")}>
+                {noteSaving ? words.savingArchiveNote : words.saveArchiveNote}
+              </button>
+            </footer>
+          </form>
         </DialogPrimitive>
       ) : null}
     </section>

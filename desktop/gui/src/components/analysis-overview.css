@@ -49,40 +49,28 @@
 .analysis-matchmeta span + span::before { margin-inline: 7px; content: "·"; color: var(--divider-strong); }
 
 .analysis-scoreboard {
-  overflow: hidden;
   background: var(--surface-raised);
   border-top: 1px solid var(--divider);
 }
 
-.analysis-scoreboard > summary {
+.analysis-scoreboard-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   min-height: 42px;
   padding: var(--space-2) 14px;
-  cursor: pointer;
-  list-style: none;
 }
 
-.analysis-scoreboard > summary::-webkit-details-marker { display: none; }
-.analysis-scoreboard > summary:hover { background: var(--surface-subtle); }
-.analysis-scoreboard > summary > span { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
-.analysis-scoreboard > summary h2 { font-size: var(--type-label); font-weight: var(--weight-semibold); }
-.analysis-scoreboard > summary small { color: var(--text-tertiary); font-size: var(--type-micro); }
-.analysis-scoreboard > summary > svg { color: var(--text-tertiary); transition: transform var(--duration-base) ease; }
-.analysis-scoreboard[open] > summary { border-bottom: 1px solid var(--divider); }
-.analysis-scoreboard[open] > summary > svg { transform: rotate(180deg); }
-.analysis-scoreboard-content { min-width: 0; overflow-x: auto; }
-.analysis-scoreboard[open] .analysis-scoreboard-content {
-  max-height: min(28vh, 260px);
-  overflow: auto;
-}
+.analysis-scoreboard-heading > span { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
+.analysis-scoreboard-heading h2 { font-size: var(--type-label); font-weight: var(--weight-semibold); }
+.analysis-scoreboard-heading small { color: var(--text-tertiary); font-size: var(--type-micro); }
+.analysis-scoreboard-content { min-width: 0; }
 
 .analysis-scoreboard-columns,
 .analysis-player-stat-row {
   display: grid;
   align-items: center;
-  column-gap: 10px;
+  column-gap: 6px;
 }
 
 .analysis-scoreboard-columns {
@@ -91,7 +79,7 @@
   color: var(--text-tertiary);
   background: var(--surface-subtle);
   border-bottom: 1px solid var(--divider);
-  font-size: var(--type-tiny);
+  font-size: var(--type-micro);
   font-weight: var(--weight-semibold);
 }
 
@@ -100,7 +88,7 @@
 .analysis-team-block { --team-color: var(--team-a); min-width: 0; }
 .analysis-team-block.is-team-b { --team-color: var(--team-b); }
 .analysis-team-block.is-team-unknown { --team-color: var(--text-tertiary); }
-.analysis-team-block + .analysis-team-block { border-top: 1px solid var(--divider-strong); }
+.analysis-team-block + .analysis-team-block { margin-top: 12px; border-top: 1px solid var(--divider-strong); }
 
 .analysis-team-heading {
   display: flex;
@@ -127,7 +115,8 @@
   border: 0;
   border-radius: 0;
   font-family: var(--font-ui);
-  font-size: var(--type-support);
+  font-size: var(--type-label);
+  font-weight: var(--weight-medium);
   font-variant-numeric: tabular-nums;
   text-align: right;
   cursor: pointer;
@@ -151,14 +140,16 @@
   overflow: hidden;
   color: var(--text-primary);
   font-family: var(--font-ui);
-  font-size: var(--type-label);
+  font-size: var(--type-body);
   font-weight: var(--weight-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .analysis-stat-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.analysis-stat-value.is-kda { color: var(--text-primary); font-weight: var(--weight-bold); }
+.analysis-stat-value.is-kills,
+.analysis-stat-value.is-deaths,
+.analysis-stat-value.is-assists { color: var(--text-primary); font-weight: var(--weight-bold); }
 .analysis-stat-value.is-adr,
 .analysis-stat-value.is-kd { color: color-mix(in srgb, var(--text-primary) 88%, var(--team-color)); }
 
@@ -166,12 +157,12 @@
   .analysis-matchbar { grid-template-columns: minmax(80px, .55fr) minmax(100px, 1fr) auto minmax(100px, 1fr); padding-inline: 12px; gap: 9px; }
   .analysis-matchmeta { display: none; }
 
-  .analysis-scoreboard > summary,
+  .analysis-scoreboard-heading,
   .analysis-scoreboard-columns,
   .analysis-player-stat-row { padding-inline: 10px; }
 
   .analysis-scoreboard-columns,
-  .analysis-player-stat-row { column-gap: 7px; }
+  .analysis-player-stat-row { column-gap: 4px; }
 
   .analysis-player-identity code { font-size: var(--type-tiny); }
 }

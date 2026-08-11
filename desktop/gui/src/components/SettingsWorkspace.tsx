@@ -54,6 +54,7 @@ import { SERVER_CONFIG_GUIDE, type ServerConfigGuideGroup } from "../serverConfi
 import type { PlaybackHandoffMode, PlaybackPresetOptions } from "./PlaybackCommandBuilder";
 import { DialogPrimitive } from "./Dialog";
 import { SelectControl, type SelectControlOption } from "./SelectControl";
+import { SwitchControl } from "./SwitchControl";
 import "./settings-workspace.css";
 
 type SettingsModal =
@@ -166,32 +167,6 @@ interface SettingsWorkspaceProps {
   onConverterChange: (patch: Partial<ConverterSettings>) => void;
   onRequestCosmetics: () => void;
   onPlaybackChange: (patch: Partial<PlaybackPresetOptions>) => void;
-}
-
-function SwitchControl({
-  checked,
-  disabled = false,
-  label,
-  onChange,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  label: string;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <button
-      className="switch-control"
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-    >
-      <span />
-    </button>
-  );
 }
 
 function StatusMark({ status }: { status: EnvironmentCheckStatus }) {
@@ -1146,18 +1121,9 @@ export function SettingsWorkspace({
         <div className="playback-settings-advanced conversion-settings-advanced">
           <div className="playback-settings-advanced-heading">{words.compatibilityOptions}</div>
           <div className="playback-settings-advanced-body">
-            <div className="settings-number-row">
+            <div className="settings-number-row settings-readonly-row">
               <div><strong>{words.freezePreroll}</strong><small>{words.freezePrerollDefaultHelp}</small></div>
-              <label>
-                <EditableNumberInput
-                  min={0}
-                  max={120}
-                  step={1}
-                  value={converter.freezePrerollSeconds}
-                  onChange={(freezePrerollSeconds) => onConverterChange({ freezePrerollSeconds })}
-                />
-                <span>{words.seconds}</span>
-              </label>
+              <span className="setting-value-badge">{words.freezePrerollAutoValue}</span>
             </div>
             <SettingLine title={words.subtickCapture} description={words.subtickCaptureHelp} checked={converter.subtickMode === "auto"} onChange={(enabled) => onConverterChange({ subtickMode: enabled ? "auto" : "off" })} />
             <div className="settings-number-row">

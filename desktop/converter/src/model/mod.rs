@@ -599,6 +599,8 @@ pub struct ParsedDemo {
     pub projectiles: Vec<ParsedProjectile>,
     pub voice_frames: Vec<ParsedVoiceFrame>,
     pub events: Vec<ParsedGameEvent>,
+    #[serde(default)]
+    pub server_convars: Vec<ParsedServerConVar>,
     pub avatar_overrides: Vec<ParsedAvatarOverride>,
     pub econ_items: Vec<ParsedEconItem>,
 }
@@ -694,9 +696,18 @@ pub struct ParsedGameEvent {
     /// Winning engine side for `round_end` (`2` = T, `3` = CT).
     /// This is deliberately kept as a side, not a persistent team identity.
     pub winner_side: Option<u8>,
+    #[serde(default)]
+    pub round_end_reason: Option<String>,
     pub chat_text: Option<String>,
     pub chat_scope: Option<String>,
     pub chat_message_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct ParsedServerConVar {
+    pub tick: i32,
+    pub name: String,
+    pub value: String,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]

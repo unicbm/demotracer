@@ -128,6 +128,11 @@
   --motion-fast: var(--duration-fast);
 }
 
+:root[lang="en"] {
+  --font-ui: "Noto Sans Variable", -apple-system, BlinkMacSystemFont, "Segoe UI Variable",
+    "Segoe UI", Arial, sans-serif;
+}
+
 :root {
   font-family: var(--font-ui);
   color: var(--text-primary);
@@ -441,94 +446,9 @@ textarea {
 }
 
 .app-select {
-  position: relative;
   width: min(240px, 44vw);
   min-width: 152px;
   justify-self: end;
-}
-
-.app-select-trigger {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  width: 100%;
-  min-height: 34px;
-  padding: 0 10px 0 var(--space-3);
-  gap: var(--space-3);
-  overflow: hidden;
-  color: var(--text-primary);
-  background: var(--surface-raised);
-  border: 1px solid var(--divider-strong);
-  border-radius: var(--radius-sm);
-  font-size: var(--type-micro);
-  font-weight: var(--weight-regular);
-  text-align: left;
-}
-
-.app-select-trigger > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-select-trigger svg {
-  color: var(--text-tertiary);
-  transition: transform var(--duration-fast) ease;
-}
-
-.app-select.is-open .app-select-trigger {
-  border-color: var(--focus-ring);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 22%, transparent);
-}
-
-.app-select.is-open .app-select-trigger svg {
-  transform: rotate(180deg);
-}
-
-.app-select-menu {
-  position: absolute;
-  z-index: 40;
-  top: calc(100% + 5px);
-  right: 0;
-  display: grid;
-  width: 100%;
-  min-width: 172px;
-  overflow: hidden;
-  padding: 0;
-  background: var(--surface-raised);
-  border: 1px solid var(--divider);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sheet);
-}
-
-.app-select-option {
-  min-height: 38px;
-  padding: 0 var(--space-3);
-  overflow: hidden;
-  color: var(--text-primary);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  font-size: var(--type-micro);
-  font-weight: var(--weight-regular);
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-select-option:hover:not(:disabled),
-.app-select-option:focus-visible {
-  background: var(--hover-row);
-  outline: 0;
-}
-
-.app-select-option.is-selected {
-  background: var(--selected-row);
-}
-
-.app-select-option:disabled {
-  color: var(--text-disabled);
-  cursor: default;
 }
 
 .segmented-control {
@@ -571,50 +491,6 @@ textarea {
   min-height: 24px;
   padding: 0 9px;
   font-size: var(--type-support);
-}
-
-.switch-control {
-  position: relative;
-  display: inline-flex;
-  width: 52px;
-  min-width: 52px;
-  height: 32px;
-  padding: 0;
-  flex: none;
-  align-items: center;
-  justify-content: flex-start;
-  overflow: hidden;
-  background: var(--divider-strong);
-  border: 0;
-  border-radius: var(--radius-pill);
-  transition: background-color 110ms ease-out;
-}
-
-.switch-control > span {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  display: block;
-  width: 28px;
-  height: 28px;
-  flex: none;
-  background: #fff;
-  border-radius: var(--radius-circle);
-  box-shadow: 0 1px 4px rgba(20, 24, 32, 0.28);
-  transform: translateX(0);
-  transition: transform 150ms ease-out;
-}
-
-.switch-control[aria-checked="true"] {
-  background: var(--accent);
-}
-
-.switch-control[aria-checked="true"] > span {
-  transform: translateX(20px);
-}
-
-.switch-control:disabled {
-  opacity: 0.52;
 }
 
 /* Window shell and primary navigation */
@@ -2299,7 +2175,7 @@ textarea {
 
 /* DTR round selection is one continuous workspace, not a stack of cards. */
 .round-selection-panel {
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
   background: var(--surface-raised);
 }
 
@@ -2340,10 +2216,14 @@ textarea {
 
 .round-list-scroll {
   min-width: 0;
-  min-height: 0;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: visible;
   background: var(--surface-raised);
-  scrollbar-gutter: stable;
+  scrollbar-width: none;
+}
+
+.round-list-scroll::-webkit-scrollbar {
+  display: none;
 }
 .round-export-table { min-width: 600px; }
 .round-export-table thead th { height: 34px; padding-inline: 10px; color: var(--text-tertiary); background: var(--surface-subtle); font-size: var(--type-caption); font-weight: var(--weight-semibold); letter-spacing: .02em; }

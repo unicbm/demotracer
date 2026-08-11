@@ -14,7 +14,9 @@ import { AnalysisOverview, analysisRoster } from "./AnalysisOverview";
 import { PlayerAnalysisWorkspace, type PlayerAnalysisTeam } from "./PlayerAnalysisWorkspace";
 import type { PlayerSelection } from "./PlayerRoster";
 import { RoundTable, type RoundTableLabels } from "./RoundTable";
+import { roundOutcomeDescription } from "./roundOutcome";
 import { useSteamProfiles } from "./SteamProfile";
+import { SwitchControl } from "./SwitchControl";
 import type { CopyTarget } from "./TaskViews";
 
 interface RoundWorkspaceProps {
@@ -81,6 +83,7 @@ export function RoundWorkspace({
     round: words.roundColumn,
     status: words.statusColumn,
     duration: words.durationColumn,
+    result: words.roundResultColumn,
     teams: words.teamsColumn,
     validRows: words.validRowsColumn,
     problems: words.issuesColumn,
@@ -97,6 +100,10 @@ export function RoundWorkspace({
     .replace("{suspicious}", formatNumber(suspiciousCount));
   const canConvert = selectedRounds.size > 0 && Boolean(outputDir) && !convertPending;
   const roster = analysisRoster(analysis, words);
+  const roundOutcomes = useMemo(
+    () => new Map((analysis.roundOutcomes ?? []).map((outcome) => [outcome.round, outcome])),
+    [analysis.roundOutcomes],
+  );
   const steamProfiles = useSteamProfiles(analysis.players.map((player) => player.steamId));
   const inventorySelection = useInventorySimulatorSelection(
     analysis.demoSha256 || analysis.analysisId,
@@ -152,17 +159,12 @@ export function RoundWorkspace({
             <div className="allow-suspicious-control">
               <span className="wide-label">{words.allowSuspicious}</span>
               <span className="compact-label">{words.allowSuspiciousShort}</span>
-              <button
-                className="switch-control"
-                type="button"
-                role="switch"
-                aria-checked={allowSuspicious}
-                aria-label={words.allowSuspicious}
+              <SwitchControl
+                checked={allowSuspicious}
+                label={words.allowSuspicious}
                 disabled={convertPending}
-                onClick={() => onAllowSuspiciousChange(!allowSuspicious)}
-              >
-                <span />
-              </button>
+                onChange={onAllowSuspiciousChange}
+              />
             </div>
           ) : <span className="toolbar-spacer" />}
         </div>
@@ -175,6 +177,12 @@ export function RoundWorkspace({
           disabled={convertPending}
           onToggle={onToggleRound}
           formatNumber={formatNumber}
+          roundOutcomeLabel={(round) => roundOutcomeDescription(
+            roundOutcomes.get(round),
+            language,
+            roster.teamAName,
+            roster.teamBName,
+          )}
         />
       </div>
 

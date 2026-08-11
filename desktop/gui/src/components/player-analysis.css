@@ -811,12 +811,6 @@
 }
 
 .cosmetic-viewer-scrim {
-  position: fixed;
-  z-index: 110;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: clamp(18px, 4vw, 56px);
   background: color-mix(in srgb, var(--media-overlay-ink) 58%, transparent);
   backdrop-filter: blur(14px) saturate(0.82);
 }
@@ -988,10 +982,6 @@
 
   .professional-player-identity {
     width: min(360px, 100%);
-  }
-
-  .cosmetic-viewer-scrim {
-    padding: 10px;
   }
 
   .cosmetic-viewer-dialog {
