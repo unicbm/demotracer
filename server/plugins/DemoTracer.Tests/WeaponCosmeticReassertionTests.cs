@@ -55,4 +55,50 @@ public sealed class WeaponCosmeticReassertionTests
             expectedSeed: 420,
             expectedWear: 0.125f));
     }
+
+    [Theory]
+    [InlineData(60)]
+    [InlineData(61)]
+    public void SilencedWeaponPaintCacheRequiresTheLivePaintModelState(int weaponDefIndex)
+    {
+        Assert.True(DemoTracerPlugin.WeaponPaintModelStateMatches(
+            weaponDefIndex,
+            actualBodygroup: 1,
+            actualMeshGroupMask: 2,
+            usesLegacyModel: true));
+
+        Assert.True(DemoTracerPlugin.WeaponPaintModelStateMatches(
+            weaponDefIndex,
+            actualBodygroup: 0,
+            actualMeshGroupMask: 1,
+            usesLegacyModel: false));
+
+        Assert.False(DemoTracerPlugin.WeaponPaintModelStateMatches(
+            weaponDefIndex,
+            actualBodygroup: 0,
+            actualMeshGroupMask: 2,
+            usesLegacyModel: true));
+
+        Assert.False(DemoTracerPlugin.WeaponPaintModelStateMatches(
+            weaponDefIndex,
+            actualBodygroup: 1,
+            actualMeshGroupMask: 1,
+            usesLegacyModel: true));
+
+        Assert.False(DemoTracerPlugin.WeaponPaintModelStateMatches(
+            weaponDefIndex,
+            actualBodygroup: null,
+            actualMeshGroupMask: null,
+            usesLegacyModel: true));
+    }
+
+    [Fact]
+    public void OtherWeaponsDoNotDependOnTheSilencedWeaponModelStateContract()
+    {
+        Assert.True(DemoTracerPlugin.WeaponPaintModelStateMatches(
+            weaponDefIndex: 7,
+            actualBodygroup: null,
+            actualMeshGroupMask: null,
+            usesLegacyModel: false));
+    }
 }
