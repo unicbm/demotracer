@@ -15,19 +15,22 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
 
-const TELEMETRY_ENDPOINT: &str = "https://telemetry.detr.site/v1/events";
+const AGGREGATE_ENDPOINT: &str = "https://telemetry.detr.site/v1/aggregate";
+const PRESENCE_ENDPOINT: &str = "https://telemetry.detr.site/v1/presence";
 const TELEMETRY_SEED_FILE: &str = "telemetry-seed-v1";
 const MAX_RESPONSE_BYTES: usize = 4 * 1024;
 const TIMEOUT_MS: i32 = 5_000;
 
 pub(crate) struct TelemetryState {
-    enabled: AtomicBool,
+    aggregate_enabled: AtomicBool,
+    presence_enabled: AtomicBool,
 }
 
 impl Default for TelemetryState {
     fn default() -> Self {
         Self {
-            enabled: AtomicBool::new(false),
+            aggregate_enabled: AtomicBool::new(false),
+            presence_enabled: AtomicBool::new(false),
         }
     }
 }
@@ -46,10 +49,8 @@ pub(crate) struct TelemetryEventRequest {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct TelemetryEventPayload {
+struct AggregateTelemetryPayload {
     schema_version: u8,
-    event_id: String,
-    daily_id: String,
     app_version: &'static str,
     playback_version: String,
     kind: String,
@@ -60,9 +61,34 @@ struct TelemetryEventPayload {
     duration_bucket: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PresenceTelemetryPayload {
+    schema_version: u8,
+    daily_id: String,
+    app_version: &'static str,
+    playback_version: String,
+}
+
 #[tauri::command]
-pub(crate) fn configure_telemetry(enabled: bool, state: State<'_, TelemetryState>) {
-    state.enabled.store(enabled, Ordering::Release);
+pub(crate) fn configure_telemetry(
+    app: AppHandle,
+    aggregate_enabled: bool,
+    presence_enabled: bool,
+    state: State<'_, TelemetryState>,
+) {
+    state
+        .aggregate_enabled
+        .store(aggregate_enabled, Ordering::Release);
+    state
+        .presence_enabled
+        .store(presence_enabled, Ordering::Release);
+
+    if !presence_enabled {
+        if let Ok(local_data) = app.path().app_local_data_dir() {
+            let _ = fs::remove_file(local_data.join(TELEMETRY_SEED_FILE));
+        }
+    }
 }
 
 #[tauri::command]
@@ -71,24 +97,46 @@ pub(crate) fn submit_telemetry(
     state: State<'_, TelemetryState>,
     event: TelemetryEventRequest,
 ) -> Result<(), String> {
-    if !state.enabled.load(Ordering::Acquire) {
+    let is_presence = event.kind == "session";
+    let enabled = if is_presence {
+        state.presence_enabled.load(Ordering::Acquire)
+    } else {
+        state.aggregate_enabled.load(Ordering::Acquire)
+    };
+    if !enabled {
         return Ok(());
     }
 
     let event = normalize_event(event)?;
-    let local_data = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|_| "telemetry local data directory is unavailable".to_string())?;
+    let local_data = if is_presence {
+        Some(
+            app.path()
+                .app_local_data_dir()
+                .map_err(|_| "telemetry local data directory is unavailable".to_string())?,
+        )
+    } else {
+        None
+    };
     tauri::async_runtime::spawn_blocking(move || {
-        let Some(payload) = build_payload(&local_data, event) else {
-            return;
+        let (endpoint, body) = if is_presence {
+            let Some(payload) = local_data
+                .as_deref()
+                .and_then(|local_data| build_presence_payload(local_data, event))
+            else {
+                return;
+            };
+            let Ok(body) = serde_json::to_vec(&payload) else {
+                return;
+            };
+            (PRESENCE_ENDPOINT, body)
+        } else {
+            let payload = build_aggregate_payload(event);
+            let Ok(body) = serde_json::to_vec(&payload) else {
+                return;
+            };
+            (AGGREGATE_ENDPOINT, body)
         };
-        let Ok(body) = serde_json::to_vec(&payload) else {
-            return;
-        };
-        let _ =
-            http_client::post_json_https(TELEMETRY_ENDPOINT, &body, MAX_RESPONSE_BYTES, TIMEOUT_MS);
+        let _ = http_client::post_json_https(endpoint, &body, MAX_RESPONSE_BYTES, TIMEOUT_MS);
     });
     Ok(())
 }
@@ -128,19 +176,9 @@ fn normalize_event(mut event: TelemetryEventRequest) -> Result<TelemetryEventReq
     Ok(event)
 }
 
-fn build_payload(local_data: &Path, event: TelemetryEventRequest) -> Option<TelemetryEventPayload> {
-    let day_number = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs() / (24 * 60 * 60);
-    let seed = load_or_create_seed(local_data)?;
-    let mut hash = Sha256::new();
-    hash.update(b"demotracer-telemetry-v1\0");
-    hash.update(seed.as_bytes());
-    hash.update(day_number.to_le_bytes());
-    let daily_id = format!("{:x}", hash.finalize());
-
-    Some(TelemetryEventPayload {
+fn build_aggregate_payload(event: TelemetryEventRequest) -> AggregateTelemetryPayload {
+    AggregateTelemetryPayload {
         schema_version: 1,
-        event_id: Uuid::new_v4().to_string(),
-        daily_id,
         app_version: env!("CARGO_PKG_VERSION"),
         playback_version: event.playback_version.unwrap_or_else(|| "-".to_string()),
         kind: event.kind,
@@ -151,6 +189,26 @@ fn build_payload(local_data: &Path, event: TelemetryEventRequest) -> Option<Tele
         duration_bucket: event
             .duration_bucket
             .unwrap_or_else(|| "unknown".to_string()),
+    }
+}
+
+fn build_presence_payload(
+    local_data: &Path,
+    event: TelemetryEventRequest,
+) -> Option<PresenceTelemetryPayload> {
+    let day_number = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs() / (24 * 60 * 60);
+    let seed = load_or_create_seed(local_data)?;
+    let mut hash = Sha256::new();
+    hash.update(b"demotracer-telemetry-v1\0");
+    hash.update(seed.as_bytes());
+    hash.update(day_number.to_le_bytes());
+    let daily_id = format!("{:x}", hash.finalize());
+
+    Some(PresenceTelemetryPayload {
+        schema_version: 1,
+        daily_id,
+        app_version: env!("CARGO_PKG_VERSION"),
+        playback_version: event.playback_version.unwrap_or_else(|| "-".to_string()),
     })
 }
 
@@ -303,8 +361,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn contract_endpoint_is_https_and_fixed() {
-        assert_eq!(TELEMETRY_ENDPOINT, "https://telemetry.detr.site/v1/events");
+    fn contract_endpoints_are_https_and_fixed() {
+        assert_eq!(
+            AGGREGATE_ENDPOINT,
+            "https://telemetry.detr.site/v1/aggregate"
+        );
+        assert_eq!(PRESENCE_ENDPOINT, "https://telemetry.detr.site/v1/presence");
+    }
+
+    #[test]
+    fn aggregate_payload_has_no_linkable_identifier() {
+        let event = normalize_event(TelemetryEventRequest {
+            playback_version: Some("1.1.2".to_string()),
+            kind: "analysis".to_string(),
+            outcome: "success".to_string(),
+            demo_source: Some("5e".to_string()),
+            error_code: None,
+            rounds_bucket: Some("13-24".to_string()),
+            duration_bucket: Some("10-29s".to_string()),
+        })
+        .expect("valid event");
+        let value = serde_json::to_value(build_aggregate_payload(event)).expect("serialize");
+        assert!(value.get("eventId").is_none());
+        assert!(value.get("dailyId").is_none());
+        assert!(value.get("installationId").is_none());
     }
 
     #[test]

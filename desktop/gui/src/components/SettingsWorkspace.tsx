@@ -111,7 +111,8 @@ interface SettingsWorkspaceProps {
   customCssProfiles: readonly CustomCssProfile[];
   activeCustomCssProfileId: string | null;
   environment: LocalEnvironmentSettings;
-  telemetryEnabled: boolean;
+  aggregateTelemetryEnabled: boolean;
+  presenceTelemetryEnabled: boolean;
   exportRoot: string;
   archiveRoots: string[];
   converter: ConverterSettings;
@@ -165,7 +166,8 @@ interface SettingsWorkspaceProps {
   onOpenLogDirectory: () => void;
   onOpenExternal: (url: string) => void;
   onEnvironmentChange: (patch: Partial<LocalEnvironmentSettings>) => void;
-  onTelemetryEnabledChange: (enabled: boolean) => void;
+  onAggregateTelemetryEnabledChange: (enabled: boolean) => void;
+  onPresenceTelemetryEnabledChange: (enabled: boolean) => void;
   onConverterChange: (patch: Partial<ConverterSettings>) => void;
   onRequestCosmetics: () => void;
   onPlaybackChange: (patch: Partial<PlaybackPresetOptions>) => void;
@@ -395,7 +397,8 @@ export function SettingsWorkspace({
   customCssProfiles,
   activeCustomCssProfileId,
   environment,
-  telemetryEnabled,
+  aggregateTelemetryEnabled,
+  presenceTelemetryEnabled,
   exportRoot,
   archiveRoots,
   converter,
@@ -449,7 +452,8 @@ export function SettingsWorkspace({
   onOpenLogDirectory,
   onOpenExternal,
   onEnvironmentChange,
-  onTelemetryEnabledChange,
+  onAggregateTelemetryEnabledChange,
+  onPresenceTelemetryEnabledChange,
   onConverterChange,
   onRequestCosmetics,
   onPlaybackChange,
@@ -639,10 +643,16 @@ export function SettingsWorkspace({
           onChange={(soundNotifications) => onEnvironmentChange({ soundNotifications })}
         />
         <SettingLine
-          title={words.anonymousTelemetry}
-          description={words.anonymousTelemetryHelp}
-          checked={telemetryEnabled}
-          onChange={onTelemetryEnabledChange}
+          title={words.aggregateTelemetry}
+          description={words.aggregateTelemetryHelp}
+          checked={aggregateTelemetryEnabled}
+          onChange={onAggregateTelemetryEnabledChange}
+        />
+        <SettingLine
+          title={words.presenceTelemetry}
+          description={words.presenceTelemetryHelp}
+          checked={presenceTelemetryEnabled}
+          onChange={onPresenceTelemetryEnabledChange}
         />
         <button
           className="settings-subpage-row"

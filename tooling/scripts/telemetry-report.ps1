@@ -34,11 +34,11 @@ function Invoke-D1Query {
 }
 
 $summarySql = @"
-SELECT 'approximately_online_10m' AS metric, COUNT(*) AS value
+SELECT 'opt_in_approximately_online_10m' AS metric, COUNT(*) AS value
 FROM active_installations
 WHERE last_seen >= unixepoch() - 600
 UNION ALL
-SELECT 'active_installations_utc_today', COUNT(*)
+SELECT 'opt_in_active_installations_utc_today', COUNT(*)
 FROM daily_installations
 WHERE day = date('now')
 UNION ALL
@@ -52,11 +52,19 @@ WHERE event_kind = 'conversion' AND hour >= strftime('%Y-%m-%dT%H', 'now', '-$Da
 "@
 
 $versionSql = @"
-SELECT app_version, COUNT(*) AS active_installations_utc_today
+SELECT app_version, COUNT(*) AS opt_in_active_installations_utc_today
 FROM daily_installations
 WHERE day = date('now')
 GROUP BY app_version
 ORDER BY active_installations_utc_today DESC, app_version DESC;
+"@
+
+$taskVersionSql = @"
+SELECT app_version, playback_version, SUM(event_count) AS aggregate_task_events
+FROM hourly_metrics
+WHERE hour >= strftime('%Y-%m-%dT%H', 'now', '-$Days days')
+GROUP BY app_version, playback_version
+ORDER BY aggregate_task_events DESC, app_version DESC, playback_version DESC;
 "@
 
 $errorSql = @"
@@ -79,6 +87,7 @@ ORDER BY demos_analyzed DESC, demo_source;
 "@
 
 Invoke-D1Query -Title "DemoTracer telemetry summary (UTC)" -Sql $summarySql
-Invoke-D1Query -Title "Active app versions today (UTC)" -Sql $versionSql
+Invoke-D1Query -Title "Opt-in active app versions today (UTC)" -Sql $versionSql
+Invoke-D1Query -Title "Aggregate task versions over the last $Days days" -Sql $taskVersionSql
 Invoke-D1Query -Title "Locally classified demo sources over the last $Days days" -Sql $sourceSql
 Invoke-D1Query -Title "Top coarse failure categories over the last $Days days" -Sql $errorSql

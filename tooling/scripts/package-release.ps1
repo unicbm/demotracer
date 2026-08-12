@@ -39,6 +39,17 @@ if (-not [System.Uri]::TryCreate($releaseBase, [System.UriKind]::Absolute, [ref]
     [string]::IsNullOrWhiteSpace($releaseUri.Host)) {
     throw "ReleaseBaseUrl must be an absolute HTTPS URL."
 }
+$versionedReleaseNotesPath = Join-Path $repoRoot "tooling\release\release-notes.v$Version.json"
+if (([string]::IsNullOrWhiteSpace($ReleaseNotes) -or [string]::IsNullOrWhiteSpace($ReleaseNotesZh)) -and
+    (Test-Path -LiteralPath $versionedReleaseNotesPath -PathType Leaf)) {
+    $versionedReleaseNotes = Get-Content -LiteralPath $versionedReleaseNotesPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ([string]::IsNullOrWhiteSpace($ReleaseNotes)) {
+        $ReleaseNotes = [string]$versionedReleaseNotes.en
+    }
+    if ([string]::IsNullOrWhiteSpace($ReleaseNotesZh)) {
+        $ReleaseNotesZh = [string]$versionedReleaseNotes.zh
+    }
+}
 if ([string]::IsNullOrWhiteSpace($ReleaseNotes)) {
     $ReleaseNotes = "Stability improvements and bug fixes."
 }

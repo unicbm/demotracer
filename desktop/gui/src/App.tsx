@@ -47,12 +47,14 @@ import {
 import { AlertIcon, ArrowIcon, CheckIcon, CloseIcon, CopyIcon, FolderIcon, RefreshIcon, ReplayIcon } from "./icons";
 import { COSMETIC_PHRASE, TEXT } from "./i18n";
 import {
-  TELEMETRY_CONSENT_STORAGE_KEY,
-  storedTelemetryConsent,
+  AGGREGATE_TELEMETRY_STORAGE_KEY,
+  PRESENCE_TELEMETRY_CONSENT_STORAGE_KEY,
+  storedAggregateTelemetryEnabled,
+  storedPresenceTelemetryConsent,
   telemetryDemoSource,
   telemetryDurationBucket,
   telemetryRoundsBucket,
-  type TelemetryConsent,
+  type TelemetryPresenceConsent,
   type TelemetrySubmission,
 } from "./telemetry";
 import {
@@ -836,7 +838,10 @@ function App() {
   const [cosmeticConsentAccepted, setCosmeticConsentAccepted] = useState(storedCosmeticConsent);
   const [playbackPreset, setPlaybackPreset] = useState<PlaybackPresetOptions>(storedPlaybackPreset);
   const [localEnvironment, setLocalEnvironment] = useState<LocalEnvironmentSettings>(storedLocalEnvironment);
-  const [telemetryConsent, setTelemetryConsent] = useState<TelemetryConsent>(storedTelemetryConsent);
+  const [aggregateTelemetryEnabled, setAggregateTelemetryEnabled] = useState(storedAggregateTelemetryEnabled);
+  const [presenceTelemetryConsent, setPresenceTelemetryConsent] = useState<TelemetryPresenceConsent>(
+    storedPresenceTelemetryConsent,
+  );
   const [installCandidates, setInstallCandidates] = useState<Cs2InstallCandidate[]>([]);
   const [installDetectionCompleted, setInstallDetectionCompleted] = useState(false);
   const [environmentReport, setEnvironmentReport] = useState<EnvironmentDiagnosticReport | null>(
@@ -912,7 +917,6 @@ function App() {
   const openExistingArchiveRef = useRef<HTMLButtonElement | null>(null);
   const keepWorkingRef = useRef<HTMLButtonElement | null>(null);
   const guiUpdateLaterRef = useRef<HTMLButtonElement | null>(null);
-  const telemetryDeclineRef = useRef<HTMLButtonElement | null>(null);
   const cancelArchiveDeleteRef = useRef<HTMLButtonElement | null>(null);
   const inventorySimulatorHostRef = useRef<HTMLDivElement | null>(null);
   const browserLogPreviewSeededRef = useRef(false);
@@ -924,9 +928,10 @@ function App() {
   }, []);
 
   const words = TEXT[language];
-  const telemetryEnabled = telemetryConsent === "enabled";
+  const presenceTelemetryEnabled = presenceTelemetryConsent === "enabled";
   const submitTelemetry = useCallback((submission: TelemetrySubmission) => {
-    if (telemetryConsent !== "enabled" || !("__TAURI_INTERNALS__" in window)) return;
+    const enabled = submission.kind === "session" ? presenceTelemetryEnabled : aggregateTelemetryEnabled;
+    if (!enabled || !("__TAURI_INTERNALS__" in window)) return;
     void invoke<void>("submit_telemetry", {
       event: {
         playbackVersion: playbackRelease?.currentVersion ?? null,
@@ -937,7 +942,7 @@ function App() {
         ...submission,
       },
     }).catch(() => undefined);
-  }, [playbackRelease?.currentVersion, telemetryConsent]);
+  }, [aggregateTelemetryEnabled, playbackRelease?.currentVersion, presenceTelemetryEnabled]);
   const recordActivityLog = useCallback((
     level: ActivityLogLevel,
     source: string,
@@ -1353,16 +1358,22 @@ function App() {
   }, [localEnvironment]);
 
   useEffect(() => {
-    if (telemetryConsent !== "unknown") {
-      localStorage.setItem(TELEMETRY_CONSENT_STORAGE_KEY, telemetryConsent);
+    localStorage.setItem(
+      AGGREGATE_TELEMETRY_STORAGE_KEY,
+      aggregateTelemetryEnabled ? "enabled" : "disabled",
+    );
+    if (presenceTelemetryConsent !== "unknown") {
+      localStorage.setItem(PRESENCE_TELEMETRY_CONSENT_STORAGE_KEY, presenceTelemetryConsent);
     }
     if (!("__TAURI_INTERNALS__" in window)) return;
 
-    const enabled = telemetryConsent === "enabled";
     let disposed = false;
     let timer: number | undefined;
-    void invoke<void>("configure_telemetry", { enabled }).then(() => {
-      if (disposed || !enabled) return;
+    void invoke<void>("configure_telemetry", {
+      aggregateEnabled: aggregateTelemetryEnabled,
+      presenceEnabled: presenceTelemetryEnabled,
+    }).then(() => {
+      if (disposed || !presenceTelemetryEnabled) return;
       submitTelemetry({ kind: "session", outcome: "ping" });
       timer = window.setInterval(() => {
         submitTelemetry({ kind: "session", outcome: "ping" });
@@ -1372,7 +1383,7 @@ function App() {
       disposed = true;
       if (timer != null) window.clearInterval(timer);
     };
-  }, [submitTelemetry, telemetryConsent]);
+  }, [aggregateTelemetryEnabled, presenceTelemetryConsent, presenceTelemetryEnabled, submitTelemetry]);
 
   useEffect(() => {
     if ("__TAURI_INTERNALS__" in window || !import.meta.env.DEV || browserLogPreviewSeededRef.current) return;
@@ -3898,7 +3909,8 @@ function App() {
             customCssProfiles={customCssProfiles}
             activeCustomCssProfileId={activeCustomCssProfileId}
             environment={localEnvironment}
-            telemetryEnabled={telemetryEnabled}
+            aggregateTelemetryEnabled={aggregateTelemetryEnabled}
+            presenceTelemetryEnabled={presenceTelemetryEnabled}
             exportRoot={libraryRoot}
             archiveRoots={libraryRoots}
             converter={settings}
@@ -3973,7 +3985,10 @@ function App() {
             onOpenLogDirectory={openActivityLogDirectory}
             onOpenExternal={(url) => void openExternal(url)}
             onEnvironmentChange={(patch) => setLocalEnvironment((current) => ({ ...current, ...patch }))}
-            onTelemetryEnabledChange={(enabled) => setTelemetryConsent(enabled ? "enabled" : "disabled")}
+            onAggregateTelemetryEnabledChange={setAggregateTelemetryEnabled}
+            onPresenceTelemetryEnabledChange={(enabled) => {
+              setPresenceTelemetryConsent(enabled ? "enabled" : "disabled");
+            }}
             onConverterChange={updateSettings}
             onRequestCosmetics={requestCosmeticExport}
             onPlaybackChange={(patch) => setPlaybackPreset((current) => ({ ...current, ...patch }))}
@@ -4165,29 +4180,34 @@ function App() {
         </div>
       ) : null}
 
-      {telemetryConsent === "unknown" ? (
-        <DialogPrimitive
-          labelledBy="telemetry-consent-title"
-          describedBy="telemetry-consent-description"
-          onDismiss={() => undefined}
-          initialFocusRef={telemetryDeclineRef}
-          dismissOnScrimClick={false}
+      {presenceTelemetryConsent === "unknown" ? (
+        <aside
+          className="telemetry-choice-toast"
+          role="dialog"
+          aria-labelledby="telemetry-choice-title"
+          aria-describedby="telemetry-choice-description"
         >
-          <header className="dialog-header">
-            <h2 id="telemetry-consent-title">{words.telemetryConsentTitle}</h2>
-          </header>
-          <p id="telemetry-consent-description" className="dialog-description">{words.telemetryConsentBody}</p>
-          <p className="dialog-description"><strong>{words.telemetryConsentCollected}</strong></p>
-          <p className="dialog-description">{words.telemetryConsentExcluded}</p>
-          <footer className="dialog-actions">
-            <button ref={telemetryDeclineRef} className="secondary-button" type="button" onClick={() => setTelemetryConsent("disabled")}>
-              {words.telemetryConsentDecline}
+          <div className="telemetry-choice-copy">
+            <strong id="telemetry-choice-title">{words.telemetryChoiceTitle}</strong>
+            <span id="telemetry-choice-description">{words.telemetryChoiceBody}</span>
+          </div>
+          <div className="telemetry-choice-actions">
+            <button className="secondary-button" type="button" onClick={() => setPresenceTelemetryConsent("disabled")}>
+              {words.telemetryPresenceKeepOff}
             </button>
-            <button className="secondary-button" type="button" onClick={() => setTelemetryConsent("enabled")}>
-              {words.telemetryConsentAllow}
+            <button className="primary-button" type="button" onClick={() => setPresenceTelemetryConsent("enabled")}>
+              {words.telemetryPresenceAllow}
             </button>
-          </footer>
-        </DialogPrimitive>
+          </div>
+          <button
+            className="icon-button telemetry-choice-dismiss"
+            type="button"
+            onClick={() => setPresenceTelemetryConsent("disabled")}
+            aria-label={words.dismiss}
+          >
+            <CloseIcon size={14} />
+          </button>
+        </aside>
       ) : null}
 
       {guiUpdateDialogOpen ? (

@@ -2116,6 +2116,58 @@ input[type="radio"] {
   animation: feedback-toast-in var(--duration-slow) cubic-bezier(.2, .75, .25, 1) both;
 }
 
+.telemetry-choice-toast {
+  position: fixed;
+  z-index: 55;
+  right: 18px;
+  bottom: 18px;
+  display: grid;
+  width: min(460px, calc(100% - 36px));
+  padding: 14px 42px 12px 14px;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-dialog);
+  gap: 10px;
+  animation: feedback-toast-in var(--duration-slow) cubic-bezier(.2, .75, .25, 1) both;
+}
+
+.telemetry-choice-copy {
+  display: grid;
+  gap: 5px;
+}
+
+.telemetry-choice-copy strong {
+  font-size: var(--type-label);
+  font-weight: var(--weight-semibold);
+}
+
+.telemetry-choice-copy span {
+  color: var(--text-secondary);
+  font-size: var(--type-support);
+  line-height: 19px;
+}
+
+.telemetry-choice-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.telemetry-choice-dismiss {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+@media (max-width: 620px) {
+  .telemetry-choice-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+}
+
 @keyframes feedback-toast-in {
   from { opacity: 0; transform: translateY(-8px) scale(.985); }
   to { opacity: 1; transform: translateY(0) scale(1); }

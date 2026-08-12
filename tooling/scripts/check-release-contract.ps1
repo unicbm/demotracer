@@ -81,6 +81,11 @@ foreach ($entry in $versionSources.GetEnumerator()) {
     Assert-Equal $entry.Key ([string]$entry.Value) $Version
 }
 Assert-Equal "telemetry product version" ([string]$telemetryContract.productVersion) $Version
+$releaseNotes = (Read-Text "tooling\release\release-notes.v$Version.json") | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace([string]$releaseNotes.zh) -or [string]::IsNullOrWhiteSpace([string]$releaseNotes.en)) {
+    throw "localized release notes must contain non-empty zh and en text"
+}
+$null = Read-Text "tooling\release\github-release.v$Version.md"
 
 Assert-Equal "manifest ABI" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'DEMOTRACER_ABI:\s*i32\s*=\s*(\d+)' "manifest ABI") ([string]$contract.manifest_abi)
 Assert-Equal "DTR writer" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'DTR_FORMAT_VERSION:\s*u32\s*=\s*(\d+)' "DTR writer") ([string]$contract.dtr_writer)

@@ -1,0 +1,4 @@
+{
+  "zh": "新增匿名聚合统计，用于了解 Demo 来源及分析、转换可靠性；不包含可关联标识，可在设置中关闭。\n\n活跃人数统计默认关闭，首次启动时可选择是否开启。设置页提供两个独立开关。",
+  "en": "Added anonymous aggregate statistics for demo sources and analysis/conversion reliability. No linkable identifier is included, and the feature can be disabled in Settings.\n\nActive-user estimates remain off by default and can be enabled separately. Both options have independent Settings switches."
+}

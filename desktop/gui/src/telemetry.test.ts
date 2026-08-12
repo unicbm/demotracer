@@ -7,16 +7,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  storedTelemetryConsent,
+  storedAggregateTelemetryEnabled,
+  storedPresenceTelemetryConsent,
   telemetryDemoSource,
   telemetryDurationBucket,
   telemetryRoundsBucket,
 } from "./telemetry.ts";
 
-test("consent defaults to unknown and preserves explicit choices", () => {
-  assert.equal(storedTelemetryConsent({ getItem: () => null }), "unknown");
-  assert.equal(storedTelemetryConsent({ getItem: () => "enabled" }), "enabled");
-  assert.equal(storedTelemetryConsent({ getItem: () => "disabled" }), "disabled");
+function storage(values: Record<string, string>) {
+  return { getItem: (key: string) => values[key] ?? null };
+}
+
+test("aggregate statistics default on and preserve an explicit opt-out", () => {
+  assert.equal(storedAggregateTelemetryEnabled(storage({})), true);
+  assert.equal(storedAggregateTelemetryEnabled(storage({ "demotracer.aggregate-telemetry.v1": "disabled" })), false);
+  assert.equal(storedAggregateTelemetryEnabled(storage({ "demotracer.telemetry-consent.v1": "disabled" })), false);
+});
+
+test("presence statistics default to no consent and migrate an earlier choice", () => {
+  assert.equal(storedPresenceTelemetryConsent(storage({})), "unknown");
+  assert.equal(storedPresenceTelemetryConsent(storage({ "demotracer.presence-telemetry-consent.v1": "enabled" })), "enabled");
+  assert.equal(storedPresenceTelemetryConsent(storage({ "demotracer.telemetry-consent.v1": "disabled" })), "disabled");
 });
 
 test("demo source telemetry is categorical and never forwards source text", () => {

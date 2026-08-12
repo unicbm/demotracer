@@ -7,17 +7,21 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import worker, { TELEMETRY_FIELDS, TELEMETRY_SCHEMA_VERSION, validateTelemetryEvent } from "../src/index.js";
+import worker, {
+  AGGREGATE_FIELDS,
+  PRESENCE_FIELDS,
+  TELEMETRY_SCHEMA_VERSION,
+  validateAggregateEvent,
+  validatePresenceEvent,
+} from "../src/index.js";
 
 const contract = JSON.parse(
   await readFile(new URL("../../../shared/contracts/telemetry-contract.v1.json", import.meta.url), "utf8"),
 );
 
-function validEvent(patch = {}) {
+function validAggregate(patch = {}) {
   return {
     schemaVersion: 1,
-    eventId: "18bc1c0c-5fca-4b11-bac2-9b6765d172ad",
-    dailyId: "a".repeat(64),
     appVersion: "1.1.2",
     playbackVersion: "1.1.2",
     kind: "conversion",
@@ -30,50 +34,92 @@ function validEvent(patch = {}) {
   };
 }
 
+function validPresence(patch = {}) {
+  return {
+    schemaVersion: 1,
+    dailyId: "a".repeat(64),
+    appVersion: "1.1.2",
+    playbackVersion: "1.1.2",
+    ...patch,
+  };
+}
+
 function rateLimiter(success = true) {
   return { limit: async () => ({ success }) };
 }
 
-function ingestEnv(globalAllowed = true, installationAllowed = true) {
+function recordingDb() {
+  const writes = [];
   return {
+    writes,
+    prepare(sql) {
+      return {
+        bind(...params) {
+          return {
+            run: async () => {
+              writes.push({ sql, params });
+              return { meta: { changes: 1 } };
+            },
+          };
+        },
+      };
+    },
+    async batch(statements) {
+      for (const statement of statements) await statement.run();
+    },
+  };
+}
+
+function ingestEnv({ globalAllowed = true, installationAllowed = true, db = recordingDb() } = {}) {
+  return {
+    DB: db,
     GLOBAL_RATE_LIMITER: rateLimiter(globalAllowed),
     INSTALLATION_RATE_LIMITER: rateLimiter(installationAllowed),
   };
 }
 
-test("implementation matches the public v1 contract", () => {
+function post(path, body) {
+  return new Request(`https://telemetry.detr.site${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+test("implementation matches the public split-channel contract", () => {
   assert.equal(TELEMETRY_SCHEMA_VERSION, contract.schemaVersion);
-  assert.deepEqual([...TELEMETRY_FIELDS].sort(), Object.keys(contract.fields).sort());
-  assert.equal(contract.consent.default, "disabled");
+  assert.deepEqual([...AGGREGATE_FIELDS].sort(), Object.keys(contract.channels.aggregate.fields).sort());
+  assert.deepEqual([...PRESENCE_FIELDS].sort(), Object.keys(contract.channels.presence.fields).sort());
+  assert.equal(contract.channels.aggregate.default, "enabled");
+  assert.equal(contract.channels.presence.default, "disabled");
 });
 
-test("accepts the bounded event schema", () => {
-  assert.equal(validateTelemetryEvent(validEvent()).ok, true);
-  assert.equal(
-    validateTelemetryEvent(validEvent({ kind: "session", outcome: "ping", demoSource: "unknown", roundsBucket: "unknown", durationBucket: "unknown" })).ok,
-    true,
-  );
+test("aggregate events contain no request, daily, or installation identifier", () => {
+  assert.equal(validateAggregateEvent(validAggregate()).ok, true);
+  for (const field of ["eventId", "dailyId", "installationId"]) {
+    assert.deepEqual(validateAggregateEvent(validAggregate({ [field]: "private" })), {
+      ok: false,
+      error: "unexpected_field",
+    });
+  }
 });
 
-test("rejects unknown and potentially identifying fields", () => {
-  const event = validEvent({ demoName: "private.dem" });
-  assert.deepEqual(validateTelemetryEvent(event), { ok: false, error: "unexpected_field" });
+test("aggregate events accept only fixed task categories", () => {
+  assert.equal(validateAggregateEvent(validAggregate({ kind: "analysis" })).ok, true);
+  assert.equal(validateAggregateEvent(validAggregate({ kind: "session" })).error, "invalid_kind");
+  assert.equal(validateAggregateEvent(validAggregate({ outcome: "failure" })).error, "missing_failure_error_code");
+  assert.equal(validateAggregateEvent(validAggregate({ outcome: "failure", errorCode: "parse_failed" })).ok, true);
+  assert.equal(validateAggregateEvent(validAggregate({ errorCode: "C:private:demo.dem" })).error, "invalid_error_code");
+  assert.equal(validateAggregateEvent(validAggregate({ demoSource: "Private Server 127.0.0.1" })).error, "invalid_demo_source");
 });
 
-test("rejects inconsistent outcomes", () => {
-  assert.equal(validateTelemetryEvent(validEvent({ outcome: "failure" })).error, "missing_failure_error_code");
-  assert.equal(validateTelemetryEvent(validEvent({ kind: "session", outcome: "success" })).error, "invalid_session_event");
-});
-
-test("accepts only fixed coarse failure categories", () => {
-  assert.equal(validateTelemetryEvent(validEvent({ outcome: "failure", errorCode: "parse_failed" })).ok, true);
-  assert.equal(validateTelemetryEvent(validEvent({ outcome: "failure", errorCode: "demo_parse_failed" })).error, "invalid_error_code");
-  assert.equal(validateTelemetryEvent(validEvent({ outcome: "failure", errorCode: "C:private:demo.dem" })).error, "invalid_error_code");
-});
-
-test("accepts only local source categories and never source text", () => {
-  assert.equal(validateTelemetryEvent(validEvent({ demoSource: "perfect-world" })).ok, true);
-  assert.equal(validateTelemetryEvent(validEvent({ demoSource: "Private Server 127.0.0.1" })).error, "invalid_demo_source");
+test("presence events accept only the rotating daily identifier and versions", () => {
+  assert.equal(validatePresenceEvent(validPresence()).ok, true);
+  assert.equal(validatePresenceEvent(validPresence({ dailyId: "short" })).error, "invalid_daily_id");
+  assert.deepEqual(validatePresenceEvent(validPresence({ demoSource: "5e" })), {
+    ok: false,
+    error: "unexpected_field",
+  });
 });
 
 test("health endpoint is public and contains no operational data", async () => {
@@ -83,27 +129,39 @@ test("health endpoint is public and contains no operational data", async () => {
   assert.equal(response.headers.get("cache-control"), "no-store");
 });
 
+test("aggregate ingestion writes only an hourly counter", async () => {
+  const db = recordingDb();
+  const response = await worker.fetch(post("/v1/aggregate", validAggregate()), ingestEnv({ db }));
+  assert.equal(response.status, 202);
+  assert.deepEqual(await response.json(), { accepted: true });
+  assert.equal(db.writes.length, 1);
+  assert.match(db.writes[0].sql, /INSERT INTO hourly_metrics/);
+  assert.equal(db.writes[0].params.includes("a".repeat(64)), false);
+});
+
+test("presence ingestion updates only active and daily leases", async () => {
+  const db = recordingDb();
+  const response = await worker.fetch(post("/v1/presence", validPresence()), ingestEnv({ db }));
+  assert.equal(response.status, 202);
+  assert.deepEqual(await response.json(), { accepted: true });
+  assert.equal(db.writes.length, 2);
+  assert.match(db.writes[0].sql, /INSERT INTO active_installations/);
+  assert.match(db.writes[1].sql, /INSERT INTO daily_installations/);
+});
+
 test("rejects globally rate-limited ingestion before reading D1", async () => {
   const response = await worker.fetch(
-    new Request("https://telemetry.detr.site/v1/events", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(validEvent()),
-    }),
-    ingestEnv(false, true),
+    post("/v1/aggregate", validAggregate()),
+    ingestEnv({ globalAllowed: false }),
   );
   assert.equal(response.status, 429);
   assert.deepEqual(await response.json(), { error: "rate_limited" });
 });
 
-test("rejects a daily identifier that exceeds its own rate", async () => {
+test("rejects a presence identifier that exceeds its own rate", async () => {
   const response = await worker.fetch(
-    new Request("https://telemetry.detr.site/v1/events", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(validEvent()),
-    }),
-    ingestEnv(true, false),
+    post("/v1/presence", validPresence()),
+    ingestEnv({ installationAllowed: false }),
   );
   assert.equal(response.status, 429);
   assert.deepEqual(await response.json(), { error: "rate_limited" });
@@ -119,7 +177,7 @@ test("streams request bodies through the 4 KiB limit", async () => {
     },
   });
   const response = await worker.fetch(
-    new Request("https://telemetry.detr.site/v1/events", {
+    new Request("https://telemetry.detr.site/v1/aggregate", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body,

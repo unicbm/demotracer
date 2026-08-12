@@ -1,26 +1,40 @@
 {
   "schemaVersion": 1,
   "productVersion": "1.1.2",
-  "endpoint": "https://telemetry.detr.site/v1/events",
-  "consent": {
-    "default": "disabled",
-    "choices": ["enabled", "disabled"],
-    "mayChangeAnyTime": true
+  "endpoints": {
+    "aggregate": "https://telemetry.detr.site/v1/aggregate",
+    "presence": "https://telemetry.detr.site/v1/presence"
   },
-  "heartbeatSeconds": 300,
-  "onlineWindowSeconds": 600,
-  "fields": {
-    "schemaVersion": "integer constant 1",
-    "eventId": "random UUID generated for this submission",
-    "dailyId": "SHA-256 of a local random seed and the current UTC day; rotates every UTC day",
-    "appVersion": "bounded semantic application version",
-    "playbackVersion": "bounded playback version or '-'",
-    "kind": "session, analysis, or conversion",
-    "outcome": "ping, success, or failure",
-    "demoSource": "fixed local category such as 5e, perfect-world, faceit, matchmaking, other, or unknown",
-    "errorCode": "fixed coarse error category or '-'",
-    "roundsBucket": "0, 1-4, 5-12, 13-24, 25+, or unknown",
-    "durationBucket": "<10s, 10-29s, 30-59s, 1-2m, 3-9m, 10m+, or unknown"
+  "channels": {
+    "aggregate": {
+      "default": "enabled",
+      "mayChangeAnyTime": true,
+      "linkability": "No local seed, event identifier, daily identifier, or installation identifier is created or sent",
+      "fields": {
+        "schemaVersion": "integer constant 1",
+        "appVersion": "bounded semantic application version",
+        "playbackVersion": "bounded playback version or '-'",
+        "kind": "analysis or conversion",
+        "outcome": "success or failure",
+        "demoSource": "fixed local category such as 5e, perfect-world, faceit, matchmaking, other, or unknown",
+        "errorCode": "fixed coarse error category or '-'",
+        "roundsBucket": "0, 1-4, 5-12, 13-24, 25+, or unknown",
+        "durationBucket": "<10s, 10-29s, 30-59s, 1-2m, 3-9m, 10m+, or unknown"
+      }
+    },
+    "presence": {
+      "default": "disabled",
+      "choices": ["enabled", "disabled"],
+      "mayChangeAnyTime": true,
+      "heartbeatSeconds": 300,
+      "onlineWindowSeconds": 600,
+      "fields": {
+        "schemaVersion": "integer constant 1",
+        "dailyId": "SHA-256 of a local random seed and the current UTC day; rotates every UTC day",
+        "appVersion": "bounded semantic application version",
+        "playbackVersion": "bounded playback version or '-'"
+      }
+    }
   },
   "forbiddenPayloadFields": [
     "account identifier",
@@ -30,12 +44,12 @@
     "IP address",
     "log text",
     "persistent installation identifier",
+    "raw server name or address",
     "SteamID",
     "user agent",
     "voice data"
   ],
   "storage": {
-    "eventReceiptsHours": 48,
     "activeInstallationHours": 24,
     "dailyInstallationDays": 14,
     "hourlyAggregateDays": 90,

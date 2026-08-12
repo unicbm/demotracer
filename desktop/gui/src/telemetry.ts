@@ -6,9 +6,11 @@
 
 import type { DemoSource } from "./types";
 
-export const TELEMETRY_CONSENT_STORAGE_KEY = "demotracer.telemetry-consent.v1";
+export const AGGREGATE_TELEMETRY_STORAGE_KEY = "demotracer.aggregate-telemetry.v1";
+export const PRESENCE_TELEMETRY_CONSENT_STORAGE_KEY = "demotracer.presence-telemetry-consent.v1";
+const LEGACY_TELEMETRY_CONSENT_STORAGE_KEY = "demotracer.telemetry-consent.v1";
 
-export type TelemetryConsent = "unknown" | "enabled" | "disabled";
+export type TelemetryPresenceConsent = "unknown" | "enabled" | "disabled";
 export type TelemetryDemoSource =
   | "5e"
   | "perfect-world"
@@ -72,8 +74,18 @@ const SOURCE_CATEGORIES: Readonly<Record<string, TelemetryDemoSource>> = {
   "get5": "get5",
 };
 
-export function storedTelemetryConsent(storage: Pick<Storage, "getItem"> = localStorage): TelemetryConsent {
-  const value = storage.getItem(TELEMETRY_CONSENT_STORAGE_KEY);
+export function storedAggregateTelemetryEnabled(storage: Pick<Storage, "getItem"> = localStorage): boolean {
+  const value = storage.getItem(AGGREGATE_TELEMETRY_STORAGE_KEY);
+  if (value === "enabled") return true;
+  if (value === "disabled") return false;
+  return storage.getItem(LEGACY_TELEMETRY_CONSENT_STORAGE_KEY) !== "disabled";
+}
+
+export function storedPresenceTelemetryConsent(
+  storage: Pick<Storage, "getItem"> = localStorage,
+): TelemetryPresenceConsent {
+  const value = storage.getItem(PRESENCE_TELEMETRY_CONSENT_STORAGE_KEY)
+    ?? storage.getItem(LEGACY_TELEMETRY_CONSENT_STORAGE_KEY);
   return value === "enabled" || value === "disabled" ? value : "unknown";
 }
 

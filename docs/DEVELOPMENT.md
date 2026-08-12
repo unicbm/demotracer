@@ -230,8 +230,9 @@ installer and CSS bundle, then creates two deliberately separate directories:
 - `dist/updater-v<version>` contains the signed GUI and CSS updater payloads,
   `latest.json`, and checksums for R2 publishing.
 
-Pass localized release notes while packaging, then publish only the updater
-directory to R2:
+The packager automatically uses `tooling/release/release-notes.v<version>.json`
+when present. Explicit parameters override the corresponding language. Publish
+only the updater directory to R2:
 
 ```powershell
 .\tooling\scripts\package-release.ps1 `

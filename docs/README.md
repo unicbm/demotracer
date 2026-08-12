@@ -11,7 +11,7 @@ Contributor workflow and repository boundaries are documented in the root
 - [Commands](COMMANDS.md): public playback commands and runtime defaults.
 - [Format](FORMAT.md): `.dtr` layout, version gates, and decoder limits.
 - [Online behavior](ONLINE_SERVICES.md): network requests and local data policy.
-- [Anonymous telemetry](TELEMETRY.md): consent, bounded data contract,
+- [Anonymous telemetry](TELEMETRY.md): default aggregate and optional presence contracts,
   retention, deployment, and aggregate admin reporting.
 - [CS2 Insight GUI reference](CS2_INSIGHT_GUI_REFERENCE.md): source provenance
   and the scope of the project-specific paid UI authorization.

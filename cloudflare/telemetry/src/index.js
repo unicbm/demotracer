@@ -5,10 +5,8 @@
 // ---------------------------------------------------------------------------------------------
 
 export const TELEMETRY_SCHEMA_VERSION = 1;
-export const TELEMETRY_FIELDS = Object.freeze([
+export const AGGREGATE_FIELDS = Object.freeze([
   "schemaVersion",
-  "eventId",
-  "dailyId",
   "appVersion",
   "playbackVersion",
   "kind",
@@ -18,9 +16,15 @@ export const TELEMETRY_FIELDS = Object.freeze([
   "roundsBucket",
   "durationBucket",
 ]);
+export const PRESENCE_FIELDS = Object.freeze([
+  "schemaVersion",
+  "dailyId",
+  "appVersion",
+  "playbackVersion",
+]);
 
-const EVENT_KINDS = new Set(["session", "analysis", "conversion"]);
-const OUTCOMES = new Set(["ping", "success", "failure"]);
+const EVENT_KINDS = new Set(["analysis", "conversion"]);
+const OUTCOMES = new Set(["success", "failure"]);
 const DEMO_SOURCES = new Set([
   "5e",
   "perfect-world",
@@ -64,7 +68,6 @@ const ERROR_CODES = new Set([
   "unknown",
   "-",
 ]);
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DAILY_ID_PATTERN = /^[0-9a-f]{64}$/;
 const VERSION_PATTERN = /^(?:-|[0-9A-Za-z][0-9A-Za-z.+-]{0,31})$/;
 const MAX_PAYLOAD_BYTES = 4 * 1024;
@@ -82,37 +85,40 @@ function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-export function validateTelemetryEvent(value) {
-  if (!isPlainObject(value)) return { ok: false, error: "invalid_payload" };
-
+function hasExactFields(value, fields) {
   const keys = Object.keys(value);
-  if (keys.length !== TELEMETRY_FIELDS.length || keys.some((key) => !TELEMETRY_FIELDS.includes(key))) {
-    return { ok: false, error: "unexpected_field" };
-  }
+  return keys.length === fields.length && keys.every((key) => fields.includes(key));
+}
+
+function hasValidVersions(value) {
+  return typeof value.appVersion === "string"
+    && VERSION_PATTERN.test(value.appVersion)
+    && typeof value.playbackVersion === "string"
+    && VERSION_PATTERN.test(value.playbackVersion);
+}
+
+export function validateAggregateEvent(value) {
+  if (!isPlainObject(value)) return { ok: false, error: "invalid_payload" };
+  if (!hasExactFields(value, AGGREGATE_FIELDS)) return { ok: false, error: "unexpected_field" };
   if (value.schemaVersion !== TELEMETRY_SCHEMA_VERSION) return { ok: false, error: "unsupported_schema" };
-  if (typeof value.eventId !== "string" || !UUID_PATTERN.test(value.eventId)) return { ok: false, error: "invalid_event_id" };
-  if (typeof value.dailyId !== "string" || !DAILY_ID_PATTERN.test(value.dailyId)) return { ok: false, error: "invalid_daily_id" };
-  if (typeof value.appVersion !== "string" || !VERSION_PATTERN.test(value.appVersion)) return { ok: false, error: "invalid_app_version" };
-  if (typeof value.playbackVersion !== "string" || !VERSION_PATTERN.test(value.playbackVersion)) return { ok: false, error: "invalid_playback_version" };
+  if (!hasValidVersions(value)) return { ok: false, error: "invalid_version" };
   if (typeof value.kind !== "string" || !EVENT_KINDS.has(value.kind)) return { ok: false, error: "invalid_kind" };
   if (typeof value.outcome !== "string" || !OUTCOMES.has(value.outcome)) return { ok: false, error: "invalid_outcome" };
   if (typeof value.demoSource !== "string" || !DEMO_SOURCES.has(value.demoSource)) return { ok: false, error: "invalid_demo_source" };
   if (typeof value.errorCode !== "string" || !ERROR_CODES.has(value.errorCode)) return { ok: false, error: "invalid_error_code" };
   if (typeof value.roundsBucket !== "string" || !ROUND_BUCKETS.has(value.roundsBucket)) return { ok: false, error: "invalid_rounds_bucket" };
   if (typeof value.durationBucket !== "string" || !DURATION_BUCKETS.has(value.durationBucket)) return { ok: false, error: "invalid_duration_bucket" };
+  if (value.outcome === "success" && value.errorCode !== "-") return { ok: false, error: "invalid_success_error_code" };
+  if (value.outcome === "failure" && value.errorCode === "-") return { ok: false, error: "missing_failure_error_code" };
+  return { ok: true, event: value };
+}
 
-  if (value.kind === "session") {
-    if (value.outcome !== "ping" || value.demoSource !== "unknown" || value.errorCode !== "-" || value.roundsBucket !== "unknown" || value.durationBucket !== "unknown") {
-      return { ok: false, error: "invalid_session_event" };
-    }
-  } else if (value.outcome === "ping") {
-    return { ok: false, error: "invalid_task_outcome" };
-  } else if (value.outcome === "success" && value.errorCode !== "-") {
-    return { ok: false, error: "invalid_success_error_code" };
-  } else if (value.outcome === "failure" && value.errorCode === "-") {
-    return { ok: false, error: "missing_failure_error_code" };
-  }
-
+export function validatePresenceEvent(value) {
+  if (!isPlainObject(value)) return { ok: false, error: "invalid_payload" };
+  if (!hasExactFields(value, PRESENCE_FIELDS)) return { ok: false, error: "unexpected_field" };
+  if (value.schemaVersion !== TELEMETRY_SCHEMA_VERSION) return { ok: false, error: "unsupported_schema" };
+  if (typeof value.dailyId !== "string" || !DAILY_ID_PATTERN.test(value.dailyId)) return { ok: false, error: "invalid_daily_id" };
+  if (!hasValidVersions(value)) return { ok: false, error: "invalid_version" };
   return { ok: true, event: value };
 }
 
@@ -147,32 +153,67 @@ async function checkRateLimit(limiter, key) {
   return result?.success === true;
 }
 
-async function ingest(request, env) {
-  const globalRateAllowed = await checkRateLimit(env.GLOBAL_RATE_LIMITER, "v1/events");
-  if (globalRateAllowed == null) return jsonResponse({ error: "service_unavailable" }, 503);
-  if (!globalRateAllowed) return jsonResponse({ error: "rate_limited" }, 429);
-
+async function readJsonRequest(request) {
   const contentType = request.headers.get("content-type") ?? "";
   if (!contentType.toLowerCase().startsWith("application/json")) {
-    return jsonResponse({ error: "content_type_required" }, 415);
+    return { response: jsonResponse({ error: "content_type_required" }, 415) };
   }
 
   const declaredLength = Number(request.headers.get("content-length") ?? "0");
   if (Number.isFinite(declaredLength) && declaredLength > MAX_PAYLOAD_BYTES) {
-    return jsonResponse({ error: "payload_too_large" }, 413);
+    return { response: jsonResponse({ error: "payload_too_large" }, 413) };
   }
 
   const boundedBody = await readBoundedText(request, MAX_PAYLOAD_BYTES);
-  if (!boundedBody.ok) return jsonResponse({ error: "payload_too_large" }, 413);
+  if (!boundedBody.ok) return { response: jsonResponse({ error: "payload_too_large" }, 413) };
 
-  let body;
   try {
-    body = JSON.parse(boundedBody.text);
+    return { body: JSON.parse(boundedBody.text) };
   } catch {
-    return jsonResponse({ error: "invalid_json" }, 400);
+    return { response: jsonResponse({ error: "invalid_json" }, 400) };
   }
+}
 
-  const validation = validateTelemetryEvent(body);
+async function ingestAggregate(request, env) {
+  const globalRateAllowed = await checkRateLimit(env.GLOBAL_RATE_LIMITER, "v1/aggregate");
+  if (globalRateAllowed == null) return jsonResponse({ error: "service_unavailable" }, 503);
+  if (!globalRateAllowed) return jsonResponse({ error: "rate_limited" }, 429);
+
+  const requestBody = await readJsonRequest(request);
+  if (requestBody.response) return requestBody.response;
+  const validation = validateAggregateEvent(requestBody.body);
+  if (!validation.ok) return jsonResponse({ error: validation.error }, 400);
+
+  const event = validation.event;
+  const hour = new Date(Math.floor(Date.now() / 1000) * 1000).toISOString().slice(0, 13);
+  await env.DB.prepare(
+    "INSERT INTO hourly_metrics (hour, event_kind, outcome, app_version, playback_version, demo_source, error_code, rounds_bucket, duration_bucket, event_count) " +
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1) " +
+      "ON CONFLICT(hour, event_kind, outcome, app_version, playback_version, demo_source, error_code, rounds_bucket, duration_bucket) " +
+      "DO UPDATE SET event_count = event_count + 1",
+  ).bind(
+    hour,
+    event.kind,
+    event.outcome,
+    event.appVersion,
+    event.playbackVersion,
+    event.demoSource,
+    event.errorCode,
+    event.roundsBucket,
+    event.durationBucket,
+  ).run();
+
+  return jsonResponse({ accepted: true }, 202);
+}
+
+async function ingestPresence(request, env) {
+  const globalRateAllowed = await checkRateLimit(env.GLOBAL_RATE_LIMITER, "v1/presence");
+  if (globalRateAllowed == null) return jsonResponse({ error: "service_unavailable" }, 503);
+  if (!globalRateAllowed) return jsonResponse({ error: "rate_limited" }, 429);
+
+  const requestBody = await readJsonRequest(request);
+  if (requestBody.response) return requestBody.response;
+  const validation = validatePresenceEvent(requestBody.body);
   if (!validation.ok) return jsonResponse({ error: validation.error }, 400);
 
   const event = validation.event;
@@ -181,20 +222,8 @@ async function ingest(request, env) {
   if (!installationRateAllowed) return jsonResponse({ error: "rate_limited" }, 429);
 
   const now = Math.floor(Date.now() / 1000);
-  const instant = new Date(now * 1000).toISOString();
-  const day = instant.slice(0, 10);
-  const hour = instant.slice(0, 13);
-
-  let receiptInserted = false;
-  if (event.kind !== "session") {
-    const receipt = await env.DB.prepare(
-      "INSERT INTO event_receipts (event_id, expires_at) VALUES (?, ?) ON CONFLICT(event_id) DO NOTHING",
-    ).bind(event.eventId, now + 48 * 60 * 60).run();
-    receiptInserted = (receipt.meta?.changes ?? 0) > 0;
-    if (!receiptInserted) return jsonResponse({ accepted: true, duplicate: true }, 202);
-  }
-
-  const statements = [
+  const day = new Date(now * 1000).toISOString().slice(0, 10);
+  await env.DB.batch([
     env.DB.prepare(
       "INSERT INTO active_installations (daily_id, app_version, playback_version, last_seen) VALUES (?, ?, ?, ?) " +
         "ON CONFLICT(daily_id) DO UPDATE SET app_version = excluded.app_version, playback_version = excluded.playback_version, last_seen = excluded.last_seen",
@@ -203,37 +232,7 @@ async function ingest(request, env) {
       "INSERT INTO daily_installations (day, daily_id, app_version, playback_version, first_seen) VALUES (?, ?, ?, ?, ?) " +
         "ON CONFLICT(day, daily_id) DO NOTHING",
     ).bind(day, event.dailyId, event.appVersion, event.playbackVersion, now),
-  ];
-
-  if (event.kind !== "session") {
-    statements.push(
-      env.DB.prepare(
-        "INSERT INTO hourly_metrics (hour, event_kind, outcome, app_version, playback_version, demo_source, error_code, rounds_bucket, duration_bucket, event_count) " +
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1) " +
-          "ON CONFLICT(hour, event_kind, outcome, app_version, playback_version, demo_source, error_code, rounds_bucket, duration_bucket) " +
-          "DO UPDATE SET event_count = event_count + 1",
-      ).bind(
-        hour,
-        event.kind,
-        event.outcome,
-        event.appVersion,
-        event.playbackVersion,
-        event.demoSource,
-        event.errorCode,
-        event.roundsBucket,
-        event.durationBucket,
-      ),
-    );
-  }
-
-  try {
-    await env.DB.batch(statements);
-  } catch (error) {
-    if (receiptInserted) {
-      await env.DB.prepare("DELETE FROM event_receipts WHERE event_id = ?").bind(event.eventId).run().catch(() => undefined);
-    }
-    throw error;
-  }
+  ]);
 
   return jsonResponse({ accepted: true }, 202);
 }
@@ -248,20 +247,20 @@ async function runRetention(env) {
   await env.DB.batch([
     env.DB.prepare(
       "INSERT INTO daily_rollups (day, active_installations, analysis_success, analysis_failure, conversion_success, conversion_failure, updated_at) " +
-        "SELECT d.day, d.active_installations, " +
+        "SELECT days.day, COALESCE(d.active_installations, 0), " +
         "COALESCE(h.analysis_success, 0), COALESCE(h.analysis_failure, 0), " +
         "COALESCE(h.conversion_success, 0), COALESCE(h.conversion_failure, 0), ? " +
-        "FROM (SELECT day, COUNT(*) AS active_installations FROM daily_installations WHERE day < ? GROUP BY day) d " +
+        "FROM (SELECT day FROM daily_installations WHERE day < ? UNION SELECT substr(hour, 1, 10) AS day FROM hourly_metrics WHERE substr(hour, 1, 10) < ?) days " +
+        "LEFT JOIN (SELECT day, COUNT(*) AS active_installations FROM daily_installations GROUP BY day) d ON d.day = days.day " +
         "LEFT JOIN (SELECT substr(hour, 1, 10) AS day, " +
         "SUM(CASE WHEN event_kind = 'analysis' AND outcome = 'success' THEN event_count ELSE 0 END) AS analysis_success, " +
         "SUM(CASE WHEN event_kind = 'analysis' AND outcome = 'failure' THEN event_count ELSE 0 END) AS analysis_failure, " +
         "SUM(CASE WHEN event_kind = 'conversion' AND outcome = 'success' THEN event_count ELSE 0 END) AS conversion_success, " +
         "SUM(CASE WHEN event_kind = 'conversion' AND outcome = 'failure' THEN event_count ELSE 0 END) AS conversion_failure " +
-        "FROM hourly_metrics GROUP BY substr(hour, 1, 10)) h ON h.day = d.day " +
+        "FROM hourly_metrics GROUP BY substr(hour, 1, 10)) h ON h.day = days.day " +
         "ON CONFLICT(day) DO UPDATE SET active_installations = excluded.active_installations, analysis_success = excluded.analysis_success, " +
         "analysis_failure = excluded.analysis_failure, conversion_success = excluded.conversion_success, conversion_failure = excluded.conversion_failure, updated_at = excluded.updated_at",
-    ).bind(now, currentDay),
-    env.DB.prepare("DELETE FROM event_receipts WHERE expires_at < ?").bind(now),
+    ).bind(now, currentDay, currentDay),
     env.DB.prepare("DELETE FROM active_installations WHERE last_seen < ?").bind(now - 24 * 60 * 60),
     env.DB.prepare("DELETE FROM daily_installations WHERE day < ?").bind(dailyCutoff),
     env.DB.prepare("DELETE FROM hourly_metrics WHERE hour < ?").bind(hourlyCutoff),
@@ -275,8 +274,11 @@ export default {
     if (request.method === "GET" && url.pathname === "/healthz") {
       return jsonResponse({ status: "ok", schemaVersion: TELEMETRY_SCHEMA_VERSION });
     }
-    if (request.method === "POST" && url.pathname === "/v1/events") {
-      return ingest(request, env);
+    if (request.method === "POST" && url.pathname === "/v1/aggregate") {
+      return ingestAggregate(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/v1/presence") {
+      return ingestPresence(request, env);
     }
     return jsonResponse({ error: "not_found" }, 404);
   },
