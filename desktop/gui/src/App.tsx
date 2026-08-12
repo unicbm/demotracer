@@ -10,6 +10,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { exit as exitApp, relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
+import { Badge, Button, Group, Paper, Progress, Stack, Text } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import packageMetadata from "../package.json";
 import { AppChrome, AppSidebar } from "./components/AppChrome";
@@ -44,7 +45,7 @@ import {
   ResultView,
   ValidationFailedView,
 } from "./components/TaskViews";
-import { AlertIcon, ArrowIcon, CheckIcon, CloseIcon, CopyIcon, FolderIcon, RefreshIcon, ReplayIcon } from "./icons";
+import { AlertIcon, ArrowIcon, CheckIcon, CloseIcon, CopyIcon, FolderIcon } from "./icons";
 import { COSMETIC_PHRASE, TEXT } from "./i18n";
 import {
   AGGREGATE_TELEMETRY_STORAGE_KEY,
@@ -1390,7 +1391,7 @@ function App() {
     browserLogPreviewSeededRef.current = true;
     const now = Date.now();
     setActivityLogs([
-      { id: "preview-1", timestampMs: now - 42_000, level: "info", source: "app", message: "CS2 DemoTracer 1.1.2 started" },
+      { id: "preview-1", timestampMs: now - 42_000, level: "info", source: "app", message: "CS2 DemoTracer 1.1.3 started" },
       { id: "preview-2", timestampMs: now - 31_000, level: "debug", source: "analysis", message: "phase=parsing" },
       { id: "preview-3", timestampMs: now - 24_000, level: "info", source: "analysis", message: "Parsed match.dem.zst: 24 rounds · 10 players" },
       { id: "preview-4", timestampMs: now - 15_000, level: "warn", source: "conversion", message: "Round 12: partial player evidence was preserved" },
@@ -4223,18 +4224,24 @@ function App() {
           dismissOnScrimClick={false}
           className={`dialog-surface gui-update-dialog is-${guiUpdate.phase}`}
         >
-          <header className="dialog-header update-dialog-header">
+          <header className="update-dialog-header">
             <div className="update-dialog-heading">
-              <span className="update-dialog-mark" aria-hidden="true"><ReplayIcon size={20} /></span>
               <div>
                 <span className="dialog-eyebrow">{words.releaseUpdateStatus}</span>
                 <h2 id="gui-update-title">{words.releaseUpdateTitle}</h2>
               </div>
             </div>
-            <div className="update-dialog-header-actions">
-              <span className={`update-dialog-state is-${guiUpdate.phase}`} role="status">
-                <i aria-hidden="true" />{guiUpdateDialogStatus}
-              </span>
+            <Group className="update-dialog-header-actions" gap="sm" wrap="nowrap">
+              <Badge
+                className={`update-dialog-state is-${guiUpdate.phase}`}
+                color={guiUpdate.phase === "error" ? "red" : "blue"}
+                variant="light"
+                size="lg"
+                radius="xl"
+                leftSection={<span className="update-dialog-state-dot" aria-hidden="true" />}
+              >
+                <span role="status">{guiUpdateDialogStatus}</span>
+              </Badge>
               <button
                 className="icon-button"
                 type="button"
@@ -4244,65 +4251,77 @@ function App() {
               >
                 <CloseIcon size={16} />
               </button>
-            </div>
+            </Group>
           </header>
 
-          <div className="update-dialog-version" aria-label={words.releaseUpdateTitle}>
-            <div><span>{words.releaseCurrentVersion}</span><strong>v{guiUpdate.currentVersion || "—"}</strong></div>
-            <ArrowIcon size={18} />
-            <div><span>{words.releaseLatestVersion}</span><strong>v{guiUpdate.availableVersion || "—"}</strong></div>
-          </div>
+          <Stack className="update-dialog-content" gap="md">
+            <Paper className="update-dialog-version" withBorder radius="md" p="lg" aria-label={words.releaseUpdateTitle}>
+              <Group justify="space-between" align="center" wrap="nowrap">
+                <Stack gap={2}>
+                  <Text c="dimmed" size="xs" fw={600}>{words.releaseCurrentVersion}</Text>
+                  <Text className="update-dialog-version-number" fw={700}>v{guiUpdate.currentVersion || "—"}</Text>
+                </Stack>
+                <ArrowIcon className="update-dialog-version-arrow" size={20} aria-hidden="true" />
+                <Stack gap={2} align="flex-end">
+                  <Text c="dimmed" size="xs" fw={600}>{words.releaseLatestVersion}</Text>
+                  <Text className="update-dialog-version-number is-latest" fw={700}>v{guiUpdate.availableVersion || "—"}</Text>
+                </Stack>
+              </Group>
+            </Paper>
 
-          <section className="update-dialog-release-notes" aria-labelledby="gui-update-notes-title">
-            <h3 id="gui-update-notes-title">{words.releaseUpdateNotes}</h3>
-            <p>{releaseNotesForLanguage(guiUpdate.notes, language) || words.releaseGenericNotes}</p>
-          </section>
+            <Paper className="update-dialog-release-notes" component="section" withBorder radius="md" p="lg" aria-labelledby="gui-update-notes-title">
+              <Text id="gui-update-notes-title" fw={700} size="sm">{words.releaseUpdateNotes}</Text>
+              <Text component="p" mt="sm" size="sm">
+                {releaseNotesForLanguage(guiUpdate.notes, language) || words.releaseGenericNotes}
+              </Text>
+            </Paper>
 
-          <p id="gui-update-description" className="update-dialog-scope">{words.releaseUpdateScope}</p>
+            <Text id="gui-update-description" className="update-dialog-scope" c="dimmed" size="xs">
+              {words.releaseUpdateScope}
+            </Text>
 
-          {guiUpdate.phase === "downloading" || guiUpdate.phase === "installing" ? (
-            <div className="update-dialog-progress" role="status" aria-live="polite">
-              <div>
-                <span>{guiUpdate.phase === "installing" ? words.releaseInstalling : words.releaseDownloading}</span>
-                <strong>{guiUpdateDialogProgress != null ? `${guiUpdateDialogProgress}%` : "…"}</strong>
-              </div>
-              <div className={`release-progress${guiUpdateDialogProgress == null ? " is-indeterminate" : ""}`}>
-                <span style={{ width: `${guiUpdateDialogProgress ?? 36}%` }} />
-              </div>
-            </div>
-          ) : null}
+            {guiUpdate.phase === "downloading" || guiUpdate.phase === "installing" ? (
+              <Paper className="update-dialog-progress" withBorder radius="md" p="sm" role="status" aria-live="polite">
+                <Group justify="space-between" mb={7}>
+                  <Text c="dimmed" size="xs">{guiUpdate.phase === "installing" ? words.releaseInstalling : words.releaseDownloading}</Text>
+                  <Text className="update-dialog-progress-value" size="xs" fw={700}>{guiUpdateDialogProgress != null ? `${guiUpdateDialogProgress}%` : "…"}</Text>
+                </Group>
+                <Progress value={guiUpdateDialogProgress ?? 36} animated={guiUpdateDialogProgress == null} size="sm" radius="xl" />
+              </Paper>
+            ) : null}
 
-          {guiUpdate.phase === "installing" ? (
-            <p className="update-dialog-status" role="status">{words.releaseInstallingDesktop}</p>
-          ) : null}
-          {guiUpdate.phase === "error" ? <p className="release-error update-dialog-error"><AlertIcon size={15} />{words.releaseCheckUnavailable}</p> : null}
+            {guiUpdate.phase === "installing" ? (
+              <Text className="update-dialog-status" c="dimmed" size="xs" role="status">{words.releaseInstallingDesktop}</Text>
+            ) : null}
+            {guiUpdate.phase === "error" ? (
+              <Text className="release-error update-dialog-error" c="red" size="sm"><AlertIcon size={15} />{words.releaseCheckUnavailable}</Text>
+            ) : null}
+          </Stack>
 
-          <footer className="dialog-actions">
-            <button
+          <footer className="update-dialog-footer">
+            <Group justify="flex-end" gap="sm">
+            <Button
               ref={guiUpdateLaterRef}
-              className="secondary-button"
-              type="button"
+              variant="default"
               disabled={guiUpdate.phase === "downloading" || guiUpdate.phase === "installing"}
               onClick={() => setGuiUpdateDialogOpen(false)}
             >
               {words.releaseLater}
-            </button>
-            <button
-              className="primary-button"
-              type="button"
+            </Button>
+            <Button
               disabled={guiUpdate.phase === "checking" || guiUpdate.phase === "downloading" || guiUpdate.phase === "installing"}
               onClick={() => {
                 if (guiUpdate.phase === "error") void checkGuiApplicationUpdate();
                 else void installGuiApplicationUpdate();
               }}
             >
-              {guiUpdate.phase === "checking" ? <RefreshIcon className="release-spin" size={15} /> : <ReplayIcon size={15} />}
               {guiUpdate.phase === "checking" ? words.releaseChecking
                 : guiUpdate.phase === "downloading" ? words.releaseDownloading
                   : guiUpdate.phase === "installing" ? words.releaseInstalling
                     : guiUpdate.phase === "error" ? words.releaseCheckNow
                       : words.releaseInstallNow}
-            </button>
+            </Button>
+            </Group>
           </footer>
         </DialogPrimitive>
       ) : null}
