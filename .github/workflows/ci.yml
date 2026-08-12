@@ -64,7 +64,7 @@ jobs:
             exit 1
           }
 
-          $hits = git grep -n -E 'C:\\Users\\|[Ww][Aa][Ss][Mm]|[Cc]urrent writer format is `\.dtr` v4' -- . ':!desktop/converter/Cargo.lock' ':!desktop/gui/src-tauri/Cargo.lock' ':!desktop/gui/pnpm-lock.yaml'
+          $hits = git grep -n -E 'C:\\Users\\|[Ww][Aa][Ss][Mm]|[Cc]urrent writer format is `\.dtr` v4' -- . ':!desktop/converter/Cargo.lock' ':!desktop/gui/src-tauri/Cargo.lock' ':!desktop/gui/pnpm-lock.yaml' ':!cloudflare/telemetry/pnpm-lock.yaml'
           if ($LASTEXITCODE -eq 1) {
             exit 0
           }
