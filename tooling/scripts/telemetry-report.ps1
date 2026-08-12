@@ -56,7 +56,7 @@ SELECT app_version, COUNT(*) AS opt_in_active_installations_utc_today
 FROM daily_installations
 WHERE day = date('now')
 GROUP BY app_version
-ORDER BY active_installations_utc_today DESC, app_version DESC;
+ORDER BY opt_in_active_installations_utc_today DESC, app_version DESC;
 "@
 
 $taskVersionSql = @"
