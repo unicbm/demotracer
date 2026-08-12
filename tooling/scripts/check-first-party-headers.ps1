@@ -16,6 +16,7 @@ if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
 $RepoRoot = [System.IO.Path]::GetFullPath($RepoRoot)
 
 $firstPartyRoots = @(
+    "cloudflare\telemetry",
     "desktop\converter\src",
     "desktop\gui",
     "server\plugins\DemoTracer",

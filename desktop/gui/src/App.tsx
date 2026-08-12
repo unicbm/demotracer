@@ -47,6 +47,15 @@ import {
 import { AlertIcon, ArrowIcon, CheckIcon, CloseIcon, CopyIcon, FolderIcon, RefreshIcon, ReplayIcon } from "./icons";
 import { COSMETIC_PHRASE, TEXT } from "./i18n";
 import {
+  TELEMETRY_CONSENT_STORAGE_KEY,
+  storedTelemetryConsent,
+  telemetryDemoSource,
+  telemetryDurationBucket,
+  telemetryRoundsBucket,
+  type TelemetryConsent,
+  type TelemetrySubmission,
+} from "./telemetry";
+import {
   CUSTOM_CSS_STARTER_PROFILES_STORAGE_KEY,
   STARTER_CUSTOM_CSS_PROFILES,
 } from "./customCssPresets";
@@ -827,6 +836,7 @@ function App() {
   const [cosmeticConsentAccepted, setCosmeticConsentAccepted] = useState(storedCosmeticConsent);
   const [playbackPreset, setPlaybackPreset] = useState<PlaybackPresetOptions>(storedPlaybackPreset);
   const [localEnvironment, setLocalEnvironment] = useState<LocalEnvironmentSettings>(storedLocalEnvironment);
+  const [telemetryConsent, setTelemetryConsent] = useState<TelemetryConsent>(storedTelemetryConsent);
   const [installCandidates, setInstallCandidates] = useState<Cs2InstallCandidate[]>([]);
   const [installDetectionCompleted, setInstallDetectionCompleted] = useState(false);
   const [environmentReport, setEnvironmentReport] = useState<EnvironmentDiagnosticReport | null>(
@@ -902,6 +912,7 @@ function App() {
   const openExistingArchiveRef = useRef<HTMLButtonElement | null>(null);
   const keepWorkingRef = useRef<HTMLButtonElement | null>(null);
   const guiUpdateLaterRef = useRef<HTMLButtonElement | null>(null);
+  const telemetryDeclineRef = useRef<HTMLButtonElement | null>(null);
   const cancelArchiveDeleteRef = useRef<HTMLButtonElement | null>(null);
   const inventorySimulatorHostRef = useRef<HTMLDivElement | null>(null);
   const browserLogPreviewSeededRef = useRef(false);
@@ -913,6 +924,20 @@ function App() {
   }, []);
 
   const words = TEXT[language];
+  const telemetryEnabled = telemetryConsent === "enabled";
+  const submitTelemetry = useCallback((submission: TelemetrySubmission) => {
+    if (telemetryConsent !== "enabled" || !("__TAURI_INTERNALS__" in window)) return;
+    void invoke<void>("submit_telemetry", {
+      event: {
+        playbackVersion: playbackRelease?.currentVersion ?? null,
+        demoSource: "unknown",
+        errorCode: "-",
+        roundsBucket: "unknown",
+        durationBucket: "unknown",
+        ...submission,
+      },
+    }).catch(() => undefined);
+  }, [playbackRelease?.currentVersion, telemetryConsent]);
   const recordActivityLog = useCallback((
     level: ActivityLogLevel,
     source: string,
@@ -1328,11 +1353,33 @@ function App() {
   }, [localEnvironment]);
 
   useEffect(() => {
+    if (telemetryConsent !== "unknown") {
+      localStorage.setItem(TELEMETRY_CONSENT_STORAGE_KEY, telemetryConsent);
+    }
+    if (!("__TAURI_INTERNALS__" in window)) return;
+
+    const enabled = telemetryConsent === "enabled";
+    let disposed = false;
+    let timer: number | undefined;
+    void invoke<void>("configure_telemetry", { enabled }).then(() => {
+      if (disposed || !enabled) return;
+      submitTelemetry({ kind: "session", outcome: "ping" });
+      timer = window.setInterval(() => {
+        submitTelemetry({ kind: "session", outcome: "ping" });
+      }, 5 * 60_000);
+    }).catch(() => undefined);
+    return () => {
+      disposed = true;
+      if (timer != null) window.clearInterval(timer);
+    };
+  }, [submitTelemetry, telemetryConsent]);
+
+  useEffect(() => {
     if ("__TAURI_INTERNALS__" in window || !import.meta.env.DEV || browserLogPreviewSeededRef.current) return;
     browserLogPreviewSeededRef.current = true;
     const now = Date.now();
     setActivityLogs([
-      { id: "preview-1", timestampMs: now - 42_000, level: "info", source: "app", message: "CS2 DemoTracer 1.1.1 started" },
+      { id: "preview-1", timestampMs: now - 42_000, level: "info", source: "app", message: "CS2 DemoTracer 1.1.2 started" },
       { id: "preview-2", timestampMs: now - 31_000, level: "debug", source: "analysis", message: "phase=parsing" },
       { id: "preview-3", timestampMs: now - 24_000, level: "info", source: "analysis", message: "Parsed match.dem.zst: 24 rounds · 10 players" },
       { id: "preview-4", timestampMs: now - 15_000, level: "warn", source: "conversion", message: "Round 12: partial player evidence was preserved" },
@@ -1693,6 +1740,8 @@ function App() {
       return;
     }
 
+    const telemetryStartedAt = Date.now();
+
     primeTaskSound();
     const token = ++taskTokenRef.current;
     localStorage.removeItem(LIBRARY_SESSION_STORAGE_KEY);
@@ -1744,6 +1793,13 @@ function App() {
         "analysis",
         `Parsed ${next.fileName}: ${next.rounds.length} rounds · ${next.players.length} players`,
       );
+      submitTelemetry({
+        kind: "analysis",
+        outcome: "success",
+        demoSource: telemetryDemoSource(next.demoSource),
+        roundsBucket: telemetryRoundsBucket(next.rounds.length),
+        durationBucket: telemetryDurationBucket(Date.now() - telemetryStartedAt),
+      });
       playTaskSound("success");
     } catch (reason) {
       if (token !== taskTokenRef.current) return;
@@ -1764,6 +1820,12 @@ function App() {
         playTaskSound("stopped");
         return;
       }
+      submitTelemetry({
+        kind: "analysis",
+        outcome: "failure",
+        errorCode: error.code,
+        durationBucket: telemetryDurationBucket(Date.now() - telemetryStartedAt),
+      });
       if (preserveArchive) {
         recordActivityLog("error", "analysis", `Parsing failed (${error.code}): ${fileName(path) || path}`);
         setSingleTask(null);
@@ -1783,7 +1845,7 @@ function App() {
       setSingleTaskPanelOpen(false);
       playTaskSound("failure");
     }
-  }, [absorbEvent, language, libraryRoot, playTaskSound, primeTaskSound, recordActivityLog, settings.maxRoundSeconds, words.invalidDemo]);
+  }, [absorbEvent, language, libraryRoot, playTaskSound, primeTaskSound, recordActivityLog, settings.maxRoundSeconds, submitTelemetry, words.invalidDemo]);
 
   async function cancelAnalysis() {
     if (singleTask !== "analysis" || analysisCancelPending) return;
@@ -2230,6 +2292,20 @@ function App() {
             finishedAtMs: Date.now(),
           },
         }));
+        submitTelemetry({
+          kind: "analysis",
+          outcome: "success",
+          demoSource: telemetryDemoSource(event.demoSource),
+          roundsBucket: telemetryRoundsBucket(event.roundsExported),
+        });
+        submitTelemetry({
+          kind: "conversion",
+          outcome: "success",
+          roundsBucket: telemetryRoundsBucket(event.roundsExported),
+          durationBucket: telemetryDurationBucket(
+            Date.now() - (batchProgressByItem[event.itemId]?.startedAtMs ?? Date.now()),
+          ),
+        });
         void refreshBatchLedger(event.batchId, generation);
         break;
       case "itemFailed":
@@ -2246,6 +2322,14 @@ function App() {
             finishedAtMs: Date.now(),
           },
         }));
+        submitTelemetry({
+          kind: "conversion",
+          outcome: "failure",
+          errorCode: event.error.code,
+          durationBucket: telemetryDurationBucket(
+            Date.now() - (batchProgressByItem[event.itemId]?.startedAtMs ?? Date.now()),
+          ),
+        });
         void refreshBatchLedger(event.batchId, generation);
         break;
       case "paused":
@@ -3404,6 +3488,7 @@ function App() {
 
   async function performConvert(overwrite: boolean, destination = outputDir) {
     if (!analysis || selectedRounds.size === 0 || !destination) return;
+    const telemetryStartedAt = Date.now();
     primeTaskSound();
     const token = ++taskTokenRef.current;
     taskWarningsRef.current = [];
@@ -3469,10 +3554,22 @@ function App() {
         "conversion",
         `Conversion completed: ${summary.roundsExported} rounds · ${summary.filesWritten} files`,
       );
+      submitTelemetry({
+        kind: "conversion",
+        outcome: "success",
+        roundsBucket: telemetryRoundsBucket(summary.roundsExported),
+        durationBucket: telemetryDurationBucket(Date.now() - telemetryStartedAt),
+      });
       playTaskSound("success");
     } catch (reason) {
       if (token !== taskTokenRef.current) return;
       const error = parseCommandError(reason);
+      submitTelemetry({
+        kind: "conversion",
+        outcome: "failure",
+        errorCode: error.code,
+        durationBucket: telemetryDurationBucket(Date.now() - telemetryStartedAt),
+      });
       recordActivityLog("error", "conversion", `Conversion failed (${error.code}): ${fileName(sourcePath) || sourcePath}`);
       if (error.code === "output_exists") {
         setOverwriteConflict({ root: error.path || outputRoot, exists: true });
@@ -3801,6 +3898,7 @@ function App() {
             customCssProfiles={customCssProfiles}
             activeCustomCssProfileId={activeCustomCssProfileId}
             environment={localEnvironment}
+            telemetryEnabled={telemetryEnabled}
             exportRoot={libraryRoot}
             archiveRoots={libraryRoots}
             converter={settings}
@@ -3875,6 +3973,7 @@ function App() {
             onOpenLogDirectory={openActivityLogDirectory}
             onOpenExternal={(url) => void openExternal(url)}
             onEnvironmentChange={(patch) => setLocalEnvironment((current) => ({ ...current, ...patch }))}
+            onTelemetryEnabledChange={(enabled) => setTelemetryConsent(enabled ? "enabled" : "disabled")}
             onConverterChange={updateSettings}
             onRequestCosmetics={requestCosmeticExport}
             onPlaybackChange={(patch) => setPlaybackPreset((current) => ({ ...current, ...patch }))}
@@ -4064,6 +4163,31 @@ function App() {
           <strong>{words.dropDemo}</strong>
           <span>{words.dropTypes}</span>
         </div>
+      ) : null}
+
+      {telemetryConsent === "unknown" ? (
+        <DialogPrimitive
+          labelledBy="telemetry-consent-title"
+          describedBy="telemetry-consent-description"
+          onDismiss={() => undefined}
+          initialFocusRef={telemetryDeclineRef}
+          dismissOnScrimClick={false}
+        >
+          <header className="dialog-header">
+            <h2 id="telemetry-consent-title">{words.telemetryConsentTitle}</h2>
+          </header>
+          <p id="telemetry-consent-description" className="dialog-description">{words.telemetryConsentBody}</p>
+          <p className="dialog-description"><strong>{words.telemetryConsentCollected}</strong></p>
+          <p className="dialog-description">{words.telemetryConsentExcluded}</p>
+          <footer className="dialog-actions">
+            <button ref={telemetryDeclineRef} className="secondary-button" type="button" onClick={() => setTelemetryConsent("disabled")}>
+              {words.telemetryConsentDecline}
+            </button>
+            <button className="secondary-button" type="button" onClick={() => setTelemetryConsent("enabled")}>
+              {words.telemetryConsentAllow}
+            </button>
+          </footer>
+        </DialogPrimitive>
       ) : null}
 
       {guiUpdateDialogOpen ? (

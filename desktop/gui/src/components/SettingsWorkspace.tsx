@@ -111,6 +111,7 @@ interface SettingsWorkspaceProps {
   customCssProfiles: readonly CustomCssProfile[];
   activeCustomCssProfileId: string | null;
   environment: LocalEnvironmentSettings;
+  telemetryEnabled: boolean;
   exportRoot: string;
   archiveRoots: string[];
   converter: ConverterSettings;
@@ -164,6 +165,7 @@ interface SettingsWorkspaceProps {
   onOpenLogDirectory: () => void;
   onOpenExternal: (url: string) => void;
   onEnvironmentChange: (patch: Partial<LocalEnvironmentSettings>) => void;
+  onTelemetryEnabledChange: (enabled: boolean) => void;
   onConverterChange: (patch: Partial<ConverterSettings>) => void;
   onRequestCosmetics: () => void;
   onPlaybackChange: (patch: Partial<PlaybackPresetOptions>) => void;
@@ -393,6 +395,7 @@ export function SettingsWorkspace({
   customCssProfiles,
   activeCustomCssProfileId,
   environment,
+  telemetryEnabled,
   exportRoot,
   archiveRoots,
   converter,
@@ -446,6 +449,7 @@ export function SettingsWorkspace({
   onOpenLogDirectory,
   onOpenExternal,
   onEnvironmentChange,
+  onTelemetryEnabledChange,
   onConverterChange,
   onRequestCosmetics,
   onPlaybackChange,
@@ -633,6 +637,12 @@ export function SettingsWorkspace({
           title={words.soundNotifications}
           checked={environment.soundNotifications}
           onChange={(soundNotifications) => onEnvironmentChange({ soundNotifications })}
+        />
+        <SettingLine
+          title={words.anonymousTelemetry}
+          description={words.anonymousTelemetryHelp}
+          checked={telemetryEnabled}
+          onChange={onTelemetryEnabledChange}
         />
         <button
           className="settings-subpage-row"

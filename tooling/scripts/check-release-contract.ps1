@@ -58,6 +58,7 @@ function Read-CargoPackageVersion([string]$RelativePath, [string]$PackageName) {
 }
 
 $contract = (Read-Text "shared\contracts\playback-contract.v1.json") | ConvertFrom-Json
+$telemetryContract = (Read-Text "shared\contracts\telemetry-contract.v1.json") | ConvertFrom-Json
 $desktopPackage = (Read-Text "desktop\gui\package.json") | ConvertFrom-Json
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $Version = [string]$desktopPackage.version
@@ -79,6 +80,7 @@ $versionSources = [ordered]@{
 foreach ($entry in $versionSources.GetEnumerator()) {
     Assert-Equal $entry.Key ([string]$entry.Value) $Version
 }
+Assert-Equal "telemetry product version" ([string]$telemetryContract.productVersion) $Version
 
 Assert-Equal "manifest ABI" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'DEMOTRACER_ABI:\s*i32\s*=\s*(\d+)' "manifest ABI") ([string]$contract.manifest_abi)
 Assert-Equal "DTR writer" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'DTR_FORMAT_VERSION:\s*u32\s*=\s*(\d+)' "DTR writer") ([string]$contract.dtr_writer)

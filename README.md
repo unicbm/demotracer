@@ -147,6 +147,8 @@ and the binary format and decoder limits are documented in
   decoder limits.
 - [Online behavior](docs/ONLINE_SERVICES.md) — update checks, Steam profile
   lookups, and local data policy.
+- [Anonymous telemetry](docs/TELEMETRY.md) — opt-in data contract, privacy
+  boundaries, retention, and aggregate reporting.
 - [Development](docs/DEVELOPMENT.md) — architecture, dependencies, source
   builds, validation, and release packaging.
 - [Contributing](CONTRIBUTING.md) — contribution workflow and repository

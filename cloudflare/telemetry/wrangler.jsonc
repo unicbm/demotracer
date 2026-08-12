@@ -1,0 +1,45 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "demotracer-telemetry",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-12",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "telemetry.detr.site",
+      "custom_domain": true
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "demotracer-telemetry",
+      "database_id": "0b0cd404-a74b-4a9e-a8ff-6018626c3a7c",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "GLOBAL_RATE_LIMITER",
+      "namespace_id": "11201",
+      "simple": {
+        "limit": 300,
+        "period": 60
+      }
+    },
+    {
+      "name": "INSTALLATION_RATE_LIMITER",
+      "namespace_id": "11202",
+      "simple": {
+        "limit": 60,
+        "period": 60
+      }
+    }
+  ],
+  "triggers": {
+    "crons": ["17 2 * * *"]
+  },
+  "observability": {
+    "enabled": false
+  }
+}

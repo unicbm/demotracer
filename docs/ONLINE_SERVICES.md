@@ -6,6 +6,7 @@ local paths, or logs.
 
 | Trigger | Request | Data sent |
 | --- | --- | --- |
+| The user explicitly enables **Anonymous usage telemetry**, then while the app is open or a task finishes | `telemetry.detr.site/v1/events` | App/playback versions, success/failure and a fixed coarse error category, duration/round-count buckets, a locally classified Demo source, and a daily rotating identifier; ordinary HTTPS connection metadata is handled by Cloudflare but is not read or stored by the Worker |
 | The desktop app starts, the CS2 folder changes, or the user clicks **Check for updates** | `releases.detr.site/channels/stable/latest.json` | Current app and installed playback versions, Windows updater target/architecture, and normal request metadata |
 | A roster is visible | `steamcommunity.com/profiles/<steamid>?xml=1` and the public profile page | SteamID64 and normal request metadata |
 | **About & credits** is opened | `avatars.githubusercontent.com` | Public GitHub avatar identifier and normal request metadata |
@@ -67,5 +68,16 @@ minisign signature before the existing receipt and per-file validation runs.
 CS2 must be closed before installation. A manually selected local CSS ZIP
 remains supported and goes through the same receipt and per-file validation.
 
-DemoTracer 1.0 has no telemetry, cloud conversion, replay upload, account
-system, or remote player catalog.
+DemoTracer 1.1.2 adds optional anonymous telemetry. It is disabled until the
+user makes an explicit choice, can be disabled again in Settings, and never
+blocks local work. The payload is a strict, flat allowlist: no Demo or replay
+content, file name, path, raw server name or address, SteamID, account data,
+logs, voice, or stable installation identifier is accepted. Demo sources such
+as 5E, Perfect World, FACEIT, and official matchmaking are classified locally;
+unrecognized values become `other` without the original text. The local random
+seed is never uploaded, and the derived identifier changes every UTC day so
+the service cannot link it across days. See [Anonymous Telemetry](TELEMETRY.md)
+for the exact contract, retention, and administrator queries.
+
+There is still no cloud conversion, replay upload, account system, or remote
+player catalog.

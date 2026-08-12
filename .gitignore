@@ -15,6 +15,8 @@
 /server/runtime/BotController/out/
 /dist/
 /desktop/gui/node_modules/
+/cloudflare/telemetry/node_modules/
+/cloudflare/telemetry/.wrangler/
 /tooling/cs2-lib-data/node_modules/
 /desktop/gui/.pnpm-store/
 /.pnpm-store/
@@ -44,7 +46,6 @@
 *.exe
 
 # Local conversion data
-/.codex-tmp/
 /.external/
 /output/
 /tmp/

@@ -16,6 +16,7 @@ mod playback_manager;
 mod server_config;
 mod steam_profile;
 mod target_lock;
+mod telemetry;
 
 use activity_log::{
     append_activity_log, clear_activity_logs, list_activity_logs, maintain_activity_logs,
@@ -4525,6 +4526,7 @@ fn process_batch_demo(
     let demo_sha256 = parsed.demo_sha256.clone();
     let map = browser.analysis.map.clone();
     let server_name = browser.server_name.clone();
+    let demo_source = browser.demo_source.clone();
     let archive_id = archive_info::archive_directory_name(&parsed, &browser);
     let cached = CachedDemo {
         analysis_id: format!("{}-{}", request.batch_id, request.item_id),
@@ -4584,6 +4586,7 @@ fn process_batch_demo(
             &demo_sha256,
             &map,
             server_name.clone(),
+            demo_source.clone(),
             &events,
         )? {
             return Ok(existing);
@@ -4597,6 +4600,7 @@ fn process_batch_demo(
         demo_sha256,
         map,
         server_name,
+        demo_source,
         rounds_exported: summary.rounds_exported,
         files_written: summary.files_written,
     })
@@ -4607,6 +4611,7 @@ fn reconcile_completed_batch_archive(
     expected_demo_sha256: &str,
     map: &str,
     server_name: Option<String>,
+    demo_source: Option<BrowserDemoSource>,
     events: &TaskEventSink,
 ) -> CommandResult<Option<batch::BatchProcessResult>> {
     let marker = root.join(OUTPUT_COMPLETION_MARKER);
@@ -4648,6 +4653,7 @@ fn reconcile_completed_batch_archive(
             archive.map
         },
         server_name,
+        demo_source,
         rounds_exported: archive
             .rounds
             .iter()
@@ -5506,6 +5512,7 @@ pub fn run() {
         })
         .manage(AppState::default())
         .manage(batch::BatchState::default())
+        .manage(telemetry::TelemetryState::default())
         .invoke_handler(tauri::generate_handler![
             choose_demo,
             choose_demos,
@@ -5558,7 +5565,9 @@ pub fn run() {
             clear_activity_logs,
             open_activity_log_directory,
             configure_gsi,
-            gsi_status
+            gsi_status,
+            telemetry::configure_telemetry,
+            telemetry::submit_telemetry
         ])
         .run(tauri::generate_context!())
         .expect("failed to run CS2 DemoTracer desktop app");

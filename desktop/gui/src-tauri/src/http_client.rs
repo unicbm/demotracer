@@ -7,7 +7,14 @@
 use url::Url;
 
 #[cfg(windows)]
-pub(crate) fn get_https(url: &str, max_bytes: usize, timeout_ms: i32) -> Result<Vec<u8>, String> {
+fn request_https(
+    method: &str,
+    url: &str,
+    content_type: Option<&str>,
+    request_body: &[u8],
+    max_response_bytes: usize,
+    timeout_ms: i32,
+) -> Result<Vec<u8>, String> {
     use std::ffi::c_void;
     use std::ptr::{null, null_mut};
     use windows_sys::Win32::Networking::WinHttp::{
@@ -70,7 +77,7 @@ pub(crate) fn get_https(url: &str, max_bytes: usize, timeout_ms: i32) -> Result<
             return Err("WinHTTP connection failed".to_string());
         }
 
-        let verb = wide("GET");
+        let verb = wide(method);
         let request_path = wide(&request_path);
         let request = WinHttpHandle(WinHttpOpenRequest(
             connection.0,
@@ -81,8 +88,25 @@ pub(crate) fn get_https(url: &str, max_bytes: usize, timeout_ms: i32) -> Result<
             null(),
             WINHTTP_FLAG_SECURE,
         ));
+        let header = content_type.map(|value| wide(&format!("Content-Type: {value}\r\n")));
+        let (header_pointer, header_length) = header.as_ref().map_or((null(), 0), |value| {
+            (value.as_ptr(), (value.len() - 1) as u32)
+        });
+        let (body_pointer, body_length) = if request_body.is_empty() {
+            (null(), 0)
+        } else {
+            (request_body.as_ptr().cast(), request_body.len() as u32)
+        };
         if request.0.is_null()
-            || WinHttpSendRequest(request.0, null(), 0, null(), 0, 0, 0) == 0
+            || WinHttpSendRequest(
+                request.0,
+                header_pointer,
+                header_length,
+                body_pointer,
+                body_length,
+                body_length,
+                0,
+            ) == 0
             || WinHttpReceiveResponse(request.0, null_mut()) == 0
         {
             return Err("HTTPS request failed".to_string());
@@ -101,7 +125,7 @@ pub(crate) fn get_https(url: &str, max_bytes: usize, timeout_ms: i32) -> Result<
         {
             return Err("HTTPS response status was unavailable".to_string());
         }
-        if status != 200 {
+        if !(200..300).contains(&status) {
             return Err(format!("HTTPS server returned status {status}"));
         }
 
@@ -115,8 +139,8 @@ pub(crate) fn get_https(url: &str, max_bytes: usize, timeout_ms: i32) -> Result<
                 break;
             }
             let available = available as usize;
-            if body.len().saturating_add(available) > max_bytes {
-                return Err(format!("HTTPS response exceeds {max_bytes} bytes"));
+            if body.len().saturating_add(available) > max_response_bytes {
+                return Err(format!("HTTPS response exceeds {max_response_bytes} bytes"));
             }
             let offset = body.len();
             body.resize(offset + available, 0);
@@ -140,6 +164,28 @@ pub(crate) fn get_https(url: &str, max_bytes: usize, timeout_ms: i32) -> Result<
     }
 }
 
+#[cfg(windows)]
+pub(crate) fn get_https(url: &str, max_bytes: usize, timeout_ms: i32) -> Result<Vec<u8>, String> {
+    request_https("GET", url, None, &[], max_bytes, timeout_ms)
+}
+
+#[cfg(windows)]
+pub(crate) fn post_json_https(
+    url: &str,
+    body: &[u8],
+    max_response_bytes: usize,
+    timeout_ms: i32,
+) -> Result<Vec<u8>, String> {
+    request_https(
+        "POST",
+        url,
+        Some("application/json"),
+        body,
+        max_response_bytes,
+        timeout_ms,
+    )
+}
+
 #[cfg(not(windows))]
 pub(crate) fn get_https(
     _url: &str,
@@ -147,6 +193,16 @@ pub(crate) fn get_https(
     _timeout_ms: i32,
 ) -> Result<Vec<u8>, String> {
     Err("release downloads are supported only on Windows".to_string())
+}
+
+#[cfg(not(windows))]
+pub(crate) fn post_json_https(
+    _url: &str,
+    _body: &[u8],
+    _max_response_bytes: usize,
+    _timeout_ms: i32,
+) -> Result<Vec<u8>, String> {
+    Err("telemetry submission is supported only on Windows".to_string())
 }
 
 #[cfg(test)]
@@ -163,5 +219,11 @@ mod tests {
     fn rejects_embedded_url_credentials_before_network_access() {
         let error = get_https("https://user:pass@example.com/file", 32, 100).unwrap_err();
         assert!(error.contains("credential-free"));
+    }
+
+    #[test]
+    fn telemetry_posts_reject_non_https_urls_before_network_access() {
+        let error = post_json_https("http://example.com/events", b"{}", 32, 100).unwrap_err();
+        assert!(error.contains("HTTPS"));
     }
 }

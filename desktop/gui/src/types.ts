@@ -832,6 +832,8 @@ export type BatchEvent =
       itemId: string;
       archiveRoot: string;
       manifestPath: string;
+      demoSource?: DemoSource | null;
+      roundsExported: number;
       parseEtaSeconds?: number | null;
     }
   | { kind: "itemFailed"; batchId: string; itemId: string; error: BatchError; parseEtaSeconds?: number | null }

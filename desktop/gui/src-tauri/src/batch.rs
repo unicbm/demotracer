@@ -5,6 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 use super::{AppState, CommandErrorDto, CommandResult, CosmeticConsentDto, TaskEvent, TaskPhase};
+use cs2_demotracer::browser_analysis::BrowserDemoSource;
 use cs2_demotracer::demo_id::sha256_hex;
 use cs2_demotracer::demo_series::{group_demo_sources, resolve_demo_source, DemoSourceSet};
 use cs2_demotracer::export::DEFAULT_FREEZE_PREROLL_SECONDS;
@@ -380,6 +381,7 @@ pub(crate) struct BatchProcessResult {
     pub demo_sha256: String,
     pub map: String,
     pub server_name: Option<String>,
+    pub demo_source: Option<BrowserDemoSource>,
     pub rounds_exported: usize,
     pub files_written: usize,
 }
@@ -565,6 +567,8 @@ pub(crate) enum BatchEvent {
         item_id: String,
         archive_root: String,
         manifest_path: String,
+        demo_source: Option<BrowserDemoSource>,
+        rounds_exported: usize,
         parse_eta_seconds: Option<u64>,
     },
     ItemFailed {
@@ -1325,6 +1329,8 @@ fn process_batch_item(
                     item_id: item_id.to_string(),
                     archive_root: result.archive_root.display().to_string(),
                     manifest_path: result.manifest_path.display().to_string(),
+                    demo_source: result.demo_source,
+                    rounds_exported: result.rounds_exported,
                     parse_eta_seconds: eta,
                 },
             );
