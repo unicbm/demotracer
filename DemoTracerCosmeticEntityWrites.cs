@@ -170,15 +170,34 @@ public sealed partial class DemoTracerPlugin
     {
         try
         {
-            return WeaponPaintStateMatches(
+            var expectedPaintKit = (int)Math.Min(cosmetic.PaintKit, int.MaxValue);
+            if (!WeaponPaintStateMatches(
                 NormalizeWeaponDefIndex(weapon.AttributeManager.Item.ItemDefinitionIndex),
                 weapon.FallbackPaintKit,
                 weapon.FallbackSeed,
                 weapon.FallbackWear,
                 cosmetic.WeaponDefIndex,
-                (int)Math.Min(cosmetic.PaintKit, int.MaxValue),
+                expectedPaintKit,
                 (int)Math.Min(cosmetic.Seed, int.MaxValue),
-                cosmetic.Wear);
+                cosmetic.Wear))
+            {
+                return false;
+            }
+
+            int? actualBodygroup = null;
+            ulong? actualMeshGroupMask = null;
+            if (RequiresLiveWeaponPaintModelValidation(cosmetic.WeaponDefIndex) &&
+                TryReadWeaponPaintModelState(weapon, out var bodygroup, out var meshGroupMask))
+            {
+                actualBodygroup = bodygroup;
+                actualMeshGroupMask = meshGroupMask;
+            }
+
+            return WeaponPaintModelStateMatches(
+                cosmetic.WeaponDefIndex,
+                actualBodygroup,
+                actualMeshGroupMask,
+                IsLegacyCosmeticPaint(cosmetic.WeaponDefIndex, expectedPaintKit));
         }
         catch
         {
@@ -199,6 +218,46 @@ public sealed partial class DemoTracerPlugin
            actualPaintKit == expectedPaintKit &&
            actualSeed == expectedSeed &&
            actualWear.Equals(expectedWear);
+
+    internal static bool WeaponPaintModelStateMatches(
+        int weaponDefIndex,
+        int? actualBodygroup,
+        ulong? actualMeshGroupMask,
+        bool usesLegacyModel)
+        => !RequiresLiveWeaponPaintModelValidation(weaponDefIndex) ||
+           (actualBodygroup == (usesLegacyModel ? 1 : 0) &&
+            actualMeshGroupMask == (usesLegacyModel ? 2UL : 1UL));
+
+    private static bool RequiresLiveWeaponPaintModelValidation(int weaponDefIndex)
+        => weaponDefIndex is 60 or 61;
+
+    private static bool TryReadWeaponPaintModelState(
+        CBasePlayerWeapon weapon,
+        out int bodygroup,
+        out ulong meshGroupMask)
+    {
+        bodygroup = 0;
+        meshGroupMask = 0;
+        try
+        {
+            var sceneNode = weapon.CBodyComponent?.SceneNode;
+            var skeleton = sceneNode?.GetSkeletonInstance();
+            if (skeleton == null || skeleton.ModelState.BodyGroupChoices.Count == 0)
+                return false;
+
+            // M4A1-S and USP-S use their first named bodygroup ("body") to
+            // select the legacy/current paint mesh. Rendering also depends on
+            // the corresponding mesh-group mask. The engine can reset either
+            // field while leaving every econ field intact.
+            bodygroup = skeleton.ModelState.BodyGroupChoices[0];
+            meshGroupMask = skeleton.ModelState.MeshGroupMask;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     private bool TryApplyKnifeCosmetic(
         CCSPlayerController player,
@@ -421,10 +480,13 @@ public sealed partial class DemoTracerPlugin
                 MarkWeaponPaintStateChanged(weapon);
                 _ = TrySetTextureAttributes(networkedDynamicAttributes.Handle, cosmetic);
                 _ = TrySetTextureAttributes(attributeList.Handle, cosmetic);
-                var bodygroup = IsLegacyCosmeticPaint(
+                var usesLegacyModel = IsLegacyCosmeticPaint(
                     item.ItemDefinitionIndex,
-                    (int)Math.Min(cosmetic.PaintKit, int.MaxValue)) ? 1 : 0;
-                weapon.AcceptInput("SetBodygroup", value: $"body,{bodygroup}");
+                    (int)Math.Min(cosmetic.PaintKit, int.MaxValue));
+                ReassertWeaponPaintModelState(
+                    weapon,
+                    item.ItemDefinitionIndex,
+                    usesLegacyModel);
             }
             if (applyCustomName && !string.IsNullOrWhiteSpace(cosmetic.CustomName))
                 item.CustomName = cosmetic.CustomName;
@@ -442,6 +504,29 @@ public sealed partial class DemoTracerPlugin
     private bool IsLegacyCosmeticPaint(int weaponDefIndex, int paintKit)
         => paintKit > 0 &&
            _legacyCosmeticPaints.Contains((NormalizeWeaponDefIndex(weaponDefIndex), (uint)paintKit));
+
+    private static void ReassertWeaponPaintModelState(
+        CBasePlayerWeapon weapon,
+        int weaponDefIndex,
+        bool usesLegacyModel)
+    {
+        weapon.AcceptInput("SetBodygroup", value: $"body,{(usesLegacyModel ? 1 : 0)}");
+        if (RequiresLiveWeaponPaintModelValidation(weaponDefIndex))
+        {
+            try
+            {
+                var skeleton = weapon.CBodyComponent?.SceneNode?.GetSkeletonInstance();
+                if (skeleton != null)
+                    skeleton.ModelState.MeshGroupMask = usesLegacyModel ? 2UL : 1UL;
+            }
+            catch
+            {
+                // SetBodygroup remains the compatible fallback when direct
+                // model state access is unavailable.
+            }
+        }
+        TrySetStateChanged(weapon, "CBaseModelEntity", "m_nBodyGroupChoices");
+    }
 
     private bool IsExactKnifeCosmeticDefIndex(int weaponDefIndex)
         => IsKnifeCosmeticDefIndex(weaponDefIndex) &&
