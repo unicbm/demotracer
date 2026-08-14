@@ -360,7 +360,11 @@ fn merge_parsed_demo_parts(
         }
 
         let rounds = &completed[index];
-        part.rows.retain(|row| rounds.contains_key(&row.round));
+        part.rows.retain(|row| {
+            rounds.get(&row.round).is_some_and(|round| {
+                row.tick >= round.row_min_tick && row.tick <= round.row_max_tick
+            })
+        });
         part.round_freeze_end_ticks = rounds.values().map(|round| round.freeze_end_tick).collect();
         part.bomb_beginplant_ticks
             .retain(|tick| tick_in_completed_round(*tick, rounds));
@@ -568,12 +572,8 @@ fn stable_roster(parsed: &ParsedDemo) -> BTreeSet<u64> {
 }
 
 fn completed_rounds(parsed: &ParsedDemo) -> Result<BTreeMap<u32, CompletedRound>> {
-    let mut spans = BTreeMap::<u32, (i32, i32)>::new();
     let mut rounds_by_tick = BTreeMap::<i32, BTreeMap<u32, usize>>::new();
     for row in &parsed.rows {
-        let span = spans.entry(row.round).or_insert((row.tick, row.tick));
-        span.0 = span.0.min(row.tick);
-        span.1 = span.1.max(row.tick);
         *rounds_by_tick
             .entry(row.tick)
             .or_default()
@@ -635,7 +635,22 @@ fn completed_rounds(parsed: &ParsedDemo) -> Result<BTreeMap<u32, CompletedRound>
             previous_round_end_tick = round_end_tick;
             continue;
         };
-        let Some(&(row_min_tick, row_max_tick)) = spans.get(&round) else {
+        let Some((row_min_tick, row_max_tick)) = parsed
+            .rows
+            .iter()
+            .filter(|row| {
+                row.round == round
+                    && row.tick >= previous_round_end_tick
+                    && row.tick <= round_end_tick
+            })
+            .map(|row| row.tick)
+            .fold(None::<(i32, i32)>, |range, tick| {
+                Some(match range {
+                    Some((min_tick, max_tick)) => (min_tick.min(tick), max_tick.max(tick)),
+                    None => (tick, tick),
+                })
+            })
+        else {
             previous_round_end_tick = round_end_tick;
             continue;
         };
@@ -1398,6 +1413,39 @@ mod tests {
         assert_eq!(score.status, "final");
         assert_eq!(score.team_a.score + score.team_b.score, 2);
         assert_eq!(browser.players.len(), 10);
+    }
+
+    #[test]
+    fn merge_excludes_reused_round_number_after_completed_window() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut first = part_one();
+        first.rows.extend((0..10).map(|index| {
+            let team_num = if index < 5 { 2 } else { 3 };
+            let mut reset = row(0, 80, 100 + index, team_num, 0);
+            reset.round_in_progress = false;
+            reset.is_freeze_period = true;
+            reset
+        }));
+
+        let merged =
+            merge_parsed_demo_parts(&source(temp.path()), vec![first, part_two()]).unwrap();
+
+        assert!(!merged.rows.iter().any(|row| row.tick == 80));
+        let first_part_round_end = merged
+            .events
+            .iter()
+            .filter(|event| event.name == "round_end")
+            .map(|event| event.tick)
+            .min()
+            .unwrap();
+        let second_part_min = merged
+            .rows
+            .iter()
+            .filter(|row| row.round == 1)
+            .map(|row| row.tick)
+            .min()
+            .unwrap();
+        assert_eq!(second_part_min, first_part_round_end + 1);
     }
 
     #[test]

@@ -2416,22 +2416,27 @@ mod demoparser_impl {
                     freeze_end_ticks.partition_point(|tick| *tick <= max_tick);
                 let candidates = &freeze_end_ticks[first_candidate..after_last_candidate];
 
-                if is_pistol_round_number(round) {
-                    candidates.last().copied().map(|freeze_end| {
+                let scored_candidates = candidates
+                    .iter()
+                    .copied()
+                    .map(|freeze_end| {
                         let round_end = round_end_after(round_end_ticks, freeze_end, max_tick);
-                        (freeze_end, round_end, (0, 0))
+                        let score = round_phase_candidate_score(
+                            round_rows, max_tick, freeze_end, round_end,
+                        );
+                        (freeze_end, round_end, score)
                     })
-                } else {
-                    candidates
+                    .collect::<Vec<_>>();
+                if is_pistol_round_number(round) {
+                    scored_candidates
                         .iter()
+                        .rev()
+                        .find(|(_, _, score)| score.0 > 0 && score.1 > 0)
                         .copied()
-                        .map(|freeze_end| {
-                            let round_end = round_end_after(round_end_ticks, freeze_end, max_tick);
-                            let score = round_phase_candidate_score(
-                                round_rows, max_tick, freeze_end, round_end,
-                            );
-                            (freeze_end, round_end, score)
-                        })
+                        .or_else(|| scored_candidates.last().copied())
+                } else {
+                    scored_candidates
+                        .into_iter()
                         .max_by_key(|(freeze_end, _round_end, score)| (*score, *freeze_end))
                 }
             };
@@ -3420,6 +3425,30 @@ mod demoparser_impl {
             assert!(!rows[2].round_in_progress);
             assert!(rows[3].round_in_progress);
             assert!(rows[4].round_in_progress);
+        }
+
+        #[test]
+        fn pistol_round_ignores_later_round_freezes_after_counter_reset() {
+            let mut rows = vec![
+                live_row(0, 1_275, true),
+                live_row(0, 2_000, true),
+                live_row(0, 3_447, true),
+                live_row(0, 23_341, false),
+                live_row(1, 5_048, true),
+                live_row(1, 6_000, true),
+                live_row(2, 8_230, true),
+                live_row(2, 9_000, true),
+            ];
+
+            repair_round_phase_after_events(
+                &mut rows,
+                &[1_275, 5_048, 8_230],
+                &[3_448, 6_630, 14_029],
+            );
+
+            assert!(rows[1].round_in_progress);
+            assert!(!rows[1].is_freeze_period);
+            assert!(!rows[3].round_in_progress);
         }
 
         #[test]
