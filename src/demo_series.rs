@@ -80,7 +80,6 @@ struct SegmentFileName {
 #[derive(Clone, Copy, Debug)]
 struct CompletedRound {
     row_min_tick: i32,
-    row_max_tick: i32,
     freeze_end_tick: i32,
     round_end_tick: i32,
     winner_side: u8,
@@ -360,10 +359,16 @@ fn merge_parsed_demo_parts(
         }
 
         let rounds = &completed[index];
-        part.rows.retain(|row| {
-            rounds.get(&row.round).is_some_and(|round| {
-                row.tick >= round.row_min_tick && row.tick <= round.row_max_tick
-            })
+        part.rows.retain_mut(|row| {
+            let Some(round) = round_number_for_tick(row.tick, rounds) else {
+                return false;
+            };
+            // Source 2 advances total_rounds_played on the same tick as the
+            // final combat events and round_end. Keep that boundary snapshot
+            // with the round it completed instead of treating it as an
+            // incomplete next round.
+            row.round = round;
+            true
         });
         part.round_freeze_end_ticks = rounds.values().map(|round| round.freeze_end_tick).collect();
         part.bomb_beginplant_ticks
@@ -635,21 +640,16 @@ fn completed_rounds(parsed: &ParsedDemo) -> Result<BTreeMap<u32, CompletedRound>
             previous_round_end_tick = round_end_tick;
             continue;
         };
-        let Some((row_min_tick, row_max_tick)) = parsed
+        let Some(row_min_tick) = parsed
             .rows
             .iter()
             .filter(|row| {
                 row.round == round
-                    && row.tick >= previous_round_end_tick
+                    && row.tick > previous_round_end_tick
                     && row.tick <= round_end_tick
             })
             .map(|row| row.tick)
-            .fold(None::<(i32, i32)>, |range, tick| {
-                Some(match range {
-                    Some((min_tick, max_tick)) => (min_tick.min(tick), max_tick.max(tick)),
-                    None => (tick, tick),
-                })
-            })
+            .min()
         else {
             previous_round_end_tick = round_end_tick;
             continue;
@@ -677,7 +677,6 @@ fn completed_rounds(parsed: &ParsedDemo) -> Result<BTreeMap<u32, CompletedRound>
             round,
             CompletedRound {
                 row_min_tick,
-                row_max_tick,
                 freeze_end_tick,
                 round_end_tick,
                 winner_side,
@@ -994,7 +993,13 @@ fn tick_in_completed_round(tick: i32, rounds: &BTreeMap<u32, CompletedRound>) ->
 fn round_for_tick(tick: i32, rounds: &BTreeMap<u32, CompletedRound>) -> Option<&CompletedRound> {
     rounds
         .values()
-        .find(|round| tick >= round.row_min_tick && tick <= round.row_max_tick)
+        .find(|round| tick >= round.row_min_tick && tick <= round.round_end_tick)
+}
+
+fn round_number_for_tick(tick: i32, rounds: &BTreeMap<u32, CompletedRound>) -> Option<u32> {
+    rounds.iter().find_map(|(number, round)| {
+        (tick >= round.row_min_tick && tick <= round.round_end_tick).then_some(*number)
+    })
 }
 
 fn retained_tick_range(part: &ParsedDemo) -> Option<(i32, i32)> {
@@ -1392,7 +1397,7 @@ mod tests {
             .min()
             .unwrap();
         assert_eq!(part_two_min, part_one_round_end + 1);
-        assert!(part_one_round_end > part_one_max);
+        assert_eq!(part_one_round_end, part_one_max);
         assert!(merged.projectiles[0].tick > part_one_max);
         assert!(merged.projectiles[0].effect_tick.unwrap() > part_one_max);
         assert!(merged.voice_frames[0].tick > part_one_max);
@@ -1446,6 +1451,81 @@ mod tests {
             .min()
             .unwrap();
         assert_eq!(second_part_min, first_part_round_end + 1);
+    }
+
+    #[test]
+    fn merge_keeps_final_combat_and_scoreboard_snapshot_at_round_end_tick() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut second = part_two();
+        for row in &mut second.rows {
+            match (row.round, row.steam_id) {
+                (1, 100) => {
+                    row.scoreboard_kills = Some(18);
+                    row.scoreboard_damage = Some(1_516);
+                }
+                (1, 101) => row.scoreboard_deaths = Some(13),
+                (2, 100) => {
+                    row.scoreboard_kills = Some(19);
+                    row.scoreboard_damage = Some(1_797);
+                }
+                (2, 101) => row.scoreboard_deaths = Some(14),
+                _ => {}
+            }
+        }
+        second.events.push(ParsedGameEvent {
+            tick: 60,
+            name: "player_death".to_string(),
+            attacker_steam_id: Some(100),
+            victim_steam_id: Some(101),
+            item_name: Some("ak47".to_string()),
+            ..ParsedGameEvent::default()
+        });
+
+        let merged =
+            merge_parsed_demo_parts(&source(temp.path()), vec![part_one(), second]).unwrap();
+        let final_round_end_tick = merged
+            .events
+            .iter()
+            .filter(|event| event.name == "round_end")
+            .map(|event| event.tick)
+            .max()
+            .unwrap();
+
+        assert!(merged.events.iter().any(|event| {
+            event.name == "player_death"
+                && event.tick == final_round_end_tick
+                && event.attacker_steam_id == Some(100)
+                && event.victim_steam_id == Some(101)
+        }));
+        assert!(merged.rows.iter().any(|row| {
+            row.round == 1
+                && row.tick == final_round_end_tick
+                && row.steam_id == 100
+                && row.scoreboard_kills == Some(19)
+                && row.scoreboard_damage == Some(1_797)
+        }));
+        assert!(!merged.rows.iter().any(|row| row.round == 2));
+
+        let browser = analyze_browser_demo(&merged, AnalysisOptions::default());
+        let attacker = browser
+            .players
+            .iter()
+            .find(|player| player.steam_id == "100")
+            .unwrap();
+        let victim = browser
+            .players
+            .iter()
+            .find(|player| player.steam_id == "101")
+            .unwrap();
+        assert_eq!(attacker.kills, Some(19));
+        assert_eq!(
+            attacker
+                .details
+                .as_ref()
+                .and_then(|details| details.total_damage),
+            Some(1_797)
+        );
+        assert_eq!(victim.deaths, Some(14));
     }
 
     #[test]
