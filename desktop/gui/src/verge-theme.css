@@ -1388,7 +1388,6 @@ textarea {
 .analysis-overview-card,
 .archive-summary-card,
 .archive-hero,
-.round-toolbar,
 .player-roster,
 .result-next-step,
 .result-capabilities > div,
@@ -2168,9 +2167,7 @@ textarea {
   box-shadow: none;
 }
 
-/* DTR round selection is one continuous workspace, not a stack of cards. */
 .round-selection-panel {
-  grid-template-rows: auto auto auto auto;
   background: var(--surface-raised);
 }
 
@@ -2187,69 +2184,8 @@ textarea {
 .round-selection-heading h1 { font-size: var(--type-body); line-height: 1.25; }
 .round-selection-heading-copy { display: grid; gap: 3px; }
 .round-selection-heading-copy p { color: var(--text-secondary); font-size: var(--type-tiny); }
-.round-selection-count {
-  display: inline-flex;
-  flex: none;
-  align-items: baseline;
-  color: var(--text-secondary);
-  font-family: var(--mono);
-}
-.round-selection-count strong { color: var(--text-primary); font-size: var(--type-micro); line-height: 1; }
-.round-selection-count small { margin-left: var(--space-1); color: var(--text-tertiary); font-size: var(--type-tiny); letter-spacing: 0; }
 
-.round-selection-panel > .round-toolbar {
-  min-height: 42px;
-  padding-inline: 18px;
-  background: var(--surface-raised);
-  border: 0;
-  border-bottom: 1px solid var(--divider);
-  border-radius: 0;
-  box-shadow: none;
-}
-.round-selection-panel .round-summary { color: var(--text-secondary); font-size: var(--type-tiny); font-weight: var(--weight-semibold); }
-.round-selection-panel .round-batch-actions { padding-left: var(--space-1); }
-.round-selection-panel .round-batch-actions .text-button { min-height: 26px; font-size: var(--type-tiny); }
-.round-selection-panel .allow-suspicious-control { min-height: 28px; font-size: var(--type-tiny); }
-
-.round-selection-subheading {
-  min-height: 48px;
-  padding: 12px 18px;
-  background: var(--surface-raised);
-  border-bottom: 1px solid var(--divider);
-}
-
-.round-list-scroll {
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: visible;
-  background: var(--surface-raised);
-  scrollbar-width: none;
-}
-
-.round-list-scroll::-webkit-scrollbar {
-  display: none;
-}
-.round-export-table { min-width: 360px; }
-.round-export-table thead th { height: 34px; padding-inline: 10px; color: var(--text-tertiary); background: var(--surface-subtle); font-size: var(--type-caption); font-weight: var(--weight-semibold); letter-spacing: .02em; }
-.round-export-table thead th:nth-child(1) { width: 42px; }
-.round-export-table thead th:nth-child(2) { width: 64px; }
-.round-export-table thead th:nth-child(3) { width: 112px; }
-.round-export-table thead th:nth-child(4) { width: auto; }
-.round-export-table .round-data-row > th,
-.round-export-table .round-data-row > td { height: 40px; padding-inline: 10px; background: var(--surface-raised); font-size: var(--type-tiny); }
-.round-export-table .round-data-row:hover > th,
-.round-export-table .round-data-row:hover > td { background: var(--hover-row); }
-.round-export-table .round-data-row.is-selected > th,
-.round-export-table .round-data-row.is-selected > td { background: var(--surface-raised); }
-.round-export-table .round-data-row.is-selected:hover > th,
-.round-export-table .round-data-row.is-selected:hover > td { background: var(--hover-row); }
-.round-export-table .round-number-cell { font-family: var(--mono); font-size: var(--type-tiny); }
-.round-list-status { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: var(--type-caption); font-weight: var(--weight-semibold); }
-.round-list-status > i { width: 6px; height: 6px; background: currentColor; border-radius: var(--radius-circle); }
-.round-list-status.is-recommended { color: var(--success); }
-.round-list-status.is-partial { color: var(--accent); }
-.round-list-status.is-suspicious { color: var(--warning); }
-.round-issue-cell { overflow: hidden; color: var(--text-tertiary); text-overflow: ellipsis; white-space: nowrap; }
+.round-selection-paper { overflow: hidden; }
 
 .export-inspector.is-docked { flex-basis: 312px; width: 312px; }
 

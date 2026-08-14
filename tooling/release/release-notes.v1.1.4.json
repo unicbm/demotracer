@@ -1,0 +1,4 @@
+{
+  "zh": "新增源 Demo 原始数据诊断。解析后若缺少数据或射击历史，会在转换前提示。\n\n统一 DemoTracer 与 CSS 插件的更新提示；两者同时更新时，应用重启后可安装。\n\n修复消音武器外观模型在回放中偶发未正确恢复的问题。",
+  "en": "Added source Demo data diagnostics. Missing data or shot history is now reported before conversion.\n\nUnified update notifications for DemoTracer and the CSS plugin. When both need updating, installation can continue after the application restarts.\n\nFixed silenced weapon cosmetic models occasionally not being restored correctly during playback."
+}

@@ -28,7 +28,8 @@ use batch::{
 };
 use cs2_demotracer::browser_analysis::{
     analyze_browser_demo, BrowserDemoAnalysis, BrowserDemoSource, BrowserFriendlyFireSummary,
-    BrowserPlayerDetails, BrowserPlayerSummary, BrowserRoundOutcome, BrowserScoreSummary,
+    BrowserPlayerDetails, BrowserPlayerSummary, BrowserReplayInputStatus,
+    BrowserReplayInputSummary, BrowserRoundOutcome, BrowserScoreSummary,
 };
 use cs2_demotracer::demo_id::sha256_hex;
 use cs2_demotracer::demo_reader::{
@@ -345,6 +346,7 @@ pub struct AnalysisDto {
     pub score: Option<BrowserScoreSummary>,
     pub round_outcomes: Vec<BrowserRoundOutcome>,
     pub friendly_fire: BrowserFriendlyFireSummary,
+    pub replay_input: BrowserReplayInputSummary,
     pub rounds: Vec<RoundDto>,
 }
 
@@ -1272,6 +1274,9 @@ async fn analyze_demo(
     .map_err(|error| CommandErrorDto::new("analysis_worker_failed", error.to_string()))?;
 
     let (parsed, browser_analysis) = parsed_result?;
+    if let Some(warning) = replay_input_warning(&browser_analysis.replay_input) {
+        emit_log(&events, LogLevel::Warning, warning);
+    }
     if expected_sha256.is_some_and(|expected| !parsed.demo_sha256.eq_ignore_ascii_case(expected)) {
         return Err(CommandErrorDto::at_path(
             "analysis_demo_hash_mismatch",
@@ -3662,6 +3667,7 @@ fn analysis_dto(
         score: None,
         round_outcomes: Vec::new(),
         friendly_fire: BrowserFriendlyFireSummary::default(),
+        replay_input: BrowserReplayInputSummary::default(),
         rounds: analysis
             .rounds
             .iter()
@@ -3709,6 +3715,7 @@ fn browser_analysis_dto(
     dto.score = browser.score.clone();
     dto.round_outcomes = browser.round_outcomes.clone();
     dto.friendly_fire = browser.friendly_fire.clone();
+    dto.replay_input = browser.replay_input.clone();
     dto
 }
 
@@ -4508,6 +4515,9 @@ fn process_batch_demo(
             ..AnalysisOptions::default()
         },
     );
+    if let Some(warning) = replay_input_warning(&browser.replay_input) {
+        emit_log_to_sink(&events, LogLevel::Warning, warning);
+    }
     let selected_rounds = browser
         .analysis
         .rounds
@@ -5380,6 +5390,15 @@ fn emit_log(channel: &Channel<TaskEvent>, level: LogLevel, message: impl Into<St
     );
 }
 
+fn replay_input_warning(summary: &BrowserReplayInputSummary) -> Option<String> {
+    (summary.status == BrowserReplayInputStatus::Limited).then(|| {
+        format!(
+            "Source demo has no usable player command or action input (command rows {}/{}, action rows {}). DTR can still use the snapshot data that is present, but firing, grenade release, bomb interaction, and subtick timing cannot be faithfully replayed.",
+            summary.command_rows, summary.player_rows, summary.action_rows
+        )
+    })
+}
+
 fn emit_demo_source(channel: &Channel<TaskEvent>, source: &DemoSourceSet) {
     if source.is_segmented() {
         emit_log(
@@ -6098,6 +6117,24 @@ mod tests {
         assert_eq!(dto.rounds[1].status, "partial");
         assert!(!dto.rounds[2].selected_by_default);
         assert_eq!(dto.rounds[2].status, "suspicious");
+    }
+
+    #[test]
+    fn limited_replay_input_produces_an_actionable_parse_warning() {
+        let summary = BrowserReplayInputSummary {
+            status: BrowserReplayInputStatus::Limited,
+            player_rows: 1_190_657,
+            ..BrowserReplayInputSummary::default()
+        };
+
+        let warning = replay_input_warning(&summary).expect("limited input warning");
+        assert!(warning.contains("command rows 0/1190657"));
+        assert!(warning.contains("Source demo"));
+        assert!(replay_input_warning(&BrowserReplayInputSummary {
+            status: BrowserReplayInputStatus::Available,
+            ..BrowserReplayInputSummary::default()
+        })
+        .is_none());
     }
 
     #[test]

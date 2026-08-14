@@ -926,6 +926,7 @@ mod tests {
             score: None,
             round_outcomes: Vec::new(),
             friendly_fire: Default::default(),
+            replay_input: Default::default(),
         };
 
         let info = DemoArchiveInfo::from_analysis(

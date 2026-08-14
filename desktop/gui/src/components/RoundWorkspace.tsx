@@ -5,11 +5,11 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useMemo } from "react";
-import { Group, Text } from "@mantine/core";
+import { Alert, Badge, Button, Group, Paper, Stack, Switch, Text } from "@mantine/core";
 import type { TextDictionary } from "../i18n";
 import type { AnalysisResult, RoundInfo } from "../types";
+import { AlertIcon } from "../icons";
 import { RoundTable, type RoundTableLabels } from "./RoundTable";
-import { SwitchControl } from "./SwitchControl";
 
 interface RoundWorkspaceProps {
   words: TextDictionary;
@@ -43,6 +43,8 @@ export function RoundWorkspace({
     caption: words.rounds,
     select: words.selectColumn,
     round: words.roundColumn,
+    duration: words.durationColumn,
+    teams: words.teamsColumn,
     status: words.statusColumn,
     problems: words.issuesColumn,
     recommended: words.recommended,
@@ -51,66 +53,104 @@ export function RoundWorkspace({
     noProblems: words.noIssues,
     suspiciousLocked: words.suspiciousLocked,
   };
-  const summary = words.roundSummary
-    .replace("{total}", formatNumber(analysis.rounds.length))
-    .replace("{recommended}", formatNumber(recommendedCount))
-    .replace("{partial}", formatNumber(partialCount))
-    .replace("{suspicious}", formatNumber(suspiciousCount));
   const defaultSelectedCount = useMemo(
     () => analysis.rounds.filter((round) => round.selectedByDefault).length,
     [analysis.rounds],
   );
+  const limitedReplay = analysis.replayInput.status === "limited";
+  const missingReplayInputs = [
+    analysis.replayInput.commandRows === 0 ? words.limitedReplayMissingCommands : null,
+    analysis.replayInput.actionRows === 0 ? words.limitedReplayMissingActions : null,
+    analysis.replayInput.subtickRows === 0 ? words.limitedReplayMissingSubticks : null,
+    analysis.replayInput.attackHistoryRows === 0 ? words.limitedReplayMissingAttackHistory : null,
+  ].filter((label): label is string => Boolean(label));
   return (
     <section className="round-workspace" aria-label={words.rounds}>
       <div className="round-selection-panel">
-        <header className="round-selection-heading">
+        <Group component="header" className="round-selection-heading" justify="space-between" gap="md" wrap="nowrap">
           <div className="round-selection-heading-copy">
             <h1>{words.roundSelectionTitle}</h1>
             <p>{words.usableRoundCount.replace("{count}", formatNumber(defaultSelectedCount))}</p>
           </div>
-          <span className="round-selection-count">
-            <strong>{defaultSelectedCount}</strong>
-            <small>/ {analysis.rounds.length}</small>
-          </span>
-        </header>
-        <div className="round-selection-subheading">
-          <Group justify="space-between" gap="md" wrap="nowrap">
-            <Text size="sm" fw={600}>{words.adjustRoundSelection}</Text>
-            <Text size="xs" c="var(--text-secondary)">
-              {selectedRounds.size > 0
-                ? words.selectedCount.replace("{count}", formatNumber(selectedRounds.size))
-                : words.selectAtLeastOne}
-            </Text>
-          </Group>
-        </div>
-        <div className="round-toolbar">
-          <strong className="round-summary">{summary}</strong>
-          <div className="round-batch-actions">
-            <button className="text-button" type="button" disabled={convertPending} onClick={onRestoreRecommended}>{words.restoreRecommended}</button>
-            <button className="text-button" type="button" disabled={convertPending} onClick={onClearSelection}>{words.clearSelection}</button>
-          </div>
-          {suspiciousCount > 0 ? (
-            <div className="allow-suspicious-control">
-              <span className="wide-label">{words.allowSuspicious}</span>
-              <span className="compact-label">{words.allowSuspiciousShort}</span>
-              <SwitchControl
-                checked={allowSuspicious}
-                label={words.allowSuspicious}
-                disabled={convertPending}
-                onChange={onAllowSuspiciousChange}
-              />
-            </div>
-          ) : <span className="toolbar-spacer" />}
-        </div>
+          <Badge color="blue" variant="light" size="md" radius="sm">
+            {words.roundSelectionCount
+              .replace("{selected}", formatNumber(selectedRounds.size))
+              .replace("{total}", formatNumber(analysis.rounds.length))}
+          </Badge>
+        </Group>
 
-        <RoundTable
-          labels={labels}
-          rounds={analysis.rounds}
-          selectedRounds={selectedRounds}
-          allowSuspicious={allowSuspicious}
-          disabled={convertPending}
-          onToggle={onToggleRound}
-        />
+        <Stack gap="sm" p="md">
+          {limitedReplay ? (
+            <Alert
+              color="yellow"
+              variant="light"
+              radius="md"
+              icon={<AlertIcon size={18} />}
+              title={words.limitedReplayTitle}
+            >
+              <Text size="sm">{words.limitedReplayBody}</Text>
+              <Group gap={6} mt="xs" wrap="wrap" aria-label={words.limitedReplayMissingLabel}>
+                <Text size="xs" c="dimmed">{words.limitedReplayMissingLabel}:</Text>
+                {missingReplayInputs.map((label, index) => (
+                  <Group gap={6} wrap="nowrap" key={label}>
+                    {index > 0 ? <Text size="xs" c="dimmed" aria-hidden="true">·</Text> : null}
+                    <Text size="xs" fw={500}>{label}</Text>
+                  </Group>
+                ))}
+              </Group>
+            </Alert>
+          ) : null}
+
+          <Paper className="round-selection-paper" withBorder radius="md">
+            <Group justify="space-between" gap="sm" p="sm" wrap="wrap">
+              <Group gap="xs" wrap="wrap">
+                <Text size="sm" fw={600}>{words.adjustRoundSelection}</Text>
+                <Badge color="green" variant="light" size="sm">
+                  {words.recommended} {formatNumber(recommendedCount)}
+                </Badge>
+                {partialCount > 0 ? (
+                  <Badge color="blue" variant="light" size="sm">
+                    {words.partial} {formatNumber(partialCount)}
+                  </Badge>
+                ) : null}
+                {suspiciousCount > 0 ? (
+                  <Badge color="yellow" variant="light" size="sm">
+                    {words.suspicious} {formatNumber(suspiciousCount)}
+                  </Badge>
+                ) : null}
+              </Group>
+
+              <Group gap="xs" wrap="wrap">
+                <Button variant="default" size="xs" disabled={convertPending} onClick={onRestoreRecommended}>
+                  {words.restoreRecommended}
+                </Button>
+                <Button variant="subtle" color="gray" size="xs" disabled={convertPending} onClick={onClearSelection}>
+                  {words.clearSelection}
+                </Button>
+                {suspiciousCount > 0 ? (
+                  <Switch
+                    className="round-suspicious-switch"
+                    size="sm"
+                    label={words.allowSuspicious}
+                    labelPosition="left"
+                    checked={allowSuspicious}
+                    disabled={convertPending}
+                    onChange={(event) => onAllowSuspiciousChange(event.currentTarget.checked)}
+                  />
+                ) : null}
+              </Group>
+            </Group>
+
+            <RoundTable
+              labels={labels}
+              rounds={analysis.rounds}
+              selectedRounds={selectedRounds}
+              allowSuspicious={allowSuspicious}
+              disabled={convertPending}
+              onToggle={onToggleRound}
+            />
+          </Paper>
+        </Stack>
       </div>
     </section>
   );

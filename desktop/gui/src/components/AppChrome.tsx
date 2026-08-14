@@ -43,6 +43,7 @@ interface AppSidebarProps {
   analysisAvailable: boolean;
   logsActive: boolean;
   settingsActive: boolean;
+  updateAvailable: boolean;
   collapsed: boolean;
   onOpenImport: () => void;
   onOpenLibrary: () => void;
@@ -149,6 +150,7 @@ export function AppSidebar({
   analysisAvailable,
   logsActive,
   settingsActive,
+  updateAvailable,
   collapsed,
   onOpenImport,
   onOpenLibrary,
@@ -201,9 +203,17 @@ export function AppSidebar({
         </button>
 
         <span className="sidebar-section-divider" />
-        <button className={itemClass(settingsActive)} type="button" onClick={onOpenSettings} aria-current={settingsActive ? "page" : undefined} title={words.navSettings}>
+        <button
+          className={`${itemClass(settingsActive)}${updateAvailable ? " has-update" : ""}`}
+          type="button"
+          onClick={onOpenSettings}
+          aria-current={settingsActive ? "page" : undefined}
+          aria-label={updateAvailable ? `${words.navSettings} · ${words.releaseUpdateAvailable}` : words.navSettings}
+          title={updateAvailable ? `${words.navSettings} · ${words.releaseUpdateAvailable}` : words.navSettings}
+        >
           <SlidersIcon size={17} />
           <span>{words.navSettings}</span>
+          {updateAvailable ? <i className="sidebar-update-dot" aria-hidden="true" /> : null}
         </button>
       </nav>
 

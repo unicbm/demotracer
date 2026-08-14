@@ -5,12 +5,15 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { type KeyboardEvent, useRef } from "react";
+import { Badge, Checkbox, Table, Text } from "@mantine/core";
 import type { RoundInfo } from "../types";
 
 export interface RoundTableLabels {
   caption: string;
   select: string;
   round: string;
+  duration: string;
+  teams: string;
   status: string;
   problems: string;
   recommended: string;
@@ -18,6 +21,11 @@ export interface RoundTableLabels {
   suspicious: string;
   noProblems: string;
   suspiciousLocked: string;
+}
+
+function formatDuration(seconds: number): string {
+  const totalSeconds = Math.max(0, Math.round(seconds));
+  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
 }
 
 interface RoundTableProps {
@@ -58,32 +66,44 @@ export function RoundTable({
   }
 
   return (
-    <div className="round-list-scroll">
-      <table className="round-data-table round-export-table" ref={tableRef}>
-        <caption className="sr-only">{labels.caption}</caption>
-        <thead>
-          <tr>
-            <th className="round-select-column" scope="col"><span className="sr-only">{labels.select}</span></th>
-            <th scope="col">{labels.round}</th>
-            <th scope="col">{labels.status}</th>
-            <th scope="col">{labels.problems}</th>
-          </tr>
-        </thead>
-        <tbody>
+    <Table.ScrollContainer minWidth={640}>
+      <Table
+        className="round-mantine-table"
+        ref={tableRef}
+        striped
+        highlightOnHover
+        horizontalSpacing="md"
+        verticalSpacing="sm"
+        tabularNums
+      >
+        <Table.Caption className="sr-only">{labels.caption}</Table.Caption>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th w={52}><span className="sr-only">{labels.select}</span></Table.Th>
+            <Table.Th w={72}>{labels.round}</Table.Th>
+            <Table.Th w={88}>{labels.duration}</Table.Th>
+            <Table.Th w={88}>{labels.teams}</Table.Th>
+            <Table.Th w={144}>{labels.status}</Table.Th>
+            <Table.Th>{labels.problems}</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
           {rounds.map((round) => {
             const suspicious = round.status === "suspicious";
             const partial = round.status === "partial";
             const selectionDisabled = suspicious && !allowSuspicious;
             const selected = selectedRounds.has(round.round);
             const statusLabel = suspicious ? labels.suspicious : partial ? labels.partial : labels.recommended;
+            const statusColor = suspicious ? "yellow" : partial ? "blue" : "green";
             return (
-              <tr
-                className={`round-data-row${selected ? " is-selected" : ""}${selectionDisabled ? " is-selection-locked" : ""}`}
+              <Table.Tr
                 key={round.round}
+                c={selectionDisabled ? "dimmed" : undefined}
+                opacity={selectionDisabled ? 0.6 : 1}
               >
-                <td className="round-select-cell">
-                  <input
-                    type="checkbox"
+                <Table.Td>
+                  <Checkbox
+                    size="sm"
                     data-round-select="true"
                     data-round-number={round.round}
                     checked={selected}
@@ -93,17 +113,27 @@ export function RoundTable({
                     onChange={() => onToggle(round)}
                     onKeyDown={moveCheckboxFocus}
                   />
-                </td>
-                <th className="round-number-cell" scope="row">{String(round.round).padStart(2, "0")}</th>
-                <td><span className={`round-list-status is-${round.status}`}><i aria-hidden="true" />{statusLabel}</span></td>
-                <td className="round-issue-cell" title={round.problems.join(" · ")}>
-                  {round.problems.length > 0 ? round.problems.join(" · ") : labels.noProblems}
-                </td>
-              </tr>
+                </Table.Td>
+                <Table.Th scope="row">
+                  <Text component="span" ff="monospace" fw={600} size="sm">
+                    {String(round.round).padStart(2, "0")}
+                  </Text>
+                </Table.Th>
+                <Table.Td>{formatDuration(round.durationSeconds)}</Table.Td>
+                <Table.Td>{round.tPlayers}v{round.ctPlayers}</Table.Td>
+                <Table.Td>
+                  <Badge color={statusColor} variant="light" size="sm">{statusLabel}</Badge>
+                </Table.Td>
+                <Table.Td title={round.problems.join(" · ")}>
+                  <Text component="span" size="sm" c="dimmed" lineClamp={1}>
+                    {round.problems.length > 0 ? round.problems.join(" · ") : labels.noProblems}
+                  </Text>
+                </Table.Td>
+              </Table.Tr>
             );
           })}
-        </tbody>
-      </table>
-    </div>
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
   );
 }

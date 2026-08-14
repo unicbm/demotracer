@@ -100,7 +100,17 @@ export interface AnalysisResult {
   score?: MatchScoreSummary | null;
   roundOutcomes?: RoundOutcome[];
   friendlyFire?: FriendlyFireSummary | null;
+  replayInput: ReplayInputSummary;
   rounds: RoundInfo[];
+}
+
+export interface ReplayInputSummary {
+  status: "available" | "limited" | "unknown";
+  playerRows: number;
+  commandRows: number;
+  actionRows: number;
+  subtickRows: number;
+  attackHistoryRows: number;
 }
 
 export interface RoundOutcome {

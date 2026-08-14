@@ -130,6 +130,7 @@ interface SettingsWorkspaceProps {
   inspecting: boolean;
   appVersion: string;
   guiUpdate: GuiUpdateStatus;
+  updateAvailable: boolean;
   playbackRelease: PlaybackReleaseStatus | null;
   playbackUpdate: PlaybackUpdateStatus;
   playbackReleaseError: string;
@@ -416,6 +417,7 @@ export function SettingsWorkspace({
   inspecting,
   appVersion,
   guiUpdate,
+  updateAvailable,
   playbackRelease,
   playbackUpdate,
   playbackReleaseError,
@@ -1633,7 +1635,7 @@ export function SettingsWorkspace({
             <section className="settings-dashboard-panel is-environment">
               <header>
                 <strong>{words.settingsNavEnvironment}</strong>
-                {guiUpdate.phase === "available" ? <i className="settings-nav-update-dot" title={words.releaseUpdateAvailable} aria-hidden="true" /> : null}
+                {updateAvailable ? <i className="settings-nav-update-dot" title={words.releaseUpdateAvailable} aria-hidden="true" /> : null}
               </header>
               <div className="settings-subpage-list">
                 <SettingsSubpageRow title={`${words.releaseDesktopApp} · v${guiUpdate.currentVersion || appVersion || "—"}`} status={guiStatus} onClick={() => setSettingsModal("desktopUpdate")} />

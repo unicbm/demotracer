@@ -59,6 +59,14 @@ import {
   type TelemetrySubmission,
 } from "./telemetry";
 import {
+  IGNORED_UPDATE_VERSIONS_STORAGE_KEY,
+  normalizeIgnoredUpdateVersions,
+  normalizePendingPlaybackUpdate,
+  PENDING_PLAYBACK_UPDATE_STORAGE_KEY,
+  updateVersionIsIgnored,
+  type IgnoredUpdateVersions,
+} from "./updatePrompt";
+import {
   CUSTOM_CSS_STARTER_PROFILES_STORAGE_KEY,
   STARTER_CUSTOM_CSS_PROFILES,
 } from "./customCssPresets";
@@ -855,10 +863,15 @@ function App() {
     phase: "idle",
     currentVersion: packageMetadata.version,
   });
-  const [guiUpdateDialogOpen, setGuiUpdateDialogOpen] = useState(false);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [updatePromptDismissed, setUpdatePromptDismissed] = useState(false);
+  const [ignoredUpdateVersions, setIgnoredUpdateVersions] = useState<IgnoredUpdateVersions>(() => (
+    normalizeIgnoredUpdateVersions(localStorage.getItem(IGNORED_UPDATE_VERSIONS_STORAGE_KEY))
+  ));
   const [playbackRelease, setPlaybackRelease] = useState<PlaybackReleaseStatus | null>(null);
   const [playbackUpdate, setPlaybackUpdate] = useState<PlaybackUpdateStatus>({ phase: "idle" });
   const [playbackReleaseError, setPlaybackReleaseError] = useState("");
+  const [playbackInstallBlockedByCs2, setPlaybackInstallBlockedByCs2] = useState(false);
   const [releaseAction, setReleaseAction] = useState<"installingOnline" | "installingFile" | "rollingBack" | null>(null);
   const [releaseNotice, setReleaseNotice] = useState("");
   const [serverConfigDocument, setServerConfigDocument] = useState<ServerConfigDocument | null>(null);
@@ -904,6 +917,7 @@ function App() {
   const analyzedMaxRoundSecondsRef = useRef(DEFAULT_SETTINGS.maxRoundSeconds);
   const environmentInspectionTokenRef = useRef(0);
   const pendingGuiUpdateRef = useRef<Update | null>(null);
+  const playbackContinuationStartedRef = useRef(false);
   const batchIdRef = useRef("");
   const batchGenerationRef = useRef(0);
   const batchStopPendingRef = useRef(false);
@@ -917,7 +931,7 @@ function App() {
   const chooseOtherOutputRef = useRef<HTMLButtonElement | null>(null);
   const openExistingArchiveRef = useRef<HTMLButtonElement | null>(null);
   const keepWorkingRef = useRef<HTMLButtonElement | null>(null);
-  const guiUpdateLaterRef = useRef<HTMLButtonElement | null>(null);
+  const updateLaterRef = useRef<HTMLButtonElement | null>(null);
   const cancelArchiveDeleteRef = useRef<HTMLButtonElement | null>(null);
   const inventorySimulatorHostRef = useRef<HTMLDivElement | null>(null);
   const browserLogPreviewSeededRef = useRef(false);
@@ -1208,6 +1222,14 @@ function App() {
   }, [sidebarCollapsed]);
 
   useEffect(() => {
+    if (ignoredUpdateVersions.gui || ignoredUpdateVersions.playback) {
+      localStorage.setItem(IGNORED_UPDATE_VERSIONS_STORAGE_KEY, JSON.stringify(ignoredUpdateVersions));
+    } else {
+      localStorage.removeItem(IGNORED_UPDATE_VERSIONS_STORAGE_KEY);
+    }
+  }, [ignoredUpdateVersions]);
+
+  useEffect(() => {
     const normalized = normalizeUiFontSize(uiFontSize);
     localStorage.setItem(UI_FONT_SIZE_STORAGE_KEY, String(normalized));
     localStorage.removeItem(LEGACY_UI_SCALE_STORAGE_KEY);
@@ -1391,7 +1413,7 @@ function App() {
     browserLogPreviewSeededRef.current = true;
     const now = Date.now();
     setActivityLogs([
-      { id: "preview-1", timestampMs: now - 42_000, level: "info", source: "app", message: "CS2 DemoTracer 1.1.3 started" },
+      { id: "preview-1", timestampMs: now - 42_000, level: "info", source: "app", message: "CS2 DemoTracer 1.1.4 started" },
       { id: "preview-2", timestampMs: now - 31_000, level: "debug", source: "analysis", message: "phase=parsing" },
       { id: "preview-3", timestampMs: now - 24_000, level: "info", source: "analysis", message: "Parsed match.dem.zst: 24 rounds · 10 players" },
       { id: "preview-4", timestampMs: now - 15_000, level: "warn", source: "conversion", message: "Round 12: partial player evidence was preserved" },
@@ -1517,6 +1539,33 @@ function App() {
   }, [language, localEnvironment.cs2Path]);
 
   useEffect(() => {
+    if (playbackContinuationStartedRef.current) return;
+    const stored = localStorage.getItem(PENDING_PLAYBACK_UPDATE_STORAGE_KEY);
+    const pending = normalizePendingPlaybackUpdate(stored);
+    if (!pending) {
+      if (stored) localStorage.removeItem(PENDING_PLAYBACK_UPDATE_STORAGE_KEY);
+      return;
+    }
+    if (guiUpdate.currentVersion !== pending.guiVersion) return;
+    if (playbackUpdate.phase === "current") {
+      localStorage.removeItem(PENDING_PLAYBACK_UPDATE_STORAGE_KEY);
+      return;
+    }
+    if (playbackUpdate.phase !== "available") return;
+    if (playbackUpdate.latestVersion !== pending.playbackVersion) {
+      localStorage.removeItem(PENDING_PLAYBACK_UPDATE_STORAGE_KEY);
+      return;
+    }
+
+    playbackContinuationStartedRef.current = true;
+    localStorage.removeItem(PENDING_PLAYBACK_UPDATE_STORAGE_KEY);
+    setUpdateDialogOpen(true);
+    void installLatestPlaybackBundle().then((installed) => {
+      if (installed) setUpdateDialogOpen(false);
+    });
+  }, [guiUpdate.currentVersion, playbackUpdate.latestVersion, playbackUpdate.phase]);
+
+  useEffect(() => {
     if (!archivePath || !archive) return;
     writeStoredLibrarySession(localStorage, {
       manifestPath: archivePath,
@@ -1638,8 +1687,8 @@ function App() {
     }
     if (phase === "selecting") {
       window.requestAnimationFrame(() => {
-        const firstRound = document.querySelector<HTMLInputElement>('.round-data-table input[data-round-select="true"]:not(:disabled)');
-        const suspiciousToggle = document.querySelector<HTMLInputElement>(".allow-suspicious-control input");
+        const firstRound = document.querySelector<HTMLInputElement>('.round-mantine-table input[data-round-select="true"]:not(:disabled)');
+        const suspiciousToggle = document.querySelector<HTMLInputElement>(".round-suspicious-switch input");
         (firstRound ?? suspiciousToggle)?.focus({ preventScroll: true });
       });
     }
@@ -3107,7 +3156,6 @@ function App() {
           currentVersion,
           availableVersion: currentVersion,
         });
-        setGuiUpdateDialogOpen(false);
         if (manual) setReleaseNotice(words.releaseUpToDate);
         return;
       }
@@ -3119,7 +3167,6 @@ function App() {
         availableVersion: update.version,
         notes: update.body ?? undefined,
       });
-      setGuiUpdateDialogOpen(true);
     } catch {
       setGuiUpdate({
         phase: "error",
@@ -3169,6 +3216,7 @@ function App() {
       pendingGuiUpdateRef.current = null;
       await relaunch();
     } catch {
+      localStorage.removeItem(PENDING_PLAYBACK_UPDATE_STORAGE_KEY);
       setGuiUpdate((current) => ({
         ...current,
         phase: "error",
@@ -3177,6 +3225,7 @@ function App() {
   }
 
   async function finishPlaybackChange(result: PlaybackInstallResult, action: "install" | "rollback") {
+    setPlaybackInstallBlockedByCs2(false);
     setReleaseNotice(action === "install"
       ? (language === "zh"
           ? `已安装回放组件 v${result.version}（${result.installedFiles} 个文件，清理 ${result.removedLegacyFiles} 个旧 provider 文件）。`
@@ -3208,15 +3257,20 @@ function App() {
 
   async function installLatestPlaybackBundle() {
     const cs2Path = localEnvironment.cs2Path.trim();
-    if (!cs2Path || releaseAction) return;
+    if (!cs2Path || releaseAction) return false;
     setReleaseAction("installingOnline");
     setPlaybackReleaseError("");
+    setPlaybackInstallBlockedByCs2(false);
     setReleaseNotice("");
     try {
       const result = await invoke<PlaybackInstallResult>("install_latest_playback_bundle", { cs2Path });
       await finishPlaybackChange(result, "install");
+      return true;
     } catch (reason) {
-      setPlaybackReleaseError(userFacingErrorMessage(parseCommandError(reason), language));
+      const error = parseCommandError(reason);
+      setPlaybackInstallBlockedByCs2(error.code.toLocaleLowerCase().includes("cs2_running"));
+      setPlaybackReleaseError(userFacingErrorMessage(error, language));
+      return false;
     } finally {
       setReleaseAction(null);
     }
@@ -3789,16 +3843,73 @@ function App() {
     </div>
   ) : null;
 
-  const guiUpdateDialogStatus = guiUpdate.phase === "checking" ? words.releaseChecking
-    : guiUpdate.phase === "current" ? words.releaseUpToDate
-      : guiUpdate.phase === "available" ? words.releaseUpdateAvailable
-        : guiUpdate.phase === "downloading" ? words.releaseDownloading
-          : guiUpdate.phase === "installing" ? words.releaseInstalling
-            : guiUpdate.phase === "error" ? words.releaseCheckUnavailable
-              : words.releaseNotChecked;
-  const guiUpdateDialogProgress = guiUpdate.totalBytes && guiUpdate.downloadedBytes != null
+  const guiUpdateAvailable = guiUpdate.phase === "available" && Boolean(guiUpdate.availableVersion);
+  const guiUpdateRetryRequired = guiUpdate.phase === "error"
+    && Boolean(guiUpdate.availableVersion && guiUpdate.availableVersion !== guiUpdate.currentVersion);
+  const playbackUpdateAvailable = playbackUpdate.phase === "available" && Boolean(playbackUpdate.latestVersion);
+  const actionableGuiUpdate = guiUpdateAvailable
+    && !updateVersionIsIgnored(ignoredUpdateVersions, "gui", guiUpdate.availableVersion);
+  const actionablePlaybackUpdate = playbackUpdateAvailable
+    && !updateVersionIsIgnored(ignoredUpdateVersions, "playback", playbackUpdate.latestVersion);
+  const guiUpdateOffered = actionableGuiUpdate || guiUpdateRetryRequired;
+  const playbackUpdateOffered = actionablePlaybackUpdate;
+  const actionableUpdateAvailable = actionableGuiUpdate || actionablePlaybackUpdate;
+  const availableUpdateCount = Number(guiUpdateOffered) + Number(playbackUpdateOffered);
+  const updatePromptSummary = [
+    actionableGuiUpdate
+      ? `DemoTracer v${guiUpdate.currentVersion || appVersion} → v${guiUpdate.availableVersion}`
+      : "",
+    actionablePlaybackUpdate
+      ? `Playback ${playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy} → v${playbackUpdate.latestVersion}`
+      : "",
+  ].filter(Boolean).join(" · ");
+  const updateDialogBusy = guiUpdate.phase === "checking"
+    || guiUpdate.phase === "downloading"
+    || guiUpdate.phase === "installing"
+    || releaseAction === "installingOnline";
+  const updateDialogStatus = guiUpdate.phase === "downloading" ? words.releaseDownloading
+    : guiUpdate.phase === "installing" || releaseAction === "installingOnline" ? words.releaseInstalling
+      : availableUpdateCount > 0 ? words.releaseUpdateAvailable
+        : guiUpdate.phase === "error" || playbackUpdate.phase === "error" ? words.releaseCheckUnavailable
+          : words.releaseUpToDate;
+  const updateDialogProgress = guiUpdate.totalBytes && guiUpdate.downloadedBytes != null
     ? Math.min(100, Math.round((guiUpdate.downloadedBytes / guiUpdate.totalBytes) * 100))
     : null;
+
+  function dismissUpdatePrompt() {
+    setUpdatePromptDismissed(true);
+    setUpdateDialogOpen(false);
+  }
+
+  function ignoreAvailableUpdateVersions() {
+    setIgnoredUpdateVersions((current) => ({
+      ...current,
+      ...(guiUpdateOffered && guiUpdate.availableVersion ? { gui: guiUpdate.availableVersion } : {}),
+      ...(playbackUpdateOffered && playbackUpdate.latestVersion ? { playback: playbackUpdate.latestVersion } : {}),
+    }));
+    dismissUpdatePrompt();
+  }
+
+  async function installAvailableUpdates() {
+    if (guiUpdateRetryRequired) {
+      await checkGuiApplicationUpdate();
+      return;
+    }
+    if (guiUpdateAvailable) {
+      if (playbackUpdateOffered && guiUpdate.availableVersion && playbackUpdate.latestVersion) {
+        localStorage.setItem(PENDING_PLAYBACK_UPDATE_STORAGE_KEY, JSON.stringify({
+          guiVersion: guiUpdate.availableVersion,
+          playbackVersion: playbackUpdate.latestVersion,
+        }));
+      }
+      await installGuiApplicationUpdate();
+      return;
+    }
+    if (playbackUpdateOffered) {
+      const installed = await installLatestPlaybackBundle();
+      if (installed) setUpdateDialogOpen(false);
+    }
+  }
 
   return (
     <div className={`app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
@@ -3823,6 +3934,7 @@ function App() {
           analysisAvailable={analysisAvailable}
           logsActive={activeSection === "logs"}
           settingsActive={activeSection === "settings"}
+          updateAvailable={actionableUpdateAvailable}
           collapsed={sidebarCollapsed}
           onOpenImport={() => {
             if (batchInvocationActive || canResumeBatch || hasRetryableBatchJobs) {
@@ -3838,6 +3950,21 @@ function App() {
           onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
         />
         <main className="app-workspace">
+        {actionableUpdateAvailable && !updatePromptDismissed ? (
+          <aside className="update-discovery-banner" aria-labelledby="update-banner-title">
+            <span className="update-discovery-mark" aria-hidden="true"><ArrowIcon size={16} /></span>
+            <div className="update-discovery-copy">
+              <strong id="update-banner-title">{words.releaseUpdateBannerTitle}</strong>
+              <span>{updatePromptSummary}</span>
+            </div>
+            <button className="secondary-button update-discovery-action" type="button" onClick={() => setUpdateDialogOpen(true)}>
+              {words.releaseReviewUpdate}
+            </button>
+            <button className="icon-button update-discovery-dismiss" type="button" onClick={dismissUpdatePrompt} aria-label={words.releaseLater} title={words.releaseLater}>
+              <CloseIcon size={14} />
+            </button>
+          </aside>
+        ) : null}
         {globalError ? (
           <div className="error-strip system-feedback-toast" role="alert" aria-live="assertive">
             <AlertIcon size={17} />
@@ -3929,6 +4056,7 @@ function App() {
             inspecting={inspectingEnvironment}
             appVersion={appVersion}
             guiUpdate={guiUpdate}
+            updateAvailable={actionableUpdateAvailable}
             playbackRelease={playbackRelease}
             playbackUpdate={playbackUpdate}
             playbackReleaseError={playbackReleaseError}
@@ -3965,7 +4093,14 @@ function App() {
             onUseCandidate={useCs2Candidate}
             onInspectEnvironment={() => void runEnvironmentInspection()}
             onCheckGuiUpdate={() => void checkGuiApplicationUpdate()}
-            onInstallGuiUpdate={() => setGuiUpdateDialogOpen(true)}
+            onInstallGuiUpdate={() => {
+              setIgnoredUpdateVersions((current) => {
+                if (!updateVersionIsIgnored(current, "gui", guiUpdate.availableVersion)) return current;
+                const { gui: _ignoredGui, ...rest } = current;
+                return rest;
+              });
+              setUpdateDialogOpen(true);
+            }}
             onCheckPlaybackUpdate={() => void checkPlaybackUpdate()}
             onInstallLatestPlayback={() => void installLatestPlaybackBundle()}
             onInstallPlaybackBundle={() => void installPlaybackBundle()}
@@ -4211,42 +4346,44 @@ function App() {
         </aside>
       ) : null}
 
-      {guiUpdateDialogOpen ? (
+      {updateDialogOpen ? (
         <DialogPrimitive
-          labelledBy="gui-update-title"
-          describedBy="gui-update-description"
+          labelledBy="update-dialog-title"
+          describedBy="update-dialog-description"
           onDismiss={() => {
-            if (guiUpdate.phase !== "downloading" && guiUpdate.phase !== "installing") {
-              setGuiUpdateDialogOpen(false);
-            }
+            if (!updateDialogBusy) dismissUpdatePrompt();
           }}
-          initialFocusRef={guiUpdateLaterRef}
+          initialFocusRef={updateLaterRef}
           dismissOnScrimClick={false}
-          className={`dialog-surface gui-update-dialog is-${guiUpdate.phase}`}
+          className="dialog-surface gui-update-dialog"
         >
           <header className="update-dialog-header">
             <div className="update-dialog-heading">
               <div>
                 <span className="dialog-eyebrow">{words.releaseUpdateStatus}</span>
-                <h2 id="gui-update-title">{words.releaseUpdateTitle}</h2>
+                <h2 id="update-dialog-title">{words.releaseUpdateTitle}</h2>
               </div>
             </div>
             <Group className="update-dialog-header-actions" gap="sm" wrap="nowrap">
               <Badge
-                className={`update-dialog-state is-${guiUpdate.phase}`}
-                color={guiUpdate.phase === "error" ? "red" : "blue"}
+                className="update-dialog-state"
+                color={playbackInstallBlockedByCs2 ? "orange" : "blue"}
                 variant="light"
                 size="lg"
                 radius="xl"
                 leftSection={<span className="update-dialog-state-dot" aria-hidden="true" />}
               >
-                <span role="status">{guiUpdateDialogStatus}</span>
+                <span role="status">
+                  {updateDialogBusy
+                    ? updateDialogStatus
+                    : words.releaseUpdateComponentsCount.replace("{count}", String(availableUpdateCount))}
+                </span>
               </Badge>
               <button
                 className="icon-button"
                 type="button"
-                disabled={guiUpdate.phase === "downloading" || guiUpdate.phase === "installing"}
-                onClick={() => setGuiUpdateDialogOpen(false)}
+                disabled={updateDialogBusy}
+                onClick={dismissUpdatePrompt}
                 aria-label={words.close}
               >
                 <CloseIcon size={16} />
@@ -4255,38 +4392,58 @@ function App() {
           </header>
 
           <Stack className="update-dialog-content" gap="md">
-            <Paper className="update-dialog-version" withBorder radius="md" p="lg" aria-label={words.releaseUpdateTitle}>
-              <Group justify="space-between" align="center" wrap="nowrap">
-                <Stack gap={2}>
-                  <Text c="dimmed" size="xs" fw={600}>{words.releaseCurrentVersion}</Text>
-                  <Text className="update-dialog-version-number" fw={700}>v{guiUpdate.currentVersion || "—"}</Text>
-                </Stack>
-                <ArrowIcon className="update-dialog-version-arrow" size={20} aria-hidden="true" />
-                <Stack gap={2} align="flex-end">
-                  <Text c="dimmed" size="xs" fw={600}>{words.releaseLatestVersion}</Text>
-                  <Text className="update-dialog-version-number is-latest" fw={700}>v{guiUpdate.availableVersion || "—"}</Text>
-                </Stack>
-              </Group>
-            </Paper>
+            {guiUpdateOffered ? (
+              <Paper className="update-dialog-component" component="section" withBorder radius="md" p="lg" aria-labelledby="gui-update-component-title">
+                <div className="update-dialog-component-header">
+                  <div>
+                    <Text id="gui-update-component-title" fw={700}>DemoTracer</Text>
+                    <Text c="dimmed" size="xs">{words.releaseDesktopApp}</Text>
+                  </div>
+                  <div className="update-dialog-version-route" aria-label={words.releaseUpdateStatus}>
+                    <code>v{guiUpdate.currentVersion || "—"}</code>
+                    <ArrowIcon size={16} aria-hidden="true" />
+                    <code>v{guiUpdate.availableVersion || "—"}</code>
+                  </div>
+                </div>
+                <Text className="update-dialog-component-notes" component="p" mt="md" size="sm">
+                  {releaseNotesForLanguage(guiUpdate.notes, language) || words.releaseGenericNotes}
+                </Text>
+              </Paper>
+            ) : null}
 
-            <Paper className="update-dialog-release-notes" component="section" withBorder radius="md" p="lg" aria-labelledby="gui-update-notes-title">
-              <Text id="gui-update-notes-title" fw={700} size="sm">{words.releaseUpdateNotes}</Text>
-              <Text component="p" mt="sm" size="sm">
-                {releaseNotesForLanguage(guiUpdate.notes, language) || words.releaseGenericNotes}
-              </Text>
-            </Paper>
+            {playbackUpdateOffered ? (
+              <Paper className="update-dialog-component" component="section" withBorder radius="md" p="lg" aria-labelledby="playback-update-component-title">
+                <div className="update-dialog-component-header">
+                  <div>
+                    <Text id="playback-update-component-title" fw={700}>Playback</Text>
+                    <Text c="dimmed" size="xs">{words.releasePlayback}</Text>
+                  </div>
+                  <div className="update-dialog-version-route" aria-label={words.releaseUpdateStatus}>
+                    <code>{playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy}</code>
+                    <ArrowIcon size={16} aria-hidden="true" />
+                    <code>v{playbackUpdate.latestVersion || "—"}</code>
+                  </div>
+                </div>
+                <Text className="update-dialog-component-notes" component="p" mt="md" size="sm">
+                  {releaseNotesForLanguage(playbackUpdate.notes, language) || words.releasePlaybackGenericNotes}
+                </Text>
+              </Paper>
+            ) : null}
 
-            <Text id="gui-update-description" className="update-dialog-scope" c="dimmed" size="xs">
-              {words.releaseUpdateScope}
-            </Text>
+            <div id="update-dialog-description" className="update-dialog-guidance">
+              <Text className="update-dialog-scope" c="dimmed" size="xs">{words.releaseUpdateScope}</Text>
+              {guiUpdateOffered && playbackUpdateOffered ? (
+                <Text className="update-dialog-scope" c="dimmed" size="xs">{words.releaseUpdateSequence}</Text>
+              ) : null}
+            </div>
 
             {guiUpdate.phase === "downloading" || guiUpdate.phase === "installing" ? (
               <Paper className="update-dialog-progress" withBorder radius="md" p="sm" role="status" aria-live="polite">
                 <Group justify="space-between" mb={7}>
                   <Text c="dimmed" size="xs">{guiUpdate.phase === "installing" ? words.releaseInstalling : words.releaseDownloading}</Text>
-                  <Text className="update-dialog-progress-value" size="xs" fw={700}>{guiUpdateDialogProgress != null ? `${guiUpdateDialogProgress}%` : "…"}</Text>
+                  <Text className="update-dialog-progress-value" size="xs" fw={700}>{updateDialogProgress != null ? `${updateDialogProgress}%` : "…"}</Text>
                 </Group>
-                <Progress value={guiUpdateDialogProgress ?? 36} animated={guiUpdateDialogProgress == null} size="sm" radius="xl" />
+                <Progress value={updateDialogProgress ?? 36} animated={updateDialogProgress == null} size="sm" radius="xl" />
               </Paper>
             ) : null}
 
@@ -4296,31 +4453,29 @@ function App() {
             {guiUpdate.phase === "error" ? (
               <Text className="release-error update-dialog-error" c="red" size="sm"><AlertIcon size={15} />{words.releaseCheckUnavailable}</Text>
             ) : null}
+            {playbackReleaseError && playbackUpdateOffered ? (
+              <Text className={`release-error update-dialog-error${playbackInstallBlockedByCs2 ? " is-warning" : ""}`} c={playbackInstallBlockedByCs2 ? "orange" : "red"} size="sm">
+                <AlertIcon size={15} />
+                {playbackInstallBlockedByCs2 ? words.releaseCloseCs2ToContinue : playbackReleaseError}
+              </Text>
+            ) : null}
           </Stack>
 
           <footer className="update-dialog-footer">
-            <Group justify="flex-end" gap="sm">
-            <Button
-              ref={guiUpdateLaterRef}
-              variant="default"
-              disabled={guiUpdate.phase === "downloading" || guiUpdate.phase === "installing"}
-              onClick={() => setGuiUpdateDialogOpen(false)}
-            >
-              {words.releaseLater}
+            <Button variant="subtle" color="gray" disabled={updateDialogBusy} onClick={ignoreAvailableUpdateVersions}>
+              {words.releaseIgnoreVersion}
             </Button>
-            <Button
-              disabled={guiUpdate.phase === "checking" || guiUpdate.phase === "downloading" || guiUpdate.phase === "installing"}
-              onClick={() => {
-                if (guiUpdate.phase === "error") void checkGuiApplicationUpdate();
-                else void installGuiApplicationUpdate();
-              }}
-            >
-              {guiUpdate.phase === "checking" ? words.releaseChecking
-                : guiUpdate.phase === "downloading" ? words.releaseDownloading
-                  : guiUpdate.phase === "installing" ? words.releaseInstalling
-                    : guiUpdate.phase === "error" ? words.releaseCheckNow
-                      : words.releaseInstallNow}
-            </Button>
+            <Group gap="sm">
+              <Button ref={updateLaterRef} variant="default" disabled={updateDialogBusy} onClick={dismissUpdatePrompt}>
+                {words.releaseLater}
+              </Button>
+              <Button disabled={updateDialogBusy || availableUpdateCount === 0} onClick={() => void installAvailableUpdates()}>
+                {guiUpdate.phase === "downloading" ? words.releaseDownloading
+                  : guiUpdate.phase === "installing" || releaseAction === "installingOnline" ? words.releaseInstalling
+                    : guiUpdateRetryRequired ? words.releaseCheckNow
+                      : guiUpdateAvailable ? words.releaseUpdateAndRestart
+                      : words.releaseUpdateAll}
+              </Button>
             </Group>
           </footer>
         </DialogPrimitive>

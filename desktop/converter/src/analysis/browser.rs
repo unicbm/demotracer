@@ -31,6 +31,28 @@ pub struct BrowserDemoAnalysis {
     pub round_outcomes: Vec<BrowserRoundOutcome>,
     #[serde(default)]
     pub friendly_fire: BrowserFriendlyFireSummary,
+    #[serde(default)]
+    pub replay_input: BrowserReplayInputSummary,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BrowserReplayInputStatus {
+    Available,
+    Limited,
+    #[default]
+    Unknown,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserReplayInputSummary {
+    pub status: BrowserReplayInputStatus,
+    pub player_rows: usize,
+    pub command_rows: usize,
+    pub action_rows: usize,
+    pub subtick_rows: usize,
+    pub attack_history_rows: usize,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -137,7 +159,63 @@ pub fn analyze_browser_demo(parsed: &ParsedDemo, options: AnalysisOptions) -> Br
         score: match_summary.score,
         round_outcomes: match_summary.round_outcomes,
         friendly_fire,
+        replay_input: summarize_replay_input(parsed),
     }
+}
+
+fn summarize_replay_input(parsed: &ParsedDemo) -> BrowserReplayInputSummary {
+    let mut summary = BrowserReplayInputSummary::default();
+    for row in parsed
+        .rows
+        .iter()
+        .filter(|row| matches!(row.team_num, 2 | 3))
+    {
+        summary.player_rows += 1;
+        if row_has_user_command(row) {
+            summary.command_rows += 1;
+        }
+        if row.buttonstates_present || row.buttons != 0 {
+            summary.action_rows += 1;
+        }
+        if !row.subtick_moves.is_empty() {
+            summary.subtick_rows += 1;
+        }
+        if row.usercmd_attack1_start_history_index >= 0
+            || row.usercmd_attack2_start_history_index >= 0
+            || !row.input_history.is_empty()
+        {
+            summary.attack_history_rows += 1;
+        }
+    }
+    // Keep this warning exact and low-noise: only report a limitation when the
+    // demo has player snapshots but no command or action evidence at all.
+    summary.status = if summary.player_rows == 0 {
+        BrowserReplayInputStatus::Unknown
+    } else if summary.command_rows == 0 && summary.action_rows == 0 {
+        BrowserReplayInputStatus::Limited
+    } else {
+        BrowserReplayInputStatus::Available
+    };
+    summary
+}
+
+fn row_has_user_command(row: &crate::model::ParsedPlayerTick) -> bool {
+    row.buttonstates_present
+        || row.usercmd_forward_move.is_some()
+        || row.usercmd_left_move.is_some()
+        || row.usercmd_up_move.is_some()
+        || row.usercmd_pitch.is_some()
+        || row.usercmd_yaw.is_some()
+        || row.usercmd_roll.is_some()
+        || row.usercmd_mouse_dx.is_some()
+        || row.usercmd_mouse_dy.is_some()
+        || row.usercmd_weapon_select.is_some()
+        || row.usercmd_left_hand_desired.is_some()
+        || row.usercmd_client_tick.is_some()
+        || row.usercmd_attack1_start_history_index >= 0
+        || row.usercmd_attack2_start_history_index >= 0
+        || !row.input_history.is_empty()
+        || !row.subtick_moves.is_empty()
 }
 
 fn summarize_duration(parsed: &ParsedDemo, analysis: &DemoAnalysis) -> f32 {
@@ -1110,6 +1188,8 @@ mod tests {
             name: name.to_string(),
             is_alive: true,
             round_in_progress: true,
+            usercmd_attack1_start_history_index: -1,
+            usercmd_attack2_start_history_index: -1,
             ..ParsedPlayerTick::default()
         }
     }
@@ -1123,6 +1203,36 @@ mod tests {
             rows,
             ..ParsedDemo::default()
         }
+    }
+
+    #[test]
+    fn marks_demo_without_command_or_action_evidence_as_limited_replay() {
+        let parsed = demo(vec![row(1, 100, 2, 1, "alpha"), row(1, 100, 3, 2, "bravo")]);
+
+        let summary = summarize_replay_input(&parsed);
+
+        assert_eq!(summary.status, BrowserReplayInputStatus::Limited);
+        assert_eq!(summary.player_rows, 2);
+        assert_eq!(summary.command_rows, 0);
+        assert_eq!(summary.action_rows, 0);
+        assert_eq!(summary.subtick_rows, 0);
+        assert_eq!(summary.attack_history_rows, 0);
+    }
+
+    #[test]
+    fn explicit_zero_user_command_values_count_as_available_evidence() {
+        let mut player = row(1, 100, 2, 1, "alpha");
+        player.buttonstates_present = true;
+        player.usercmd_forward_move = Some(0.0);
+        player.usercmd_client_tick = Some(100);
+        let parsed = demo(vec![player]);
+
+        let summary = summarize_replay_input(&parsed);
+
+        assert_eq!(summary.status, BrowserReplayInputStatus::Available);
+        assert_eq!(summary.player_rows, 1);
+        assert_eq!(summary.command_rows, 1);
+        assert_eq!(summary.action_rows, 1);
     }
 
     fn event(name: &str, tick: i32, winner_side: Option<u8>) -> ParsedGameEvent {
