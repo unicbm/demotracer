@@ -6,6 +6,7 @@
 
 param(
     [string]$Version = "1.0.0",
+    [string]$PlaybackVersion = "",
     [string]$OutputRoot = "dist",
     [string]$UpdaterPublicKeyPath = "tooling\release\updater-public-key.txt",
     [string]$CertificateThumbprint = "",
@@ -30,7 +31,11 @@ $publicKeyPath = if ([System.IO.Path]::IsPathRooted($UpdaterPublicKeyPath)) {
 }
 
 & (Join-Path $PSScriptRoot "assert-clean-worktree.ps1") -RepoRoot $repoRoot
-& (Join-Path $PSScriptRoot "check-release-contract.ps1") -Version $Version
+$releaseContractArgs = @{ Version = $Version }
+if (-not [string]::IsNullOrWhiteSpace($PlaybackVersion)) {
+    $releaseContractArgs.PlaybackVersion = $PlaybackVersion
+}
+& (Join-Path $PSScriptRoot "check-release-contract.ps1") @releaseContractArgs
 
 function Require-Path([string]$Path, [string]$Label) {
     if (-not (Test-Path -LiteralPath $Path)) {

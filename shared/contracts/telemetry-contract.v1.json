@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "productVersion": "1.1.5",
+  "productVersion": "1.1.6",
   "endpoints": {
     "aggregate": "https://telemetry.detr.site/v1/aggregate",
     "presence": "https://telemetry.detr.site/v1/presence"

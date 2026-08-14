@@ -1,0 +1,4 @@
+{
+  "zh": "修复 Playback 更新过程中缺少下载进度并可能长时间显示为正在安装的问题。",
+  "en": "Fixed missing download progress and misleading long-running installation status during Playback updates."
+}

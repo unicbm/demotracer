@@ -6,6 +6,7 @@
 
 param(
     [string]$Version = "1.0.0",
+    [string]$PlaybackVersion = "",
     [string]$Bucket = "cs2-demotracer-releases",
     [string]$ReleaseBaseUrl = "https://releases.detr.site",
     [string]$WranglerVersion = "4.118.0",
@@ -15,6 +16,13 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($PlaybackVersion)) {
+    $PlaybackVersion = $Version
+}
+if ($Version -notmatch '^\d+\.\d+\.\d+$' -or $PlaybackVersion -notmatch '^\d+\.\d+\.\d+$') {
+    throw "Version and PlaybackVersion must be semantic versions such as 1.1.6."
+}
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 if ([string]::IsNullOrWhiteSpace($UpdaterRoot)) {
@@ -32,7 +40,7 @@ if (-not [System.Uri]::TryCreate($releaseBase, [System.UriKind]::Absolute, [ref]
 }
 $installerName = "demotracer-gui-v$Version.exe"
 $signatureName = "$installerName.sig"
-$playbackName = "demotracer-css-v$Version.zip"
+$playbackName = "demotracer-css-v$PlaybackVersion.zip"
 $playbackSignatureName = "$playbackName.sig"
 $required = @($installerName, $signatureName, $playbackName, $playbackSignatureName, "latest.json", "SHA256SUMS.txt")
 
@@ -112,10 +120,10 @@ if (-not [System.StringComparer]::Ordinal.Equals(
         $expectedSignature)) {
     throw "Updater manifest signature does not match $signatureName."
 }
-$expectedPlaybackUrl = "$releaseBase/releases/v$Version/$playbackName"
-if ([string]$latest.playback.version -ne $Version -or
+$expectedPlaybackUrl = "$releaseBase/releases/v$PlaybackVersion/$playbackName"
+if ([string]$latest.playback.version -ne $PlaybackVersion -or
     -not [System.StringComparer]::OrdinalIgnoreCase.Equals([string]$latest.playback.url, $expectedPlaybackUrl)) {
-    throw "Updater manifest playback asset does not point at the immutable v$Version R2 prefix."
+    throw "Updater manifest playback asset does not point at the immutable v$PlaybackVersion R2 prefix."
 }
 $expectedPlaybackSignature = (Get-Content -LiteralPath (Join-Path $UpdaterRoot $playbackSignatureName) -Raw -Encoding UTF8).Trim()
 if (-not [System.StringComparer]::Ordinal.Equals([string]$latest.playback.signature, $expectedPlaybackSignature)) {
@@ -130,7 +138,24 @@ $wrangler = "wrangler@$WranglerVersion"
 Invoke-Checked "npx.cmd" @("--yes", $wrangler, "whoami", "--json")
 Invoke-Checked "npx.cmd" @("--yes", $wrangler, "r2", "bucket", "info", $Bucket, "--json")
 
-foreach ($name in $required) {
+$versionedAssets = @($installerName, $signatureName)
+if ($PlaybackVersion -eq $Version) {
+    $versionedAssets += @($playbackName, $playbackSignatureName, "latest.json", "SHA256SUMS.txt")
+} elseif (-not $DryRun) {
+    $cacheBuster = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    $remotePlaybackHead = Invoke-WebRequest -Uri "$expectedPlaybackUrl`?verify=$cacheBuster" -Method Head
+    $localPlaybackLength = (Get-Item -LiteralPath (Join-Path $UpdaterRoot $playbackName)).Length
+    if ($remotePlaybackHead.StatusCode -ne 200 -or
+        [long]$remotePlaybackHead.Headers.'Content-Length' -ne $localPlaybackLength) {
+        throw "Previously published Playback v$PlaybackVersion asset is missing or has the wrong length."
+    }
+    $remotePlaybackSignature = (Invoke-RestMethod -Uri "$expectedPlaybackUrl.sig?verify=$cacheBuster").Trim()
+    if (-not [System.StringComparer]::Ordinal.Equals($remotePlaybackSignature, $expectedPlaybackSignature)) {
+        throw "Previously published Playback v$PlaybackVersion signature does not match the local immutable asset."
+    }
+}
+
+foreach ($name in $versionedAssets) {
     $path = Join-Path $UpdaterRoot $name
     $arguments = @(
         "--yes", $wrangler, "r2", "object", "put",
@@ -186,9 +211,9 @@ if (-not $DryRun) {
     if ($remoteLatest.version -ne $Version) {
         throw "R2 verification returned a stale updater manifest."
     }
-    if ($remoteLatest.playback.version -ne $Version -or
-        $remoteLatest.playback.url -ne "$releaseBase/releases/v$Version/$playbackName") {
+    if ($remoteLatest.playback.version -ne $PlaybackVersion -or
+        $remoteLatest.playback.url -ne "$releaseBase/releases/v$PlaybackVersion/$playbackName") {
         throw "R2 verification returned stale playback updater metadata."
     }
-    Write-Host "Published and verified the DemoTracer GUI and CSS v$Version updater at $releaseBase"
+    Write-Host "Published and verified DemoTracer GUI v$Version with Playback v$PlaybackVersion at $releaseBase"
 }

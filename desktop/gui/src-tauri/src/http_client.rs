@@ -7,21 +7,31 @@
 use url::Url;
 
 #[cfg(windows)]
-fn request_https(
+use std::time::{Duration, Instant};
+
+#[cfg(windows)]
+fn request_https<F>(
     method: &str,
     url: &str,
     content_type: Option<&str>,
     request_body: &[u8],
     max_response_bytes: usize,
     timeout_ms: i32,
-) -> Result<Vec<u8>, String> {
+    total_timeout_ms: Option<u64>,
+    mut on_progress: F,
+) -> Result<Vec<u8>, String>
+where
+    F: FnMut(usize, Option<usize>),
+{
     use std::ffi::c_void;
     use std::ptr::{null, null_mut};
+    use windows_sys::Win32::Foundation::GetLastError;
     use windows_sys::Win32::Networking::WinHttp::{
         WinHttpCloseHandle, WinHttpConnect, WinHttpOpen, WinHttpOpenRequest,
         WinHttpQueryDataAvailable, WinHttpQueryHeaders, WinHttpReadData, WinHttpReceiveResponse,
         WinHttpSendRequest, WinHttpSetTimeouts, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
-        WINHTTP_FLAG_SECURE, WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE,
+        WINHTTP_FLAG_SECURE, WINHTTP_QUERY_CONTENT_LENGTH, WINHTTP_QUERY_FLAG_NUMBER,
+        WINHTTP_QUERY_STATUS_CODE,
     };
 
     struct WinHttpHandle(*mut c_void);
@@ -35,6 +45,24 @@ fn request_https(
 
     fn wide(value: &str) -> Vec<u16> {
         value.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    fn last_error(stage: &str) -> String {
+        let code = unsafe { GetLastError() };
+        format!("{stage} failed (Win32 error {code})")
+    }
+
+    fn ensure_within_total_timeout(
+        started: Instant,
+        total_timeout_ms: Option<u64>,
+    ) -> Result<(), String> {
+        if total_timeout_ms.is_some_and(|limit| started.elapsed() >= Duration::from_millis(limit)) {
+            return Err(format!(
+                "HTTPS request exceeded its {} ms total timeout",
+                total_timeout_ms.unwrap_or_default()
+            ));
+        }
+        Ok(())
     }
 
     let parsed = Url::parse(url).map_err(|error| format!("invalid URL: {error}"))?;
@@ -57,6 +85,7 @@ fn request_https(
         request_path.push_str(query);
     }
 
+    let started = Instant::now();
     unsafe {
         let agent = wide(concat!("CS2 DemoTracer/", env!("CARGO_PKG_VERSION")));
         let session = WinHttpHandle(WinHttpOpen(
@@ -67,14 +96,16 @@ fn request_https(
             0,
         ));
         if session.0.is_null() {
-            return Err("WinHTTP session creation failed".to_string());
+            return Err(last_error("WinHTTP session creation"));
         }
-        WinHttpSetTimeouts(session.0, timeout_ms, timeout_ms, timeout_ms, timeout_ms);
+        if WinHttpSetTimeouts(session.0, timeout_ms, timeout_ms, timeout_ms, timeout_ms) == 0 {
+            return Err(last_error("WinHTTP timeout configuration"));
+        }
 
         let host = wide(host);
         let connection = WinHttpHandle(WinHttpConnect(session.0, host.as_ptr(), port, 0));
         if connection.0.is_null() {
-            return Err("WinHTTP connection failed".to_string());
+            return Err(last_error("WinHTTP connection"));
         }
 
         let verb = wide(method);
@@ -97,20 +128,25 @@ fn request_https(
         } else {
             (request_body.as_ptr().cast(), request_body.len() as u32)
         };
-        if request.0.is_null()
-            || WinHttpSendRequest(
-                request.0,
-                header_pointer,
-                header_length,
-                body_pointer,
-                body_length,
-                body_length,
-                0,
-            ) == 0
-            || WinHttpReceiveResponse(request.0, null_mut()) == 0
-        {
-            return Err("HTTPS request failed".to_string());
+        if request.0.is_null() {
+            return Err(last_error("WinHTTP request creation"));
         }
+        if WinHttpSendRequest(
+            request.0,
+            header_pointer,
+            header_length,
+            body_pointer,
+            body_length,
+            body_length,
+            0,
+        ) == 0
+        {
+            return Err(last_error("HTTPS request send"));
+        }
+        if WinHttpReceiveResponse(request.0, null_mut()) == 0 {
+            return Err(last_error("HTTPS response receive"));
+        }
+        ensure_within_total_timeout(started, total_timeout_ms)?;
 
         let mut status = 0_u32;
         let mut status_bytes = std::mem::size_of::<u32>() as u32;
@@ -129,11 +165,28 @@ fn request_https(
             return Err(format!("HTTPS server returned status {status}"));
         }
 
+        let mut content_length = 0_u32;
+        let mut content_length_bytes = std::mem::size_of::<u32>() as u32;
+        let total_bytes = (WinHttpQueryHeaders(
+            request.0,
+            WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
+            null(),
+            (&mut content_length as *mut u32).cast(),
+            &mut content_length_bytes,
+            null_mut(),
+        ) != 0)
+            .then_some(content_length as usize);
+        if total_bytes.is_some_and(|length| length > max_response_bytes) {
+            return Err(format!("HTTPS response exceeds {max_response_bytes} bytes"));
+        }
+
         let mut body = Vec::new();
+        on_progress(0, total_bytes);
         loop {
+            ensure_within_total_timeout(started, total_timeout_ms)?;
             let mut available = 0_u32;
             if WinHttpQueryDataAvailable(request.0, &mut available) == 0 {
-                return Err("HTTPS response read failed".to_string());
+                return Err(last_error("HTTPS response availability query"));
             }
             if available == 0 {
                 break;
@@ -152,13 +205,14 @@ fn request_https(
                 &mut read,
             ) == 0
             {
-                return Err("HTTPS response read failed".to_string());
+                return Err(last_error("HTTPS response read"));
             }
             if read == 0 {
                 body.truncate(offset);
                 break;
             }
             body.truncate(offset + read as usize);
+            on_progress(body.len(), total_bytes);
         }
         Ok(body)
     }
@@ -166,7 +220,39 @@ fn request_https(
 
 #[cfg(windows)]
 pub(crate) fn get_https(url: &str, max_bytes: usize, timeout_ms: i32) -> Result<Vec<u8>, String> {
-    request_https("GET", url, None, &[], max_bytes, timeout_ms)
+    request_https(
+        "GET",
+        url,
+        None,
+        &[],
+        max_bytes,
+        timeout_ms,
+        None,
+        |_, _| {},
+    )
+}
+
+#[cfg(windows)]
+pub(crate) fn get_https_with_progress<F>(
+    url: &str,
+    max_bytes: usize,
+    timeout_ms: i32,
+    total_timeout_ms: u64,
+    on_progress: F,
+) -> Result<Vec<u8>, String>
+where
+    F: FnMut(usize, Option<usize>),
+{
+    request_https(
+        "GET",
+        url,
+        None,
+        &[],
+        max_bytes,
+        timeout_ms,
+        Some(total_timeout_ms),
+        on_progress,
+    )
 }
 
 #[cfg(windows)]
@@ -183,6 +269,8 @@ pub(crate) fn post_json_https(
         body,
         max_response_bytes,
         timeout_ms,
+        None,
+        |_, _| {},
     )
 }
 
@@ -192,6 +280,20 @@ pub(crate) fn get_https(
     _max_bytes: usize,
     _timeout_ms: i32,
 ) -> Result<Vec<u8>, String> {
+    Err("release downloads are supported only on Windows".to_string())
+}
+
+#[cfg(not(windows))]
+pub(crate) fn get_https_with_progress<F>(
+    _url: &str,
+    _max_bytes: usize,
+    _timeout_ms: i32,
+    _total_timeout_ms: u64,
+    _on_progress: F,
+) -> Result<Vec<u8>, String>
+where
+    F: FnMut(usize, Option<usize>),
+{
     Err("release downloads are supported only on Windows".to_string())
 }
 

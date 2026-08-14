@@ -43,6 +43,7 @@ import type {
   GuiUpdateStatus,
   Language,
   LocalEnvironmentSettings,
+  PlaybackInstallProgress,
   PlaybackReleaseStatus,
   PlaybackUpdateStatus,
   ServerConfigDocument,
@@ -135,6 +136,7 @@ interface SettingsWorkspaceProps {
   playbackUpdate: PlaybackUpdateStatus;
   playbackReleaseError: string;
   releaseAction: "installingOnline" | "installingFile" | "rollingBack" | null;
+  playbackInstallProgress: PlaybackInstallProgress | null;
   releaseNotice: string;
   onUiFontSizeChange: (fontSize: number) => void;
   onThemeCustomizationChange: (customization: ThemeCustomization) => void;
@@ -422,6 +424,7 @@ export function SettingsWorkspace({
   playbackUpdate,
   playbackReleaseError,
   releaseAction,
+  playbackInstallProgress,
   releaseNotice,
   onUiFontSizeChange,
   onThemeCustomizationChange,
@@ -885,6 +888,10 @@ export function SettingsWorkspace({
         : playbackUpdate.phase === "unavailable" ? words.releasePlaybackUnavailable
           : playbackUpdate.phase === "error" ? words.releaseCheckUnavailable
             : words.releaseNotChecked;
+  const playbackInstallLabel = playbackInstallProgress?.phase === "downloading" ? words.releaseDownloading
+    : playbackInstallProgress?.phase === "verifying" ? words.releaseVerifying
+      : playbackInstallProgress?.phase === "installing" ? words.releaseInstalling
+        : words.releaseChecking;
   const guiUpdateBusy = guiUpdate.phase === "checking"
     || guiUpdate.phase === "downloading"
     || guiUpdate.phase === "installing";
@@ -1008,7 +1015,7 @@ export function SettingsWorkspace({
               <div className="playback-settings-row is-action">
                 <span>{words.releaseInstallLatestPlayback}</span>
                 <button className="primary-button" type="button" disabled={playbackUpdateBusy} onClick={onInstallLatestPlayback}>
-                  <ReplayIcon size={15} />{releaseAction === "installingOnline" ? words.releaseInstalling : words.releaseInstallNow}
+                  <ReplayIcon size={15} />{releaseAction === "installingOnline" ? playbackInstallLabel : words.releaseInstallNow}
                 </button>
               </div>
             ) : null}

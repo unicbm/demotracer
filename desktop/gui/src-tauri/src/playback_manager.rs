@@ -4,6 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+use crate::activity_log::{ActivityLogLevel, ActivityLogState};
 use crate::diagnostics::{
     checked_receipt_relative_path, embedded_playback_contract, fresh_runtime_plugin_version,
     normalized_receipt_path, receipt_component, resolve_install_paths, InstallReceiptWire,
@@ -21,12 +22,14 @@ use std::fs;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Manager};
+use tauri::ipc::Channel;
+use tauri::{AppHandle, Manager, State};
 
 const MAX_PLAYBACK_PACKAGE_BYTES: usize = 256 * 1024 * 1024;
 const MAX_RELEASE_MANIFEST_BYTES: usize = 128 * 1024;
 const MAX_RELEASE_SIGNATURE_BYTES: usize = 16 * 1024;
 const RELEASE_REQUEST_TIMEOUT_MS: i32 = 15_000;
+const PLAYBACK_DOWNLOAD_TOTAL_TIMEOUT_MS: u64 = 120_000;
 const PLAYBACK_RELEASE_MANIFEST_URL: &str =
     "https://releases.detr.site/channels/stable/latest.json";
 const PLAYBACK_RELEASE_BASE_URL: &str = "https://releases.detr.site";
@@ -73,6 +76,23 @@ pub(crate) struct PlaybackInstallResultDto {
     pub game_csgo_path: String,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(
+    tag = "phase",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub(crate) enum PlaybackInstallProgressDto {
+    Checking,
+    Downloading {
+        downloaded_bytes: usize,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        total_bytes: Option<usize>,
+    },
+    Verifying,
+    Installing,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct InstallState {
@@ -114,6 +134,8 @@ struct RemoteReleaseManifest {
 #[derive(Clone, Debug, Deserialize)]
 struct RemotePlaybackAsset {
     version: String,
+    #[serde(default)]
+    notes: Option<String>,
     url: String,
     signature: String,
     sha256: String,
@@ -243,34 +265,93 @@ pub(crate) async fn install_playback_bundle(
 pub(crate) async fn install_latest_playback_bundle(
     app: AppHandle,
     cs2_path: String,
+    events: Channel<PlaybackInstallProgressDto>,
+    activity: State<'_, ActivityLogState>,
 ) -> CommandResult<PlaybackInstallResultDto> {
     let local_data = app_local_data_dir(&app)?;
+    let activity = activity.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        ensure_cs2_is_stopped()?;
-        let release = fetch_remote_playback_release()?;
-        let package = http_client::get_https(
-            &release.url,
-            MAX_PLAYBACK_PACKAGE_BYTES,
-            RELEASE_REQUEST_TIMEOUT_MS,
-        )
-        .map_err(|error| CommandErrorDto::new("playback_update_download_failed", error))?;
-        if !sha256_hex(&package).eq_ignore_ascii_case(&release.sha256) {
-            return Err(CommandErrorDto::new(
-                "playback_update_hash_mismatch",
-                "Downloaded playback bundle does not match the signed release metadata.",
-            ));
+        record_playback_update(
+            &activity,
+            ActivityLogLevel::Info,
+            "Playback online update started.",
+        );
+        let result = (|| {
+            emit_playback_progress(&events, PlaybackInstallProgressDto::Checking);
+            ensure_cs2_is_stopped()?;
+            let release = fetch_remote_playback_release()?;
+            record_playback_update(
+                &activity,
+                ActivityLogLevel::Info,
+                format!("Downloading Playback v{}.", release.version),
+            );
+            let package = http_client::get_https_with_progress(
+                &release.url,
+                MAX_PLAYBACK_PACKAGE_BYTES,
+                RELEASE_REQUEST_TIMEOUT_MS,
+                PLAYBACK_DOWNLOAD_TOTAL_TIMEOUT_MS,
+                |downloaded_bytes, total_bytes| {
+                    emit_playback_progress(
+                        &events,
+                        PlaybackInstallProgressDto::Downloading {
+                            downloaded_bytes,
+                            total_bytes,
+                        },
+                    );
+                },
+            )
+            .map_err(|error| CommandErrorDto::new("playback_update_download_failed", error))?;
+            emit_playback_progress(&events, PlaybackInstallProgressDto::Verifying);
+            if !sha256_hex(&package).eq_ignore_ascii_case(&release.sha256) {
+                return Err(CommandErrorDto::new(
+                    "playback_update_hash_mismatch",
+                    "Downloaded playback bundle does not match the signed release metadata.",
+                ));
+            }
+            verify_playback_package_signature(&package, &release.signature)?;
+            emit_playback_progress(&events, PlaybackInstallProgressDto::Installing);
+            install_package_bytes(
+                &local_data,
+                &cs2_path,
+                &package,
+                &release.version,
+                &format!("release:{}", release.url),
+            )
+        })();
+        match &result {
+            Ok(installed) => record_playback_update(
+                &activity,
+                ActivityLogLevel::Info,
+                format!(
+                    "Playback v{} installed successfully ({} files).",
+                    installed.version, installed.installed_files
+                ),
+            ),
+            Err(error) => record_playback_update(
+                &activity,
+                ActivityLogLevel::Error,
+                format!("Playback update failed [{}]: {}", error.code, error.message),
+            ),
         }
-        verify_playback_package_signature(&package, &release.signature)?;
-        install_package_bytes(
-            &local_data,
-            &cs2_path,
-            &package,
-            &release.version,
-            &format!("release:{}", release.url),
-        )
+        result
     })
     .await
     .map_err(|error| CommandErrorDto::new("playback_update_worker_failed", error.to_string()))?
+}
+
+fn emit_playback_progress(
+    events: &Channel<PlaybackInstallProgressDto>,
+    progress: PlaybackInstallProgressDto,
+) {
+    let _ = events.send(progress);
+}
+
+fn record_playback_update(
+    activity: &ActivityLogState,
+    level: ActivityLogLevel,
+    message: impl AsRef<str>,
+) {
+    let _ = activity.append(level, "playback-update", message);
 }
 
 #[tauri::command]
@@ -358,7 +439,7 @@ fn fetch_remote_playback_release() -> CommandResult<ValidatedRemotePlaybackRelea
 fn validate_remote_playback_release(
     manifest: RemoteReleaseManifest,
 ) -> CommandResult<ValidatedRemotePlaybackRelease> {
-    let release_version = parse_version(&manifest.version)?;
+    parse_version(&manifest.version)?;
     let playback = manifest.playback.ok_or_else(|| {
         CommandErrorDto::new(
             "playback_update_unavailable",
@@ -366,12 +447,6 @@ fn validate_remote_playback_release(
         )
     })?;
     let playback_version = parse_version(&playback.version)?;
-    if release_version != playback_version {
-        return Err(CommandErrorDto::new(
-            "playback_update_manifest_invalid",
-            "Playback release version does not match the desktop release channel.",
-        ));
-    }
     let version = playback_version.to_string();
     let expected_url =
         format!("{PLAYBACK_RELEASE_BASE_URL}/releases/v{version}/demotracer-css-v{version}.zip");
@@ -395,7 +470,7 @@ fn validate_remote_playback_release(
     }
     Ok(ValidatedRemotePlaybackRelease {
         version,
-        notes: manifest.notes,
+        notes: playback.notes.or(manifest.notes),
         url: playback.url,
         signature: playback.signature,
         sha256: playback.sha256.to_ascii_lowercase(),
@@ -1305,6 +1380,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn playback_install_progress_uses_frontend_wire_names() {
+        let value = serde_json::to_value(PlaybackInstallProgressDto::Downloading {
+            downloaded_bytes: 1_024,
+            total_bytes: Some(2_048),
+        })
+        .unwrap();
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "phase": "downloading",
+                "downloadedBytes": 1_024,
+                "totalBytes": 2_048
+            })
+        );
+    }
+
+    #[test]
     fn safe_version_labels_cannot_escape_backup_directory() {
         assert_eq!(safe_version_label("../v1.0.0/beta"), ".._v1.0.0_beta");
     }
@@ -1332,6 +1425,7 @@ mod tests {
             notes: Some("fix".to_string()),
             playback: Some(RemotePlaybackAsset {
                 version: "1.0.11".to_string(),
+                notes: None,
                 url: "https://evil.example/demotracer-css-v1.0.11.zip".to_string(),
                 signature: "not a signature".to_string(),
                 sha256: "0".repeat(64),
@@ -1341,6 +1435,29 @@ mod tests {
         let error = validate_remote_playback_release(manifest).unwrap_err();
         assert_eq!(error.code, "playback_update_manifest_invalid");
         assert!(error.message.contains("immutable DemoTracer release path"));
+    }
+
+    #[test]
+    fn playback_manifest_allows_an_older_independently_versioned_bundle() {
+        let signature = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIG1pbmlzaWduIHNlY3JldCBrZXkKUlVRZjZMUkNHQTlpNTU5cjNnN1YxcU55SkRBcEdpcDhNZnFjYWRJZ1Q5Q3VoVjNFTWhIb04xbUdUa1VpZEYvejdTcmxRZ1hkeThvZmpiN2JOSkp5bERPb2NyQ284S0x6WndvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNTU2MTkzMzM1YHRmaWxlOnRlc3QKeS9yVXcyeTgvaE9VWWpaVTcxZUhwL1dvMUtaNDBmR3kyVkpFRGwzNFhNSk0rVFg0OFNzLzE3dTNJdklmYlZSMUZrWlpTTkNpc1FidVFZK2JId2hFQmc9PQ==";
+        let manifest = RemoteReleaseManifest {
+            version: "1.1.6".to_string(),
+            notes: Some("GUI updater fix".to_string()),
+            playback: Some(RemotePlaybackAsset {
+                version: "1.1.5".to_string(),
+                notes: Some("Playback parser fixes".to_string()),
+                url: "https://releases.detr.site/releases/v1.1.5/demotracer-css-v1.1.5.zip"
+                    .to_string(),
+                signature: signature.to_string(),
+                sha256: "0".repeat(64),
+            }),
+        };
+
+        let release = validate_remote_playback_release(manifest).unwrap();
+        assert_eq!(release.version, "1.1.5");
+        assert_eq!(release.notes.as_deref(), Some("Playback parser fixes"));
+        assert!(!playback_update_available(Some("1.1.5"), &release.version));
+        assert!(playback_update_available(Some("1.1.4"), &release.version));
     }
 
     #[test]

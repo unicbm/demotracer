@@ -145,6 +145,7 @@ import type {
   LocalEnvironmentSettings,
   ManifestArchive,
   OutputPreflight,
+  PlaybackInstallProgress,
   PlaybackInstallResult,
   PlaybackReleaseStatus,
   PlaybackUpdateRelease,
@@ -873,6 +874,7 @@ function App() {
   const [playbackReleaseError, setPlaybackReleaseError] = useState("");
   const [playbackInstallBlockedByCs2, setPlaybackInstallBlockedByCs2] = useState(false);
   const [releaseAction, setReleaseAction] = useState<"installingOnline" | "installingFile" | "rollingBack" | null>(null);
+  const [playbackInstallProgress, setPlaybackInstallProgress] = useState<PlaybackInstallProgress | null>(null);
   const [releaseNotice, setReleaseNotice] = useState("");
   const [serverConfigDocument, setServerConfigDocument] = useState<ServerConfigDocument | null>(null);
   const [serverConfigDraft, setServerConfigDraft] = useState("");
@@ -1413,7 +1415,7 @@ function App() {
     browserLogPreviewSeededRef.current = true;
     const now = Date.now();
     setActivityLogs([
-      { id: "preview-1", timestampMs: now - 42_000, level: "info", source: "app", message: "CS2 DemoTracer 1.1.5 started" },
+      { id: "preview-1", timestampMs: now - 42_000, level: "info", source: "app", message: "CS2 DemoTracer 1.1.6 started" },
       { id: "preview-2", timestampMs: now - 31_000, level: "debug", source: "analysis", message: "phase=parsing" },
       { id: "preview-3", timestampMs: now - 24_000, level: "info", source: "analysis", message: "Parsed match.dem.zst: 24 rounds · 10 players" },
       { id: "preview-4", timestampMs: now - 15_000, level: "warn", source: "conversion", message: "Round 12: partial player evidence was preserved" },
@@ -3262,8 +3264,13 @@ function App() {
     setPlaybackReleaseError("");
     setPlaybackInstallBlockedByCs2(false);
     setReleaseNotice("");
+    setPlaybackInstallProgress({ phase: "checking" });
+    const events = new Channel<PlaybackInstallProgress>();
+    events.onmessage = (progress) => {
+      setPlaybackInstallProgress((current) => ({ ...current, ...progress }));
+    };
     try {
-      const result = await invoke<PlaybackInstallResult>("install_latest_playback_bundle", { cs2Path });
+      const result = await invoke<PlaybackInstallResult>("install_latest_playback_bundle", { cs2Path, events });
       await finishPlaybackChange(result, "install");
       return true;
     } catch (reason) {
@@ -3272,6 +3279,8 @@ function App() {
       setPlaybackReleaseError(userFacingErrorMessage(error, language));
       return false;
     } finally {
+      events.onmessage = () => undefined;
+      setPlaybackInstallProgress(null);
       setReleaseAction(null);
     }
   }
@@ -3867,14 +3876,26 @@ function App() {
     || guiUpdate.phase === "downloading"
     || guiUpdate.phase === "installing"
     || releaseAction === "installingOnline";
+  const playbackInstallStatus = playbackInstallProgress?.phase === "downloading" ? words.releaseDownloading
+    : playbackInstallProgress?.phase === "verifying" ? words.releaseVerifying
+      : playbackInstallProgress?.phase === "installing" ? words.releaseInstalling
+        : words.releaseChecking;
   const updateDialogStatus = guiUpdate.phase === "downloading" ? words.releaseDownloading
-    : guiUpdate.phase === "installing" || releaseAction === "installingOnline" ? words.releaseInstalling
+    : guiUpdate.phase === "installing" ? words.releaseInstalling
+      : releaseAction === "installingOnline" ? playbackInstallStatus
       : availableUpdateCount > 0 ? words.releaseUpdateAvailable
         : guiUpdate.phase === "error" || playbackUpdate.phase === "error" ? words.releaseCheckUnavailable
           : words.releaseUpToDate;
-  const updateDialogProgress = guiUpdate.totalBytes && guiUpdate.downloadedBytes != null
+  const updateDialogProgressActive = guiUpdate.phase === "downloading"
+    || guiUpdate.phase === "installing"
+    || releaseAction === "installingOnline";
+  const updateDialogProgress = guiUpdate.phase === "downloading" && guiUpdate.totalBytes && guiUpdate.downloadedBytes != null
     ? Math.min(100, Math.round((guiUpdate.downloadedBytes / guiUpdate.totalBytes) * 100))
-    : null;
+    : releaseAction === "installingOnline"
+        && playbackInstallProgress?.totalBytes
+        && playbackInstallProgress.downloadedBytes != null
+      ? Math.min(100, Math.round((playbackInstallProgress.downloadedBytes / playbackInstallProgress.totalBytes) * 100))
+      : null;
 
   function dismissUpdatePrompt() {
     setUpdatePromptDismissed(true);
@@ -4061,6 +4082,7 @@ function App() {
             playbackUpdate={playbackUpdate}
             playbackReleaseError={playbackReleaseError}
             releaseAction={releaseAction}
+            playbackInstallProgress={playbackInstallProgress}
             releaseNotice={releaseNotice}
             onUiFontSizeChange={setUiFontSize}
             onThemeCustomizationChange={setThemeCustomization}
@@ -4437,10 +4459,12 @@ function App() {
               ) : null}
             </div>
 
-            {guiUpdate.phase === "downloading" || guiUpdate.phase === "installing" ? (
+            {updateDialogProgressActive ? (
               <Paper className="update-dialog-progress" withBorder radius="md" p="sm" role="status" aria-live="polite">
                 <Group justify="space-between" mb={7}>
-                  <Text c="dimmed" size="xs">{guiUpdate.phase === "installing" ? words.releaseInstalling : words.releaseDownloading}</Text>
+                  <Text c="dimmed" size="xs">{guiUpdate.phase === "installing"
+                    ? words.releaseInstalling
+                    : guiUpdate.phase === "downloading" ? words.releaseDownloading : playbackInstallStatus}</Text>
                   <Text className="update-dialog-progress-value" size="xs" fw={700}>{updateDialogProgress != null ? `${updateDialogProgress}%` : "…"}</Text>
                 </Group>
                 <Progress value={updateDialogProgress ?? 36} animated={updateDialogProgress == null} size="sm" radius="xl" />
@@ -4471,7 +4495,8 @@ function App() {
               </Button>
               <Button disabled={updateDialogBusy || availableUpdateCount === 0} onClick={() => void installAvailableUpdates()}>
                 {guiUpdate.phase === "downloading" ? words.releaseDownloading
-                  : guiUpdate.phase === "installing" || releaseAction === "installingOnline" ? words.releaseInstalling
+                  : guiUpdate.phase === "installing" ? words.releaseInstalling
+                    : releaseAction === "installingOnline" ? playbackInstallStatus
                     : guiUpdateRetryRequired ? words.releaseCheckNow
                       : guiUpdateAvailable ? words.releaseUpdateAndRestart
                       : words.releaseUpdateAll}

@@ -552,6 +552,14 @@ export interface PlaybackInstallResult {
   gameCsgoPath: string;
 }
 
+export type PlaybackInstallPhase = "checking" | "downloading" | "verifying" | "installing";
+
+export interface PlaybackInstallProgress {
+  phase: PlaybackInstallPhase;
+  downloadedBytes?: number;
+  totalBytes?: number;
+}
+
 export type GuiUpdatePhase =
   | "idle"
   | "checking"

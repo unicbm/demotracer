@@ -6,6 +6,7 @@
 
 param(
     [string]$Version = "1.0.0",
+    [string]$PlaybackVersion = "",
     [string]$Configuration = "Release",
     [string]$OutputRoot = "dist",
     [string]$ReleaseBaseUrl = "https://releases.detr.site",
@@ -25,13 +26,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+if ([string]::IsNullOrWhiteSpace($PlaybackVersion)) {
+    $PlaybackVersion = $Version
+}
+if ($Version -notmatch '^\d+\.\d+\.\d+$' -or $PlaybackVersion -notmatch '^\d+\.\d+\.\d+$') {
+    throw "Version and PlaybackVersion must be semantic versions such as 1.1.6."
+}
+
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $outputRootPath = Join-Path $repoRoot $OutputRoot
 $desktopRoot = Join-Path $repoRoot "desktop\gui"
 $publishRootPath = Join-Path $outputRootPath "release-v$Version"
 $updaterRootPath = Join-Path $outputRootPath "updater-v$Version"
 $guiName = "demotracer-gui-v$Version.exe"
-$cssName = "demotracer-css-v$Version.zip"
+$cssName = "demotracer-css-v$PlaybackVersion.zip"
 $releaseBase = $ReleaseBaseUrl.TrimEnd('/')
 $releaseUri = $null
 if (-not [System.Uri]::TryCreate($releaseBase, [System.UriKind]::Absolute, [ref]$releaseUri) -or
@@ -58,10 +66,11 @@ if ([string]::IsNullOrWhiteSpace($ReleaseNotesZh)) {
 }
 
 & (Join-Path $PSScriptRoot "assert-clean-worktree.ps1") -RepoRoot $repoRoot
-& (Join-Path $PSScriptRoot "check-release-contract.ps1") -Version $Version
+& (Join-Path $PSScriptRoot "check-release-contract.ps1") -Version $Version -PlaybackVersion $PlaybackVersion
 
 $guiArgs = @{
     Version = $Version
+    PlaybackVersion = $PlaybackVersion
     OutputRoot = $OutputRoot
     UpdaterPublicKeyPath = $UpdaterPublicKeyPath
     CertificateThumbprint = $CertificateThumbprint
@@ -75,21 +84,25 @@ if ($SkipGuiBuild) {
 }
 & (Join-Path $PSScriptRoot "package-converter.ps1") @guiArgs
 
-$cssArgs = @{
-    Version = $Version
-    Configuration = $Configuration
-    OutputRoot = $OutputRoot
-    DotnetPath = $DotnetPath
-    RuntimePackage = $RuntimePackage
-    BotHiderRuntimePackage = $BotHiderRuntimePackage
+if ($PlaybackVersion -eq $Version) {
+    $cssArgs = @{
+        Version = $PlaybackVersion
+        Configuration = $Configuration
+        OutputRoot = $OutputRoot
+        DotnetPath = $DotnetPath
+        RuntimePackage = $RuntimePackage
+        BotHiderRuntimePackage = $BotHiderRuntimePackage
+    }
+    if ($SkipCssBuild) {
+        $cssArgs.SkipCssBuild = $true
+    }
+    if ($IncludeSymbols) {
+        $cssArgs.IncludeSymbols = $true
+    }
+    & (Join-Path $PSScriptRoot "package-server.ps1") @cssArgs
+} else {
+    Write-Host "Reusing immutable Playback v$PlaybackVersion for GUI-only release v$Version."
 }
-if ($SkipCssBuild) {
-    $cssArgs.SkipCssBuild = $true
-}
-if ($IncludeSymbols) {
-    $cssArgs.IncludeSymbols = $true
-}
-& (Join-Path $PSScriptRoot "package-server.ps1") @cssArgs
 
 $assetNames = @($guiName, $cssName)
 foreach ($assetName in $assetNames) {
@@ -101,19 +114,21 @@ foreach ($assetName in $assetNames) {
 
 $cssSignatureName = "$cssName.sig"
 $cssSignaturePath = Join-Path $outputRootPath $cssSignatureName
-Push-Location $desktopRoot
-try {
-    $signerArgs = @("tauri", "signer", "sign")
-    if ([string]::IsNullOrEmpty($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
-        $signerArgs += "--password="
+if ($PlaybackVersion -eq $Version) {
+    Push-Location $desktopRoot
+    try {
+        $signerArgs = @("tauri", "signer", "sign")
+        if ([string]::IsNullOrEmpty($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
+            $signerArgs += "--password="
+        }
+        $signerArgs += (Join-Path $outputRootPath $cssName)
+        & pnpm.cmd @signerArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "pnpm.cmd failed with exit code $LASTEXITCODE"
+        }
+    } finally {
+        Pop-Location
     }
-    $signerArgs += (Join-Path $outputRootPath $cssName)
-    & pnpm.cmd @signerArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "pnpm.cmd failed with exit code $LASTEXITCODE"
-    }
-} finally {
-    Pop-Location
 }
 if (-not (Test-Path -LiteralPath $cssSignaturePath -PathType Leaf)) {
     throw "CSS updater signature not found: $cssSignaturePath"
@@ -155,6 +170,29 @@ $localizedReleaseNotes = [ordered]@{
     zh = $ReleaseNotesZh
     en = $ReleaseNotes
 } | ConvertTo-Json -Compress
+$playbackLocalizedReleaseNotes = $localizedReleaseNotes
+if ($PlaybackVersion -ne $Version) {
+    $playbackReleaseNotesPath = Join-Path $repoRoot "tooling\release\release-notes.v$PlaybackVersion.json"
+    if (-not (Test-Path -LiteralPath $playbackReleaseNotesPath -PathType Leaf)) {
+        throw "Playback release notes not found: $playbackReleaseNotesPath"
+    }
+    $playbackReleaseNotes = Get-Content -LiteralPath $playbackReleaseNotesPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ([string]::IsNullOrWhiteSpace([string]$playbackReleaseNotes.zh) -or
+        [string]::IsNullOrWhiteSpace([string]$playbackReleaseNotes.en)) {
+        throw "Playback release notes must contain non-empty zh and en text."
+    }
+    $playbackLocalizedReleaseNotes = [ordered]@{
+        zh = [string]$playbackReleaseNotes.zh
+        en = [string]$playbackReleaseNotes.en
+    } | ConvertTo-Json -Compress
+}
+$playbackManifest = [ordered]@{
+    version = $PlaybackVersion
+    notes = $playbackLocalizedReleaseNotes
+    url = "$releaseBase/releases/v$PlaybackVersion/$cssName"
+    signature = (Get-Content -LiteralPath $cssSignaturePath -Raw -Encoding UTF8).Trim()
+    sha256 = (Get-FileHash -LiteralPath (Join-Path $outputRootPath $cssName) -Algorithm SHA256).Hash.ToLowerInvariant()
+}
 $latestManifest = [ordered]@{
     version = $Version
     notes = $localizedReleaseNotes
@@ -165,12 +203,7 @@ $latestManifest = [ordered]@{
             url = "$releaseBase/releases/v$Version/$guiName"
         }
     }
-    playback = [ordered]@{
-        version = $Version
-        url = "$releaseBase/releases/v$Version/$cssName"
-        signature = (Get-Content -LiteralPath $cssSignaturePath -Raw -Encoding UTF8).Trim()
-        sha256 = (Get-FileHash -LiteralPath (Join-Path $outputRootPath $cssName) -Algorithm SHA256).Hash.ToLowerInvariant()
-    }
+    playback = $playbackManifest
 }
 $latestManifestPath = Join-Path $updaterRootPath "latest.json"
 $latestManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $latestManifestPath -Encoding UTF8

@@ -45,7 +45,7 @@ $playbackContractPath = Join-Path $repoRoot "shared\contracts\playback-contract.
 $nugetConfigPath = Join-Path $repoRoot "NuGet.Config"
 
 & (Join-Path $PSScriptRoot "assert-clean-worktree.ps1") -RepoRoot $repoRoot
-& (Join-Path $PSScriptRoot "check-release-contract.ps1") -Version $Version
+& (Join-Path $PSScriptRoot "check-release-contract.ps1") -PlaybackVersion $Version
 
 function Require-Path([string]$Path, [string]$Label) {
     if (-not (Test-Path -LiteralPath $Path)) {

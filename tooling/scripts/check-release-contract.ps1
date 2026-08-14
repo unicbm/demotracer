@@ -5,7 +5,8 @@
 # ---------------------------------------------------------------------------------------------
 
 param(
-    [string]$Version = ""
+    [string]$Version = "",
+    [string]$PlaybackVersion = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -66,6 +67,10 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 $null = Read-Text "desktop\gui\pnpm-lock.yaml"
 $tauriConfig = (Read-Text "desktop\gui\src-tauri\tauri.conf.json") | ConvertFrom-Json
 $tauriCapability = (Read-Text "desktop\gui\src-tauri\capabilities\default.json") | ConvertFrom-Json
+$playbackSourceVersion = Read-RegexValue "server\plugins\DemoTracer\DemoTracerPlugin.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "DemoTracer module version"
+if ([string]::IsNullOrWhiteSpace($PlaybackVersion)) {
+    $PlaybackVersion = $playbackSourceVersion
+}
 
 $versionSources = [ordered]@{
     "converter Cargo.toml" = Read-RegexValue "desktop\converter\Cargo.toml" '(?ms)^\[package\]\s*.*?^version = "([^"]+)"' "converter version"
@@ -75,12 +80,12 @@ $versionSources = [ordered]@{
     "desktop converter dependency lock" = Read-CargoPackageVersion "desktop\gui\src-tauri\Cargo.lock" "cs2-demotracer"
     "desktop Tauri Cargo.lock" = Read-CargoPackageVersion "desktop\gui\src-tauri\Cargo.lock" "cs2-demotracer-gui"
     "desktop tauri.conf.json" = [string]$tauriConfig.version
-    "DemoTracer ModuleVersion" = Read-RegexValue "server\plugins\DemoTracer\DemoTracerPlugin.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "DemoTracer module version"
 }
 foreach ($entry in $versionSources.GetEnumerator()) {
     Assert-Equal $entry.Key ([string]$entry.Value) $Version
 }
 Assert-Equal "telemetry product version" ([string]$telemetryContract.productVersion) $Version
+Assert-Equal "DemoTracer ModuleVersion" $playbackSourceVersion $PlaybackVersion
 $releaseNotes = (Read-Text "tooling\release\release-notes.v$Version.json") | ConvertFrom-Json
 if ([string]::IsNullOrWhiteSpace([string]$releaseNotes.zh) -or [string]::IsNullOrWhiteSpace([string]$releaseNotes.en)) {
     throw "localized release notes must contain non-empty zh and en text"
@@ -136,8 +141,9 @@ Assert-TextPresent "tooling\scripts\package-converter.ps1" 'CertificateThumbprin
 Assert-TextPresent "tooling\scripts\package-converter.ps1" 'demotracer-gui-v\$Version' "GUI release asset name"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'demotracer-css-v\$Version' "CSS release asset name"
 Assert-TextPresent "tooling\scripts\package-release.ps1" '\$cssSignatureName\s*=\s*"\$cssName\.sig"' "CSS updater signature"
-Assert-TextPresent "tooling\scripts\package-release.ps1" 'playback\s*=\s*\[ordered\]@\{' "playback updater manifest"
-Assert-TextPresent "tooling\scripts\publish-r2.ps1" 'demotracer-css-v\$Version\.zip' "published CSS updater asset"
+Assert-TextPresent "tooling\scripts\package-release.ps1" 'playback\s*=\s*\$playbackManifest' "playback updater manifest"
+Assert-TextPresent "tooling\scripts\package-release.ps1" '\$PlaybackVersion' "independently versioned Playback packaging"
+Assert-TextPresent "tooling\scripts\publish-r2.ps1" 'demotracer-css-v\$PlaybackVersion\.zip' "published CSS updater asset"
 Assert-TextPresent "tooling\scripts\publish-r2.ps1" 'latest\.playback\.sha256' "published CSS hash verification"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'addons\\counterstrikesharp\\shared\\BotRandomizerApi' "packaged BotRandomizer API directory"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+BotRandomizerApi\.dll[^\r\n]+BotRandomizerApi\.dll' "packaged BotRandomizer API assembly"
@@ -148,4 +154,4 @@ if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "tooling\scripts\publish-r
 
 & (Join-Path $PSScriptRoot "check-first-party-headers.ps1") -RepoRoot $repoRoot
 
-Write-Host "Release contract verified for v$Version."
+Write-Host "Release contract verified for GUI v$Version and Playback v$PlaybackVersion."
