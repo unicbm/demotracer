@@ -24,6 +24,7 @@ use prost::Message;
 const NSERIALBITS: u32 = 17;
 const STOP_READING_SYMBOL: u8 = 39;
 const HUFFMAN_CODE_MAXLEN: u32 = 17;
+const ECON_ATTRIBUTE_SLOTS: u32 = 64;
 
 #[derive(Debug, Clone)]
 pub struct Entity {
@@ -59,8 +60,6 @@ enum EntityCmd {
 }
 
 fn is_cosmetic_prop(prop_id: u32, special_ids: &SpecialIDs) -> bool {
-    const ECON_ATTRIBUTE_SLOTS: u32 = 64;
-
     (WEAPON_SKIN_ID..WEAPON_SKIN_ID + ECON_ATTRIBUTE_SLOTS).contains(&prop_id)
         || (WEAPON_ATTRIBUTE_DEF_INDEX_ID
             ..WEAPON_ATTRIBUTE_DEF_INDEX_ID + ECON_ATTRIBUTE_SLOTS)
@@ -83,6 +82,58 @@ fn is_cosmetic_prop(prop_id: u32, special_ids: &SpecialIDs) -> bool {
         .into_iter()
         .flatten()
         .any(|id| id == prop_id)
+}
+
+fn econ_attribute_vector_bases(field: &Field) -> Option<(u32, u32)> {
+    let Field::Vector(vector) = field else {
+        return None;
+    };
+    let Field::Serializer(serializer) = vector.field_enum.as_ref() else {
+        return None;
+    };
+
+    let mut has_weapon_values = false;
+    let mut has_weapon_definitions = false;
+    let mut has_glove_values = false;
+    let mut has_glove_definitions = false;
+    for field in &serializer.serializer.fields {
+        let Field::Value(value) = field else {
+            continue;
+        };
+        match value.prop_id {
+            WEAPON_SKIN_ID => has_weapon_values = true,
+            WEAPON_ATTRIBUTE_DEF_INDEX_ID => has_weapon_definitions = true,
+            GLOVE_PAINT_ID => has_glove_values = true,
+            GLOVE_ATTRIBUTE_DEF_INDEX_ID => has_glove_definitions = true,
+            _ => {}
+        }
+    }
+
+    if has_weapon_values && has_weapon_definitions {
+        Some((WEAPON_SKIN_ID, WEAPON_ATTRIBUTE_DEF_INDEX_ID))
+    } else if has_glove_values && has_glove_definitions {
+        Some((GLOVE_PAINT_ID, GLOVE_ATTRIBUTE_DEF_INDEX_ID))
+    } else {
+        None
+    }
+}
+
+fn truncate_econ_attribute_vector(entity: &mut Entity, field: &Field, result: &Variant) {
+    let Some((value_base, definition_base)) = econ_attribute_vector_bases(field) else {
+        return;
+    };
+    let Variant::U32(length) = result else {
+        return;
+    };
+
+    let mut removed = false;
+    for slot in (*length).min(ECON_ATTRIBUTE_SLOTS)..ECON_ATTRIBUTE_SLOTS {
+        removed |= entity.props.remove(&(value_base + slot)).is_some();
+        removed |= entity.props.remove(&(definition_base + slot)).is_some();
+    }
+    if removed {
+        entity.cosmetic_revision = entity.cosmetic_revision.wrapping_add(1);
+    }
 }
 
 impl<'a> SecondPassParser<'a> {
@@ -281,6 +332,11 @@ impl<'a> SecondPassParser<'a> {
             let decoder = get_decoder_from_field(field)?;
             let result = bitreader.decode(&decoder, self.qf_mapper)?;
 
+            // A vector-of-serializer length has no FieldInfo, so the generic flattened-prop
+            // path cannot retain it. Apply its shrink semantics directly or personalized econ
+            // attributes from the class baseline survive past the instance vector's real end.
+            truncate_econ_attribute_vector(entity, field, &result);
+
             // listen_to_props()
             if self.list_props {
                 if let Field::Value(_v) = field {
@@ -456,6 +512,22 @@ impl<'a> SecondPassParser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::first_pass::sendtables::{Serializer, SerializerField, ValueField, VectorField};
+    use crate::second_pass::decoder::Decoder;
+
+    fn econ_attribute_vector(value_prop_id: u32, definition_prop_id: u32) -> Field {
+        let mut definition = ValueField::new(Decoder::UnsignedDecoder, "m_iAttributeDefinitionIndex");
+        definition.prop_id = definition_prop_id;
+        definition.should_parse = true;
+        let mut value = ValueField::new(Decoder::NoscaleDecoder, "m_iRawValue32");
+        value.prop_id = value_prop_id;
+        value.should_parse = true;
+        let attributes = Serializer {
+            name: "CEconItemAttribute".to_string(),
+            fields: vec![Field::Value(definition), Field::Value(value)],
+        };
+        Field::Vector(VectorField::new(Field::Serializer(SerializerField::new(&attributes)), None))
+    }
 
     #[test]
     fn cosmetic_revision_tracks_only_fields_used_by_the_cosmetic_snapshot() {
@@ -531,6 +603,38 @@ mod tests {
         );
     }
 
+    #[test]
+    fn econ_attribute_vector_shrink_discards_personalized_baseline_tail() {
+        let mut entity = Entity {
+            cls_id: 0,
+            entity_id: 1,
+            serial: 1,
+            props: AHashMap::with_capacity(0),
+            entity_type: EntityType::Normal,
+            cosmetic_revision: 0,
+        };
+        for slot in 0..11 {
+            entity.props.insert(WEAPON_ATTRIBUTE_DEF_INDEX_ID + slot, Variant::U32(6 + slot));
+            entity.props.insert(WEAPON_SKIN_ID + slot, Variant::F32(slot as f32));
+        }
+        entity.props.insert(GLOVE_PAINT_ID + 3, Variant::F32(99.0));
+        entity.props.insert(42, Variant::U32(7));
+
+        let field = econ_attribute_vector(WEAPON_SKIN_ID, WEAPON_ATTRIBUTE_DEF_INDEX_ID);
+        truncate_econ_attribute_vector(&mut entity, &field, &Variant::U32(3));
+
+        for slot in 0..3 {
+            assert!(entity.props.contains_key(&(WEAPON_ATTRIBUTE_DEF_INDEX_ID + slot)));
+            assert!(entity.props.contains_key(&(WEAPON_SKIN_ID + slot)));
+        }
+        for slot in 3..11 {
+            assert!(!entity.props.contains_key(&(WEAPON_ATTRIBUTE_DEF_INDEX_ID + slot)));
+            assert!(!entity.props.contains_key(&(WEAPON_SKIN_ID + slot)));
+        }
+        assert_eq!(entity.props.get(&(GLOVE_PAINT_ID + 3)), Some(&Variant::F32(99.0)));
+        assert_eq!(entity.props.get(&42), Some(&Variant::U32(7)));
+        assert_eq!(entity.cosmetic_revision, 1);
+    }
 }
 
 fn should_emit_prop_to_listen(prop_name: &str) -> bool {
