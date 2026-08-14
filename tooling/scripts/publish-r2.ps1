@@ -145,8 +145,13 @@ if ($PlaybackVersion -eq $Version) {
     $cacheBuster = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     $remotePlaybackHead = Invoke-WebRequest -Uri "$expectedPlaybackUrl`?verify=$cacheBuster" -Method Head
     $localPlaybackLength = (Get-Item -LiteralPath (Join-Path $UpdaterRoot $playbackName)).Length
+    $remotePlaybackLengthText = @($remotePlaybackHead.Headers.'Content-Length')[0]
+    $remotePlaybackLength = 0L
+    if (-not [long]::TryParse([string]$remotePlaybackLengthText, [ref]$remotePlaybackLength)) {
+        throw "Previously published Playback v$PlaybackVersion did not return a valid Content-Length."
+    }
     if ($remotePlaybackHead.StatusCode -ne 200 -or
-        [long]$remotePlaybackHead.Headers.'Content-Length' -ne $localPlaybackLength) {
+        $remotePlaybackLength -ne $localPlaybackLength) {
         throw "Previously published Playback v$PlaybackVersion asset is missing or has the wrong length."
     }
     $remotePlaybackSignature = (Invoke-RestMethod -Uri "$expectedPlaybackUrl.sig?verify=$cacheBuster").Trim()
