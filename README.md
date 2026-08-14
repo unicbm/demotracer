@@ -1,16 +1,15 @@
 <p align="center">
-  <img src="desktop/gui/brand/demotracer-logo-color.svg" alt="DemoTracer logo" width="128" height="128">
+  <img src="desktop/gui/brand/demotracer-logo-color.svg" alt="DemoTracer logo" width="112" height="112">
 </p>
 
 <h1 align="center">CS2 DemoTracer</h1>
 
 <p align="center">
-  Turn Counter-Strike 2 demos into bot-executable replays, then inspect, organize,
-  and play them from one Windows desktop app.
+  Analyze Counter-Strike 2 demos, export selected rounds, and replay them through bots on a local server.
 </p>
 
 <p align="center">
-  <a href="https://github.com/unicbm/demotracer/releases/latest"><strong>Download the latest release</strong></a>
+  <a href="https://github.com/unicbm/demotracer/releases/latest"><strong>Download for Windows</strong></a>
   · <a href="docs/README.md">Documentation</a>
   · <a href="docs/DEVELOPMENT.md">Development</a>
 </p>
@@ -21,48 +20,65 @@
   <img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue" alt="AGPL-3.0-only">
 </p>
 
-DemoTracer is a matched desktop and server playback system. The desktop app
-reads CS2 demos, explains what can be replayed, creates compact `.dtr` archives,
-and builds the commands needed to reproduce selected rounds through bots on a
-local CS2 server.
+<p align="center">
+  <img src="docs/media/gui-match-analysis.png" alt="DemoTracer converted match overview with roster, score and playback controls" width="100%">
+  <br>
+  <sub>Inspect a converted match, choose where playback starts, and copy the ready-to-run server command.</sub>
+</p>
 
-> The supported product is the Windows x64 Tauri desktop app and its matched
-> playback bundle. Parsing and export run through the Rust backend linked into
-> the application; there is no supported converter CLI.
+## From Demo to Replay
 
-## One App, the Complete Replay Workflow
+DemoTracer is a matched Windows desktop app and CS2 playback bundle. Parsing,
+analysis, conversion, archive management, environment checks, and updates are
+handled from one GUI:
 
-| | Desktop workflow |
-| --- | --- |
-| **Import** | Open one demo for detailed round selection, or select up to eight demos for parallel batch conversion. Split `-p1` / `-p2` match recordings are recognized and merged automatically. |
-| **Analyze** | Review the match, roster, score, round quality, player configuration, and available demo-backed evidence before exporting anything. |
-| **Archive** | Keep converted matches in a searchable local replay library organized by map, team, player, date, and custom notes. Existing archives can be imported, repaired, or re-linked to moved source demos. |
-| **Play** | Choose a starting round, single-round or sequence playback, identity and fidelity options, then copy the generated server command. |
-| **Maintain** | Inspect a CS2 installation, verify runtime contracts and plugin conflicts, install or roll back a matched playback ZIP, and edit the server configuration without discarding unknown fields. |
+1. **Analyze** one demo or import up to eight demos as a batch. Split match
+   recordings are recognized and merged automatically.
+2. **Select** the rounds and fidelity options you want. DemoTracer reports
+   suspicious rounds and warns when the source demo lacks replay input data.
+3. **Organize** converted matches in a searchable local library by map, team,
+   player, date, platform, and notes.
+4. **Replay** a single round or a sequence through bots, using commands built
+   by the app for the matched server plugin.
 
-The interface supports Simplified Chinese and English, light and dark themes,
-adjustable interface scaling, task progress and completion feedback, and a
-local-first library. Demo parsing and replay generation run on the local
-machine; the limited optional network behavior is documented in
-[Online behavior](docs/ONLINE_SERVICES.md).
+Parsing and export run locally through the Rust backend linked into the desktop
+app. There is no separate converter CLI to install or maintain.
 
-## What Gets Replayed
+## Desktop Workflow
 
-DemoTracer reconstructs demo-backed player state rather than drawing a route on
-top of the game. Depending on the source demo and selected options, a replay can
-include:
+<p align="center">
+  <img src="docs/media/gui-replay-library.png" alt="DemoTracer searchable local replay library" width="100%">
+  <br>
+  <sub>Keep converted matches in a searchable local replay library.</sub>
+</p>
 
-- movement, view angles, buttons, and available subtick command state;
-- weapon state, purchases, drops, and selected high-fidelity combat events;
-- grenade throws and projectile alignment;
-- freeze-time pre-roll, round score, player names, and team presentation;
-- optional demo voice and chat;
-- optional, evidence-gated Steam identity, avatars, crosshair, viewmodel,
-  agents, gloves, knives, stickers, charms, music kits, and scoreboard details.
+The library can import existing archives, repair metadata, reconnect moved
+source demos, and preserve custom notes. Opening a match exposes its score,
+roster, round timeline, playback presets, and generated commands.
 
-Movement playback uses maintained movement and input hooks. Teleporting is not
-the primary replay mechanism. Presentation features remain explicit,
-demo-backed, and conservative when the source does not contain enough evidence.
+<p align="center">
+  <img src="docs/media/gui-cosmetic-evidence.png" alt="DemoTracer player analysis with demo-backed cosmetic evidence" width="100%">
+  <br>
+  <sub>Review demo-backed player identities, loadouts, stickers, charms, knives, gloves, and weapon finishes.</sub>
+</p>
+
+Cosmetic and identity data is evidence-gated: DemoTracer preserves what the
+demo actually contains and avoids inventing missing values. Selected items can
+also be handed off to the supported Inventory Simulator workflow.
+
+## What Can Be Replayed
+
+Depending on the source demo and selected options, a replay can preserve:
+
+- movement, view angles, buttons, and available subtick input;
+- weapons, purchases, drops, shooting history, and grenade throws;
+- freeze-time pre-roll, score, names, team presentation, chat, and optional voice;
+- demo-backed avatars, agents, crosshairs, viewmodels, knives, gloves, weapon
+  finishes, stickers, charms, music kits, and scoreboard details.
+
+Movement playback uses maintained movement and input hooks rather than
+teleporting bots along a drawn route. If a source demo omits essential raw
+input, the desktop app reports that limitation before conversion.
 
 ## Playback Results
 
@@ -91,112 +107,45 @@ demo-backed, and conservative when the source does not contain enough evidence.
 
 ## Get Started
 
-### 1. Download the matched release
-
-Use the artifacts attached to the
+Download the two Windows x64 assets from the
 [latest official release](https://github.com/unicbm/demotracer/releases/latest):
 
-- `demotracer-gui-vVERSION.exe` — Windows NSIS desktop installer.
-- `demotracer-css-vVERSION.zip` — matched CS2 playback plugins and runtimes.
+- `demotracer-gui-vVERSION.exe` — desktop installer.
+- `demotracer-css-vVERSION.zip` — matched playback plugins and native runtimes.
+
+The desktop app supports Windows 10 and Windows 11 x64 and requires Microsoft
+Edge WebView2. Demo analysis, conversion, and library management do not require
+Python, Node.js, Rust, .NET, or a running CS2 server after installation.
+
+To play an exported replay, use a local Windows x64 CS2 server with
+[Metamod:Source](https://www.sourcemm.net/) and
+[CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp). In
+**Settings → Install & environment**, select the CS2 folder, inspect the
+installation, and install the matched playback bundle.
+
+## Local-First and Defensive
+
+- Demo parsing, replay generation, archives, configuration, and logs stay on
+  the local machine.
+- Optional update, Steam profile, and anonymous telemetry behavior is
+  documented in [Online behavior](docs/ONLINE_SERVICES.md) and
+  [Telemetry](docs/TELEMETRY.md).
+- Replay control is for bots on a local server and must never be assigned to
+  human players. DemoTracer is not matchmaking or cheating software.
+- Desktop releases, playback bundles, `.dtr` files, manifests, runtimes, and
+  companion APIs are versioned together.
 
 Only artifacts attached by `unicbm` to this repository's GitHub Releases are
-official DemoTracer builds. See the
-[Trademark and Official Build Policy](TRADEMARKS.md).
-
-### 2. Prepare playback
-
-The desktop app runs on Windows 10 and Windows 11 x64 and requires Microsoft
-Edge WebView2. Parsing, analysis, conversion, and library management need no
-Python, Node.js, Rust, or local build toolchain after installation.
-
-Playback additionally requires a local Windows x64 CS2 server with
-[Metamod:Source](https://www.sourcemm.net/) and
-[CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp). In the
-app, open **Settings → Install & environment** to select the CS2 folder, inspect
-the installation, and install the matched playback ZIP.
-
-### 3. Convert and play
-
-1. Choose one or more `.dem` files.
-2. Review the analysis and select the rounds to export.
-3. Open the resulting archive from the local library.
-4. Select a round and playback options, copy the generated command, and run it
-   in the local replay server console.
-
-Public playback commands and server defaults are documented in
-[Commands](docs/COMMANDS.md).
-
-## Supported Scope
-
-DemoTracer is local replay tooling for research, content creation, tactical
-review, analysis, and plugin development. It is not intended for matchmaking or
-cheating, and replay control must never be assigned to human players.
-
-The maintained product target is Windows x64. Desktop releases, playback
-bundles, `.dtr` files, manifests, native runtimes, and companion APIs are
-versioned together. The release truth source is
-[shared/contracts/playback-contract.v1.json](shared/contracts/playback-contract.v1.json),
-and the binary format and decoder limits are documented in
-[`.dtr` Format](docs/FORMAT.md).
+official builds. See the [Trademark and Official Build Policy](TRADEMARKS.md).
 
 ## Documentation
 
-- [Commands](docs/COMMANDS.md) — playback commands, options, and runtime
-  defaults.
-- [`.dtr` Format](docs/FORMAT.md) — file layout, versions, validation, and
-  decoder limits.
-- [Online behavior](docs/ONLINE_SERVICES.md) — update checks, Steam profile
-  lookups, and local data policy.
-- [Anonymous telemetry](docs/TELEMETRY.md) — default aggregate and optional presence contracts, privacy
-  boundaries, retention, and aggregate reporting.
-- [Development](docs/DEVELOPMENT.md) — architecture, dependencies, source
-  builds, validation, and release packaging.
-- [Contributing](CONTRIBUTING.md) — contribution workflow and repository
-  boundaries.
-
-<details>
-<summary><strong>Build and validate from source</strong></summary>
-
-The maintained source target is Windows x64. Install Rust stable, Node.js 22,
-pnpm 11.9, .NET 10, and the Tauri Windows prerequisites, then run:
-
-```powershell
-cd desktop\converter
-cargo test --locked
-
-cd ..\gui
-pnpm install --frozen-lockfile
-pnpm run check
-pnpm test
-cargo test --manifest-path src-tauri\Cargo.toml --locked
-
-cd ..\..
-
-.\tooling\scripts\test-css.ps1
-.\tooling\scripts\check-release-contract.ps1
-git diff --check
-```
-
-Native BotController and BotHider builds additionally require the local CS2,
-Metamod, and SDK toolchain. Follow
-[Development](docs/DEVELOPMENT.md) for the maintained build and packaging path.
-
-</details>
-
-<details>
-<summary><strong>Repository layout</strong></summary>
-
-- `desktop/gui` — Tauri and React application plus its Rust desktop backend.
-- `desktop/converter` — Rust parsing, analysis, replay synthesis, archive
-  export, and validation.
-- `server/plugins` — CounterStrikeSharp playback orchestration and companion
-  API.
-- `server/runtime` — maintained BotController and BotHider native runtimes.
-- `shared` — versioned compatibility contracts and generated runtime metadata.
-- `third_party` — vendored dependencies, provenance, and license notices.
-- `tooling` — validation, packaging, and release automation.
-
-</details>
+- [User documentation](docs/README.md) — product guides and maintained references.
+- [Commands](docs/COMMANDS.md) — playback commands, options, and runtime defaults.
+- [`.dtr` format](docs/FORMAT.md) — binary layout, validation, and decoder limits.
+- [Development](docs/DEVELOPMENT.md) — architecture, source builds, validation,
+  native tooling, and release packaging.
+- [Contributing](CONTRIBUTING.md) — contribution workflow and repository boundaries.
 
 ## Credits and License
 
