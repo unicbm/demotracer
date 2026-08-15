@@ -190,6 +190,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         if (playerSlot < 0 || playerSlot >= MaxPlayerSlots)
             return;
 
+        ClearHumanTeamAvatarOverrideForSlot(playerSlot, "client_disconnect");
         ForgetRetainedBotHiderPresentation(playerSlot);
         ClearReplayCrosshairPresentationEntry(playerSlot);
         _appliedGloveCosmetics.Remove(playerSlot);

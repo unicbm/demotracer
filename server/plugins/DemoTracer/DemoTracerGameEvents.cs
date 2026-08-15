@@ -188,6 +188,18 @@ public sealed partial class DemoTracerPlugin
     }
 
     [GameEventHandler]
+    public HookResult OnPlayerTeam(EventPlayerTeam @event, GameEventInfo info)
+    {
+        if (@event.Userid is { IsValid: true } player &&
+            IsHumanAvatarOverrideCandidate(player))
+        {
+            ScheduleHumanTeamAvatarOverrideReconciliation();
+        }
+
+        return HookResult.Continue;
+    }
+
+    [GameEventHandler]
     public HookResult OnPlayerDeath(EventPlayerDeath @event, GameEventInfo info)
     {
         if (@event.Userid is { IsValid: true } victim)

@@ -35,6 +35,7 @@ public sealed partial class DemoTracerPlugin
         CancelAllReplayDeferredWork();
         CancelDtrRoundBanner(resetRound: false);
         InvalidateInitialSpawnAssignment();
+        ClearLoadedTeamAvatarOverrides("unload_all");
         var trackedSlots = _session.LoadedSlots.ToHashSet();
         StopVoiceTestPlayback("unload_all", printSummary: false);
         ClearLoadedAutoVoiceClip();
@@ -95,6 +96,7 @@ public sealed partial class DemoTracerPlugin
             CancelAllReplayDeferredWork();
             CancelReplayPrefetch();
             InvalidateInitialSpawnAssignment();
+            ClearLoadedTeamAvatarOverrides(reason);
             ClearFreezePrerollReplayState();
             ClearReplayLeftHandDesiredLatches(forceNative: true);
             var hadReplayState = _session.ReplaySlots.HasAnyState ||

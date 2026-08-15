@@ -5,6 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Modules.Utils;
 
 namespace DemoTracer;
 
@@ -20,6 +21,8 @@ public sealed partial class DemoTracerPlugin
         public HashSet<int> FreezePrerollSlots { get; } = [];
         public HashSet<int> ResumedFreezePrerollSlots { get; } = [];
         public Dictionary<int, LoadedReplay> LoadedReplays { get; } = [];
+        public Dictionary<CsTeam, LoadedTeamAvatarOverride> TeamAvatarOverrides { get; } = [];
+        public Dictionary<int, AppliedHumanTeamAvatarOverride> HumanTeamAvatarOverrides { get; } = [];
         public Dictionary<int, int> LastEnsuredWeaponDef { get; } = [];
         public Dictionary<int, int> LastReplayWeaponDef { get; } = [];
         public Dictionary<int, int> LastLockedWeaponTarget { get; } = [];

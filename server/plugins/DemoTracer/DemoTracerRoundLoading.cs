@@ -133,6 +133,13 @@ public sealed partial class DemoTracerPlugin
                     out loadError))
                 return FailLoadRoundAfterPartialLoad(selectionLabel, loadError);
 
+            ConfigureLoadedTeamAvatarOverrides(
+                manifestDir,
+                allTFiles,
+                allCtFiles,
+                avatarOverrides);
+            ScheduleHumanTeamAvatarOverrideReconciliation();
+
             var voice = steamIdMatch
                 ? string.Empty
                 : ConfigureLoadedAutoVoiceClip(
