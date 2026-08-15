@@ -116,6 +116,16 @@ public sealed partial class DemoTracerPlugin
         CCSPlayerController Bot,
         int RetentionRank);
 
+    private readonly record struct LoadedTeamAvatarOverride(
+        string ManifestDirectory,
+        ManifestAvatarOverride Avatar,
+        string ContentKey);
+
+    private readonly record struct AppliedHumanTeamAvatarOverride(
+        int? UserId,
+        ulong SteamId,
+        string ContentKey);
+
     private readonly record struct DtrKickCandidate(
         int Slot,
         int? UserId,
