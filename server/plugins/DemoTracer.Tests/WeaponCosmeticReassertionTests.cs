@@ -57,48 +57,14 @@ public sealed class WeaponCosmeticReassertionTests
     }
 
     [Theory]
-    [InlineData(60)]
-    [InlineData(61)]
-    public void SilencedWeaponPaintCacheRequiresTheLivePaintModelState(int weaponDefIndex)
+    [InlineData(false, 0)]
+    [InlineData(true, 1)]
+    public void PaintModelSelectionUsesCatalogLegacyEvidenceForEveryWeapon(
+        bool usesLegacyModel,
+        int expectedBodygroup)
     {
-        Assert.True(DemoTracerPlugin.WeaponPaintModelStateMatches(
-            weaponDefIndex,
-            actualBodygroup: 1,
-            actualMeshGroupMask: 2,
-            usesLegacyModel: true));
-
-        Assert.True(DemoTracerPlugin.WeaponPaintModelStateMatches(
-            weaponDefIndex,
-            actualBodygroup: 0,
-            actualMeshGroupMask: 1,
-            usesLegacyModel: false));
-
-        Assert.False(DemoTracerPlugin.WeaponPaintModelStateMatches(
-            weaponDefIndex,
-            actualBodygroup: 0,
-            actualMeshGroupMask: 2,
-            usesLegacyModel: true));
-
-        Assert.False(DemoTracerPlugin.WeaponPaintModelStateMatches(
-            weaponDefIndex,
-            actualBodygroup: 1,
-            actualMeshGroupMask: 1,
-            usesLegacyModel: true));
-
-        Assert.False(DemoTracerPlugin.WeaponPaintModelStateMatches(
-            weaponDefIndex,
-            actualBodygroup: null,
-            actualMeshGroupMask: null,
-            usesLegacyModel: true));
-    }
-
-    [Fact]
-    public void OtherWeaponsDoNotDependOnTheSilencedWeaponModelStateContract()
-    {
-        Assert.True(DemoTracerPlugin.WeaponPaintModelStateMatches(
-            weaponDefIndex: 7,
-            actualBodygroup: null,
-            actualMeshGroupMask: null,
-            usesLegacyModel: false));
+        Assert.Equal(
+            expectedBodygroup,
+            DemoTracerPlugin.WeaponPaintBodygroupValue(usesLegacyModel));
     }
 }

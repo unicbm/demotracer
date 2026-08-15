@@ -76,6 +76,32 @@ public sealed class BotRandomizerCosmeticLeaseTests
         Assert.False(claim.Gloves);
     }
 
+    [Theory]
+    [InlineData(60, false)]
+    [InlineData(61, true)]
+    public void SilencedWeaponEvidenceClaimsTheExactDefinitionAndEconFamilies(
+        int weaponDefinitionIndex,
+        bool usesLegacyModel)
+    {
+        var claim = Assert.IsType<BotRandomizerCosmeticWriteClaim>(BuildClaim(Evidence(
+            weapons:
+            [
+                new DemoTracerBotRandomizerWeaponEvidence(
+                    weaponDefinitionIndex,
+                    Paint: true,
+                    Stickers: true,
+                    Keychain: true,
+                    PaintUsesLegacyModel: usesLegacyModel)
+            ])));
+
+        var weapon = Assert.Single(claim.Weapons);
+        Assert.Equal(weaponDefinitionIndex, weapon.WeaponDefinitionIndex);
+        Assert.True(weapon.Paint);
+        Assert.True(weapon.Stickers);
+        Assert.True(weapon.Keychain);
+        Assert.Equal(usesLegacyModel, weapon.PaintUsesLegacyModel);
+    }
+
     [Fact]
     public void PaintOnlyPreservesRandomizerAttachmentFamilies()
     {
