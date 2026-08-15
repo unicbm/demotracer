@@ -524,8 +524,8 @@ input[type="radio"] {
 .background-task-strip {
   position: absolute;
   z-index: 35;
-  right: 16px;
-  bottom: 14px;
+  top: 10px;
+  right: 10px;
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr);
   align-items: center;
@@ -536,7 +536,7 @@ input[type="radio"] {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
   border: 1px solid var(--divider-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-sheet);
   backdrop-filter: blur(14px);
 }

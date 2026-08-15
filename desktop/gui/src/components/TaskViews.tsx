@@ -15,7 +15,7 @@ import {
   ReplayIcon,
 } from "../icons";
 import type { TextDictionary } from "../i18n";
-import type { ConversionSummary, Language } from "../types";
+import type { ConversionSummary } from "../types";
 
 export type CopyTarget =
   | "playback"
@@ -95,7 +95,6 @@ export function ValidationFailedView({ words, error, outputRoot, onOpenFolder, o
 
 interface ResultViewProps {
   words: TextDictionary;
-  language: Language;
   result: ConversionSummary;
   warnings: string[];
   copiedTarget: CopyTarget | null;
@@ -111,7 +110,6 @@ interface ResultViewProps {
 
 export function ResultView({
   words,
-  language,
   result,
   warnings,
   copiedTarget,
@@ -155,9 +153,7 @@ export function ResultView({
           <AlertIcon size={17} />
           <div>
             <strong>{words.resultWarningsTitle}</strong>
-            <p>{language === "zh"
-              ? `${visibleWarnings.length} 项附加内容未生成。`
-              : `${visibleWarnings.length} optional item(s) were not generated.`}</p>
+            <p>{words.resultWarningsCount.replace("{count}", String(visibleWarnings.length))}</p>
           </div>
         </div>
       ) : null}

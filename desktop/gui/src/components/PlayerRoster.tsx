@@ -118,10 +118,10 @@ function isDisplayableCosmeticEvidence(cosmetic: CosmeticEvidence): boolean {
     && name !== "customplayer_ct_map_based";
 }
 
-function markedCatalogName(name: string, marker: string, language: Language): string {
+function markedCatalogName(name: string, marker: string, words: TextDictionary): string {
   if (!marker) return name;
   const separator = name.indexOf(" | ");
-  const mark = language === "zh" ? `（${marker}）` : ` (${marker})`;
+  const mark = words.playerCatalogMarker.replace("{marker}", marker);
   return separator < 0
     ? `${name}${mark}`
     : `${name.slice(0, separator)}${mark}${name.slice(separator)}`;
@@ -130,7 +130,6 @@ function markedCatalogName(name: string, marker: string, language: Language): st
 function cosmeticTitle(
   cosmetic: CosmeticEvidence,
   words: TextDictionary,
-  language: Language,
   catalogEntry: CosmeticCatalogEntry | null,
 ): string {
   const fallback = cosmetic.itemDefIndex !== null && cosmetic.itemDefIndex !== undefined
@@ -143,9 +142,9 @@ function cosmeticTitle(
       : "";
   if (catalogEntry) {
     const wear = cosmetic.wear !== null && cosmetic.wear !== undefined ? ` (${wearLabel(cosmetic.wear, words)})` : "";
-    return `${markedCatalogName(catalogEntry.name, marker, language)}${wear}`;
+    return `${markedCatalogName(catalogEntry.name, marker, words)}${wear}`;
   }
-  const item = markedCatalogName(cosmetic.itemName || fallback, marker, language);
+  const item = markedCatalogName(cosmetic.itemName || fallback, marker, words);
   const finish = cosmetic.finishName
     || (cosmetic.paintKit !== null && cosmetic.paintKit !== undefined ? `${words.paintKit} #${cosmetic.paintKit}` : "");
   const wear = cosmetic.wear !== null && cosmetic.wear !== undefined ? ` (${wearLabel(cosmetic.wear, words)})` : "";
@@ -155,10 +154,9 @@ function cosmeticTitle(
 function cosmeticDisplayName(
   cosmetic: CosmeticEvidence,
   words: TextDictionary,
-  language: Language,
   catalogEntry: CosmeticCatalogEntry | null,
 ): { primary: string; secondary: string; full: string } {
-  const title = cosmeticTitle(cosmetic, words, language, catalogEntry);
+  const title = cosmeticTitle(cosmetic, words, catalogEntry);
   const wear = cosmetic.wear !== null && cosmetic.wear !== undefined ? ` (${wearLabel(cosmetic.wear, words)})` : "";
   const withoutWear = wear && title.endsWith(wear) ? title.slice(0, -wear.length) : title;
   const separator = withoutWear.indexOf(" | ");
@@ -250,7 +248,7 @@ function CosmeticEvidencePopover({
   const stickers = cosmetic.stickers ?? [];
   const charms = cosmetic.charms ?? [];
   const catalogEntry = resolveCosmeticCatalog(cosmetic, language);
-  const displayName = cosmeticDisplayName(cosmetic, words, language, catalogEntry);
+  const displayName = cosmeticDisplayName(cosmetic, words, catalogEntry);
   const attachmentEntries = [
     ...stickers.map((sticker) => resolveStickerCatalog(sticker.stickerId, language)),
     ...charms.map((charm) => resolveCharmCatalog(charm.charmId, charm.stickerId, language)),
@@ -467,7 +465,7 @@ function CosmeticCard({
   const stickers = cosmetic.stickers ?? [];
   const charms = cosmetic.charms ?? [];
   const catalogEntry = resolveCosmeticCatalog(cosmetic, language);
-  const displayName = cosmeticDisplayName(cosmetic, words, language, catalogEntry);
+  const displayName = cosmeticDisplayName(cosmetic, words, catalogEntry);
   const title = displayName.full;
   const viewerUrl = buildCosmeticViewerUrl(cosmetic, language);
   const attachmentEntries = [

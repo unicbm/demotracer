@@ -29,6 +29,7 @@ interface FaqCopy {
   categories: Record<FaqCategory, string>;
   questions: string;
   answer: string;
+  backToQuestions: string;
   noResultsTitle: string;
   noResultsBody: string;
   clearSearch: string;
@@ -48,6 +49,7 @@ const FAQ_COPY: Record<Language, FaqCopy> = {
     },
     questions: "问题",
     answer: "说明",
+    backToQuestions: "返回问题列表",
     noResultsTitle: "没有找到相关问题",
     noResultsBody: "换一个关键词，或切回“全部”分类。",
     clearSearch: "清除搜索",
@@ -188,6 +190,7 @@ const FAQ_COPY: Record<Language, FaqCopy> = {
     },
     questions: "Questions",
     answer: "Answer",
+    backToQuestions: "Back to questions",
     noResultsTitle: "No matching questions",
     noResultsBody: "Try another term or switch back to the All category.",
     clearSearch: "Clear search",
@@ -397,7 +400,7 @@ export function FaqWorkspace({ language }: FaqWorkspaceProps) {
             <article className="faq-answer-pane" key={selectedEntry.id}>
               <button className="faq-mobile-back" type="button" onClick={() => setMobileAnswerOpen(false)}>
                 <ChevronIcon size={15} />
-                <span>{language === "zh" ? "返回问题列表" : "Back to questions"}</span>
+                <span>{copy.backToQuestions}</span>
               </button>
               <span className="faq-pane-label">{copy.answer}</span>
               <h2>{selectedEntry.question}</h2>

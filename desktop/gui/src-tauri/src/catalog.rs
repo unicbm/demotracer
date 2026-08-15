@@ -56,6 +56,7 @@ pub(crate) struct LibraryEntryDto {
     pub rounds: usize,
     pub files: usize,
     pub players: Vec<LibraryPlayerDto>,
+    pub avatar_overrides: Vec<LibraryAvatarOverrideDto>,
     /// Latest round scoreboard snapshot available in this archive. This is a
     /// lightweight library preview, not a freshly calculated match result.
     pub score: Option<LibraryScoreDto>,
@@ -73,6 +74,14 @@ pub(crate) struct LibraryEntryDto {
     pub demo_source: Option<cs2_demotracer::browser_analysis::BrowserDemoSource>,
     pub converter_version: Option<String>,
     pub series: Option<LibrarySeriesDto>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LibraryAvatarOverrideDto {
+    pub steam_id: String,
+    pub path: String,
+    pub sha256: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -134,8 +143,17 @@ struct LibraryManifestWire {
     abi: Option<i32>,
     format_version: Option<u32>,
     dtr_format_version: Option<u32>,
+    #[serde(default)]
+    avatar_overrides: Vec<LibraryAvatarOverrideWire>,
     rounds: Option<Vec<LibraryRoundWire>>,
     files: Option<Vec<LibraryFileWire>>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct LibraryAvatarOverrideWire {
+    steam_id: Option<u64>,
+    path: Option<String>,
+    sha256: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -388,6 +406,7 @@ pub(crate) fn summarize_manifest(path: &Path) -> Result<LibraryEntryDto, String>
         abi,
         format_version,
         dtr_format_version,
+        avatar_overrides,
         rounds,
         files,
     } = manifest;
@@ -452,6 +471,7 @@ pub(crate) fn summarize_manifest(path: &Path) -> Result<LibraryEntryDto, String>
         rounds: round_ids.len(),
         files: files.len(),
         players: summarize_players(&files),
+        avatar_overrides: summarize_avatar_overrides(avatar_overrides),
         score_is_snapshot: score.is_some(),
         score,
         metadata_status: "missing".to_string(),
@@ -492,6 +512,45 @@ pub(crate) fn summarize_manifest(path: &Path) -> Result<LibraryEntryDto, String>
         DemoInfoRead::Invalid => entry.metadata_status = "invalid".to_string(),
     }
     Ok(entry)
+}
+
+fn summarize_avatar_overrides(
+    avatars: Vec<LibraryAvatarOverrideWire>,
+) -> Vec<LibraryAvatarOverrideDto> {
+    let mut seen = BTreeSet::new();
+    avatars
+        .into_iter()
+        .filter_map(|avatar| {
+            let steam_id = avatar.steam_id.unwrap_or(0);
+            let path = avatar.path.unwrap_or_default().trim().replace('\\', "/");
+            let sha256 = avatar
+                .sha256
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase();
+            let path_valid = !path.is_empty()
+                && !path.starts_with('/')
+                && !path.contains(':')
+                && !Path::new(&path).components().any(|component| {
+                    matches!(
+                        component,
+                        std::path::Component::ParentDir
+                            | std::path::Component::RootDir
+                            | std::path::Component::Prefix(_)
+                    )
+                });
+            let digest_valid =
+                sha256.len() == 64 && sha256.bytes().all(|byte| byte.is_ascii_hexdigit());
+            if steam_id == 0 || !path_valid || !digest_valid || !seen.insert(steam_id) {
+                return None;
+            }
+            Some(LibraryAvatarOverrideDto {
+                steam_id: steam_id.to_string(),
+                path,
+                sha256,
+            })
+        })
+        .collect()
 }
 
 fn apply_demo_info(
@@ -1009,6 +1068,34 @@ mod tests {
     }
 
     #[test]
+    fn scan_exposes_only_safe_avatar_override_evidence() {
+        let directory = TestDirectory::new("avatar-evidence");
+        let mut manifest = valid_manifest();
+        manifest["avatar_overrides"] = json!([
+            {
+                "steam_id": 76561198000000001_u64,
+                "path": "avatars/team.png",
+                "sha256": "ab".repeat(32)
+            },
+            {
+                "steam_id": 76561198000000002_u64,
+                "path": "../outside.png",
+                "sha256": "cd".repeat(32)
+            }
+        ]);
+        directory.write_manifest("output/match", &manifest);
+
+        let scan = scan_demo_library_for(directory.path.to_str().unwrap()).unwrap();
+
+        assert_eq!(scan.entries[0].avatar_overrides.len(), 1);
+        assert_eq!(
+            scan.entries[0].avatar_overrides[0].steam_id,
+            "76561198000000001"
+        );
+        assert_eq!(scan.entries[0].avatar_overrides[0].path, "avatars/team.png");
+    }
+
+    #[test]
     fn scan_exposes_the_local_archive_note() {
         let directory = TestDirectory::new("archive-note");
         let manifest = directory.write_manifest("output/match", &valid_manifest());
@@ -1410,6 +1497,7 @@ mod tests {
                     mvps: None,
                 })
                 .collect(),
+            avatar_overrides: Vec::new(),
             score: None,
             score_is_snapshot: false,
             metadata_status: "current".to_string(),

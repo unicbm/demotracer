@@ -1411,7 +1411,7 @@ textarea {
 }
 
 .background-task-strip {
-  margin: 10px var(--space-3) 0;
+  margin: 0;
   border: 1px solid var(--divider);
   border-radius: var(--radius-md);
   box-shadow: var(--surface-shadow);
@@ -2272,6 +2272,8 @@ textarea {
 .settings-theme-color-row,
 .settings-theme-font-row,
 .settings-theme-profile-row,
+.settings-theme-background-row,
+.settings-theme-opacity-row,
 .settings-theme-css-row {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) minmax(240px, 0.85fr);
@@ -2283,6 +2285,8 @@ textarea {
 .settings-theme-color-row strong,
 .settings-theme-font-row strong,
 .settings-theme-profile-row strong,
+.settings-theme-background-row strong,
+.settings-theme-opacity-row strong,
 .settings-theme-css-row strong {
   font-size: var(--type-label);
   font-weight: var(--weight-regular);
@@ -2349,6 +2353,52 @@ textarea {
 
 .settings-theme-css-row {
   margin-top: 2px;
+}
+
+.settings-theme-background-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding-block: var(--space-2);
+  border-top: 1px solid var(--divider);
+}
+
+.settings-theme-background-preview {
+  width: 48px;
+  height: 36px;
+  background: var(--surface-subtle);
+  background-position: center;
+  background-size: cover;
+  border: 1px solid var(--divider-strong);
+  border-radius: var(--radius-sm);
+}
+
+.settings-theme-background-copy,
+.settings-theme-opacity-row > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.settings-theme-background-copy small,
+.settings-theme-opacity-row small {
+  color: var(--text-tertiary);
+  font-size: var(--type-tiny);
+}
+
+.settings-theme-opacity-row {
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 0.7fr) auto;
+}
+
+.settings-theme-opacity-row input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.settings-theme-opacity-row output {
+  min-width: 42px;
+  color: var(--text-secondary);
+  font-family: var(--mono);
+  font-size: var(--type-support);
+  text-align: right;
 }
 
 .settings-theme-css-actions {
@@ -2455,8 +2505,41 @@ textarea {
   .settings-theme-color-row,
   .settings-theme-font-row,
   .settings-theme-profile-row,
+  .settings-theme-background-row,
+  .settings-theme-opacity-row,
   .settings-theme-css-row {
     grid-template-columns: minmax(130px, 1fr) minmax(190px, 1fr);
     gap: var(--space-3);
   }
+}
+
+/* User-selected PNG spans the body; navigation and workspace retain separate readable layers. */
+.app-body[data-has-workspace-background="true"] {
+  background-color: var(--workspace);
+  background-image: var(--workspace-background-image);
+  background-position: center;
+  background-size: cover;
+}
+
+.app-body[data-has-workspace-background="true"] .app-sidebar {
+  background: color-mix(in srgb, var(--app-bg) var(--sidebar-background-opacity, 86%), transparent);
+  backdrop-filter: blur(14px);
+}
+
+.app-body[data-has-workspace-background="true"] .app-workspace {
+  background: color-mix(in srgb, var(--workspace) 78%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.app-body[data-has-workspace-background="true"] .app-workspace > :is(
+  .archive-workspace,
+  .batch-workspace,
+  .faq-workspace,
+  .library-workspace,
+  .logs-workspace,
+  .player-analysis-workspace,
+  .round-workspace,
+  .settings-workspace
+) {
+  background: transparent;
 }

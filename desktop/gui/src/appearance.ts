@@ -14,6 +14,8 @@ export const UI_FONT_SIZE_STORAGE_KEY = "demotracer.ui-font-size.v1";
 export const UI_FONT_SIZE_MIN = 13;
 export const UI_FONT_SIZE_MAX = 20;
 export const UI_FONT_SIZE_DEFAULT = 15;
+export const SIDEBAR_OPACITY_DEFAULT = 0.86;
+export const SIDEBAR_OPACITY_MIN = 0.2;
 export const THEME_CUSTOMIZATION_STYLE_ID = "demotracer-theme-customization";
 export const CUSTOM_CSS_STORAGE_KEY = "demotracer.custom-css.v1";
 export const CUSTOM_CSS_STYLE_ID = "demotracer-custom-css";
@@ -47,6 +49,7 @@ export interface ThemeCustomization {
   dark?: ThemePalette;
   fontFamily?: string;
   monoFontFamily?: string;
+  sidebarOpacity?: number;
 }
 
 export interface CustomCssProfile {
@@ -127,6 +130,12 @@ export function normalizeUiFontSize(value: unknown): number {
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric)) return UI_FONT_SIZE_DEFAULT;
   return Math.min(UI_FONT_SIZE_MAX, Math.max(UI_FONT_SIZE_MIN, Math.round(numeric)));
+}
+
+export function normalizeSidebarOpacity(value: unknown): number {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return SIDEBAR_OPACITY_DEFAULT;
+  return Math.min(1, Math.max(SIDEBAR_OPACITY_MIN, Math.round(numeric * 100) / 100));
 }
 
 export function stepUiFontSize(current: number, direction: 1 | -1): number {
@@ -232,6 +241,9 @@ export function normalizeThemeCustomization(value: unknown): ThemeCustomization 
     const monoFontFamily = record.monoFontFamily.trim().slice(0, 200);
     if (monoFontFamily && isThemeFontFamily(monoFontFamily)) customization.monoFontFamily = monoFontFamily;
   }
+  if (record.sidebarOpacity !== undefined) {
+    customization.sidebarOpacity = normalizeSidebarOpacity(record.sidebarOpacity);
+  }
   return customization;
 }
 
@@ -268,6 +280,9 @@ export function themeCustomizationCss(customization: ThemeCustomization): string
   const rules: string[] = [];
   if (customization.fontFamily) rules.push(`:root { --font-ui: ${customization.fontFamily}; }`);
   if (customization.monoFontFamily) rules.push(`:root { --mono: ${customization.monoFontFamily}; }`);
+  if (customization.sidebarOpacity !== undefined) {
+    rules.push(`:root { --sidebar-background-opacity: ${normalizeSidebarOpacity(customization.sidebarOpacity) * 100}%; }`);
+  }
   if (customization.light) {
     rules.push(`:root[data-color-mode="light"] {\n  ${paletteCss(customization.light)};\n}`);
   }

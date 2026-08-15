@@ -23,6 +23,9 @@ import {
 import {
   isThemeColor,
   isThemeFontFamily,
+  normalizeSidebarOpacity,
+  SIDEBAR_OPACITY_DEFAULT,
+  SIDEBAR_OPACITY_MIN,
   themePalette,
   UI_FONT_SIZE_MAX,
   UI_FONT_SIZE_MIN,
@@ -49,6 +52,7 @@ import type {
   ServerConfigDocument,
   ServerConfigValidation,
   Theme,
+  WorkspaceBackground,
 } from "../types";
 import { releaseNotesForLanguage } from "../releaseNotes";
 import { SERVER_CONFIG_GUIDE, type ServerConfigGuideGroup } from "../serverConfigGuide";
@@ -76,6 +80,7 @@ type ThemeColorKey = keyof ThemePalette;
 interface ThemeEditorDraft extends ThemePalette {
   fontFamily: string;
   monoFontFamily: string;
+  sidebarOpacity: number;
 }
 
 const THEME_COLOR_KEYS: readonly ThemeColorKey[] = [
@@ -94,6 +99,7 @@ function themeEditorDraft(customization: ThemeCustomization, theme: ResolvedThem
     ...themePalette(customization, theme),
     fontFamily: customization.fontFamily ?? "",
     monoFontFamily: customization.monoFontFamily ?? "",
+    sidebarOpacity: normalizeSidebarOpacity(customization.sidebarOpacity ?? SIDEBAR_OPACITY_DEFAULT),
   };
 }
 
@@ -109,6 +115,7 @@ interface SettingsWorkspaceProps {
   resolvedTheme: ResolvedTheme;
   uiFontSize: number;
   themeCustomization: ThemeCustomization;
+  workspaceBackground: WorkspaceBackground | null;
   customCssProfiles: readonly CustomCssProfile[];
   activeCustomCssProfileId: string | null;
   environment: LocalEnvironmentSettings;
@@ -140,6 +147,8 @@ interface SettingsWorkspaceProps {
   releaseNotice: string;
   onUiFontSizeChange: (fontSize: number) => void;
   onThemeCustomizationChange: (customization: ThemeCustomization) => void;
+  onChooseWorkspaceBackground: () => void;
+  onClearWorkspaceBackground: () => void;
   onSaveCustomCssProfile: (profile: CustomCssProfile) => void;
   onActivateCustomCssProfile: (profileId: string | null) => void;
   onDeleteCustomCssProfile: (profileId: string) => void;
@@ -397,6 +406,7 @@ export function SettingsWorkspace({
   resolvedTheme,
   uiFontSize,
   themeCustomization,
+  workspaceBackground,
   customCssProfiles,
   activeCustomCssProfileId,
   environment,
@@ -428,6 +438,8 @@ export function SettingsWorkspace({
   releaseNotice,
   onUiFontSizeChange,
   onThemeCustomizationChange,
+  onChooseWorkspaceBackground,
+  onClearWorkspaceBackground,
   onSaveCustomCssProfile,
   onActivateCustomCssProfile,
   onDeleteCustomCssProfile,
@@ -600,6 +612,7 @@ export function SettingsWorkspace({
     const monoFontFamily = themeDraft.monoFontFamily.trim();
     if (monoFontFamily) next.monoFontFamily = monoFontFamily;
     else delete next.monoFontFamily;
+    next.sidebarOpacity = normalizeSidebarOpacity(themeDraft.sidebarOpacity);
     onThemeCustomizationChange(next);
     setSettingsModal(null);
   };
@@ -1545,6 +1558,43 @@ export function SettingsWorkspace({
           aria-invalid={!isThemeFontFamily(themeDraft.monoFontFamily)}
           onChange={(event) => setThemeDraft((current) => ({ ...current, monoFontFamily: event.target.value }))}
         />
+      </label>
+      <div className="settings-theme-background-row">
+        <span
+          className={`settings-theme-background-preview${workspaceBackground ? " has-image" : ""}`}
+          style={workspaceBackground ? { backgroundImage: `url(${workspaceBackground.dataUrl})` } : undefined}
+          aria-hidden="true"
+        />
+        <span className="settings-theme-background-copy">
+          <strong>{words.workspaceBackground}</strong>
+          <small>{workspaceBackground
+            ? words.workspaceBackgroundConfigured
+              .replace("{width}", String(workspaceBackground.width))
+              .replace("{height}", String(workspaceBackground.height))
+            : words.workspaceBackgroundNotConfigured}</small>
+        </span>
+        <span className="settings-theme-css-actions">
+          {workspaceBackground ? <button className="secondary-button" type="button" onClick={onClearWorkspaceBackground}>{words.workspaceBackgroundRemove}</button> : null}
+          <button className="secondary-button" type="button" onClick={onChooseWorkspaceBackground}>{words.workspaceBackgroundChoose}</button>
+        </span>
+      </div>
+      <label className="settings-theme-opacity-row">
+        <span>
+          <strong>{words.sidebarOpacity}</strong>
+          <small>{words.sidebarOpacityHelp}</small>
+        </span>
+        <input
+          type="range"
+          min={SIDEBAR_OPACITY_MIN * 100}
+          max={100}
+          step={1}
+          value={Math.round(themeDraft.sidebarOpacity * 100)}
+          onChange={(event) => setThemeDraft((current) => ({
+            ...current,
+            sidebarOpacity: normalizeSidebarOpacity(Number(event.target.value) / 100),
+          }))}
+        />
+        <output>{Math.round(themeDraft.sidebarOpacity * 100)}%</output>
       </label>
       <div className="settings-theme-css-row">
         <strong>{words.themeCssInjection}</strong>

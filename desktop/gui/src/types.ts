@@ -250,6 +250,12 @@ export interface LibraryPlayerSummary {
   mvps?: number | null;
 }
 
+export interface LibraryAvatarOverride {
+  steamId: string;
+  path: string;
+  sha256: string;
+}
+
 export interface DemoLibraryEntry {
   root: string;
   manifestPath: string;
@@ -267,6 +273,7 @@ export interface DemoLibraryEntry {
   rounds: number;
   files: number;
   players: LibraryPlayerSummary[];
+  avatarOverrides?: LibraryAvatarOverride[];
   score?: MatchScoreSummary | null;
   scoreIsSnapshot?: boolean;
   metadataStatus?: "current" | "missing" | "stale" | "invalid" | string;
@@ -287,6 +294,13 @@ export interface DemoLibraryEntry {
     mapCount: number;
     evidence: "hltvFilenameExactRoster" | string;
   } | null;
+}
+
+export interface WorkspaceBackground {
+  dataUrl: string;
+  width: number;
+  height: number;
+  bytes: number;
 }
 
 export interface RefreshArchiveMetadataResult {

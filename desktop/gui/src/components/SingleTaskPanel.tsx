@@ -9,7 +9,7 @@ import type { TextDictionary } from "../i18n";
 import type { ProgressPhase, ProgressState } from "../types";
 import "./single-task-panel.css";
 
-type SingleTaskKind = "analysis" | "conversion";
+type SingleTaskKind = "preflight" | "analysis" | "conversion";
 
 interface SingleTaskPanelProps {
   words: TextDictionary;
@@ -21,6 +21,7 @@ interface SingleTaskPanelProps {
   cancelPending: boolean;
   onCancelAnalysis: () => void;
   onMinimize: () => void;
+  preflightProgress?: { current: number; total: number };
 }
 
 function fileName(path: string): string {
@@ -50,7 +51,9 @@ export function SingleTaskPanel({
   cancelPending,
   onCancelAnalysis,
   onMinimize,
+  preflightProgress,
 }: SingleTaskPanelProps) {
+  const preflight = task === "preflight";
   const analysis = task === "analysis";
   const decompressing = progress.phase === "decompressing";
   const stages = [words.preparing, words.writingPlayers, words.writingArtifacts, words.exportingVoice, words.validating];
@@ -62,7 +65,9 @@ export function SingleTaskPanel({
     : progress.unit === "artifacts"
       ? words.artifactsProgress.replace("{written}", String(progress.written)).replace("{total}", String(progress.estimated))
       : stages[activeIndex];
-  const title = analysis
+  const title = preflight
+    ? words.preflightTask
+    : analysis
     ? (decompressing ? words.decompressingTitle : words.parseAnalyzeTask)
     : words.exportDtrTask;
 
@@ -70,15 +75,27 @@ export function SingleTaskPanel({
     <aside className={`single-task-panel is-${task}`} aria-labelledby="single-task-panel-title">
       <header className="single-task-heading">
         <h2 id="single-task-panel-title">{title}</h2>
-        <button className="icon-button" type="button" onClick={onMinimize} aria-label={words.minimizeTask} title={words.minimizeTask}>
-          <ChevronIcon size={15} />
-        </button>
+        {!preflight ? (
+          <button className="icon-button" type="button" onClick={onMinimize} aria-label={words.minimizeTask} title={words.minimizeTask}>
+            <ChevronIcon size={15} />
+          </button>
+        ) : null}
       </header>
 
       <div className="single-task-body">
         <div className="single-task-source" title={sourcePath}>{fileName(sourcePath)}</div>
 
-        {analysis ? (
+        {preflight ? (
+          <section className="preflight-task-status" role="status" aria-live="polite">
+            <strong>{words.preflightCheckingArchive}</strong>
+            <b>{preflightProgress?.current ?? 0} / {preflightProgress?.total ?? 0}</b>
+            <div className="single-task-progress is-determinate">
+              <span style={{ width: `${preflightProgress?.total
+                ? Math.min(100, (preflightProgress.current / preflightProgress.total) * 100)
+                : 0}%` }} />
+            </div>
+          </section>
+        ) : analysis ? (
           <section className="analysis-task-status" role="status" aria-live="polite">
             <strong>{decompressing ? words.decompressingTitle : words.parseAnalyzeRunning}</strong>
             <time>{formatElapsed(elapsedSeconds)}</time>

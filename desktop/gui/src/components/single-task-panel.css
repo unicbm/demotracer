@@ -19,7 +19,7 @@
   background: var(--surface-raised);
   border: 1px solid var(--divider-strong);
   border-radius: var(--radius-md);
-  box-shadow: 0 16px 44px color-mix(in srgb, var(--media-shadow-ink) 20%, transparent);
+  box-shadow: var(--shadow-sheet);
 }
 
 .single-task-heading {
@@ -58,9 +58,28 @@
 }
 
 .analysis-task-status,
+.preflight-task-status,
 .conversion-task-status {
   display: grid;
   gap: 10px;
+}
+
+.preflight-task-status {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.preflight-task-status strong,
+.preflight-task-status b {
+  font-size: var(--type-micro);
+}
+
+.preflight-task-status b {
+  color: var(--text-secondary);
+  font-family: var(--mono);
+  font-weight: var(--weight-medium);
 }
 
 .analysis-task-status {

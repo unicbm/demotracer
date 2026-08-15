@@ -11,7 +11,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { exit as exitApp, relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { Badge, Button, Group, Paper, Progress, Stack, Text } from "@mantine/core";
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from "react";
 import packageMetadata from "../package.json";
 import { AppChrome, AppSidebar } from "./components/AppChrome";
 import { activeBatchItemCount, findRestorableBatch } from "./batchSession";
@@ -30,7 +30,7 @@ import { DialogPrimitive } from "./components/Dialog";
 import { ExportInspector } from "./components/ExportInspector";
 import { FaqWorkspace } from "./components/FaqWorkspace";
 import { LibraryWorkspace, type LibrarySort } from "./components/LibraryWorkspace";
-import { LogsWorkspace } from "./components/LogsWorkspace";
+import { LogsWorkspace, type ActivityLogRange } from "./components/LogsWorkspace";
 import { InventorySimulatorPanel } from "./components/InventorySimulatorPanel";
 import { releaseNotesForLanguage } from "./releaseNotes";
 import { DEFAULT_PLAYBACK_ADVANCED_OPTIONS, type PlaybackPresetOptions } from "./components/PlaybackCommandBuilder";
@@ -163,6 +163,7 @@ import type {
   TaskEvent,
   TaskPhase,
   Theme,
+  WorkspaceBackground,
 } from "./types";
 
 const DEFAULT_SETTINGS: ConverterSettings = {
@@ -194,6 +195,14 @@ const INVENTORY_SIMULATOR_PANEL_DEFAULT_WIDTH = 580;
 const INVENTORY_SIMULATOR_PANEL_MIN_WIDTH = 440;
 const INVENTORY_SIMULATOR_PANEL_MAX_WIDTH = 900;
 const ACTIVITY_LOG_LIMIT = 5_000;
+
+function activityLogSinceMs(range: ActivityLogRange): number | null {
+  if (range === "all") return null;
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  if (range === "sevenDays") start.setDate(start.getDate() - 6);
+  return start.getTime();
+}
 
 const INITIAL_LIBRARY_SESSION = readStoredLibrarySession(localStorage);
 
@@ -620,55 +629,53 @@ function parseCommandError(error: unknown): CommandErrorDto {
 
 function userFacingErrorMessage(error: { code: string; message: string; path?: string | null }, language: Language): string {
   const code = error.code.toLocaleLowerCase();
-  const zh = language === "zh";
+  const words = TEXT[language];
   if (code.includes("cancel") || code.includes("stopping")) {
-    return zh ? "任务已停止。已完成的输出会保留。" : "Task stopped. Completed output is kept.";
+    return words.errorTaskStopped;
   }
   if (code.includes("playback_update_unavailable")) {
-    return zh ? "稳定通道暂未发布回放组件更新。" : "The stable channel has not published a playback component update yet.";
+    return words.errorPlaybackUpdateUnavailable;
   }
   if (code.includes("playback_update_check")) {
-    return zh ? "暂时无法连接回放组件更新服务。" : "The playback update service is temporarily unavailable.";
+    return words.errorPlaybackUpdateCheck;
   }
   if (code.includes("playback_update_download")) {
-    return zh ? "回放组件下载失败，请稍后重试。" : "The playback component download failed. Try again later.";
+    return words.errorPlaybackUpdateDownload;
   }
   if (code.includes("playback_update_manifest")) {
-    return zh ? "回放组件更新清单未通过安全检查。" : "The playback update manifest did not pass security validation.";
+    return words.errorPlaybackUpdateManifest;
   }
   if (code.includes("playback_update_hash") || code.includes("playback_update_signature") || code.includes("playback_signing_key")) {
-    return zh ? "下载的回放组件未通过完整性或签名验证，未执行安装。" : "The downloaded playback component failed integrity or signature verification and was not installed.";
+    return words.errorPlaybackUpdateIntegrity;
   }
   if (code.includes("cs2_running")) {
-    return zh ? "请先关闭 CS2，再安装或回滚回放组件。" : "Close CS2 before installing or rolling back playback components.";
+    return words.errorCs2Running;
   }
   if (code.includes("not_found") || code.includes("unavailable") || code.includes("missing")) {
-    return zh ? "找不到所选文件，请重新选择。" : "The selected file was not found. Choose it again.";
+    return words.errorFileNotFound;
   }
   if (code.includes("permission") || code.includes("denied") || code.includes("unsafe") || code.includes("write")) {
-    return zh ? "无法写入所选目录，请选择其他目录。" : "The selected folder is not writable. Choose another folder.";
+    return words.errorFolderNotWritable;
   }
   if (code.includes("invalid") || code.includes("unsupported") || code.includes("validation")) {
-    return zh ? "文件或设置未通过检查。" : "The file or settings did not pass validation.";
+    return words.errorValidation;
   }
   if (code.includes("dialog")) {
-    return zh ? "系统选择窗口暂时无法打开，请稍后再试。" : "The system picker could not be opened. Try again in a moment.";
+    return words.errorDialog;
   }
   if (code.includes("copy")) {
-    return zh ? "没有复制成功，请再试一次。" : "The content was not copied. Try again.";
+    return words.errorCopy;
   }
   if (code.includes("inventory_simulator")) {
-    return zh ? "无法打开饰品预览。" : "The inventory preview could not be opened.";
+    return words.errorInventorySimulator;
   }
   if (code.includes("playback")) {
-    return zh ? "回放组件操作失败，请检查 CS2 路径。" : "Playback component operation failed. Check the CS2 path.";
+    return words.errorPlayback;
   }
   if (code.includes("analysis") || code.includes("demo") || code.includes("parse")) {
-    return zh ? "无法分析此 Demo。请重试或选择其他文件。" : "This demo could not be analyzed. Retry or choose another file.";
+    return words.errorAnalysis;
   }
-  return zh
-    ? `操作失败（${error.code}）。请检查当前选择后重试。`
-    : `The operation failed (${error.code}). Check the current selection and try again.`;
+  return words.errorGeneric.replace("{code}", error.code);
 }
 
 function playbackUpdateFailureStatus(reason: unknown, language: Language): PlaybackUpdateStatus {
@@ -681,17 +688,17 @@ function playbackUpdateFailureStatus(reason: unknown, language: Language): Playb
 
 function userFacingErrorTitle(error: { code: string }, language: Language): string {
   const code = error.code.toLocaleLowerCase();
-  const zh = language === "zh";
+  const words = TEXT[language];
   if (code.includes("analysis") || code.includes("demo") || code.includes("parse")) {
-    return zh ? "Demo 分析失败" : "Demo analysis failed";
+    return words.errorAnalysisTitle;
   }
-  if (code.includes("playback")) return zh ? "回放组件操作失败" : "Playback operation failed";
-  if (code.includes("inventory_simulator")) return zh ? "饰品预览无法打开" : "Inventory preview unavailable";
+  if (code.includes("playback")) return words.errorPlaybackTitle;
+  if (code.includes("inventory_simulator")) return words.errorInventorySimulatorTitle;
   if (code.includes("permission") || code.includes("denied") || code.includes("write")) {
-    return zh ? "目录不可写" : "Folder is not writable";
+    return words.errorFolderNotWritableTitle;
   }
-  if (code.includes("not_found") || code.includes("missing")) return zh ? "文件不存在" : "File not found";
-  return zh ? "操作未完成" : "The operation did not finish";
+  if (code.includes("not_found") || code.includes("missing")) return words.errorFileNotFoundTitle;
+  return words.errorTitle;
 }
 
 function phaseFromBackend(phase: TaskPhase, current: ProgressPhase): ProgressPhase {
@@ -784,6 +791,7 @@ function App() {
   const [themeCustomization, setThemeCustomization] = useState<ThemeCustomization>(() => (
     normalizeThemeCustomization(localStorage.getItem(THEME_CUSTOMIZATION_STORAGE_KEY))
   ));
+  const [workspaceBackground, setWorkspaceBackground] = useState<WorkspaceBackground | null>(null);
   const [customCssProfiles, setCustomCssProfiles] = useState<CustomCssProfile[]>(loadCustomCssProfiles);
   const [activeCustomCssProfileId, setActiveCustomCssProfileId] = useState<string | null>(() => {
     const storedActive = normalizeActiveCustomCssProfileId(
@@ -883,6 +891,7 @@ function App() {
   const [savingServerConfig, setSavingServerConfig] = useState(false);
   const [activityLogs, setActivityLogs] = useState<AppLogEntry[]>([]);
   const [activityLogsLoading, setActivityLogsLoading] = useState(false);
+  const [activityLogRange, setActivityLogRange] = useState<ActivityLogRange>("today");
   const [gsiRuntimeStatus, setGsiRuntimeStatus] = useState<GsiStatus | null>(null);
   const [progress, setProgress] = useState<ProgressState>(emptyProgress);
   const [result, setResult] = useState<ConversionSummary | null>(null);
@@ -945,6 +954,29 @@ function App() {
   }, []);
 
   const words = TEXT[language];
+  const chooseWorkspaceBackground = useCallback(async () => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    try {
+      const selected = await invoke<WorkspaceBackground | null>("choose_workspace_background", {
+        request: {
+          title: TEXT[language].workspaceBackgroundChoose,
+          filterLabel: TEXT[language].workspaceBackgroundPngFilter,
+        },
+      });
+      if (selected) setWorkspaceBackground(selected);
+    } catch (reason) {
+      setGlobalError(parseCommandError(reason));
+    }
+  }, [language]);
+  const clearWorkspaceBackground = useCallback(async () => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    try {
+      await invoke<boolean>("clear_workspace_background");
+      setWorkspaceBackground(null);
+    } catch (reason) {
+      setGlobalError(parseCommandError(reason));
+    }
+  }, []);
   const presenceTelemetryEnabled = presenceTelemetryConsent === "enabled";
   const submitTelemetry = useCallback((submission: TelemetrySubmission) => {
     const enabled = submission.kind === "session" ? presenceTelemetryEnabled : aggregateTelemetryEnabled;
@@ -988,7 +1020,10 @@ function App() {
     setActivityLogsLoading(true);
     try {
       const [entries, status] = await Promise.all([
-        invoke<AppLogEntry[]>("list_activity_logs", { limit: ACTIVITY_LOG_LIMIT }),
+        invoke<AppLogEntry[]>("list_activity_logs", {
+          limit: ACTIVITY_LOG_LIMIT,
+          sinceMs: activityLogSinceMs(activityLogRange),
+        }),
         invoke<GsiStatus>("gsi_status"),
       ]);
       setActivityLogs(entries);
@@ -996,7 +1031,7 @@ function App() {
     } finally {
       setActivityLogsLoading(false);
     }
-  }, []);
+  }, [activityLogRange]);
   const openActivityLogDirectory = useCallback(() => {
     if ("__TAURI_INTERNALS__" in window) {
       void invoke<void>("open_activity_log_directory").catch((reason) => {
@@ -1077,13 +1112,13 @@ function App() {
         modifiedAtMs: candidate.modifiedAtMs,
         status: imported ? "imported" : "ready",
         reason: replacing
-          ? (language === "zh" ? "将重新解析并替换这个已有档案。" : "This existing archive will be re-parsed and replaced.")
+          ? words.batchCandidateReplacing
           : imported
-            ? (language === "zh" ? "这个源 Demo 已经有本地档案。" : "This source demo already has a local archive.")
+            ? words.batchCandidateImported
             : null,
       };
     });
-  }, [batchReplaceSources, batchScan, importedBatchSources, language]);
+  }, [batchReplaceSources, batchScan, importedBatchSources, words]);
   const batchJobs = useMemo<BatchJobItem[]>(() => {
     if (!batchLedger) {
       return batchStartingCandidates.map((candidate) => ({
@@ -1217,6 +1252,13 @@ function App() {
 
   useEffect(() => {
     for (const key of LEGACY_APPEARANCE_STORAGE_KEYS) localStorage.removeItem(key);
+  }, []);
+
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    void invoke<WorkspaceBackground | null>("read_workspace_background")
+      .then(setWorkspaceBackground)
+      .catch((reason) => setGlobalError(parseCommandError(reason)));
   }, []);
 
   useEffect(() => {
@@ -1988,19 +2030,13 @@ function App() {
     setBatchStartingCandidates([]);
     const notices = [
       replaceSourceIds.length > 0
-        ? (language === "zh"
-          ? `将重新解析并替换 ${replaceSourceIds.length} 个已有档案。`
-          : `${replaceSourceIds.length} existing archives will be re-parsed and replaced.`)
+        ? words.batchNoticeReplacing.replace("{count}", String(replaceSourceIds.length))
         : "",
       mergedSegments > 0
-        ? (language === "zh"
-          ? `已将 ${mergedSegments} 个分段文件合并到对应比赛。`
-          : `Merged ${mergedSegments} selected segment files into their matches.`)
+        ? words.batchNoticeMergedSegments.replace("{count}", String(mergedSegments))
         : "",
       relinkedDuplicates > 0
-        ? (language === "zh"
-          ? `已把 ${relinkedDuplicates} 个既有档案关联到本次选择的系列赛文件。`
-          : `Linked ${relinkedDuplicates} existing archives to the selected series files.`)
+        ? words.batchNoticeRelinked.replace("{count}", String(relinkedDuplicates))
         : "",
     ].filter(Boolean);
     setBatchScanError(notices.join(" "));
@@ -2016,9 +2052,7 @@ function App() {
     if (uniquePaths.length === 0 || uniquePaths.length > BATCH_SELECTION_LIMIT) {
       setGlobalError({
         code: "demo_selection_invalid",
-        message: language === "zh"
-          ? "一次请选择 1–8 个 .dem 或 .dem.zst 文件。"
-          : "Choose 1–8 .dem or .dem.zst files at a time.",
+        message: words.demoSelectionInvalid,
       });
       return;
     }
@@ -2429,9 +2463,7 @@ function App() {
       setBatchSelectedIds(candidates.map((candidate) => candidate.id));
       setGlobalError({
         code: "batch_selection_changed",
-        message: language === "zh"
-          ? "本地库状态刚刚发生变化，已从选择中移除已入库的 Demo。请确认剩余项目后再启动。"
-          : "The local library changed, so already imported demos were removed from the selection. Review the remaining items and start again.",
+        message: words.batchSelectionChanged,
       });
       return;
     }
@@ -2589,9 +2621,7 @@ function App() {
     setBatchReplaceSourceIds([]);
     dispatchLibraryWorkspace({ type: "navigate", section: "library" });
     if (completed > 0) {
-      setLibraryNotice(language === "zh"
-        ? `已导入 ${completed} 个 Demo。`
-        : `Imported ${completed} demos.`);
+      setLibraryNotice(words.batchImportCompleted.replace("{count}", String(completed)));
     }
   }
 
@@ -2642,16 +2672,14 @@ function App() {
       if (paths.length === 0 || paths.length > BATCH_SELECTION_LIMIT || !paths.every(isDemoFilePath)) {
         setGlobalError({
           code: "demo_selection_invalid",
-          message: language === "zh"
-            ? "请拖入 1–8 个 .dem 或 .dem.zst 文件；manifest.json 需要单独拖入。"
-            : "Drop 1–8 .dem or .dem.zst files. Drop a manifest.json by itself.",
+          message: words.demoDropInvalid,
         });
         return;
       }
       void prepareDemoSelections(paths);
     }).then((stop) => { unlisten = stop; });
     return () => unlisten?.();
-  }, [isBusy, language, prepareDemoSelections, runManifest]);
+  }, [isBusy, prepareDemoSelections, runManifest, words]);
 
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
@@ -3229,10 +3257,11 @@ function App() {
   async function finishPlaybackChange(result: PlaybackInstallResult, action: "install" | "rollback") {
     setPlaybackInstallBlockedByCs2(false);
     setReleaseNotice(action === "install"
-      ? (language === "zh"
-          ? `已安装回放组件 v${result.version}（${result.installedFiles} 个文件，清理 ${result.removedLegacyFiles} 个旧 provider 文件）。`
-          : `Installed playback v${result.version} (${result.installedFiles} files; removed ${result.removedLegacyFiles} legacy provider files).`)
-      : (language === "zh" ? "已恢复上次安装前的回放组件。" : "Restored playback components from the pre-install backup."));
+      ? words.playbackInstalledNotice
+        .replace("{version}", result.version)
+        .replace("{installed}", String(result.installedFiles))
+        .replace("{removed}", String(result.removedLegacyFiles))
+      : words.playbackRollbackNotice);
     await runEnvironmentInspection(localEnvironment.cs2Path);
     const status = await invoke<PlaybackReleaseStatus>("playback_release_status", {
       cs2Path: localEnvironment.cs2Path.trim(),
@@ -3944,7 +3973,13 @@ function App() {
         onRequestClose={() => void requestWindowClose()}
       />
 
-      <div className="app-body">
+      <div
+        className="app-body"
+        data-has-workspace-background={workspaceBackground ? "true" : undefined}
+        style={workspaceBackground
+          ? ({ "--workspace-background-image": `url(${workspaceBackground.dataUrl})` } as CSSProperties)
+          : undefined}
+      >
         <AppSidebar
           words={words}
           appVersion={appVersion}
@@ -3997,17 +4032,6 @@ function App() {
           </div>
         ) : null}
 
-        {demoPreflightProgress ? (
-          <div className="background-task-strip" role="status" aria-live="polite">
-            <i aria-hidden="true" />
-            <strong>
-              {language === "zh"
-                ? `正在检查本地档案 ${demoPreflightProgress.current}/${demoPreflightProgress.total}`
-                : `Checking local library ${demoPreflightProgress.current}/${demoPreflightProgress.total}`}
-            </strong>
-            <code title={demoPreflightProgress.fileName}>{demoPreflightProgress.fileName}</code>
-          </div>
-        ) : null}
         {!demoPreflightProgress && singleTask && !singleTaskPanelOpen ? (
           <button
             className="background-task-strip batch-task-return"
@@ -4026,12 +4050,12 @@ function App() {
             onClick={() => dispatchLibraryWorkspace({ type: "navigate", section: "batch" })}
           >
             <i aria-hidden="true" />
-            <strong>{language === "zh" ? "多个 Demo 入库" : "Multiple demo import"}</strong>
+            <strong>{words.batchImportTask}</strong>
             <code>{batchInvocationActive
-              ? (language === "zh" ? `还有 ${batchActiveCount} 个` : `${batchActiveCount} remaining`)
+              ? words.batchRemaining.replace("{count}", String(batchActiveCount))
               : hasRetryableBatchJobs
-                ? (language === "zh" ? `${batchSummary.failed} 个需要处理` : `${batchSummary.failed} need attention`)
-                : (language === "zh" ? `${batchActiveCount} 个待继续` : `${batchActiveCount} ready to resume`)}</code>
+                ? words.batchNeedAttention.replace("{count}", String(batchSummary.failed))
+                : words.batchReadyToResume.replace("{count}", String(batchActiveCount))}</code>
           </button>
         ) : null}
 
@@ -4043,6 +4067,8 @@ function App() {
             entries={activityLogs}
             gsiStatus={gsiRuntimeStatus}
             loading={activityLogsLoading}
+            range={activityLogRange}
+            onRangeChange={setActivityLogRange}
             onRefresh={() => void refreshActivityLogs()}
             onOpenFolder={openActivityLogDirectory}
             onClear={clearActivityLogs}
@@ -4055,6 +4081,7 @@ function App() {
             resolvedTheme={resolvedTheme}
             uiFontSize={uiFontSize}
             themeCustomization={themeCustomization}
+            workspaceBackground={workspaceBackground}
             customCssProfiles={customCssProfiles}
             activeCustomCssProfileId={activeCustomCssProfileId}
             environment={localEnvironment}
@@ -4086,6 +4113,8 @@ function App() {
             releaseNotice={releaseNotice}
             onUiFontSizeChange={setUiFontSize}
             onThemeCustomizationChange={setThemeCustomization}
+            onChooseWorkspaceBackground={() => void chooseWorkspaceBackground()}
+            onClearWorkspaceBackground={() => void clearWorkspaceBackground()}
             onSaveCustomCssProfile={(profile) => {
               const normalized = normalizeCustomCssProfiles([profile])[0];
               if (!normalized) return;
@@ -4279,7 +4308,6 @@ function App() {
         {phase === "complete" && result ? (
           <ResultView
             words={words}
-            language={language}
             result={result}
             warnings={conversionWarnings}
             copiedTarget={copiedTarget}
@@ -4295,7 +4323,20 @@ function App() {
         ) : null}
           </>
         )}
-        {singleTask && singleTaskPanelOpen ? (
+        {demoPreflightProgress ? (
+          <SingleTaskPanel
+            words={words}
+            task="preflight"
+            sourcePath={demoPreflightProgress.fileName}
+            elapsedSeconds={0}
+            progress={progress}
+            outputRoot=""
+            cancelPending={false}
+            preflightProgress={demoPreflightProgress}
+            onCancelAnalysis={() => undefined}
+            onMinimize={() => undefined}
+          />
+        ) : singleTask && singleTaskPanelOpen ? (
           <SingleTaskPanel
             words={words}
             task={singleTask}
@@ -4545,9 +4586,9 @@ function App() {
           </header>
           <p id="duplicate-demo-description" className="dialog-description">
             {duplicateDemoConflict.batch
-              ? (language === "zh"
-                ? `本次选择的 ${duplicateDemoConflict.batch.selections.length} 个 Demo 中有 ${duplicateDemoConflict.batch.replaceSourceIds.length} 个已经存在。重新分析会保留完整队列，并逐个替换这些既有档案。`
-                : `${duplicateDemoConflict.batch.replaceSourceIds.length} of the ${duplicateDemoConflict.batch.selections.length} selected demos already exist. Analyzing again keeps the full queue and replaces those archives individually.`)
+              ? words.duplicateBatchBody
+                .replace("{existing}", String(duplicateDemoConflict.batch.replaceSourceIds.length))
+                .replace("{total}", String(duplicateDemoConflict.batch.selections.length))
               : words.duplicateDemoBody}
             {!duplicateDemoConflict.batch && duplicateDemoConflict.primary.matches.length > 1
               ? ` ${words.duplicateDemoMatchCount.replace("{count}", String(duplicateDemoConflict.primary.matches.length))}`
@@ -4580,9 +4621,7 @@ function App() {
               }}
             >
               {duplicateDemoConflict.batch
-                ? (language === "zh"
-                  ? `重新分析 ${duplicateDemoConflict.batch.selections.length} 个 Demo`
-                  : `Analyze ${duplicateDemoConflict.batch.selections.length} demos again`)
+                ? words.analyzeBatchAgain.replace("{count}", String(duplicateDemoConflict.batch.selections.length))
                 : words.analyzeAgain}
             </button>
             <button ref={openExistingArchiveRef} className="primary-button" type="button" onClick={() => {

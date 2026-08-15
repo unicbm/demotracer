@@ -142,11 +142,13 @@ function useRetryingImage(url: string | null | undefined) {
 
 export function SteamAvatar({
   profile,
+  overrideUrl,
   fallbackName,
   playerColor,
   size = "normal",
 }: {
   profile?: SteamProfile;
+  overrideUrl?: string | null;
   fallbackName: string;
   playerColor?: string | null;
   size?: "compact" | "normal" | "hero" | "large" | "profile";
@@ -156,8 +158,8 @@ export function SteamAvatar({
   const avatarStyle = accent
     ? ({ "--steam-avatar-accent": accent } as CSSProperties)
     : undefined;
-  const avatarImage = useRetryingImage(profile?.avatarUrl);
-  const frameImage = useRetryingImage(profile?.avatarFrameUrl);
+  const avatarImage = useRetryingImage(overrideUrl || profile?.avatarUrl);
+  const frameImage = useRetryingImage(overrideUrl ? null : profile?.avatarFrameUrl);
   const loading = size === "compact" || size === "hero" || size === "profile" ? "eager" : "lazy";
 
   return (

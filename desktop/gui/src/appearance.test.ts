@@ -14,6 +14,7 @@ import {
   isThemeColor,
   LEGACY_APPEARANCE_STORAGE_KEYS,
   normalizeSidebarCollapsed,
+  normalizeSidebarOpacity,
   normalizeCustomCss,
   normalizeCustomCssProfiles,
   normalizeActiveCustomCssProfileId,
@@ -69,6 +70,16 @@ describe("appearance preferences", () => {
     assert.equal(normalizeSidebarCollapsed(true), true);
     assert.equal(normalizeSidebarCollapsed("false"), false);
     assert.equal(normalizeSidebarCollapsed(null), false);
+  });
+
+  it("keeps the background sidebar opacity within the readable range", () => {
+    assert.equal(normalizeSidebarOpacity(0.72), 0.72);
+    assert.equal(normalizeSidebarOpacity(0), 0.2);
+    assert.equal(normalizeSidebarOpacity(4), 1);
+    assert.equal(normalizeSidebarOpacity("invalid"), 0.86);
+    const customization = normalizeThemeCustomization({ sidebarOpacity: 0.73 });
+    assert.equal(customization.sidebarOpacity, 0.73);
+    assert.match(themeCustomizationCss(customization), /--sidebar-background-opacity: 73%/);
   });
 
   it("uses one native background per color mode", () => {

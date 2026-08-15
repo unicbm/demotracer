@@ -22,6 +22,7 @@ use activity_log::{
     append_activity_log, clear_activity_logs, list_activity_logs, maintain_activity_logs,
     ActivityLogLevel, ActivityLogState,
 };
+use base64::Engine as _;
 use batch::{
     cancel_batch_import, choose_demo_batch_dir, list_batch_imports, read_batch_import,
     resume_batch_import, scan_demo_folder, start_batch_import,
@@ -75,6 +76,8 @@ const MAX_FREEZE_PREROLL_SECONDS: f32 = 120.0;
 const MIN_MAX_ROUND_SECONDS: f32 = 30.0;
 const MAX_MAX_ROUND_SECONDS: f32 = 1800.0;
 const MAX_MANIFEST_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_LIBRARY_AVATAR_BYTES: usize = 4 * 1024 * 1024;
+const MAX_WORKSPACE_BACKGROUND_BYTES: usize = 16 * 1024 * 1024;
 const MIN_SUPPORTED_MANIFEST_ABI: i32 = 12;
 const MIN_SUPPORTED_DTR_FORMAT_VERSION: u32 = 3;
 const OUTPUT_COMPLETION_MARKER: &str = ".demotracer-complete";
@@ -89,6 +92,30 @@ const INTERACTIVE_ANALYSIS_READ_OPTIONS: ReadDemoOptions = ReadDemoOptions {
 
 static NEXT_STAGING_NONCE: AtomicU64 = AtomicU64::new(1);
 static BATCH_CONVERSION_LOCK: Mutex<()> = Mutex::new(());
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LibraryAvatarRequestDto {
+    manifest_path: String,
+    relative_path: String,
+    sha256: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceBackgroundDialogRequestDto {
+    title: String,
+    filter_label: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceBackgroundDto {
+    data_url: String,
+    width: u32,
+    height: u32,
+    bytes: usize,
+}
 
 pub(crate) type CommandResult<T> = Result<T, CommandErrorDto>;
 
@@ -1044,6 +1071,228 @@ impl Drop for BusyGuard<'_> {
     fn drop(&mut self) {
         self.busy.store(false, Ordering::Release);
     }
+}
+
+fn image_data_url(bytes: &[u8], media_type: &str) -> String {
+    format!(
+        "data:{media_type};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    )
+}
+
+fn png_dimensions(bytes: &[u8]) -> CommandResult<(u32, u32)> {
+    const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+    if bytes.len() < 24 || &bytes[..8] != PNG_SIGNATURE || &bytes[12..16] != b"IHDR" {
+        return Err(CommandErrorDto::new(
+            "workspace_background_invalid_png",
+            "Choose a valid PNG image.",
+        ));
+    }
+    let width = u32::from_be_bytes(bytes[16..20].try_into().unwrap_or_default());
+    let height = u32::from_be_bytes(bytes[20..24].try_into().unwrap_or_default());
+    if width == 0 || height == 0 || width > 16_384 || height > 16_384 {
+        return Err(CommandErrorDto::new(
+            "workspace_background_dimensions_invalid",
+            "PNG dimensions must be between 1 and 16384 pixels.",
+        ));
+    }
+    Ok((width, height))
+}
+
+fn workspace_background_path(app: &AppHandle) -> CommandResult<PathBuf> {
+    app.path()
+        .app_local_data_dir()
+        .map(|root| root.join("appearance").join("workspace-background.png"))
+        .map_err(|error| {
+            CommandErrorDto::new("workspace_background_path_failed", error.to_string())
+        })
+}
+
+fn read_workspace_background_for(path: &Path) -> CommandResult<Option<WorkspaceBackgroundDto>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        CommandErrorDto::at_path("workspace_background_read_failed", error.to_string(), path)
+    })?;
+    if !metadata.file_type().is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.len() > MAX_WORKSPACE_BACKGROUND_BYTES as u64
+    {
+        return Err(CommandErrorDto::at_path(
+            "workspace_background_invalid",
+            "The saved background is not a supported PNG file.",
+            path,
+        ));
+    }
+    let bytes = fs::read(path).map_err(|error| {
+        CommandErrorDto::at_path("workspace_background_read_failed", error.to_string(), path)
+    })?;
+    let (width, height) = png_dimensions(&bytes)?;
+    Ok(Some(WorkspaceBackgroundDto {
+        data_url: image_data_url(&bytes, "image/png"),
+        width,
+        height,
+        bytes: bytes.len(),
+    }))
+}
+
+#[tauri::command]
+fn read_workspace_background(app: AppHandle) -> CommandResult<Option<WorkspaceBackgroundDto>> {
+    read_workspace_background_for(&workspace_background_path(&app)?)
+}
+
+#[tauri::command]
+async fn choose_workspace_background(
+    app: AppHandle,
+    request: WorkspaceBackgroundDialogRequestDto,
+) -> CommandResult<Option<WorkspaceBackgroundDto>> {
+    let selected = tauri::async_runtime::spawn_blocking(move || {
+        rfd::FileDialog::new()
+            .set_title(request.title)
+            .add_filter(request.filter_label, &["png"])
+            .pick_file()
+    })
+    .await
+    .map_err(|error| CommandErrorDto::new("dialog_failed", error.to_string()))?;
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    let metadata = fs::symlink_metadata(&selected).map_err(|error| {
+        CommandErrorDto::at_path(
+            "workspace_background_read_failed",
+            error.to_string(),
+            &selected,
+        )
+    })?;
+    if !metadata.file_type().is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.len() > MAX_WORKSPACE_BACKGROUND_BYTES as u64
+    {
+        return Err(CommandErrorDto::at_path(
+            "workspace_background_invalid",
+            "Choose a regular PNG no larger than 16 MiB.",
+            &selected,
+        ));
+    }
+    let bytes = fs::read(&selected).map_err(|error| {
+        CommandErrorDto::at_path(
+            "workspace_background_read_failed",
+            error.to_string(),
+            &selected,
+        )
+    })?;
+    png_dimensions(&bytes)?;
+    let destination = workspace_background_path(&app)?;
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            CommandErrorDto::at_path(
+                "workspace_background_write_failed",
+                error.to_string(),
+                parent,
+            )
+        })?;
+    }
+    match fs::symlink_metadata(&destination) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.file_type().is_file() => {
+            return Err(CommandErrorDto::at_path(
+                "workspace_background_write_failed",
+                "Refusing to replace a non-regular workspace background file.",
+                &destination,
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(CommandErrorDto::at_path(
+                "workspace_background_write_failed",
+                error.to_string(),
+                &destination,
+            ));
+        }
+    }
+    fs::write(&destination, bytes).map_err(|error| {
+        CommandErrorDto::at_path(
+            "workspace_background_write_failed",
+            error.to_string(),
+            &destination,
+        )
+    })?;
+    read_workspace_background_for(&destination)
+}
+
+#[tauri::command]
+fn clear_workspace_background(app: AppHandle) -> CommandResult<bool> {
+    let path = workspace_background_path(&app)?;
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.file_type().is_dir() => {
+            return Err(CommandErrorDto::at_path(
+                "workspace_background_clear_failed",
+                "Refusing to remove a directory as a workspace background.",
+                &path,
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(CommandErrorDto::at_path(
+                "workspace_background_clear_failed",
+                error.to_string(),
+                &path,
+            ));
+        }
+    }
+    fs::remove_file(&path).map_err(|error| {
+        CommandErrorDto::at_path(
+            "workspace_background_clear_failed",
+            error.to_string(),
+            &path,
+        )
+    })?;
+    Ok(true)
+}
+
+#[tauri::command]
+fn load_library_avatar(request: LibraryAvatarRequestDto) -> CommandResult<Option<String>> {
+    let manifest_path = validate_manifest_input_path(&request.manifest_path)?;
+    let entry = catalog::summarize_manifest(&manifest_path).map_err(|message| {
+        CommandErrorDto::at_path("archive_summary_failed", message, &manifest_path)
+    })?;
+    let requested_path = request.relative_path.trim().replace('\\', "/");
+    let requested_sha = request.sha256.trim().to_ascii_lowercase();
+    if !entry
+        .avatar_overrides
+        .iter()
+        .any(|avatar| avatar.path == requested_path && avatar.sha256 == requested_sha)
+    {
+        return Ok(None);
+    }
+    let relative = validate_manifest_child_path(&requested_path)
+        .map_err(|(code, message)| CommandErrorDto::new(code, message))?;
+    let root = manifest_path.parent().unwrap_or_else(|| Path::new("."));
+    let canonical_root = fs::canonicalize(root).map_err(|error| {
+        CommandErrorDto::at_path("manifest_root_unavailable", error.to_string(), root)
+    })?;
+    let path = fs::canonicalize(root.join(relative)).map_err(|error| {
+        CommandErrorDto::at_path("manifest_avatar_missing", error.to_string(), root)
+    })?;
+    if !path.starts_with(&canonical_root) || !path.is_file() {
+        return Ok(None);
+    }
+    let bytes = fs::read(&path).map_err(|error| {
+        CommandErrorDto::at_path("manifest_avatar_read_failed", error.to_string(), &path)
+    })?;
+    if bytes.len() > MAX_LIBRARY_AVATAR_BYTES || sha256_hex(&bytes) != requested_sha {
+        return Ok(None);
+    }
+    let media_type = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        "image/png"
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        "image/jpeg"
+    } else {
+        return Ok(None);
+    };
+    Ok(Some(image_data_url(&bytes, media_type)))
 }
 
 #[tauri::command]
@@ -5536,6 +5785,10 @@ pub fn run() {
             choose_demo,
             choose_demos,
             choose_manifest,
+            read_workspace_background,
+            choose_workspace_background,
+            clear_workspace_background,
+            load_library_avatar,
             choose_output_dir,
             default_library_dir,
             choose_library_dir,
@@ -5604,6 +5857,22 @@ mod tests {
     fn interactive_analysis_keeps_optional_export_evidence() {
         assert!(INTERACTIVE_ANALYSIS_READ_OPTIONS.collect_voice);
         assert!(INTERACTIVE_ANALYSIS_READ_OPTIONS.collect_cosmetics);
+    }
+
+    #[test]
+    fn workspace_background_accepts_bounded_png_dimensions() {
+        let mut png = vec![0_u8; 24];
+        png[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        png[12..16].copy_from_slice(b"IHDR");
+        png[16..20].copy_from_slice(&1920_u32.to_be_bytes());
+        png[20..24].copy_from_slice(&1080_u32.to_be_bytes());
+        assert_eq!(png_dimensions(&png).unwrap(), (1920, 1080));
+
+        png[16..20].copy_from_slice(&0_u32.to_be_bytes());
+        assert_eq!(
+            png_dimensions(&png).unwrap_err().code,
+            "workspace_background_dimensions_invalid"
+        );
     }
 
     #[test]

@@ -11,12 +11,15 @@ import type { ActivityLogLevel, AppLogEntry, GsiStatus } from "../types";
 import "./logs-workspace.css";
 
 type LogFilter = "all" | ActivityLogLevel;
+export type ActivityLogRange = "today" | "sevenDays" | "all";
 
 interface LogsWorkspaceProps {
   words: TextDictionary;
   entries: AppLogEntry[];
   gsiStatus: GsiStatus | null;
   loading: boolean;
+  range: ActivityLogRange;
+  onRangeChange: (range: ActivityLogRange) => void;
   onRefresh: () => void;
   onOpenFolder: () => void;
   onClear: () => void;
@@ -49,6 +52,8 @@ export function LogsWorkspace({
   entries,
   gsiStatus,
   loading,
+  range,
+  onRangeChange,
   onRefresh,
   onOpenFolder,
   onClear,
@@ -95,6 +100,14 @@ export function LogsWorkspace({
       </section>
 
       <div className="logs-toolbar">
+        <label className="logs-range-filter">
+          <span className="sr-only">{words.logsRange}</span>
+          <select value={range} onChange={(event) => onRangeChange(event.target.value as ActivityLogRange)}>
+            <option value="today">{words.logsRangeToday}</option>
+            <option value="sevenDays">{words.logsRangeSevenDays}</option>
+            <option value="all">{words.logsRangeAll}</option>
+          </select>
+        </label>
         <label className="logs-level-filter">
           <span className="sr-only">{words.logsFilter}</span>
           <select value={level} onChange={(event) => setLevel(event.target.value as LogFilter)}>

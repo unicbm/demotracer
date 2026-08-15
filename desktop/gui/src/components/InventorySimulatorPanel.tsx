@@ -6,6 +6,7 @@
 
 import { useRef, type CSSProperties, type RefObject } from "react";
 import { ArrowIcon } from "../icons";
+import { TEXT } from "../i18n";
 import type { Language } from "../types";
 
 interface InventorySimulatorPanelProps {
@@ -37,6 +38,7 @@ export function InventorySimulatorPanel({
   onWidthChange,
   onWidthReset,
 }: InventorySimulatorPanelProps) {
+  const words = TEXT[language];
   const dragRef = useRef<{ pointerId: number; startWidth: number; startX: number } | null>(null);
 
   if (!open) {
@@ -46,10 +48,10 @@ export function InventorySimulatorPanel({
         className="inventory-simulator-rail"
         type="button"
         onClick={onExpand}
-        title={language === "zh" ? "展开 Inventory Simulator" : "Expand Inventory Simulator"}
+        title={words.inventorySimulatorExpand}
       >
         <ArrowIcon size={15} />
-        <span>{language === "zh" ? "库存" : "Inventory"}</span>
+        <span>{words.inventorySimulatorShortTitle}</span>
       </button>
     );
   }
@@ -63,7 +65,7 @@ export function InventorySimulatorPanel({
       <div
         className="inventory-simulator-splitter"
         role="separator"
-        aria-label={language === "zh" ? "调整 Inventory Simulator 宽度" : "Resize Inventory Simulator"}
+        aria-label={words.inventorySimulatorResize}
         aria-orientation="vertical"
         aria-valuemin={440}
         aria-valuemax={900}
@@ -123,10 +125,10 @@ export function InventorySimulatorPanel({
             className="inventory-simulator-panel-toggle"
             type="button"
             onClick={onCollapse}
-            aria-label={language === "zh" ? "收起 Inventory Simulator" : "Collapse Inventory Simulator"}
-            title={language === "zh" ? "收起到右侧" : "Collapse to the right"}
+            aria-label={words.inventorySimulatorCollapse}
+            title={words.inventorySimulatorCollapseRight}
           >
-            <span>{language === "zh" ? "收起" : "Collapse"}</span>
+            <span>{words.inventorySimulatorCollapseShort}</span>
             <ArrowIcon size={15} />
           </button>
         </header>
@@ -134,8 +136,8 @@ export function InventorySimulatorPanel({
           <div className="inventory-simulator-placeholder" aria-hidden="true">
             <i />
             <span>{resizing
-              ? (language === "zh" ? "正在调整布局…" : "Adjusting layout…")
-              : (language === "zh" ? "正在载入官网…" : "Loading official site…")}</span>
+              ? words.inventorySimulatorAdjusting
+              : words.inventorySimulatorLoading}</span>
           </div>
         </div>
       </div>

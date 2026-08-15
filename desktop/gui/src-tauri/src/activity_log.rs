@@ -125,18 +125,32 @@ impl ActivityLogState {
         Ok(entry)
     }
 
-    pub fn list(&self, limit: usize) -> CommandResult<Vec<ActivityLogEntryDto>> {
+    pub fn list(
+        &self,
+        limit: usize,
+        since_ms: Option<u64>,
+    ) -> CommandResult<Vec<ActivityLogEntryDto>> {
         let _guard = self.access.lock().map_err(|_| {
             CommandErrorDto::new("activity_log_lock_failed", "Activity log lock is poisoned.")
         })?;
         let mut entries = Vec::new();
         for path in log_files(self.root())? {
+            if since_ms.is_some_and(|since| {
+                log_file_coordinates(&path).is_some_and(|(day, _)| {
+                    day.saturating_add(1).saturating_mul(86_400_000) <= since
+                })
+            }) {
+                continue;
+            }
             let file = File::open(&path).map_err(|error| {
                 CommandErrorDto::at_path("activity_log_read_failed", error.to_string(), &path)
             })?;
             for line in BufReader::new(file).lines() {
                 let Ok(line) = line else { continue };
                 if let Ok(entry) = serde_json::from_str::<ActivityLogEntryDto>(&line) {
+                    if since_ms.is_some_and(|since| entry.timestamp_ms < since) {
+                        continue;
+                    }
                     entries.push(entry);
                 }
             }
@@ -179,9 +193,10 @@ impl ActivityLogState {
 #[tauri::command]
 pub fn list_activity_logs(
     limit: Option<usize>,
+    since_ms: Option<u64>,
     state: State<'_, ActivityLogState>,
 ) -> CommandResult<Vec<ActivityLogEntryDto>> {
-    state.list(limit.unwrap_or(MAX_READ_ENTRIES))
+    state.list(limit.unwrap_or(MAX_READ_ENTRIES), since_ms)
 }
 
 #[tauri::command]
@@ -405,7 +420,7 @@ mod tests {
         state
             .append(ActivityLogLevel::Warn, "conversion", "Skipped one player")
             .unwrap();
-        let entries = state.list(20).unwrap();
+        let entries = state.list(20, None).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].source, "analysis");
         assert_eq!(entries[1].level, ActivityLogLevel::Warn);
@@ -428,7 +443,22 @@ mod tests {
             .unwrap();
         let result = state.maintain().unwrap();
         assert_eq!(result.repaired_lines, 1);
-        assert_eq!(state.list(20).unwrap().len(), 1);
+        assert_eq!(state.list(20, None).unwrap().len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn list_filters_entries_older_than_since_timestamp() {
+        let root = temporary_log_root("since");
+        let state = ActivityLogState::new(root.clone()).unwrap();
+        let entry = state
+            .append(ActivityLogLevel::Info, "app", "current")
+            .unwrap();
+        assert_eq!(state.list(20, Some(entry.timestamp_ms)).unwrap().len(), 1);
+        assert!(state
+            .list(20, Some(entry.timestamp_ms.saturating_add(1)))
+            .unwrap()
+            .is_empty());
         fs::remove_dir_all(root).unwrap();
     }
 }

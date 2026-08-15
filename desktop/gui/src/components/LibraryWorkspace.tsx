@@ -4,6 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { invoke } from "@tauri-apps/api/core";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -28,6 +29,58 @@ import { SteamAvatar, teamRepresentative, useSteamProfiles, type SteamProfileMap
 import "./library-workspace.css";
 
 export type LibrarySort = "recent" | "map" | "platform";
+const LIBRARY_PAGE_SIZE = 50;
+const archiveAvatarCache = new Map<string, string>();
+const pendingArchiveAvatars = new Map<string, Promise<string | null>>();
+
+function teamAvatarEvidence(entry: DemoLibraryEntry, players: LibraryPlayerSummary[]) {
+  const steamIds = new Set(players.map((player) => player.steamId.trim()).filter(Boolean));
+  const candidates = (entry.avatarOverrides ?? []).filter((avatar) => steamIds.has(avatar.steamId));
+  const unique = new Map(candidates.map((avatar) => [avatar.sha256, avatar]));
+  const minimumEvidence = Math.min(2, steamIds.size);
+  return candidates.length >= minimumEvidence && unique.size === 1
+    ? [...unique.values()][0]
+    : null;
+}
+
+function useArchiveTeamAvatar(
+  entry: DemoLibraryEntry,
+  players: LibraryPlayerSummary[],
+  enabled: boolean,
+): string | null {
+  const evidence = teamAvatarEvidence(entry, players);
+  const cacheKey = evidence ? `${entry.manifestPath}\n${evidence.sha256}` : "";
+  const [url, setUrl] = useState<string | null>(() => archiveAvatarCache.get(cacheKey) ?? null);
+  useEffect(() => {
+    if (!enabled || !evidence || !("__TAURI_INTERNALS__" in window)) {
+      setUrl(null);
+      return undefined;
+    }
+    const cached = archiveAvatarCache.get(cacheKey);
+    if (cached) {
+      setUrl(cached);
+      return undefined;
+    }
+    let active = true;
+    let request = pendingArchiveAvatars.get(cacheKey);
+    if (!request) {
+      request = invoke<string | null>("load_library_avatar", {
+        request: {
+          manifestPath: entry.manifestPath,
+          relativePath: evidence.path,
+          sha256: evidence.sha256,
+        },
+      }).catch(() => null).finally(() => pendingArchiveAvatars.delete(cacheKey));
+      pendingArchiveAvatars.set(cacheKey, request);
+    }
+    void request.then((loaded) => {
+      if (loaded) archiveAvatarCache.set(cacheKey, loaded);
+      if (active) setUrl(loaded);
+    });
+    return () => { active = false; };
+  }, [cacheKey, enabled, entry.manifestPath, evidence?.path, evidence?.sha256]);
+  return url;
+}
 
 interface LibraryWorkspaceProps {
   words: TextDictionary;
@@ -291,6 +344,8 @@ function LibraryRow({
     ? [...firstPlayers, ...secondPlayers].map((player) => player.steamId)
     : [];
   const profiles = useSteamProfiles(profileSteamIds);
+  const firstArchiveAvatar = useArchiveTeamAvatar(entry, firstPlayers, loadAvatars);
+  const secondArchiveAvatar = useArchiveTeamAvatar(entry, secondPlayers, loadAvatars);
   const firstRepresentative = representativeWithLoadedAvatar(firstName, firstPlayers, profiles);
   const secondRepresentative = representativeWithLoadedAvatar(secondName, secondPlayers, profiles);
   const firstPlayerNames = firstPlayers.map((player) => player.name);
@@ -452,7 +507,7 @@ function LibraryRow({
       </div>
       <div className="library-row-match" aria-label={`${firstName} vs ${secondName}`}>
         <div className="library-row-team">
-          {firstRepresentative ? <SteamAvatar profile={profiles.get(firstRepresentative.steamId)} fallbackName={firstRepresentative.name} playerColor={firstRepresentative.playerColor} size="compact" /> : null}
+          {firstRepresentative ? <SteamAvatar overrideUrl={firstArchiveAvatar} profile={profiles.get(firstRepresentative.steamId)} fallbackName={firstRepresentative.name} playerColor={firstRepresentative.playerColor} size="compact" /> : null}
           <span className="library-row-team-copy">
             <strong title={firstName}>{firstName}</strong>
             {firstPlayerNames.length > 0 ? <small title={firstPlayerNames.join(" · ")}>{firstPlayerNames.join(" · ")}</small> : null}
@@ -464,7 +519,7 @@ function LibraryRow({
             <strong title={secondName}>{secondName}</strong>
             {secondPlayerNames.length > 0 ? <small title={secondPlayerNames.join(" · ")}>{secondPlayerNames.join(" · ")}</small> : null}
           </span>
-          {secondRepresentative ? <SteamAvatar profile={profiles.get(secondRepresentative.steamId)} fallbackName={secondRepresentative.name} playerColor={secondRepresentative.playerColor} size="compact" /> : null}
+          {secondRepresentative ? <SteamAvatar overrideUrl={secondArchiveAvatar} profile={profiles.get(secondRepresentative.steamId)} fallbackName={secondRepresentative.name} playerColor={secondRepresentative.playerColor} size="compact" /> : null}
         </div>
       </div>
       <div
@@ -598,6 +653,8 @@ function LibrarySeriesGroup({
   const profiles = useSteamProfiles(loadAvatars
     ? [...context.firstPlayers, ...context.secondPlayers].map((player) => player.steamId)
     : []);
+  const firstArchiveAvatar = useArchiveTeamAvatar(primaryEntry, context.firstPlayers, loadAvatars);
+  const secondArchiveAvatar = useArchiveTeamAvatar(primaryEntry, context.secondPlayers, loadAvatars);
   const firstRepresentative = representativeWithLoadedAvatar(context.firstName, context.firstPlayers, profiles);
   const secondRepresentative = representativeWithLoadedAvatar(context.secondName, context.secondPlayers, profiles);
   const firstPlayerNames = context.firstPlayers.map((player) => player.name);
@@ -688,7 +745,7 @@ function LibrarySeriesGroup({
         onKeyDown={activatePrimaryFromKeyboard}
       >
         <div className="library-row-team">
-          {firstRepresentative ? <SteamAvatar profile={profiles.get(firstRepresentative.steamId)} fallbackName={firstRepresentative.name} playerColor={firstRepresentative.playerColor} size="compact" /> : null}
+          {firstRepresentative ? <SteamAvatar overrideUrl={firstArchiveAvatar} profile={profiles.get(firstRepresentative.steamId)} fallbackName={firstRepresentative.name} playerColor={firstRepresentative.playerColor} size="compact" /> : null}
           <span className="library-row-team-copy">
             <strong title={context.firstName}>{context.firstName}</strong>
             {firstPlayerNames.length > 0 ? <small title={firstPlayerNames.join(" · ")}>{firstPlayerNames.join(" · ")}</small> : null}
@@ -708,7 +765,7 @@ function LibrarySeriesGroup({
             <strong title={context.secondName}>{context.secondName}</strong>
             {secondPlayerNames.length > 0 ? <small title={secondPlayerNames.join(" · ")}>{secondPlayerNames.join(" · ")}</small> : null}
           </span>
-          {secondRepresentative ? <SteamAvatar profile={profiles.get(secondRepresentative.steamId)} fallbackName={secondRepresentative.name} playerColor={secondRepresentative.playerColor} size="compact" /> : null}
+          {secondRepresentative ? <SteamAvatar overrideUrl={secondArchiveAvatar} profile={profiles.get(secondRepresentative.steamId)} fallbackName={secondRepresentative.name} playerColor={secondRepresentative.playerColor} size="compact" /> : null}
         </div>
       </div>
       <div
@@ -783,6 +840,7 @@ export function LibraryWorkspace({
   const [noteEntry, setNoteEntry] = useState<DemoLibraryEntry | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [noteSaving, setNoteSaving] = useState(false);
+  const [page, setPage] = useState(0);
   const propertiesRequestRef = useRef(0);
   const [sourceLinkNoteDismissed, setSourceLinkNoteDismissed] = useState(() => {
     try {
@@ -902,6 +960,18 @@ export function LibraryWorkspace({
     emittedSeries.add(seriesId);
     libraryItems.push({ kind: "series", id: seriesId, entries: group });
   }
+  const pageCount = Math.max(1, Math.ceil(libraryItems.length / LIBRARY_PAGE_SIZE));
+  const visiblePage = Math.min(page, pageCount - 1);
+  const visibleItems = libraryItems.slice(
+    visiblePage * LIBRARY_PAGE_SIZE,
+    (visiblePage + 1) * LIBRARY_PAGE_SIZE,
+  );
+  const pageStart = libraryItems.length === 0 ? 0 : visiblePage * LIBRARY_PAGE_SIZE + 1;
+  const pageEnd = Math.min(libraryItems.length, (visiblePage + 1) * LIBRARY_PAGE_SIZE);
+  useEffect(() => setPage(0), [mapFilter, platformFilter, query, sort]);
+  useEffect(() => {
+    setPage((current) => Math.min(current, pageCount - 1));
+  }, [pageCount]);
   const renderLibraryRow = (
     entry: DemoLibraryEntry,
     seriesOrder?: number,
@@ -1061,19 +1131,34 @@ export function LibraryWorkspace({
           ) : null}
 
           {isScanning ? <LibrarySkeleton /> : entries.length > 0 ? (
-            <div className="library-list">
-              {libraryItems.map((item) => item.kind === "series" ? (
-                <LibrarySeriesGroup
-                  key={item.id}
-                  entries={item.entries}
-                  words={words}
-                  language={language}
-                  primaryDisabled={maintenanceBusy || archiveOpenDisabled}
-                  onOpenPrimary={onOpenEntry}
-                  renderEntry={renderLibraryRow}
-                />
-              ) : renderLibraryRow(item.entry))}
-            </div>
+            <>
+              {pageCount > 1 ? (
+                <nav className="library-pagination" aria-label={words.libraryPagination}>
+                  <span>{words.libraryPageRange
+                    .replace("{start}", String(pageStart))
+                    .replace("{end}", String(pageEnd))
+                    .replace("{total}", String(libraryItems.length))}</span>
+                  <div>
+                    <button className="secondary-button" type="button" disabled={visiblePage === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>{words.previousPage}</button>
+                    <strong>{words.libraryPageNumber.replace("{current}", String(visiblePage + 1)).replace("{total}", String(pageCount))}</strong>
+                    <button className="secondary-button" type="button" disabled={visiblePage >= pageCount - 1} onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}>{words.nextPage}</button>
+                  </div>
+                </nav>
+              ) : null}
+              <div className="library-list">
+                {visibleItems.map((item) => item.kind === "series" ? (
+                  <LibrarySeriesGroup
+                    key={item.id}
+                    entries={item.entries}
+                    words={words}
+                    language={language}
+                    primaryDisabled={maintenanceBusy || archiveOpenDisabled}
+                    onOpenPrimary={onOpenEntry}
+                    renderEntry={renderLibraryRow}
+                  />
+                ) : renderLibraryRow(item.entry))}
+              </div>
+            </>
           ) : (
             <div className={`library-no-results${scan?.entries.length === 0 ? " is-blank-slate" : ""}`}>
               <span className="library-blank-mark" aria-hidden="true">
