@@ -245,13 +245,9 @@ public sealed partial class DemoTracerPlugin
 
     private bool DispatchReplayChatFrame(ChatPlaybackFrame frame)
     {
-        if (frame.Scope == ReplayChatScope.Server)
+        if (ReplayChatOutputFor(frame.Scope) == ReplayChatOutput.ServerChatboxBroadcast)
         {
-            var speaker = string.IsNullOrWhiteSpace(frame.SenderName)
-                ? "server"
-                : frame.SenderName;
-            Server.PrintToChatAll($"[DTR] {speaker}: {frame.Text}");
-            Server.PrintToConsole($"[DTR CHAT] {speaker}: {frame.Text}");
+            Server.PrintToChatAll(frame.Text);
             return true;
         }
 
@@ -408,7 +404,7 @@ public sealed partial class DemoTracerPlugin
            (message.SenderSteamId != 0 ||
             NormalizeReplayChatScope(message.Scope) == ReplayChatScope.Server);
 
-    private static ReplayChatScope NormalizeReplayChatScope(string? value)
+    internal static ReplayChatScope NormalizeReplayChatScope(string? value)
     {
         return value?.Trim().ToLowerInvariant() switch
         {
@@ -424,7 +420,7 @@ public sealed partial class DemoTracerPlugin
         return value?.Trim().ToLowerInvariant() is "all" or "team" or "server" or "admin";
     }
 
-    private static string SanitizeReplayChatText(string? value)
+    internal static string SanitizeReplayChatText(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
             return string.Empty;
@@ -476,7 +472,18 @@ public sealed partial class DemoTracerPlugin
         return new string(chars.ToArray()).Trim();
     }
 
-    private enum ReplayChatScope
+    internal static ReplayChatOutput ReplayChatOutputFor(ReplayChatScope scope)
+        => scope == ReplayChatScope.Server
+            ? ReplayChatOutput.ServerChatboxBroadcast
+            : ReplayChatOutput.PlayerChatCommand;
+
+    internal enum ReplayChatOutput
+    {
+        PlayerChatCommand,
+        ServerChatboxBroadcast
+    }
+
+    internal enum ReplayChatScope
     {
         All,
         Team,
