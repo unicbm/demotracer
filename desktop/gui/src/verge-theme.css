@@ -892,6 +892,11 @@ textarea {
   border-radius: 0;
 }
 
+.library-pagination {
+  max-width: none;
+  margin-inline: 0;
+}
+
 .library-row,
 .library-series-group {
   min-height: 70px;
@@ -1472,26 +1477,18 @@ textarea {
   padding: 0 0 28px;
 }
 
-.player-analysis-heading,
-.player-analysis-overview-panel {
+.player-analysis-summary {
   border-color: var(--divider);
   border-radius: var(--radius-lg);
   box-shadow: var(--surface-shadow);
 }
 
 .player-analysis-heading {
-  position: relative;
-  overflow: hidden;
   border-top-width: 1px;
 }
 
 .player-analysis-heading::before {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
-  background: var(--selected-team-color);
-  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
-  content: "";
+  content: none;
 }
 
 .archive-toolbar {

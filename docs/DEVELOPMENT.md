@@ -90,23 +90,34 @@ cd ..\..
 .\tooling\scripts\check-release-contract.ps1
 ```
 
-Run the desktop development application with its real Rust backend and Vite
-hot reload:
+Run the install-free GUI acceptance application with its real Rust backend and
+Vite hot reload:
 
 ```powershell
 cd desktop\gui
-pnpm dev
+pnpm run dev:acceptance
 ```
 
-This is the normal GUI development entry point. It starts Vite on
+This is the normal GUI acceptance entry point. It does not build or install an
+NSIS package. It starts Vite on
 `127.0.0.1:1420` and opens that frontend inside the Tauri WebView, so Tauri
 commands, the converter, the local library, avatar cache, and filesystem access
 remain available. The Rust backend uses the release profile for realistic demo
-parsing performance while frontend edits still hot-reload. Use
-`pnpm run dev:debug` only when debugging Rust itself. `pnpm run dev:web` starts
-only the frontend server and is useful for isolated layout work; a regular
-browser at that address does not have Tauri IPC and therefore cannot provide a
-functional application backend.
+parsing performance while TSX and CSS edits hot-reload in the already-open
+window. `pnpm dev` is a short alias for the same workflow. Use `pnpm run
+dev:debug` only when debugging Rust itself. `pnpm run dev:web` starts only the
+frontend server and is useful for isolated layout work; a regular browser at
+that address does not have Tauri IPC and therefore cannot be used to accept
+Manifest, library, conversion, or other real-backend behavior.
+
+GUI appearance preferences use `gui-preferences.v1.json` in Tauri's application
+local-data directory as their versioned source of truth. The document stores the
+language, selected theme, UI font size, sidebar state, theme customization, and
+custom CSS profiles. WebView `localStorage` retains only a synchronized startup
+cache so the theme and font can be applied before the asynchronous Tauri command
+returns. When the JSON file does not exist, the application imports the existing
+startup cache once and creates it automatically. The workspace background remains
+the separate bounded `appearance/workspace-background.png` asset.
 
 Refresh `shared/econ/cs2-lib-econ-index.v1.json` only by updating the exact
 `@ianlucas/cs2-lib` dependency and lockfile under `tooling/cs2-lib-data`, then

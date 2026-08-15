@@ -10,6 +10,7 @@ mod batch;
 mod catalog;
 mod diagnostics;
 mod gsi;
+mod gui_preferences;
 mod http_client;
 mod inventory_simulator;
 mod playback_manager;
@@ -54,6 +55,7 @@ use cs2_demotracer::validate::validate_dtr_path;
 use cs2_demotracer::voice_export::export_round_voice_sidecars;
 use diagnostics::{choose_cs2_dir, detect_cs2_installations, inspect_cs2_install};
 use gsi::{configure_gsi, gsi_status, GsiState};
+use gui_preferences::{load_gui_preferences, save_gui_preferences};
 use inventory_simulator::{set_inventory_simulator_panel, start_inventory_simulator_batch};
 use playback_manager::{
     choose_playback_bundle, install_latest_playback_bundle, install_playback_bundle,
@@ -5788,6 +5790,8 @@ pub fn run() {
             read_workspace_background,
             choose_workspace_background,
             clear_workspace_background,
+            load_gui_preferences,
+            save_gui_preferences,
             load_library_avatar,
             choose_output_dir,
             default_library_dir,

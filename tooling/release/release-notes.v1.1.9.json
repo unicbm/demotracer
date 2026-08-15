@@ -1,0 +1,4 @@
+{
+  "zh": "GUI 设置改用可恢复的版本化文件，档案比分栏支持 Demo 队伍头像，并整理回放库与玩家摘要界面；Playback/CSS 继续使用 v1.1.8。",
+  "en": "Moved GUI preferences to a recoverable versioned file, added demo-backed team avatars to archive scoreboards, and refined library and player-summary layouts; Playback/CSS remains at v1.1.8."
+}

@@ -94,6 +94,7 @@ import { AlertIcon, ArrowIcon, CloseIcon, FolderIcon } from "./icons";
 import { COSMETIC_PHRASE, TEXT } from "./i18n";
 import { useActivityLogController } from "./hooks/useActivityLogController";
 import { useAppearanceRuntime } from "./hooks/useAppearanceRuntime";
+import { useGuiPreferencesPersistence } from "./hooks/useGuiPreferencesPersistence";
 import { useUpdateController } from "./hooks/useUpdateController";
 import {
   AGGREGATE_TELEMETRY_STORAGE_KEY,
@@ -374,6 +375,24 @@ function App() {
     language,
     cs2Path: localEnvironment.cs2Path,
     onInspectEnvironment: runEnvironmentInspection,
+  });
+
+  useGuiPreferencesPersistence({
+    language,
+    setLanguage,
+    theme,
+    setTheme,
+    uiFontSize,
+    setUiFontSize,
+    sidebarCollapsed,
+    setSidebarCollapsed,
+    themeCustomization,
+    setThemeCustomization,
+    customCssProfiles,
+    setCustomCssProfiles,
+    activeCustomCssProfileId,
+    setActiveCustomCssProfileId,
+    onError: setGlobalError,
   });
 
   useAppearanceRuntime({

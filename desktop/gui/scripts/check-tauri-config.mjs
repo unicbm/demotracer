@@ -7,6 +7,20 @@
 import { readFileSync } from "node:fs";
 
 const config = JSON.parse(readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
+const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+
+if (config.build?.beforeDevCommand !== "pnpm run dev:web") {
+  throw new Error("tauri.conf.json must start Vite before the Tauri development application");
+}
+if (config.build?.devUrl !== "http://localhost:1420") {
+  throw new Error("tauri.conf.json must load the canonical Vite development URL");
+}
+if (packageJson.scripts?.["dev:acceptance"] !== "tauri dev --release") {
+  throw new Error("package.json must keep the real-backend GUI acceptance command");
+}
+if (packageJson.scripts?.dev !== "pnpm run dev:acceptance") {
+  throw new Error("package.json dev command must use the GUI acceptance workflow");
+}
 
 const updater = config.plugins?.updater;
 if (!updater || typeof updater !== "object") {
@@ -33,4 +47,4 @@ if (config.bundle?.windows?.nsis?.installerHooks !== "windows/installer-hooks.ns
   throw new Error("tauri.conf.json must keep the Windows shortcut repair hook enabled");
 }
 
-console.log("Tauri NSIS and signed stable updater configuration are valid.");
+console.log("Tauri development, NSIS, and signed stable updater configuration are valid.");

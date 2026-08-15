@@ -21,6 +21,7 @@ import {
 } from "../replayRetention";
 import type { ConversionSummary, DemoLibraryEntry, Language, ManifestArchive, ManifestArchiveRound, PlayerSummary } from "../types";
 import { displayMap, MapArtwork, mapArtworkStyle } from "./MapArtwork";
+import { useArchiveTeamAvatar } from "./archiveTeamAvatar";
 import { PlaybackCommandBuilder, type PlaybackPresetOptions } from "./PlaybackCommandBuilder";
 import { PlayerAnalysisWorkspace, type PlayerAnalysisTeam } from "./PlayerAnalysisWorkspace";
 import { RosterTeam, type PlayerSelection } from "./PlayerRoster";
@@ -315,6 +316,8 @@ export function ArchiveWorkspace({
   );
   const teamARepresentative = teamRepresentative(teamAName, teamARoster);
   const teamBRepresentative = teamRepresentative(teamBName, teamBRoster);
+  const teamAArchiveAvatar = useArchiveTeamAvatar(currentSeriesEntry, teamARoster, true);
+  const teamBArchiveAvatar = useArchiveTeamAvatar(currentSeriesEntry, teamBRoster, true);
   const matchRounds = archive.score
     ? archive.score.teamA.score + archive.score.teamB.score
     : null;
@@ -406,7 +409,7 @@ export function ArchiveWorkspace({
             <div className="archive-score-team is-team-a">
               <div className="archive-score-team-identity">
                 <strong title={teamAName}>{teamAName}</strong>
-                {teamARepresentative ? <SteamAvatar profile={steamProfiles.get(teamARepresentative.steamId)} fallbackName={teamARepresentative.name} playerColor={teamARepresentative.playerColor} size="hero" /> : null}
+                {teamARepresentative ? <SteamAvatar overrideUrl={teamAArchiveAvatar} profile={steamProfiles.get(teamARepresentative.steamId)} fallbackName={teamARepresentative.name} playerColor={teamARepresentative.playerColor} size="hero" /> : null}
               </div>
             </div>
             <div className="archive-scoreline" aria-label={archive.score ? `${teamAName} ${archive.score.teamA.score} : ${archive.score.teamB.score} ${teamBName}` : words.scoreUnavailable}>
@@ -424,7 +427,7 @@ export function ArchiveWorkspace({
             <div className="archive-score-team is-team-b">
               <div className="archive-score-team-identity">
                 <strong title={teamBName}>{teamBName}</strong>
-                {teamBRepresentative ? <SteamAvatar profile={steamProfiles.get(teamBRepresentative.steamId)} fallbackName={teamBRepresentative.name} playerColor={teamBRepresentative.playerColor} size="hero" /> : null}
+                {teamBRepresentative ? <SteamAvatar overrideUrl={teamBArchiveAvatar} profile={steamProfiles.get(teamBRepresentative.steamId)} fallbackName={teamBRepresentative.name} playerColor={teamBRepresentative.playerColor} size="hero" /> : null}
               </div>
             </div>
           </div>

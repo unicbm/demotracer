@@ -4,7 +4,6 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { invoke } from "@tauri-apps/api/core";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -23,6 +22,7 @@ import {
 import { resolveProfessionalPlayer } from "../professionalPlayers";
 import type { DemoLibraryEntry, DemoLibraryScan, Language, LibraryPlayerSummary, ManifestArchive } from "../types";
 import { displayMap, MapArtwork, mapArtworkStyle } from "./MapArtwork";
+import { useArchiveTeamAvatar } from "./archiveTeamAvatar";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { DialogPrimitive } from "./Dialog";
 import { SteamAvatar, teamRepresentative, useSteamProfiles, type SteamProfileMap } from "./SteamProfile";
@@ -30,57 +30,6 @@ import "./library-workspace.css";
 
 export type LibrarySort = "recent" | "map" | "platform";
 const LIBRARY_PAGE_SIZE = 50;
-const archiveAvatarCache = new Map<string, string>();
-const pendingArchiveAvatars = new Map<string, Promise<string | null>>();
-
-function teamAvatarEvidence(entry: DemoLibraryEntry, players: LibraryPlayerSummary[]) {
-  const steamIds = new Set(players.map((player) => player.steamId.trim()).filter(Boolean));
-  const candidates = (entry.avatarOverrides ?? []).filter((avatar) => steamIds.has(avatar.steamId));
-  const unique = new Map(candidates.map((avatar) => [avatar.sha256, avatar]));
-  const minimumEvidence = Math.min(2, steamIds.size);
-  return candidates.length >= minimumEvidence && unique.size === 1
-    ? [...unique.values()][0]
-    : null;
-}
-
-function useArchiveTeamAvatar(
-  entry: DemoLibraryEntry,
-  players: LibraryPlayerSummary[],
-  enabled: boolean,
-): string | null {
-  const evidence = teamAvatarEvidence(entry, players);
-  const cacheKey = evidence ? `${entry.manifestPath}\n${evidence.sha256}` : "";
-  const [url, setUrl] = useState<string | null>(() => archiveAvatarCache.get(cacheKey) ?? null);
-  useEffect(() => {
-    if (!enabled || !evidence || !("__TAURI_INTERNALS__" in window)) {
-      setUrl(null);
-      return undefined;
-    }
-    const cached = archiveAvatarCache.get(cacheKey);
-    if (cached) {
-      setUrl(cached);
-      return undefined;
-    }
-    let active = true;
-    let request = pendingArchiveAvatars.get(cacheKey);
-    if (!request) {
-      request = invoke<string | null>("load_library_avatar", {
-        request: {
-          manifestPath: entry.manifestPath,
-          relativePath: evidence.path,
-          sha256: evidence.sha256,
-        },
-      }).catch(() => null).finally(() => pendingArchiveAvatars.delete(cacheKey));
-      pendingArchiveAvatars.set(cacheKey, request);
-    }
-    void request.then((loaded) => {
-      if (loaded) archiveAvatarCache.set(cacheKey, loaded);
-      if (active) setUrl(loaded);
-    });
-    return () => { active = false; };
-  }, [cacheKey, enabled, entry.manifestPath, evidence?.path, evidence?.sha256]);
-  return url;
-}
 
 interface LibraryWorkspaceProps {
   words: TextDictionary;
@@ -299,15 +248,8 @@ function LibraryRow({
   words,
   language,
   onOpen,
-  onInspect,
   onRepair,
-  onRevealManifest,
-  onRevealDemo,
-  onCopyManifestPath,
-  onCopyDemoPath,
-  onEditNote,
-  onReparse,
-  onDelete,
+  onOpenContextMenu,
   repairing,
   disabled,
   taskBusy,
@@ -318,22 +260,14 @@ function LibraryRow({
   words: TextDictionary;
   language: Language;
   onOpen: () => void;
-  onInspect: () => void;
   onRepair: () => void;
-  onRevealManifest: () => void;
-  onRevealDemo: () => void;
-  onCopyManifestPath: () => void;
-  onCopyDemoPath: () => void;
-  onEditNote: () => void;
-  onReparse: () => void;
-  onDelete: () => void;
+  onOpenContextMenu: (event: ReactMouseEvent) => void;
   repairing: boolean;
   disabled: boolean;
   taskBusy: boolean;
 }) {
   const rowRef = useRef<HTMLElement | null>(null);
   const [loadAvatars, setLoadAvatars] = useState(false);
-  const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const {
     firstName,
     secondName,
@@ -386,26 +320,6 @@ function LibraryRow({
   const activate = () => {
     if (!disabled) onOpen();
   };
-  const openMenu = (event: ReactMouseEvent) => {
-    event.preventDefault();
-    setMenu({
-      x: event.clientX,
-      y: event.clientY,
-      label: words.archiveContextMenu,
-      items: [
-        { label: words.openArchive, icon: <ReplayIcon size={15} />, disabled, onSelect: onOpen },
-        { label: words.viewDtrProperties, icon: <TraceMark size={15} />, onSelect: onInspect },
-        { label: words.archiveCustomNote, icon: <NoteIcon size={15} />, onSelect: onEditNote },
-        { label: words.openManifestLocation, icon: <FolderIcon size={15} />, onSelect: onRevealManifest },
-        { label: `${words.copyPath} · ${words.manifest}`, icon: <CopyIcon size={15} />, onSelect: onCopyManifestPath },
-        { label: words.openDemoLocation, icon: <FolderIcon size={15} />, disabled: needsSourceLink, onSelect: onRevealDemo },
-        { label: words.copyDemoPath, icon: <CopyIcon size={15} />, disabled: needsSourceLink, onSelect: onCopyDemoPath },
-        { label: words.reparseDemo, icon: <RefreshIcon size={15} />, dividerBefore: true, disabled: disabled || taskBusy, onSelect: onReparse },
-        ...(needsRepair ? [{ label: repairActionLabel, icon: <RefreshIcon size={15} />, disabled: repairing || disabled || taskBusy, onSelect: onRepair }] : []),
-        { label: words.deleteArchive, icon: <TrashIcon size={15} />, dividerBefore: true, danger: true, disabled: disabled || taskBusy, onSelect: onDelete },
-      ],
-    });
-  };
 
   if (seriesOrder) {
     const seriesFirstScore = seriesScore?.first ?? null;
@@ -419,13 +333,12 @@ function LibraryRow({
       ? `${seriesFirstScore} : ${seriesSecondScore}`
       : words.scoreUnavailable;
     return (
-      <>
-        <article
-          ref={rowRef}
-          className="library-series-map-card"
-          style={mapArtworkStyle(entry.map)}
-          onContextMenu={openMenu}
-        >
+      <article
+        ref={rowRef}
+        className="library-series-map-card"
+        style={mapArtworkStyle(entry.map)}
+        onContextMenu={onOpenContextMenu}
+      >
           <button
             className="library-series-map-open"
             type="button"
@@ -473,14 +386,11 @@ function LibraryRow({
               </button>
             ) : null}
           </div>
-        </article>
-        {menu ? <ContextMenu menu={menu} onClose={() => setMenu(null)} /> : null}
-      </>
+      </article>
     );
   }
 
   return (
-    <>
     <article
       ref={rowRef}
       className="library-row"
@@ -494,7 +404,7 @@ function LibraryRow({
         event.preventDefault();
         activate();
       }}
-      onContextMenu={openMenu}
+      onContextMenu={onOpenContextMenu}
     >
       <div className="library-row-date" title={entry.serverName ? `${words.demoServerName}: ${entry.serverName}` : undefined}>
         <time dateTime={demoDate.iso} title={demoDate.iso ? undefined : words.matchTimeUnknown}>
@@ -567,8 +477,6 @@ function LibraryRow({
       <ArrowIcon className="library-row-arrow" size={14} />
 
     </article>
-    {menu ? <ContextMenu menu={menu} onClose={() => setMenu(null)} /> : null}
-    </>
   );
 }
 
@@ -578,6 +486,7 @@ interface LibrarySeriesGroupProps {
   language: Language;
   primaryDisabled: boolean;
   onOpenPrimary: (entry: DemoLibraryEntry) => void;
+  onOpenSeriesContextMenu: (event: ReactMouseEvent, entries: DemoLibraryEntry[]) => void;
   renderEntry: (
     entry: DemoLibraryEntry,
     seriesOrder?: number,
@@ -643,6 +552,7 @@ function LibrarySeriesGroup({
   language,
   primaryDisabled,
   onOpenPrimary,
+  onOpenSeriesContextMenu,
   renderEntry,
 }: LibrarySeriesGroupProps) {
   const ordered = [...entries].sort((left, right) => (left.series?.order ?? 0) - (right.series?.order ?? 0));
@@ -717,6 +627,7 @@ function LibrarySeriesGroup({
       className="library-series-group"
       style={mapArtworkStyle(ordered[0].map)}
       aria-label={`${context.firstName} vs ${context.secondName}`}
+      onContextMenu={(event) => onOpenSeriesContextMenu(event, ordered)}
     >
       <div
         className="library-row-date library-series-date"
@@ -840,6 +751,7 @@ export function LibraryWorkspace({
   const [noteEntry, setNoteEntry] = useState<DemoLibraryEntry | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [noteSaving, setNoteSaving] = useState(false);
+  const [entryMenu, setEntryMenu] = useState<ContextMenuState | null>(null);
   const [page, setPage] = useState(0);
   const propertiesRequestRef = useRef(0);
   const [sourceLinkNoteDismissed, setSourceLinkNoteDismissed] = useState(() => {
@@ -920,6 +832,52 @@ export function LibraryWorkspace({
   const normalizedQuery = query.trim().toLowerCase();
   const isScanning = loading || scan === null;
   const maintenanceBusy = repairingLibrary || importingArchives || Boolean(repairingManifest);
+  const openEntryMenu = (event: ReactMouseEvent, entry: DemoLibraryEntry) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const disabled = maintenanceBusy || archiveOpenDisabled;
+    const repairing = repairingManifest === entry.manifestPath;
+    const needsMetadata = entry.metadataStatus !== "current";
+    const needsSourceLink = !entry.sourcePath || entry.sourceAvailable === false;
+    const needsRepair = needsMetadata || needsSourceLink;
+    const repairLabel = needsMetadata ? words.repairMetadata : words.linkSourceDemo;
+    const repairActionLabel = repairing
+      ? (needsMetadata ? words.repairingMetadata : words.linkingSourceDemo)
+      : repairLabel;
+    setEntryMenu({
+      x: event.clientX,
+      y: event.clientY,
+      label: words.archiveContextMenu,
+      items: [
+        { label: words.openArchive, icon: <ReplayIcon size={15} />, disabled, onSelect: () => onOpenEntry(entry) },
+        { label: words.viewDtrProperties, icon: <TraceMark size={15} />, onSelect: () => inspectEntry(entry) },
+        { label: words.archiveCustomNote, icon: <NoteIcon size={15} />, onSelect: () => editNote(entry) },
+        { label: words.openManifestLocation, icon: <FolderIcon size={15} />, onSelect: () => onRevealManifest(entry) },
+        { label: `${words.copyPath} · ${words.manifest}`, icon: <CopyIcon size={15} />, onSelect: () => onCopyManifestPath(entry) },
+        { label: words.openDemoLocation, icon: <FolderIcon size={15} />, disabled: needsSourceLink, onSelect: () => onRevealDemo(entry) },
+        { label: words.copyDemoPath, icon: <CopyIcon size={15} />, disabled: needsSourceLink, onSelect: () => onCopyDemoPath(entry) },
+        { label: words.reparseDemo, icon: <RefreshIcon size={15} />, dividerBefore: true, disabled: disabled || taskBusy, onSelect: () => onReparseEntry(entry) },
+        ...(needsRepair ? [{ label: repairActionLabel, icon: <RefreshIcon size={15} />, disabled: repairing || disabled || taskBusy, onSelect: () => onRepairEntry(entry) }] : []),
+        { label: words.deleteArchive, icon: <TrashIcon size={15} />, dividerBefore: true, danger: true, disabled: disabled || taskBusy, onSelect: () => onDeleteEntry(entry) },
+      ],
+    });
+  };
+  const openSeriesMenu = (event: ReactMouseEvent, series: DemoLibraryEntry[]) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const disabled = maintenanceBusy || archiveOpenDisabled;
+    setEntryMenu({
+      x: event.clientX,
+      y: event.clientY,
+      label: words.archiveContextMenu,
+      items: series.map((entry, index) => ({
+        label: `${words.map} ${entry.series?.order ?? index + 1} · ${displayMap(entry.map)}`,
+        icon: <ReplayIcon size={15} />,
+        disabled,
+        onSelect: () => onOpenEntry(entry),
+      })),
+    });
+  };
   const hasRepairableArchives = (scan?.entries ?? []).some((entry) => (
     entry.metadataStatus !== "current" || !entry.sourcePath || entry.sourceAvailable === false
   ));
@@ -985,15 +943,8 @@ export function LibraryWorkspace({
       words={words}
       language={language}
       onOpen={() => onOpenEntry(entry)}
-      onInspect={() => inspectEntry(entry)}
       onRepair={() => onRepairEntry(entry)}
-      onRevealManifest={() => onRevealManifest(entry)}
-      onRevealDemo={() => onRevealDemo(entry)}
-      onCopyManifestPath={() => onCopyManifestPath(entry)}
-      onCopyDemoPath={() => onCopyDemoPath(entry)}
-      onEditNote={() => editNote(entry)}
-      onReparse={() => onReparseEntry(entry)}
-      onDelete={() => onDeleteEntry(entry)}
+      onOpenContextMenu={(event) => openEntryMenu(event, entry)}
       repairing={repairingManifest === entry.manifestPath}
       disabled={maintenanceBusy || archiveOpenDisabled}
       taskBusy={taskBusy}
@@ -1132,6 +1083,20 @@ export function LibraryWorkspace({
 
           {isScanning ? <LibrarySkeleton /> : entries.length > 0 ? (
             <>
+              <div className="library-list">
+                {visibleItems.map((item) => item.kind === "series" ? (
+                  <LibrarySeriesGroup
+                    key={item.id}
+                    entries={item.entries}
+                    words={words}
+                    language={language}
+                    primaryDisabled={maintenanceBusy || archiveOpenDisabled}
+                    onOpenPrimary={onOpenEntry}
+                    onOpenSeriesContextMenu={openSeriesMenu}
+                    renderEntry={renderLibraryRow}
+                  />
+                ) : renderLibraryRow(item.entry))}
+              </div>
               {pageCount > 1 ? (
                 <nav className="library-pagination" aria-label={words.libraryPagination}>
                   <span>{words.libraryPageRange
@@ -1145,19 +1110,6 @@ export function LibraryWorkspace({
                   </div>
                 </nav>
               ) : null}
-              <div className="library-list">
-                {visibleItems.map((item) => item.kind === "series" ? (
-                  <LibrarySeriesGroup
-                    key={item.id}
-                    entries={item.entries}
-                    words={words}
-                    language={language}
-                    primaryDisabled={maintenanceBusy || archiveOpenDisabled}
-                    onOpenPrimary={onOpenEntry}
-                    renderEntry={renderLibraryRow}
-                  />
-                ) : renderLibraryRow(item.entry))}
-              </div>
             </>
           ) : (
             <div className={`library-no-results${scan?.entries.length === 0 ? " is-blank-slate" : ""}`}>
@@ -1172,6 +1124,7 @@ export function LibraryWorkspace({
           )}
         </>
       )}
+      {entryMenu ? <ContextMenu menu={entryMenu} onClose={() => setEntryMenu(null)} /> : null}
       {propertiesEntry ? (
         <DialogPrimitive
           labelledBy="dtr-properties-title"

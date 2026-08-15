@@ -644,19 +644,29 @@ export function loadCustomCssProfiles(): CustomCssProfile[] {
     : legacyCss.trim()
       ? [{ id: "migrated-custom-css", name: "Custom CSS", css: legacyCss }]
       : [];
+  return reconcileCustomCssProfiles(
+    profiles,
+    localStorage.getItem(CUSTOM_CSS_STARTER_PROFILES_STORAGE_KEY) === "1",
+  );
+}
+
+export function reconcileCustomCssProfiles(
+  profiles: readonly CustomCssProfile[],
+  starterProfilesSeeded: boolean,
+): CustomCssProfile[] {
+  const normalizedProfiles = normalizeCustomCssProfiles(profiles);
   const starterById = new Map(STARTER_CUSTOM_CSS_PROFILES.map((profile) => [profile.id, profile]));
-  const starterProfilesSeeded = localStorage.getItem(CUSTOM_CSS_STARTER_PROFILES_STORAGE_KEY) === "1";
   const isLegacyStarter = (profile: CustomCssProfile, starter: CustomCssProfile) => (
     profile.css.includes(`/* DemoTracer · ${starter.name} */`)
     && !profile.css.includes("@media (prefers-color-scheme: dark)")
   );
-  const refreshedProfiles = profiles.map((profile) => {
+  const refreshedProfiles = normalizedProfiles.map((profile) => {
     const starter = starterById.get(profile.id);
     if (!starter) return profile;
     return !starterProfilesSeeded || isLegacyStarter(profile, starter) ? starter : profile;
   });
-  if (starterProfilesSeeded && refreshedProfiles.every((profile, index) => profile === profiles[index])) {
-    return profiles;
+  if (starterProfilesSeeded && refreshedProfiles.every((profile, index) => profile === normalizedProfiles[index])) {
+    return normalizedProfiles;
   }
   const existingIds = new Set(refreshedProfiles.map((profile) => profile.id));
   const existingNames = new Set(refreshedProfiles.map((profile) => profile.name.toLocaleLowerCase()));

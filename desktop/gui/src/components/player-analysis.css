@@ -361,34 +361,23 @@
 
 .player-analysis-empty .player-analysis-heading { display: block; }
 
-.player-analysis-overview-panel {
-  margin-top: 18px;
+.player-analysis-summary {
   overflow: hidden;
-  background: color-mix(in srgb, var(--surface-raised) 96%, var(--workspace));
+  background: var(--surface-raised);
   border: 1px solid var(--divider-strong);
   border-radius: var(--radius-sm);
 }
 
-.player-analysis-overview-panel > header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  min-height: 43px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--divider);
+.player-analysis-summary > .player-analysis-heading {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
 }
 
-.player-analysis-overview-panel h2 {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: var(--type-body);
-  font-weight: var(--weight-bold);
-}
-
-.player-analysis-overview-panel > header > span {
-  color: var(--text-tertiary);
-  font-size: var(--type-tiny);
-  font-weight: var(--weight-semibold);
+.player-analysis-overview-panel {
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface-raised) 96%, var(--workspace));
+  border-top: 1px solid var(--divider);
 }
 
 .player-analysis-metrics {

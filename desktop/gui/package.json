@@ -1,11 +1,12 @@
 {
   "name": "cs2-demotracer-desktop",
   "private": true,
-  "version": "1.1.8",
+  "version": "1.1.9",
   "packageManager": "pnpm@11.9.0",
   "type": "module",
   "scripts": {
-    "dev": "tauri dev --release",
+    "dev": "pnpm run dev:acceptance",
+    "dev:acceptance": "tauri dev --release",
     "dev:debug": "tauri dev",
     "dev:web": "vite",
     "test": "pnpm run check:test && node --test src/*.test.ts",

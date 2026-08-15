@@ -229,78 +229,77 @@ export function PlayerAnalysisWorkspace({
           </aside>
 
           <article className="player-analysis-main" aria-labelledby="player-analysis-title">
-            <header className="player-analysis-heading">
-              <div className="player-analysis-heading-identity">
-                <SteamAvatar profile={steamProfile} fallbackName={player.name} playerColor={player.playerColor} size="profile" />
-                <div>
-                  <span>{team.name}</span>
-                  <h1 id="player-analysis-title" ref={headingRef} tabIndex={-1}>
-                    {professionalPlayer?.handle ?? player.name}
-                  </h1>
-                  {!professionalPlayer && steamAlias ? <p>Steam · {steamAlias}</p> : null}
-                  {professionalPlayer && (professionalRealName || professionalBirthday) ? (
-                    <div className="professional-player-identity">
-                      {professionalRealName ? (
-                        <div className="professional-player-person">
-                          {professionalFlagCode ? (
-                            <span
-                              className={`fi fi-${professionalFlagCode} professional-player-flag`}
-                              role="img"
-                              aria-label={professionalCountry ?? professionalCountryCode ?? undefined}
-                              title={professionalCountry ?? professionalCountryCode ?? undefined}
-                            />
-                          ) : null}
-                          <strong>{professionalRealName}</strong>
+            <section className="player-analysis-summary" aria-label={words.playerMatchData}>
+              <header className="player-analysis-heading">
+                <div className="player-analysis-heading-identity">
+                  <SteamAvatar profile={steamProfile} fallbackName={player.name} playerColor={player.playerColor} size="profile" />
+                  <div>
+                    <span>{team.name}</span>
+                    <h1 id="player-analysis-title" ref={headingRef} tabIndex={-1}>
+                      {professionalPlayer?.handle ?? player.name}
+                    </h1>
+                    {!professionalPlayer && steamAlias ? <p>Steam · {steamAlias}</p> : null}
+                    {professionalPlayer && (professionalRealName || professionalBirthday) ? (
+                      <div className="professional-player-identity">
+                        {professionalRealName ? (
+                          <div className="professional-player-person">
+                            {professionalFlagCode ? (
+                              <span
+                                className={`fi fi-${professionalFlagCode} professional-player-flag`}
+                                role="img"
+                                aria-label={professionalCountry ?? professionalCountryCode ?? undefined}
+                                title={professionalCountry ?? professionalCountryCode ?? undefined}
+                              />
+                            ) : null}
+                            <strong>{professionalRealName}</strong>
+                          </div>
+                        ) : null}
+                        {professionalBirthday ? (
+                          <div className="professional-player-birthday">
+                            {professionalRoles ? <strong>{professionalRoles}</strong> : null}
+                            <span>{professionalBirthday}</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+                {steamProfileAvailable ? (
+                  <div className="player-analysis-heading-actions">
+                    <button className="player-steam-id-tag" type="button" onClick={() => onCopy(player.steamId, steamCopyTarget)} title={words.copySteamId} aria-label={words.copySteamId}>
+                      <code>{player.steamId}</code>
+                      {copiedTarget === steamCopyTarget ? <CheckIcon size={15} /> : <CopyIcon size={15} />}
+                    </button>
+                    <button className="player-steam-profile-link" type="button" onClick={() => onOpenExternal(steamProfileUrl(player.steamId))} title={words.openSteamProfile} aria-label={words.openSteamProfile}>
+                      <img src={steamMarkUrl} alt="" aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : null}
+              </header>
+
+              <section className="player-analysis-overview-panel" aria-labelledby="player-match-data-title">
+                <h2 className="sr-only" id="player-match-data-title">{words.playerMatchData}</h2>
+                <div className={`player-analysis-metrics${kdaMetrics.length === 0 ? " has-no-kda" : ""}`}>
+                  {kdaMetrics.length > 0 ? (
+                    <div className="player-analysis-kda" aria-label={words.kda}>
+                      {kdaMetrics.map((metric) => (
+                        <div className="player-analysis-kda-metric" key={metric.key}>
+                          <strong>{metric.value}</strong>
+                          <span>{metric.label}</span>
                         </div>
-                      ) : null}
-                      {professionalBirthday ? (
-                        <div className="professional-player-birthday">
-                          {professionalRoles ? <strong>{professionalRoles}</strong> : null}
-                          <span>{professionalBirthday}</span>
-                        </div>
-                      ) : null}
+                      ))}
                     </div>
                   ) : null}
-                </div>
-              </div>
-              {steamProfileAvailable ? (
-                <div className="player-analysis-heading-actions">
-                  <button className="player-steam-id-tag" type="button" onClick={() => onCopy(player.steamId, steamCopyTarget)} title={words.copySteamId} aria-label={words.copySteamId}>
-                    <code>{player.steamId}</code>
-                    {copiedTarget === steamCopyTarget ? <CheckIcon size={15} /> : <CopyIcon size={15} />}
-                  </button>
-                  <button className="player-steam-profile-link" type="button" onClick={() => onOpenExternal(steamProfileUrl(player.steamId))} title={words.openSteamProfile} aria-label={words.openSteamProfile}>
-                    <img src={steamMarkUrl} alt="" aria-hidden="true" />
-                  </button>
-                </div>
-              ) : null}
-            </header>
-
-            <section className="player-analysis-overview-panel" aria-labelledby="player-match-data-title">
-              <header>
-                <h2 id="player-match-data-title">{words.playerMatchData}</h2>
-                <span>{player.details?.statsRounds ? `${player.details.statsRounds} ${words.roundsUnit}` : team.name}</span>
-              </header>
-              <div className={`player-analysis-metrics${kdaMetrics.length === 0 ? " has-no-kda" : ""}`}>
-                {kdaMetrics.length > 0 ? (
-                  <div className="player-analysis-kda" aria-label={words.kda}>
-                    {kdaMetrics.map((metric) => (
-                      <div className="player-analysis-kda-metric" key={metric.key}>
-                        <strong>{metric.value}</strong>
+                  <div className="player-analysis-secondary-metrics">
+                    {secondaryMetrics.map((metric) => (
+                      <div className={`is-${metric.key}`} key={metric.key}>
                         <span>{metric.label}</span>
+                        <strong>{metric.value}</strong>
                       </div>
                     ))}
                   </div>
-                ) : null}
-                <div className="player-analysis-secondary-metrics">
-                  {secondaryMetrics.map((metric) => (
-                    <div className={`is-${metric.key}`} key={metric.key}>
-                      <span>{metric.label}</span>
-                      <strong>{metric.value}</strong>
-                    </div>
-                  ))}
                 </div>
-              </div>
+              </section>
             </section>
 
             <div className="player-analysis-dossier">
