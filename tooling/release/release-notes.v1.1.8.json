@@ -1,0 +1,4 @@
+{
+  "zh": "回放库新增批量入库、分页和队伍头像展示，并支持自定义工作区背景；修复刀具与武器皮肤、手套图案模板、服务器消息回放，以及真人玩家未跟随 Demo 队伍头像的问题。",
+  "en": "Added batch import, pagination, team avatars, and custom workspace backgrounds; fixed knife and weapon finishes, glove pattern templates, server chat playback, and human players not inheriting demo team avatars."
+}
