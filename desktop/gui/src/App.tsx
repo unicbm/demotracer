@@ -5,15 +5,64 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { exit as exitApp, relaunch } from "@tauri-apps/plugin-process";
-import { check, type Update } from "@tauri-apps/plugin-updater";
-import { Badge, Button, Group, Paper, Progress, Stack, Text } from "@mantine/core";
+import { exit as exitApp } from "@tauri-apps/plugin-process";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from "react";
-import packageMetadata from "../package.json";
+import {
+  DEFAULT_SETTINGS,
+  INITIAL_LIBRARY_PREFERENCES,
+  BATCH_PREFERENCES_STORAGE_KEY,
+  COSMETIC_CONSENT_STORAGE_KEY,
+  INVENTORY_SIMULATOR_PANEL_DEFAULT_WIDTH,
+  INITIAL_LIBRARY_SESSION,
+  type StoredBatchPreferences,
+  type BatchItemProgress,
+  type DemoPreflightProgress,
+  type DuplicateDemoConflictState,
+  type SaveArchiveNoteResult,
+  type ReparseTarget,
+  type InventorySimulatorPanelBounds,
+  measureInventorySimulatorPanel,
+  normalizeInventorySimulatorPanelWidth,
+  storedInventorySimulatorPanelWidth,
+  storedBatchPreferences,
+  batchJobPhase,
+  batchRunState,
+  nextBatchItemProgress,
+  emptyProgress,
+  storedLanguage,
+  storedUiFontSize,
+  storedCosmeticConsent,
+  storedSettings,
+  storedPlaybackPreset,
+  storedLocalEnvironment,
+  ENVIRONMENT_REPORT_STORAGE_KEY,
+  type StoredEnvironmentReport,
+  normalizedDiagnosticPath,
+  storedEnvironmentReport,
+  fileName,
+  isDemoFilePath,
+  commonParentDirectory,
+  formatBytes,
+  parseCommandError,
+  userFacingErrorMessage,
+  userFacingErrorTitle,
+  phaseFromBackend,
+  useElapsed,
+  useMediaQuery,
+  loadCustomCssProfiles,
+} from "./appSupport";
 import { AppChrome, AppSidebar } from "./components/AppChrome";
+import {
+  CloseTaskDialog,
+  CosmeticConsentDialog,
+  DeleteArchiveDialog,
+  DuplicateDemoDialog,
+  OverwriteDialog,
+  ReparseDialog,
+  UpdateDialog,
+} from "./components/AppDialogs";
 import { activeBatchItemCount, findRestorableBatch } from "./batchSession";
 import { ArchiveWorkspace } from "./components/ArchiveWorkspace";
 import type { InventorySimulatorItem } from "./inventorySimulator";
@@ -22,18 +71,14 @@ import {
   BatchWorkspace,
   type BatchConcurrency,
   type BatchJobItem,
-  type BatchJobPhase,
-  type BatchRunState,
   type BatchScanCandidate,
 } from "./components/BatchWorkspace";
-import { DialogPrimitive } from "./components/Dialog";
 import { ExportInspector } from "./components/ExportInspector";
 import { FaqWorkspace } from "./components/FaqWorkspace";
 import { LibraryWorkspace, type LibrarySort } from "./components/LibraryWorkspace";
-import { LogsWorkspace, type ActivityLogRange } from "./components/LogsWorkspace";
+import { LogsWorkspace } from "./components/LogsWorkspace";
 import { InventorySimulatorPanel } from "./components/InventorySimulatorPanel";
-import { releaseNotesForLanguage } from "./releaseNotes";
-import { DEFAULT_PLAYBACK_ADVANCED_OPTIONS, type PlaybackPresetOptions } from "./components/PlaybackCommandBuilder";
+import type { PlaybackPresetOptions } from "./components/PlaybackCommandBuilder";
 import { playerSelectionKey } from "./components/PlayerRoster";
 import { RoundWorkspace } from "./components/RoundWorkspace";
 import { SettingsWorkspace } from "./components/SettingsWorkspace";
@@ -45,8 +90,11 @@ import {
   ResultView,
   ValidationFailedView,
 } from "./components/TaskViews";
-import { AlertIcon, ArrowIcon, CheckIcon, CloseIcon, CopyIcon, FolderIcon } from "./icons";
+import { AlertIcon, ArrowIcon, CloseIcon, FolderIcon } from "./icons";
 import { COSMETIC_PHRASE, TEXT } from "./i18n";
+import { useActivityLogController } from "./hooks/useActivityLogController";
+import { useAppearanceRuntime } from "./hooks/useAppearanceRuntime";
+import { useUpdateController } from "./hooks/useUpdateController";
 import {
   AGGREGATE_TELEMETRY_STORAGE_KEY,
   PRESENCE_TELEMETRY_CONSENT_STORAGE_KEY,
@@ -59,41 +107,18 @@ import {
   type TelemetrySubmission,
 } from "./telemetry";
 import {
-  IGNORED_UPDATE_VERSIONS_STORAGE_KEY,
-  normalizeIgnoredUpdateVersions,
-  normalizePendingPlaybackUpdate,
-  PENDING_PLAYBACK_UPDATE_STORAGE_KEY,
-  updateVersionIsIgnored,
-  type IgnoredUpdateVersions,
-} from "./updatePrompt";
-import {
-  CUSTOM_CSS_STARTER_PROFILES_STORAGE_KEY,
-  STARTER_CUSTOM_CSS_PROFILES,
-} from "./customCssPresets";
-import {
   ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY,
-  applyCustomCss,
-  applyThemeCustomization,
-  CUSTOM_CSS_PROFILES_STORAGE_KEY,
   CUSTOM_CSS_STORAGE_KEY,
-  LEGACY_APPEARANCE_STORAGE_KEYS,
   normalizeActiveCustomCssProfileId,
   normalizeCustomCss,
   normalizeCustomCssProfiles,
   normalizeSidebarCollapsed,
   normalizeTheme,
   normalizeThemeCustomization,
-  normalizeUiFontSize,
-  normalizeUiScale,
-  recommendedUiScale,
   resolveTheme,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
-  stepUiFontSize,
-  themeBackground,
   THEME_CUSTOMIZATION_STORAGE_KEY,
   THEME_STORAGE_KEY,
-  UI_FONT_SIZE_DEFAULT,
-  UI_FONT_SIZE_STORAGE_KEY,
   type CustomCssProfile,
   type ThemeCustomization,
 } from "./appearance";
@@ -106,7 +131,6 @@ import {
   persistLibraryPreferences,
   rememberDemoSource,
   storedDemoSourceIndex,
-  storedLibraryPreferences,
   uniqueLibraryRoots,
   withExportRoot,
 } from "./library";
@@ -114,18 +138,13 @@ import {
   EMPTY_LIBRARY_WORKSPACE,
   LIBRARY_SESSION_STORAGE_KEY,
   libraryWorkspaceReducer,
-  readStoredLibrarySession,
   writeStoredLibrarySession,
   type StoredLibrarySession,
 } from "./librarySession";
 import type {
   AnalysisResult,
-  ActivityLogLevel,
-  ActivityLogMaintenance,
-  AppLogEntry,
   BatchEvent,
   BatchItem,
-  BatchItemPhase,
   BatchLedger,
   BatchList,
   Cs2InstallCandidate,
@@ -138,20 +157,12 @@ import type {
   DemoFolderScan,
   DemoSourcePreflight,
   EnvironmentDiagnosticReport,
-  GuiUpdateStatus,
-  GsiStatus,
   ImportArchivesResult,
   Language,
   LocalEnvironmentSettings,
   ManifestArchive,
   OutputPreflight,
-  PlaybackInstallProgress,
-  PlaybackInstallResult,
-  PlaybackReleaseStatus,
-  PlaybackUpdateRelease,
-  PlaybackUpdateStatus,
   Phase,
-  ProgressPhase,
   ProgressState,
   RefreshArchiveMetadataResult,
   RefreshLibraryMetadataResult,
@@ -161,625 +172,9 @@ import type {
   ServerConfigDocument,
   ServerConfigValidation,
   TaskEvent,
-  TaskPhase,
   Theme,
   WorkspaceBackground,
 } from "./types";
-
-const DEFAULT_SETTINGS: ConverterSettings = {
-  side: "both",
-  fullRound: false,
-  freezePrerollSeconds: 120,
-  subtickMode: "auto",
-  maxRoundSeconds: 240,
-  exportVoice: true,
-  exportCosmetics: false,
-  exportStickers: false,
-  exportCharms: false,
-  includeSuspicious: false,
-};
-
-const INITIAL_LIBRARY_PREFERENCES = storedLibraryPreferences();
-
-const DEFAULT_LOCAL_ENVIRONMENT: LocalEnvironmentSettings = {
-  cs2Path: "",
-  demoRoots: [],
-  soundNotifications: true,
-};
-
-const BATCH_PREFERENCES_STORAGE_KEY = "demotracer.batch-preferences.v1";
-const COSMETIC_CONSENT_STORAGE_KEY = "demotracer.cosmetic-consent.v1";
-const LEGACY_UI_SCALE_STORAGE_KEY = "demotracer.ui-scale.v1";
-const INVENTORY_SIMULATOR_PANEL_WIDTH_KEY = "demotracer.inventory-simulator-panel-width.v1";
-const INVENTORY_SIMULATOR_PANEL_DEFAULT_WIDTH = 580;
-const INVENTORY_SIMULATOR_PANEL_MIN_WIDTH = 440;
-const INVENTORY_SIMULATOR_PANEL_MAX_WIDTH = 900;
-const ACTIVITY_LOG_LIMIT = 5_000;
-
-function activityLogSinceMs(range: ActivityLogRange): number | null {
-  if (range === "all") return null;
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  if (range === "sevenDays") start.setDate(start.getDate() - 6);
-  return start.getTime();
-}
-
-const INITIAL_LIBRARY_SESSION = readStoredLibrarySession(localStorage);
-
-interface StoredBatchPreferences {
-  folderPath: string;
-  concurrency: BatchConcurrency;
-}
-
-interface BatchItemProgress {
-  progress?: number | null;
-  stage?: string | null;
-  startedAtMs?: number;
-  finishedAtMs?: number;
-  written: number;
-  estimated: number;
-}
-
-interface DemoPreflightProgress {
-  current: number;
-  total: number;
-  fileName: string;
-}
-
-interface DuplicateDemoConflictState {
-  primary: DemoSourcePreflight;
-  batch?: {
-    selections: DemoSourcePreflight[];
-    replaceSourceIds: string[];
-    mergedSegments: number;
-    relinkedDuplicates: number;
-  };
-}
-
-interface SaveArchiveNoteResult {
-  manifestPath: string;
-  note: string | null;
-}
-
-type ReparseTarget =
-  | { kind: "archive"; archive: ManifestArchive }
-  | { kind: "library"; entry: DemoLibraryEntry };
-
-interface InventorySimulatorPanelBounds {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-function measureInventorySimulatorPanel(element: HTMLElement): InventorySimulatorPanelBounds | null {
-  const rect = element.getBoundingClientRect();
-  if (rect.width < 1 || rect.height < 1) return null;
-  const pixelRatio = window.devicePixelRatio || 1;
-  return {
-    x: Math.max(0, Math.round(rect.left * pixelRatio)),
-    y: Math.max(0, Math.round(rect.top * pixelRatio)),
-    width: Math.max(1, Math.round(rect.width * pixelRatio)),
-    height: Math.max(1, Math.round(rect.height * pixelRatio)),
-  };
-}
-
-function normalizeInventorySimulatorPanelWidth(width: number): number {
-  const viewportMaximum = Math.max(INVENTORY_SIMULATOR_PANEL_MIN_WIDTH, window.innerWidth - 430);
-  return Math.min(
-    INVENTORY_SIMULATOR_PANEL_MAX_WIDTH,
-    viewportMaximum,
-    Math.max(INVENTORY_SIMULATOR_PANEL_MIN_WIDTH, width),
-  );
-}
-
-function storedInventorySimulatorPanelWidth(): number {
-  const stored = Number(localStorage.getItem(INVENTORY_SIMULATOR_PANEL_WIDTH_KEY));
-  return normalizeInventorySimulatorPanelWidth(Number.isFinite(stored) && stored > 0
-    ? stored
-    : INVENTORY_SIMULATOR_PANEL_DEFAULT_WIDTH);
-}
-
-function storedBatchPreferences(): StoredBatchPreferences {
-  try {
-    const saved = JSON.parse(localStorage.getItem(BATCH_PREFERENCES_STORAGE_KEY) ?? "null") as Partial<StoredBatchPreferences> | null;
-    const concurrency = saved?.concurrency;
-    return {
-      folderPath: typeof saved?.folderPath === "string" ? saved.folderPath : "",
-      concurrency: concurrency === "auto" || concurrency === 2 || concurrency === 4 || concurrency === 6 || concurrency === 8
-        ? concurrency
-        : "auto",
-    };
-  } catch {
-    return { folderPath: "", concurrency: "auto" };
-  }
-}
-
-function batchJobPhase(phase: BatchItemPhase): BatchJobPhase {
-  if (phase === "complete") return "completed";
-  if (phase === "voice") return "converting";
-  return phase;
-}
-
-function batchRunState(status: BatchLedger["status"] | undefined, invocationActive: boolean): BatchRunState {
-  if (invocationActive) {
-    if (status === "stopping") return "stopping";
-    return "running";
-  }
-  if (status === "completed" || status === "completedWithErrors") return "complete";
-  if (status === "paused") return "interrupted";
-  if (status === "running" || status === "stopping" || status === "pending") return "interrupted";
-  return "idle";
-}
-
-function nextBatchItemProgress(current: BatchItemProgress | undefined, task: TaskEvent): BatchItemProgress {
-  const next: BatchItemProgress = current ?? { written: 0, estimated: 0, startedAtMs: Date.now() };
-  if (task.kind === "phase") {
-    return { ...next, progress: task.phase === "complete" ? 1 : next.progress };
-  }
-  if (task.kind === "log") {
-    return task.level === "info" ? next : { ...next, stage: task.message };
-  }
-
-  const event = task.progress;
-  switch (event.event) {
-    case "analysisStarted":
-      return { ...next, progress: 0.02 };
-    case "analysisFinished":
-      return { ...next, progress: 0.05, written: 0, estimated: Math.max(1, event.estimatedFiles) };
-    case "roundStarted":
-      return { ...next, stage: `Round ${event.round}` };
-    case "roundSkipped":
-      return { ...next, stage: `Round ${event.round}: ${event.reason}` };
-    case "playerSkipped":
-      return { ...next, stage: `${event.steamId}: ${event.reason}` };
-    case "playerWritten": {
-      const written = next.written + 1;
-      return {
-        ...next,
-        written,
-        progress: Math.min(0.88, 0.05 + 0.83 * (written / Math.max(1, next.estimated))),
-        stage: event.playerName,
-      };
-    }
-    case "artifactsWritingStarted":
-      return { ...next, progress: 0.9, written: 0, estimated: Math.max(1, event.artifacts), stage: undefined };
-    case "artifactWritten": {
-      const written = next.written + 1;
-      return {
-        ...next,
-        written,
-        progress: Math.min(0.99, 0.9 + 0.09 * (written / Math.max(1, next.estimated))),
-        stage: fileName(event.path),
-      };
-    }
-    case "finished":
-      return { ...next, progress: 1, stage: fileName(event.manifestPath), finishedAtMs: Date.now() };
-    default:
-      return next;
-  }
-}
-
-const DEFAULT_PLAYBACK_PRESET: PlaybackPresetOptions = {
-  weapons: true,
-  cosmetics: false,
-  steamIdentity: true,
-  avatar: false,
-  voice: true,
-  playoff: false,
-  ...DEFAULT_PLAYBACK_ADVANCED_OPTIONS,
-};
-
-function emptyProgress(): ProgressState {
-  return {
-    phase: "preparing",
-    message: "",
-    written: 0,
-    estimated: 0,
-    unit: null,
-    completedRounds: 0,
-    selectedRounds: 0,
-    log: [],
-    warnings: [],
-    announcement: "",
-  };
-}
-
-function storedLanguage(): Language {
-  const saved = localStorage.getItem("demotracer.language");
-  if (saved === "zh" || saved === "en") return saved;
-  return navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
-}
-
-function storedUiFontSize(): number {
-  const stored = localStorage.getItem(UI_FONT_SIZE_STORAGE_KEY);
-  if (stored !== null) return normalizeUiFontSize(stored);
-  const legacyScale = localStorage.getItem(LEGACY_UI_SCALE_STORAGE_KEY);
-  if (legacyScale !== null) {
-    const scale = normalizeUiScale(legacyScale);
-    return normalizeUiFontSize(UI_FONT_SIZE_DEFAULT + Math.round((scale - 1) * 10));
-  }
-  const recommendedScale = recommendedUiScale(window.screen.width, window.screen.height, window.devicePixelRatio);
-  return normalizeUiFontSize(UI_FONT_SIZE_DEFAULT + Math.round((recommendedScale - 1) * 10));
-}
-
-function storedCosmeticConsent(): boolean {
-  return localStorage.getItem(COSMETIC_CONSENT_STORAGE_KEY) === "accepted";
-}
-
-function storedSettings(): ConverterSettings {
-  try {
-    const saved = JSON.parse(localStorage.getItem("demotracer.settings") ?? "null") as Partial<ConverterSettings> | null;
-    if (!saved || typeof saved !== "object" || Array.isArray(saved)) return { ...DEFAULT_SETTINGS };
-    return {
-      ...DEFAULT_SETTINGS,
-      side: saved.side === "both" || saved.side === "t" || saved.side === "ct" ? saved.side : DEFAULT_SETTINGS.side,
-      fullRound: typeof saved.fullRound === "boolean" ? saved.fullRound : DEFAULT_SETTINGS.fullRound,
-      // Freeze pre-roll is demo-derived now. Ignore the legacy user-selected
-      // value and keep only the internal safety ceiling.
-      freezePrerollSeconds: DEFAULT_SETTINGS.freezePrerollSeconds,
-      subtickMode: saved.subtickMode === "auto" || saved.subtickMode === "off"
-        ? saved.subtickMode
-        : DEFAULT_SETTINGS.subtickMode,
-      maxRoundSeconds: typeof saved.maxRoundSeconds === "number"
-        && Number.isFinite(saved.maxRoundSeconds)
-        && saved.maxRoundSeconds >= 30
-        && saved.maxRoundSeconds <= 1800
-        ? saved.maxRoundSeconds
-        : DEFAULT_SETTINGS.maxRoundSeconds,
-      exportVoice: typeof saved.exportVoice === "boolean" ? saved.exportVoice : DEFAULT_SETTINGS.exportVoice,
-      exportCosmetics: storedCosmeticConsent() && saved.exportCosmetics === true,
-      exportStickers: typeof saved.exportStickers === "boolean" ? saved.exportStickers : DEFAULT_SETTINGS.exportStickers,
-      exportCharms: typeof saved.exportCharms === "boolean" ? saved.exportCharms : DEFAULT_SETTINGS.exportCharms,
-      includeSuspicious: false,
-    };
-  } catch {
-    return { ...DEFAULT_SETTINGS };
-  }
-}
-
-function storedPlaybackPreset(): PlaybackPresetOptions {
-  try {
-    const saved = JSON.parse(localStorage.getItem("demotracer.playback-preset.v1") ?? "null") as Partial<PlaybackPresetOptions> | null;
-    if (!saved || typeof saved !== "object") return { ...DEFAULT_PLAYBACK_PRESET };
-    const readBoolean = (key: "weapons" | "cosmetics" | "steamIdentity" | "avatar" | "voice" | "playoff" | "threat360Los") =>
-      typeof saved[key] === "boolean" ? saved[key] : DEFAULT_PLAYBACK_PRESET[key];
-    const readToggle = (key: "projectileAlignment" | "crosshairAlignment" | "leftHandAlignment" | "allowPartial" | "threat360") =>
-      saved[key] === "on" || saved[key] === "off"
-        ? saved[key]
-        : DEFAULT_PLAYBACK_PRESET[key];
-    const cosmetics = readBoolean("cosmetics");
-    const avatar = readBoolean("avatar");
-    return {
-      weapons: readBoolean("weapons") || cosmetics,
-      cosmetics,
-      steamIdentity: readBoolean("steamIdentity") || avatar,
-      avatar,
-      voice: readBoolean("voice"),
-      playoff: readBoolean("playoff"),
-      projectileAlignment: readToggle("projectileAlignment"),
-      crosshairAlignment: readToggle("crosshairAlignment"),
-      leftHandAlignment: readToggle("leftHandAlignment"),
-      matchPresentation: saved.matchPresentation === "off" || saved.matchPresentation === "scoreboard"
-        ? saved.matchPresentation
-        : DEFAULT_PLAYBACK_PRESET.matchPresentation,
-      allowPartial: readToggle("allowPartial"),
-      handoffMode: ["off", "death", "contact", "death_or_contact", "death_contact_c4"].includes(saved.handoffMode ?? "")
-        ? saved.handoffMode as PlaybackPresetOptions["handoffMode"]
-        : DEFAULT_PLAYBACK_PRESET.handoffMode,
-      handoffScope: saved.handoffScope === "all" ? "all" : "slot",
-      threat360: readToggle("threat360"),
-      threat360Range: typeof saved.threat360Range === "number"
-        && Number.isFinite(saved.threat360Range)
-        && saved.threat360Range >= 150
-        && saved.threat360Range <= 800
-        ? saved.threat360Range
-        : DEFAULT_PLAYBACK_PRESET.threat360Range,
-      threat360Los: readBoolean("threat360Los"),
-      friendlyFire: saved.friendlyFire === "on" ? "on" : "off",
-    };
-  } catch {
-    return { ...DEFAULT_PLAYBACK_PRESET };
-  }
-}
-
-function storedLocalEnvironment(): LocalEnvironmentSettings {
-  try {
-    const saved = JSON.parse(localStorage.getItem("demotracer.local-environment.v1") ?? "null") as Partial<LocalEnvironmentSettings> | null;
-    if (!saved || typeof saved !== "object") return { ...DEFAULT_LOCAL_ENVIRONMENT };
-    return {
-      cs2Path: typeof saved.cs2Path === "string" ? saved.cs2Path : "",
-      demoRoots: Array.isArray(saved.demoRoots)
-        ? uniqueLibraryRoots(saved.demoRoots.filter((root): root is string => typeof root === "string"))
-        : [],
-      soundNotifications: typeof saved.soundNotifications === "boolean" ? saved.soundNotifications : true,
-    };
-  } catch {
-    return { ...DEFAULT_LOCAL_ENVIRONMENT };
-  }
-}
-
-const ENVIRONMENT_REPORT_STORAGE_KEY = "demotracer.environment-report.v1";
-
-interface StoredEnvironmentReport {
-  cs2Path: string;
-  report: EnvironmentDiagnosticReport;
-}
-
-function normalizedDiagnosticPath(path: string): string {
-  return path.trim().replace(/\\/g, "/").replace(/\/+$/, "").toLocaleLowerCase();
-}
-
-function isEnvironmentDiagnosticReport(value: unknown): value is EnvironmentDiagnosticReport {
-  if (!value || typeof value !== "object") return false;
-  const report = value as Partial<EnvironmentDiagnosticReport>;
-  return Number.isFinite(report.checkedAtMs)
-    && typeof report.requestedPath === "string"
-    && typeof report.cs2Root === "string"
-    && typeof report.gameCsgoPath === "string"
-    && ["pass", "warning", "error", "unverified"].includes(String(report.overall))
-    && Array.isArray(report.checks)
-    && Array.isArray(report.plugins)
-    && Array.isArray(report.conflicts)
-    && Boolean(report.receipt && typeof report.receipt === "object");
-}
-
-function cachedEnvironmentReport(report: EnvironmentDiagnosticReport): EnvironmentDiagnosticReport {
-  const runtimeConflictRules = new Set(["known_cosmetic_writer", "cs2_bot_improver_bot_randomizer"]);
-  const checks = report.checks
-    .filter((check) => check.group !== "runtime")
-    .map((check) => check.id === "counterStrikeSharp.runtime" && check.status === "pass"
-      ? {
-          ...check,
-          status: "unverified" as const,
-          summary: "CounterStrikeSharp was installed at the last inspection; its loaded host version requires a fresh inspection.",
-          actual: "cached; runtime version unknown",
-        }
-      : check);
-  const conflicts = report.conflicts.map((conflict) => runtimeConflictRules.has(conflict.ruleId)
-    ? {
-        ...conflict,
-        confidence: "medium" as const,
-        summary: `${conflict.title} was present at the last inspection. Inspect again to verify whether it is currently loaded or overlaps DemoTracer runtime behavior.`,
-      }
-    : conflict);
-
-  return {
-    ...report,
-    cached: true,
-    overall: "unverified",
-    runtimeVerification: "unknown",
-    checks,
-    plugins: report.plugins.map((plugin) => ({ ...plugin, runtimeState: "unknown" })),
-    conflicts,
-  };
-}
-
-function storedEnvironmentReport(expectedCs2Path: string): EnvironmentDiagnosticReport | null {
-  const expectedPath = normalizedDiagnosticPath(expectedCs2Path);
-  if (!expectedPath) return null;
-  try {
-    const saved = JSON.parse(localStorage.getItem(ENVIRONMENT_REPORT_STORAGE_KEY) ?? "null") as Partial<StoredEnvironmentReport> | null;
-    if (!saved || typeof saved !== "object" || typeof saved.cs2Path !== "string") return null;
-    if (normalizedDiagnosticPath(saved.cs2Path) !== expectedPath || !isEnvironmentDiagnosticReport(saved.report)) return null;
-    return cachedEnvironmentReport(saved.report);
-  } catch {
-    return null;
-  }
-}
-
-function fileName(path: string): string {
-  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
-}
-
-function isDemoFilePath(path: string): boolean {
-  const lowered = path.toLowerCase();
-  return lowered.endsWith(".dem") || lowered.endsWith(".dem.zst");
-}
-
-function commonParentDirectory(paths: string[]): string {
-  const parents = paths.map((path) => {
-    const normalized = path.trim().replace(/\//g, "\\").replace(/\\+$/, "");
-    const separator = normalized.lastIndexOf("\\");
-    return separator > 2 ? normalized.slice(0, separator) : normalized.slice(0, Math.max(0, separator + 1));
-  });
-  if (parents.length === 0) return "";
-  const segments = parents.map((path) => path.split("\\").filter(Boolean));
-  const common: string[] = [];
-  const length = Math.min(...segments.map((parts) => parts.length));
-  for (let index = 0; index < length; index += 1) {
-    const value = segments[0][index];
-    if (!segments.every((parts) => parts[index].toLocaleLowerCase() === value.toLocaleLowerCase())) break;
-    common.push(value);
-  }
-  if (common.length === 0) return parents[0];
-  const drive = common[0].endsWith(":");
-  return `${common.join("\\")}${drive && common.length === 1 ? "\\" : ""}`;
-}
-
-function formatBytes(value: number | string): string {
-  const bytes = Number(value);
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  const power = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${(bytes / 1024 ** power).toFixed(power === 0 ? 0 : 1)} ${units[power]}`;
-}
-
-function parseCommandError(error: unknown): CommandErrorDto {
-  if (error && typeof error === "object" && "code" in error && "message" in error) {
-    const value = error as { code: unknown; message: unknown; path?: unknown };
-    return {
-      code: String(value.code),
-      message: String(value.message),
-      path: typeof value.path === "string" ? value.path : undefined,
-    };
-  }
-  if (typeof error === "string") {
-    try {
-      return parseCommandError(JSON.parse(error));
-    } catch {
-      return { code: "unknown", message: error };
-    }
-  }
-  if (error && typeof error === "object" && "message" in error) {
-    return { code: "unknown", message: String(error.message) };
-  }
-  return { code: "unknown", message: String(error) };
-}
-
-function userFacingErrorMessage(error: { code: string; message: string; path?: string | null }, language: Language): string {
-  const code = error.code.toLocaleLowerCase();
-  const words = TEXT[language];
-  if (code.includes("cancel") || code.includes("stopping")) {
-    return words.errorTaskStopped;
-  }
-  if (code.includes("playback_update_unavailable")) {
-    return words.errorPlaybackUpdateUnavailable;
-  }
-  if (code.includes("playback_update_check")) {
-    return words.errorPlaybackUpdateCheck;
-  }
-  if (code.includes("playback_update_download")) {
-    return words.errorPlaybackUpdateDownload;
-  }
-  if (code.includes("playback_update_manifest")) {
-    return words.errorPlaybackUpdateManifest;
-  }
-  if (code.includes("playback_update_hash") || code.includes("playback_update_signature") || code.includes("playback_signing_key")) {
-    return words.errorPlaybackUpdateIntegrity;
-  }
-  if (code.includes("cs2_running")) {
-    return words.errorCs2Running;
-  }
-  if (code.includes("not_found") || code.includes("unavailable") || code.includes("missing")) {
-    return words.errorFileNotFound;
-  }
-  if (code.includes("permission") || code.includes("denied") || code.includes("unsafe") || code.includes("write")) {
-    return words.errorFolderNotWritable;
-  }
-  if (code.includes("invalid") || code.includes("unsupported") || code.includes("validation")) {
-    return words.errorValidation;
-  }
-  if (code.includes("dialog")) {
-    return words.errorDialog;
-  }
-  if (code.includes("copy")) {
-    return words.errorCopy;
-  }
-  if (code.includes("inventory_simulator")) {
-    return words.errorInventorySimulator;
-  }
-  if (code.includes("playback")) {
-    return words.errorPlayback;
-  }
-  if (code.includes("analysis") || code.includes("demo") || code.includes("parse")) {
-    return words.errorAnalysis;
-  }
-  return words.errorGeneric.replace("{code}", error.code);
-}
-
-function playbackUpdateFailureStatus(reason: unknown, language: Language): PlaybackUpdateStatus {
-  const error = parseCommandError(reason);
-  if (error.code.toLocaleLowerCase().includes("playback_update_unavailable")) {
-    return { phase: "unavailable" };
-  }
-  return { phase: "error", error: userFacingErrorMessage(error, language) };
-}
-
-function userFacingErrorTitle(error: { code: string }, language: Language): string {
-  const code = error.code.toLocaleLowerCase();
-  const words = TEXT[language];
-  if (code.includes("analysis") || code.includes("demo") || code.includes("parse")) {
-    return words.errorAnalysisTitle;
-  }
-  if (code.includes("playback")) return words.errorPlaybackTitle;
-  if (code.includes("inventory_simulator")) return words.errorInventorySimulatorTitle;
-  if (code.includes("permission") || code.includes("denied") || code.includes("write")) {
-    return words.errorFolderNotWritableTitle;
-  }
-  if (code.includes("not_found") || code.includes("missing")) return words.errorFileNotFoundTitle;
-  return words.errorTitle;
-}
-
-function phaseFromBackend(phase: TaskPhase, current: ProgressPhase): ProgressPhase {
-  if (phase === "decompressing") return "decompressing";
-  if (phase === "parsing") return "parsing";
-  if (phase === "analyzing") return "analyzing";
-  if (phase === "voice") return "voice";
-  if (phase === "validating") return "validating";
-  if (phase === "complete") return "complete";
-  return current;
-}
-
-function consentIsValid(phrase: string): boolean {
-  return phrase.trim() === COSMETIC_PHRASE;
-}
-
-function useElapsed(active: boolean): number {
-  const [seconds, setSeconds] = useState(0);
-  useEffect(() => {
-    if (!active) {
-      setSeconds(0);
-      return;
-    }
-    const started = Date.now();
-    const timer = window.setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
-    return () => window.clearInterval(timer);
-  }, [active]);
-  return seconds;
-}
-
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const media = window.matchMedia(query);
-    const update = () => setMatches(media.matches);
-    update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, [query]);
-  return matches;
-}
-
-function mergeActivityLogs(current: AppLogEntry[], incoming: AppLogEntry[]): AppLogEntry[] {
-  const merged = new Map(current.map((entry) => [entry.id, entry]));
-  for (const entry of incoming) merged.set(entry.id, entry);
-  return [...merged.values()]
-    .sort((left, right) => left.timestampMs - right.timestampMs || left.id.localeCompare(right.id))
-    .slice(-ACTIVITY_LOG_LIMIT);
-}
-
-function loadCustomCssProfiles(): CustomCssProfile[] {
-  const stored = normalizeCustomCssProfiles(localStorage.getItem(CUSTOM_CSS_PROFILES_STORAGE_KEY));
-  const legacyCss = normalizeCustomCss(localStorage.getItem(CUSTOM_CSS_STORAGE_KEY));
-  const profiles = stored.length > 0
-    ? stored
-    : legacyCss.trim()
-      ? [{ id: "migrated-custom-css", name: "Custom CSS", css: legacyCss }]
-      : [];
-  const starterById = new Map(STARTER_CUSTOM_CSS_PROFILES.map((profile) => [profile.id, profile]));
-  const starterProfilesSeeded = localStorage.getItem(CUSTOM_CSS_STARTER_PROFILES_STORAGE_KEY) === "1";
-  const isLegacyStarter = (profile: CustomCssProfile, starter: CustomCssProfile) => (
-    profile.css.includes(`/* DemoTracer · ${starter.name} */`)
-    && !profile.css.includes("@media (prefers-color-scheme: dark)")
-  );
-  const refreshedProfiles = profiles.map((profile) => {
-    const starter = starterById.get(profile.id);
-    if (!starter) return profile;
-    return !starterProfilesSeeded || isLegacyStarter(profile, starter) ? starter : profile;
-  });
-  if (starterProfilesSeeded && refreshedProfiles.every((profile, index) => profile === profiles[index])) {
-    return profiles;
-  }
-  const existingIds = new Set(refreshedProfiles.map((profile) => profile.id));
-  const existingNames = new Set(refreshedProfiles.map((profile) => profile.name.toLocaleLowerCase()));
-  return [
-    ...refreshedProfiles,
-    ...STARTER_CUSTOM_CSS_PROFILES.filter((profile) => (
-      !existingIds.has(profile.id) && !existingNames.has(profile.name.toLocaleLowerCase())
-    )),
-  ];
-}
 
 function App() {
   const [language, setLanguage] = useState<Language>(storedLanguage);
@@ -867,32 +262,11 @@ function App() {
   );
   const [detectingInstallations, setDetectingInstallations] = useState(false);
   const [inspectingEnvironment, setInspectingEnvironment] = useState(false);
-  const [appVersion, setAppVersion] = useState(packageMetadata.version);
-  const [guiUpdate, setGuiUpdate] = useState<GuiUpdateStatus>({
-    phase: "idle",
-    currentVersion: packageMetadata.version,
-  });
-  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
-  const [updatePromptDismissed, setUpdatePromptDismissed] = useState(false);
-  const [ignoredUpdateVersions, setIgnoredUpdateVersions] = useState<IgnoredUpdateVersions>(() => (
-    normalizeIgnoredUpdateVersions(localStorage.getItem(IGNORED_UPDATE_VERSIONS_STORAGE_KEY))
-  ));
-  const [playbackRelease, setPlaybackRelease] = useState<PlaybackReleaseStatus | null>(null);
-  const [playbackUpdate, setPlaybackUpdate] = useState<PlaybackUpdateStatus>({ phase: "idle" });
-  const [playbackReleaseError, setPlaybackReleaseError] = useState("");
-  const [playbackInstallBlockedByCs2, setPlaybackInstallBlockedByCs2] = useState(false);
-  const [releaseAction, setReleaseAction] = useState<"installingOnline" | "installingFile" | "rollingBack" | null>(null);
-  const [playbackInstallProgress, setPlaybackInstallProgress] = useState<PlaybackInstallProgress | null>(null);
-  const [releaseNotice, setReleaseNotice] = useState("");
   const [serverConfigDocument, setServerConfigDocument] = useState<ServerConfigDocument | null>(null);
   const [serverConfigDraft, setServerConfigDraft] = useState("");
   const [serverConfigValidation, setServerConfigValidation] = useState<ServerConfigValidation | null>(null);
   const [loadingServerConfig, setLoadingServerConfig] = useState(false);
   const [savingServerConfig, setSavingServerConfig] = useState(false);
-  const [activityLogs, setActivityLogs] = useState<AppLogEntry[]>([]);
-  const [activityLogsLoading, setActivityLogsLoading] = useState(false);
-  const [activityLogRange, setActivityLogRange] = useState<ActivityLogRange>("today");
-  const [gsiRuntimeStatus, setGsiRuntimeStatus] = useState<GsiStatus | null>(null);
   const [progress, setProgress] = useState<ProgressState>(emptyProgress);
   const [result, setResult] = useState<ConversionSummary | null>(null);
   const [conversionWarnings, setConversionWarnings] = useState<string[]>([]);
@@ -914,6 +288,22 @@ function App() {
   const [inventorySimulatorPanelOpen, setInventorySimulatorPanelOpen] = useState(false);
   const [inventorySimulatorPanelResizing, setInventorySimulatorPanelResizing] = useState(false);
   const [inventorySimulatorPanelWidth, setInventorySimulatorPanelWidth] = useState(storedInventorySimulatorPanelWidth);
+  const {
+    entries: activityLogs,
+    loading: activityLogsLoading,
+    range: activityLogRange,
+    setRange: setActivityLogRange,
+    gsiStatus: gsiRuntimeStatus,
+    record: recordActivityLog,
+    refresh: refreshActivityLogs,
+    openDirectory: openActivityLogDirectory,
+    clear: clearActivityLogs,
+  } = useActivityLogController({
+    language,
+    logsActive: activeSection === "logs",
+    cs2Path: localEnvironment.cs2Path,
+    onError: setGlobalError,
+  });
 
   const taskTokenRef = useRef(0);
   const manifestReadTokenRef = useRef(0);
@@ -927,8 +317,6 @@ function App() {
   const conversionStartLockRef = useRef(false);
   const analyzedMaxRoundSecondsRef = useRef(DEFAULT_SETTINGS.maxRoundSeconds);
   const environmentInspectionTokenRef = useRef(0);
-  const pendingGuiUpdateRef = useRef<Update | null>(null);
-  const playbackContinuationStartedRef = useRef(false);
   const batchIdRef = useRef("");
   const batchGenerationRef = useRef(0);
   const batchStopPendingRef = useRef(false);
@@ -945,7 +333,69 @@ function App() {
   const updateLaterRef = useRef<HTMLButtonElement | null>(null);
   const cancelArchiveDeleteRef = useRef<HTMLButtonElement | null>(null);
   const inventorySimulatorHostRef = useRef<HTMLDivElement | null>(null);
-  const browserLogPreviewSeededRef = useRef(false);
+  const systemDark = useMediaQuery("(prefers-color-scheme: dark)");
+  const resolvedTheme = resolveTheme(theme, systemDark);
+  const {
+    appVersion,
+    guiUpdate,
+    dialogOpen: updateDialogOpen,
+    setDialogOpen: setUpdateDialogOpen,
+    promptDismissed: updatePromptDismissed,
+    ignoredVersions: ignoredUpdateVersions,
+    playbackRelease,
+    playbackUpdate,
+    playbackReleaseError,
+    playbackInstallBlockedByCs2,
+    releaseAction,
+    playbackInstallProgress,
+    releaseNotice,
+    actionableUpdateAvailable,
+    guiUpdateAvailable,
+    guiUpdateRetryRequired,
+    guiUpdateOffered,
+    playbackUpdateOffered,
+    availableUpdateCount,
+    promptSummary: updatePromptSummary,
+    dialogBusy: updateDialogBusy,
+    dialogStatus: updateDialogStatus,
+    dialogProgressActive: updateDialogProgressActive,
+    dialogProgress: updateDialogProgress,
+    playbackInstallStatus,
+    dismissPrompt: dismissUpdatePrompt,
+    ignoreAvailableVersions: ignoreAvailableUpdateVersions,
+    installAvailableUpdates,
+    reviewGuiUpdate,
+    checkGuiApplicationUpdate,
+    checkPlaybackUpdate,
+    installLatestPlaybackBundle,
+    installPlaybackBundle,
+    rollbackPlaybackInstall,
+  } = useUpdateController({
+    language,
+    cs2Path: localEnvironment.cs2Path,
+    onInspectEnvironment: runEnvironmentInspection,
+  });
+
+  useAppearanceRuntime({
+    language,
+    theme,
+    resolvedTheme,
+    sidebarCollapsed,
+    ignoredUpdateVersions,
+    uiFontSize,
+    setUiFontSize,
+    themeCustomization,
+    customCssProfiles,
+    activeCustomCssProfileId,
+    setWorkspaceBackground,
+    inventoryPanelAvailable: inventorySimulatorPanelAvailable,
+    inventoryPanelOpen: inventorySimulatorPanelOpen,
+    inventoryPanelResizing: inventorySimulatorPanelResizing,
+    inventoryPanelWidth: inventorySimulatorPanelWidth,
+    setInventoryPanelWidth: setInventorySimulatorPanelWidth,
+    inventoryPanelHostRef: inventorySimulatorHostRef,
+    onError: setGlobalError,
+  });
 
   const invalidateManifestCache = useCallback((path?: string) => {
     manifestCacheGenerationRef.current += 1;
@@ -992,66 +442,6 @@ function App() {
       },
     }).catch(() => undefined);
   }, [aggregateTelemetryEnabled, playbackRelease?.currentVersion, presenceTelemetryEnabled]);
-  const recordActivityLog = useCallback((
-    level: ActivityLogLevel,
-    source: string,
-    message: string,
-  ) => {
-    if (!message.trim()) return;
-    if (!("__TAURI_INTERNALS__" in window)) {
-      const timestampMs = Date.now();
-      setActivityLogs((current) => mergeActivityLogs(current, [{
-        id: `${timestampMs}-${Math.random().toString(16).slice(2)}`,
-        timestampMs,
-        level,
-        source,
-        message,
-      }]));
-      return;
-    }
-    void invoke<AppLogEntry>("append_activity_log", {
-      request: { level, source, message },
-    }).then((entry) => {
-      setActivityLogs((current) => mergeActivityLogs(current, [entry]));
-    }).catch(() => undefined);
-  }, []);
-  const refreshActivityLogs = useCallback(async () => {
-    if (!("__TAURI_INTERNALS__" in window)) return;
-    setActivityLogsLoading(true);
-    try {
-      const [entries, status] = await Promise.all([
-        invoke<AppLogEntry[]>("list_activity_logs", {
-          limit: ACTIVITY_LOG_LIMIT,
-          sinceMs: activityLogSinceMs(activityLogRange),
-        }),
-        invoke<GsiStatus>("gsi_status"),
-      ]);
-      setActivityLogs(entries);
-      setGsiRuntimeStatus(status);
-    } finally {
-      setActivityLogsLoading(false);
-    }
-  }, [activityLogRange]);
-  const openActivityLogDirectory = useCallback(() => {
-    if ("__TAURI_INTERNALS__" in window) {
-      void invoke<void>("open_activity_log_directory").catch((reason) => {
-        setGlobalError(parseCommandError(reason));
-      });
-    }
-  }, []);
-  const clearActivityLogs = useCallback(() => {
-    if (!window.confirm(TEXT[language].logsClearConfirm)) return;
-    if (!("__TAURI_INTERNALS__" in window)) {
-      setActivityLogs([]);
-      return;
-    }
-    setActivityLogsLoading(true);
-    void invoke<number>("clear_activity_logs").then(() => {
-      setActivityLogs([]);
-    }).catch((reason) => {
-      setGlobalError(parseCommandError(reason));
-    }).finally(() => setActivityLogsLoading(false));
-  }, [language]);
   const libraryRoot = libraryPreferences.exportRoot;
   const libraryRoots = libraryPreferences.roots;
   const numberFormat = useMemo(() => new Intl.NumberFormat(language === "zh" ? "zh-CN" : "en-US"), [language]);
@@ -1059,8 +449,6 @@ function App() {
   const isMaintainingLibrary = isRepairing || importingArchives || Boolean(deletingManifest);
   const isBusy = singleTask !== null || phase === "openingArchive" || isMaintainingLibrary || batchInvocationActive || demoPreflightActive || conversionStartPending;
   isBusyRef.current = isBusy;
-  const systemDark = useMediaQuery("(prefers-color-scheme: dark)");
-  const resolvedTheme = resolveTheme(theme, systemDark);
   const inspectorVisible = analysis !== null
     && (phase === "selecting" || singleTask === "conversion");
   const elapsedSeconds = useElapsed(singleTask === "analysis");
@@ -1231,163 +619,6 @@ function App() {
     }
   }, []);
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.dataset.colorMode = resolvedTheme;
-    document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
-    const nativeBackground = themeBackground(resolvedTheme);
-    document.documentElement.style.backgroundColor = nativeBackground;
-    document.body.style.backgroundColor = nativeBackground;
-    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", nativeBackground);
-    localStorage.setItem(THEME_STORAGE_KEY, theme);
-    localStorage.setItem("demotracer.language", language);
-    if ("__TAURI_INTERNALS__" in window) {
-      void Promise.all([
-        getCurrentWindow().setTheme(theme === "system" ? null : theme),
-        getCurrentWindow().setBackgroundColor(nativeBackground),
-        getCurrentWebview().setBackgroundColor(nativeBackground),
-      ]).catch(() => undefined);
-    }
-  }, [language, resolvedTheme, theme]);
-
-  useEffect(() => {
-    for (const key of LEGACY_APPEARANCE_STORAGE_KEYS) localStorage.removeItem(key);
-  }, []);
-
-  useEffect(() => {
-    if (!("__TAURI_INTERNALS__" in window)) return;
-    void invoke<WorkspaceBackground | null>("read_workspace_background")
-      .then(setWorkspaceBackground)
-      .catch((reason) => setGlobalError(parseCommandError(reason)));
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(sidebarCollapsed));
-  }, [sidebarCollapsed]);
-
-  useEffect(() => {
-    if (ignoredUpdateVersions.gui || ignoredUpdateVersions.playback) {
-      localStorage.setItem(IGNORED_UPDATE_VERSIONS_STORAGE_KEY, JSON.stringify(ignoredUpdateVersions));
-    } else {
-      localStorage.removeItem(IGNORED_UPDATE_VERSIONS_STORAGE_KEY);
-    }
-  }, [ignoredUpdateVersions]);
-
-  useEffect(() => {
-    const normalized = normalizeUiFontSize(uiFontSize);
-    localStorage.setItem(UI_FONT_SIZE_STORAGE_KEY, String(normalized));
-    localStorage.removeItem(LEGACY_UI_SCALE_STORAGE_KEY);
-    document.documentElement.style.zoom = "";
-    document.documentElement.style.setProperty("--ui-font-size", `${normalized}px`);
-    if ("__TAURI_INTERNALS__" in window) void getCurrentWebview().setZoom(1).catch(() => undefined);
-  }, [uiFontSize]);
-
-  useEffect(() => {
-    const normalized = normalizeThemeCustomization(themeCustomization);
-    applyThemeCustomization(normalized);
-    if (Object.keys(normalized).length > 0) {
-      localStorage.setItem(THEME_CUSTOMIZATION_STORAGE_KEY, JSON.stringify(normalized));
-    } else {
-      localStorage.removeItem(THEME_CUSTOMIZATION_STORAGE_KEY);
-    }
-  }, [themeCustomization]);
-
-  useEffect(() => {
-    const normalizedProfiles = normalizeCustomCssProfiles(customCssProfiles);
-    if (STARTER_CUSTOM_CSS_PROFILES.every((starter) => (
-      normalizedProfiles.some((profile) => profile.id === starter.id && profile.css === starter.css)
-    ))) {
-      localStorage.setItem(CUSTOM_CSS_STARTER_PROFILES_STORAGE_KEY, "1");
-    }
-    if (normalizedProfiles.length > 0) {
-      localStorage.setItem(CUSTOM_CSS_PROFILES_STORAGE_KEY, JSON.stringify(normalizedProfiles));
-    } else {
-      localStorage.removeItem(CUSTOM_CSS_PROFILES_STORAGE_KEY);
-    }
-    const normalizedActiveId = normalizeActiveCustomCssProfileId(activeCustomCssProfileId, normalizedProfiles);
-    if (normalizedActiveId) localStorage.setItem(ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY, normalizedActiveId);
-    else localStorage.removeItem(ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY);
-    const activeCss = normalizedProfiles.find((profile) => profile.id === normalizedActiveId)?.css ?? "";
-    applyCustomCss(activeCss);
-    if (activeCss) localStorage.setItem(CUSTOM_CSS_STORAGE_KEY, activeCss);
-    else localStorage.removeItem(CUSTOM_CSS_STORAGE_KEY);
-  }, [activeCustomCssProfileId, customCssProfiles]);
-
-  useEffect(() => {
-    if (!inventorySimulatorPanelAvailable) return;
-    if (!inventorySimulatorPanelOpen || inventorySimulatorPanelResizing) {
-      void invoke("set_inventory_simulator_panel", {
-        request: { visible: false },
-      }).catch(() => undefined);
-      return;
-    }
-
-    const host = inventorySimulatorHostRef.current;
-    if (!host) return;
-    let frame = 0;
-    let disposed = false;
-    const updateBounds = () => {
-      frame = 0;
-      if (disposed) return;
-      const bounds = measureInventorySimulatorPanel(host);
-      if (!bounds) return;
-      void invoke("set_inventory_simulator_panel", {
-        request: { visible: true, bounds },
-      }).catch(() => undefined);
-    };
-    const scheduleBoundsUpdate = () => {
-      if (frame === 0) frame = window.requestAnimationFrame(updateBounds);
-    };
-    const observer = new ResizeObserver(scheduleBoundsUpdate);
-    observer.observe(host);
-    window.addEventListener("resize", scheduleBoundsUpdate);
-    scheduleBoundsUpdate();
-    return () => {
-      disposed = true;
-      observer.disconnect();
-      window.removeEventListener("resize", scheduleBoundsUpdate);
-      if (frame !== 0) window.cancelAnimationFrame(frame);
-    };
-  }, [
-    inventorySimulatorPanelAvailable,
-    inventorySimulatorPanelOpen,
-    inventorySimulatorPanelResizing,
-    uiFontSize,
-  ]);
-
-  useEffect(() => {
-    localStorage.setItem(INVENTORY_SIMULATOR_PANEL_WIDTH_KEY, String(Math.round(inventorySimulatorPanelWidth)));
-  }, [inventorySimulatorPanelWidth]);
-
-  useEffect(() => {
-    const clampPanelWidth = () => {
-      setInventorySimulatorPanelWidth((current) => normalizeInventorySimulatorPanelWidth(current));
-    };
-    window.addEventListener("resize", clampPanelWidth);
-    return () => window.removeEventListener("resize", clampPanelWidth);
-  }, []);
-
-  useEffect(() => {
-    const handleZoomShortcut = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
-      if (event.key === "0") {
-        event.preventDefault();
-        setUiFontSize(UI_FONT_SIZE_DEFAULT);
-        return;
-      }
-      if (event.key === "+" || event.key === "=" || event.code === "NumpadAdd") {
-        event.preventDefault();
-        setUiFontSize((current) => stepUiFontSize(current, 1));
-        return;
-      }
-      if (event.key === "-" || event.code === "NumpadSubtract") {
-        event.preventDefault();
-        setUiFontSize((current) => stepUiFontSize(current, -1));
-      }
-    };
-    window.addEventListener("keydown", handleZoomShortcut);
-    return () => window.removeEventListener("keydown", handleZoomShortcut);
-  }, []);
 
   useEffect(() => () => {
     const context = taskSoundContextRef.current;
@@ -1452,162 +683,7 @@ function App() {
     };
   }, [aggregateTelemetryEnabled, presenceTelemetryConsent, presenceTelemetryEnabled, submitTelemetry]);
 
-  useEffect(() => {
-    if ("__TAURI_INTERNALS__" in window || !import.meta.env.DEV || browserLogPreviewSeededRef.current) return;
-    browserLogPreviewSeededRef.current = true;
-    const now = Date.now();
-    setActivityLogs([
-      { id: "preview-1", timestampMs: now - 42_000, level: "info", source: "app", message: "CS2 DemoTracer 1.1.7 started" },
-      { id: "preview-2", timestampMs: now - 31_000, level: "debug", source: "analysis", message: "phase=parsing" },
-      { id: "preview-3", timestampMs: now - 24_000, level: "info", source: "analysis", message: "Parsed match.dem.zst: 24 rounds · 10 players" },
-      { id: "preview-4", timestampMs: now - 15_000, level: "warn", source: "conversion", message: "Round 12: partial player evidence was preserved" },
-      { id: "preview-5", timestampMs: now - 4_000, level: "info", source: "gsi", message: "map=de_anubis · round=7 · roundPhase=freezetime · activity=playing" },
-    ]);
-    setGsiRuntimeStatus({
-      listening: true,
-      configured: true,
-      connected: true,
-      port: 32123,
-      lastUpdateMs: now - 4_000,
-      provider: "Counter-Strike 2",
-      map: "de_anubis",
-      mapPhase: "live",
-      round: 7,
-      roundPhase: "freezetime",
-      playerActivity: "playing",
-      playerHealth: 100,
-    });
-  }, []);
 
-  useEffect(() => {
-    if (!("__TAURI_INTERNALS__" in window)) return;
-    void refreshActivityLogs();
-    void invoke<ActivityLogMaintenance>("maintain_activity_logs").catch(() => undefined);
-    const timer = window.setInterval(() => {
-      void invoke<ActivityLogMaintenance>("maintain_activity_logs").catch(() => undefined);
-    }, 15 * 60 * 1_000);
-    return () => window.clearInterval(timer);
-  }, [refreshActivityLogs]);
-
-  useEffect(() => {
-    if (activeSection !== "logs" || !("__TAURI_INTERNALS__" in window)) return;
-    void refreshActivityLogs();
-    const timer = window.setInterval(() => void refreshActivityLogs(), 2_500);
-    return () => window.clearInterval(timer);
-  }, [activeSection, refreshActivityLogs]);
-
-  useEffect(() => {
-    const cs2Path = localEnvironment.cs2Path.trim();
-    if (!cs2Path || !("__TAURI_INTERNALS__" in window)) return;
-    let disposed = false;
-    void invoke<GsiStatus>("configure_gsi", { cs2Path }).then((status) => {
-      if (!disposed) setGsiRuntimeStatus(status);
-    }).catch(async (reason) => {
-      const error = parseCommandError(reason);
-      const status = await invoke<GsiStatus>("gsi_status").catch(() => null);
-      if (disposed) return;
-      setGsiRuntimeStatus(status ? { ...status, error: error.message } : null);
-      recordActivityLog("warn", "gsi", `GSI configuration skipped: ${error.code}`);
-    });
-    return () => { disposed = true; };
-  }, [localEnvironment.cs2Path, recordActivityLog]);
-
-  useEffect(() => {
-    if (!("__TAURI_INTERNALS__" in window)) return;
-    let disposed = false;
-    void getVersion().then((currentVersion) => {
-      if (disposed) return;
-      setAppVersion(currentVersion);
-      setGuiUpdate((current) => ({ ...current, currentVersion }));
-      void checkGuiApplicationUpdate(false, currentVersion);
-    }).catch(() => undefined);
-    return () => {
-      disposed = true;
-      const pending = pendingGuiUpdateRef.current;
-      pendingGuiUpdateRef.current = null;
-      if (pending) void pending.close().catch(() => undefined);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!("__TAURI_INTERNALS__" in window) || localEnvironment.cs2Path.trim()) return;
-    let disposed = false;
-    setDetectingInstallations(true);
-    void invoke<Cs2InstallCandidate[]>("detect_cs2_installations").then(async (candidates) => {
-      if (disposed) return;
-      setInstallCandidates(candidates);
-      setInstallDetectionCompleted(true);
-      const candidate = candidates[0];
-      if (!candidate) return;
-      setLocalEnvironment((current) => ({ ...current, cs2Path: candidate.path }));
-      try {
-        const report = await invoke<EnvironmentDiagnosticReport>("inspect_cs2_install", { path: candidate.path });
-        if (!disposed) setEnvironmentReport(report);
-      } catch {
-        // Steam discovery remains useful even if the first diagnostic pass fails.
-      }
-    }).catch(() => {
-      if (!disposed) setInstallDetectionCompleted(true);
-    }).finally(() => {
-      if (!disposed) setDetectingInstallations(false);
-    });
-    return () => { disposed = true; };
-  }, []);
-
-  useEffect(() => {
-    if (!("__TAURI_INTERNALS__" in window)) return;
-    const cs2Path = localEnvironment.cs2Path.trim();
-    let disposed = false;
-    setPlaybackReleaseError("");
-    setPlaybackUpdate(cs2Path ? { phase: "checking" } : { phase: "idle" });
-    void invoke<PlaybackReleaseStatus>("playback_release_status", { cs2Path: cs2Path || null }).then((status) => {
-      if (disposed) return;
-      setPlaybackRelease(status);
-    }).catch((reason) => {
-      if (!disposed) setPlaybackReleaseError(userFacingErrorMessage(parseCommandError(reason), language));
-    });
-    if (cs2Path) {
-      void invoke<PlaybackUpdateRelease>("playback_update_status", { cs2Path }).then((status) => {
-        if (disposed) return;
-        setPlaybackUpdate({
-          phase: status.updateAvailable ? "available" : "current",
-          latestVersion: status.latestVersion,
-          notes: status.notes,
-        });
-      }).catch((reason) => {
-        if (disposed) return;
-        setPlaybackUpdate(playbackUpdateFailureStatus(reason, language));
-      });
-    }
-    return () => { disposed = true; };
-  }, [language, localEnvironment.cs2Path]);
-
-  useEffect(() => {
-    if (playbackContinuationStartedRef.current) return;
-    const stored = localStorage.getItem(PENDING_PLAYBACK_UPDATE_STORAGE_KEY);
-    const pending = normalizePendingPlaybackUpdate(stored);
-    if (!pending) {
-      if (stored) localStorage.removeItem(PENDING_PLAYBACK_UPDATE_STORAGE_KEY);
-      return;
-    }
-    if (guiUpdate.currentVersion !== pending.guiVersion) return;
-    if (playbackUpdate.phase === "current") {
-      localStorage.removeItem(PENDING_PLAYBACK_UPDATE_STORAGE_KEY);
-      return;
-    }
-    if (playbackUpdate.phase !== "available") return;
-    if (playbackUpdate.latestVersion !== pending.playbackVersion) {
-      localStorage.removeItem(PENDING_PLAYBACK_UPDATE_STORAGE_KEY);
-      return;
-    }
-
-    playbackContinuationStartedRef.current = true;
-    localStorage.removeItem(PENDING_PLAYBACK_UPDATE_STORAGE_KEY);
-    setUpdateDialogOpen(true);
-    void installLatestPlaybackBundle().then((installed) => {
-      if (installed) setUpdateDialogOpen(false);
-    });
-  }, [guiUpdate.currentVersion, playbackUpdate.latestVersion, playbackUpdate.phase]);
 
   useEffect(() => {
     if (!archivePath || !archive) return;
@@ -3167,186 +2243,6 @@ function App() {
     }
   }
 
-  async function checkGuiApplicationUpdate(manual = true, knownCurrentVersion?: string) {
-    if (!("__TAURI_INTERNALS__" in window)) return;
-    if (guiUpdate.phase === "checking" || guiUpdate.phase === "downloading" || guiUpdate.phase === "installing") return;
-    setReleaseNotice("");
-    const currentVersion = knownCurrentVersion
-      ?? await getVersion().catch(() => guiUpdate.currentVersion || appVersion || packageMetadata.version);
-    setGuiUpdate({ phase: "checking", currentVersion });
-    try {
-      const previous = pendingGuiUpdateRef.current;
-      pendingGuiUpdateRef.current = null;
-      if (previous) await previous.close().catch(() => undefined);
-
-      const update = await check({ timeout: 15_000 });
-      if (!update) {
-        setGuiUpdate({
-          phase: "current",
-          currentVersion,
-          availableVersion: currentVersion,
-        });
-        if (manual) setReleaseNotice(words.releaseUpToDate);
-        return;
-      }
-
-      pendingGuiUpdateRef.current = update;
-      setGuiUpdate({
-        phase: "available",
-        currentVersion,
-        availableVersion: update.version,
-        notes: update.body ?? undefined,
-      });
-    } catch {
-      setGuiUpdate({
-        phase: "error",
-        currentVersion,
-      });
-    }
-  }
-
-  async function installGuiApplicationUpdate() {
-    const update = pendingGuiUpdateRef.current;
-    if (!update || guiUpdate.phase !== "available") return;
-    let downloadedBytes = 0;
-    let totalBytes: number | undefined;
-    setReleaseNotice("");
-    setGuiUpdate((current) => ({
-      ...current,
-      phase: "downloading",
-      downloadedBytes: 0,
-    }));
-    try {
-      await update.downloadAndInstall((event) => {
-        if (event.event === "Started") {
-          totalBytes = event.data.contentLength ?? undefined;
-          setGuiUpdate((current) => ({
-            ...current,
-            phase: "downloading",
-            downloadedBytes: 0,
-            totalBytes,
-          }));
-        } else if (event.event === "Progress") {
-          downloadedBytes += event.data.chunkLength;
-          setGuiUpdate((current) => ({
-            ...current,
-            phase: "downloading",
-            downloadedBytes,
-            totalBytes,
-          }));
-        } else if (event.event === "Finished") {
-          setGuiUpdate((current) => ({
-            ...current,
-            phase: "installing",
-            downloadedBytes,
-            totalBytes,
-          }));
-        }
-      }, { timeout: 120_000 });
-      pendingGuiUpdateRef.current = null;
-      await relaunch();
-    } catch {
-      localStorage.removeItem(PENDING_PLAYBACK_UPDATE_STORAGE_KEY);
-      setGuiUpdate((current) => ({
-        ...current,
-        phase: "error",
-      }));
-    }
-  }
-
-  async function finishPlaybackChange(result: PlaybackInstallResult, action: "install" | "rollback") {
-    setPlaybackInstallBlockedByCs2(false);
-    setReleaseNotice(action === "install"
-      ? words.playbackInstalledNotice
-        .replace("{version}", result.version)
-        .replace("{installed}", String(result.installedFiles))
-        .replace("{removed}", String(result.removedLegacyFiles))
-      : words.playbackRollbackNotice);
-    await runEnvironmentInspection(localEnvironment.cs2Path);
-    const status = await invoke<PlaybackReleaseStatus>("playback_release_status", {
-      cs2Path: localEnvironment.cs2Path.trim(),
-    });
-    setPlaybackRelease(status);
-    await checkPlaybackUpdate(true);
-  }
-
-  async function checkPlaybackUpdate(ignoreBusy = false) {
-    const cs2Path = localEnvironment.cs2Path.trim();
-    if (!cs2Path || (!ignoreBusy && releaseAction)) return;
-    setPlaybackUpdate({ phase: "checking" });
-    try {
-      const status = await invoke<PlaybackUpdateRelease>("playback_update_status", { cs2Path });
-      setPlaybackUpdate({
-        phase: status.updateAvailable ? "available" : "current",
-        latestVersion: status.latestVersion,
-        notes: status.notes,
-      });
-    } catch (reason) {
-      setPlaybackUpdate(playbackUpdateFailureStatus(reason, language));
-    }
-  }
-
-  async function installLatestPlaybackBundle() {
-    const cs2Path = localEnvironment.cs2Path.trim();
-    if (!cs2Path || releaseAction) return false;
-    setReleaseAction("installingOnline");
-    setPlaybackReleaseError("");
-    setPlaybackInstallBlockedByCs2(false);
-    setReleaseNotice("");
-    setPlaybackInstallProgress({ phase: "checking" });
-    const events = new Channel<PlaybackInstallProgress>();
-    events.onmessage = (progress) => {
-      setPlaybackInstallProgress((current) => ({ ...current, ...progress }));
-    };
-    try {
-      const result = await invoke<PlaybackInstallResult>("install_latest_playback_bundle", { cs2Path, events });
-      await finishPlaybackChange(result, "install");
-      return true;
-    } catch (reason) {
-      const error = parseCommandError(reason);
-      setPlaybackInstallBlockedByCs2(error.code.toLocaleLowerCase().includes("cs2_running"));
-      setPlaybackReleaseError(userFacingErrorMessage(error, language));
-      return false;
-    } finally {
-      events.onmessage = () => undefined;
-      setPlaybackInstallProgress(null);
-      setReleaseAction(null);
-    }
-  }
-
-  async function installPlaybackBundle() {
-    const cs2Path = localEnvironment.cs2Path.trim();
-    if (!cs2Path || releaseAction) return;
-    setPlaybackReleaseError("");
-    setReleaseNotice("");
-    try {
-      const packagePath = await invoke<string | null>("choose_playback_bundle", { initialPath: null });
-      if (!packagePath) return;
-      setReleaseAction("installingFile");
-      const result = await invoke<PlaybackInstallResult>("install_playback_bundle", { cs2Path, packagePath });
-      await finishPlaybackChange(result, "install");
-    } catch (reason) {
-      setPlaybackReleaseError(userFacingErrorMessage(parseCommandError(reason), language));
-    } finally {
-      setReleaseAction(null);
-    }
-  }
-
-  async function rollbackPlaybackInstall() {
-    const cs2Path = localEnvironment.cs2Path.trim();
-    if (!cs2Path || releaseAction || !playbackRelease?.canRollback) return;
-    setReleaseAction("rollingBack");
-    setPlaybackReleaseError("");
-    setReleaseNotice("");
-    try {
-      const result = await invoke<PlaybackInstallResult>("rollback_playback_install", { cs2Path });
-      await finishPlaybackChange(result, "rollback");
-    } catch (reason) {
-      setPlaybackReleaseError(userFacingErrorMessage(parseCommandError(reason), language));
-    } finally {
-      setReleaseAction(null);
-    }
-  }
 
   async function runEnvironmentInspection(path = localEnvironment.cs2Path) {
     const candidate = path.trim();
@@ -3881,85 +2777,6 @@ function App() {
     </div>
   ) : null;
 
-  const guiUpdateAvailable = guiUpdate.phase === "available" && Boolean(guiUpdate.availableVersion);
-  const guiUpdateRetryRequired = guiUpdate.phase === "error"
-    && Boolean(guiUpdate.availableVersion && guiUpdate.availableVersion !== guiUpdate.currentVersion);
-  const playbackUpdateAvailable = playbackUpdate.phase === "available" && Boolean(playbackUpdate.latestVersion);
-  const actionableGuiUpdate = guiUpdateAvailable
-    && !updateVersionIsIgnored(ignoredUpdateVersions, "gui", guiUpdate.availableVersion);
-  const actionablePlaybackUpdate = playbackUpdateAvailable
-    && !updateVersionIsIgnored(ignoredUpdateVersions, "playback", playbackUpdate.latestVersion);
-  const guiUpdateOffered = actionableGuiUpdate || guiUpdateRetryRequired;
-  const playbackUpdateOffered = actionablePlaybackUpdate;
-  const actionableUpdateAvailable = actionableGuiUpdate || actionablePlaybackUpdate;
-  const availableUpdateCount = Number(guiUpdateOffered) + Number(playbackUpdateOffered);
-  const updatePromptSummary = [
-    actionableGuiUpdate
-      ? `DemoTracer v${guiUpdate.currentVersion || appVersion} → v${guiUpdate.availableVersion}`
-      : "",
-    actionablePlaybackUpdate
-      ? `Playback ${playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy} → v${playbackUpdate.latestVersion}`
-      : "",
-  ].filter(Boolean).join(" · ");
-  const updateDialogBusy = guiUpdate.phase === "checking"
-    || guiUpdate.phase === "downloading"
-    || guiUpdate.phase === "installing"
-    || releaseAction === "installingOnline";
-  const playbackInstallStatus = playbackInstallProgress?.phase === "downloading" ? words.releaseDownloading
-    : playbackInstallProgress?.phase === "verifying" ? words.releaseVerifying
-      : playbackInstallProgress?.phase === "installing" ? words.releaseInstalling
-        : words.releaseChecking;
-  const updateDialogStatus = guiUpdate.phase === "downloading" ? words.releaseDownloading
-    : guiUpdate.phase === "installing" ? words.releaseInstalling
-      : releaseAction === "installingOnline" ? playbackInstallStatus
-      : availableUpdateCount > 0 ? words.releaseUpdateAvailable
-        : guiUpdate.phase === "error" || playbackUpdate.phase === "error" ? words.releaseCheckUnavailable
-          : words.releaseUpToDate;
-  const updateDialogProgressActive = guiUpdate.phase === "downloading"
-    || guiUpdate.phase === "installing"
-    || releaseAction === "installingOnline";
-  const updateDialogProgress = guiUpdate.phase === "downloading" && guiUpdate.totalBytes && guiUpdate.downloadedBytes != null
-    ? Math.min(100, Math.round((guiUpdate.downloadedBytes / guiUpdate.totalBytes) * 100))
-    : releaseAction === "installingOnline"
-        && playbackInstallProgress?.totalBytes
-        && playbackInstallProgress.downloadedBytes != null
-      ? Math.min(100, Math.round((playbackInstallProgress.downloadedBytes / playbackInstallProgress.totalBytes) * 100))
-      : null;
-
-  function dismissUpdatePrompt() {
-    setUpdatePromptDismissed(true);
-    setUpdateDialogOpen(false);
-  }
-
-  function ignoreAvailableUpdateVersions() {
-    setIgnoredUpdateVersions((current) => ({
-      ...current,
-      ...(guiUpdateOffered && guiUpdate.availableVersion ? { gui: guiUpdate.availableVersion } : {}),
-      ...(playbackUpdateOffered && playbackUpdate.latestVersion ? { playback: playbackUpdate.latestVersion } : {}),
-    }));
-    dismissUpdatePrompt();
-  }
-
-  async function installAvailableUpdates() {
-    if (guiUpdateRetryRequired) {
-      await checkGuiApplicationUpdate();
-      return;
-    }
-    if (guiUpdateAvailable) {
-      if (playbackUpdateOffered && guiUpdate.availableVersion && playbackUpdate.latestVersion) {
-        localStorage.setItem(PENDING_PLAYBACK_UPDATE_STORAGE_KEY, JSON.stringify({
-          guiVersion: guiUpdate.availableVersion,
-          playbackVersion: playbackUpdate.latestVersion,
-        }));
-      }
-      await installGuiApplicationUpdate();
-      return;
-    }
-    if (playbackUpdateOffered) {
-      const installed = await installLatestPlaybackBundle();
-      if (installed) setUpdateDialogOpen(false);
-    }
-  }
 
   return (
     <div className={`app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
@@ -4144,14 +2961,7 @@ function App() {
             onUseCandidate={useCs2Candidate}
             onInspectEnvironment={() => void runEnvironmentInspection()}
             onCheckGuiUpdate={() => void checkGuiApplicationUpdate()}
-            onInstallGuiUpdate={() => {
-              setIgnoredUpdateVersions((current) => {
-                if (!updateVersionIsIgnored(current, "gui", guiUpdate.availableVersion)) return current;
-                const { gui: _ignoredGui, ...rest } = current;
-                return rest;
-              });
-              setUpdateDialogOpen(true);
-            }}
+            onInstallGuiUpdate={reviewGuiUpdate}
             onCheckPlaybackUpdate={() => void checkPlaybackUpdate()}
             onInstallLatestPlayback={() => void installLatestPlaybackBundle()}
             onInstallPlaybackBundle={() => void installPlaybackBundle()}
@@ -4410,311 +3220,118 @@ function App() {
       ) : null}
 
       {updateDialogOpen ? (
-        <DialogPrimitive
-          labelledBy="update-dialog-title"
-          describedBy="update-dialog-description"
-          onDismiss={() => {
-            if (!updateDialogBusy) dismissUpdatePrompt();
-          }}
+        <UpdateDialog
+          words={words}
+          language={language}
+          busy={updateDialogBusy}
+          status={updateDialogStatus}
+          playbackInstallBlockedByCs2={playbackInstallBlockedByCs2}
+          availableUpdateCount={availableUpdateCount}
+          guiUpdateOffered={guiUpdateOffered}
+          playbackUpdateOffered={playbackUpdateOffered}
+          guiUpdate={guiUpdate}
+          playbackRelease={playbackRelease}
+          playbackUpdate={playbackUpdate}
+          progressActive={updateDialogProgressActive}
+          progress={updateDialogProgress}
+          playbackInstallStatus={playbackInstallStatus}
+          playbackReleaseError={playbackReleaseError}
+          releaseAction={releaseAction}
+          guiUpdateRetryRequired={guiUpdateRetryRequired}
+          guiUpdateAvailable={guiUpdateAvailable}
           initialFocusRef={updateLaterRef}
-          dismissOnScrimClick={false}
-          className="dialog-surface gui-update-dialog"
-        >
-          <header className="update-dialog-header">
-            <div className="update-dialog-heading">
-              <div>
-                <span className="dialog-eyebrow">{words.releaseUpdateStatus}</span>
-                <h2 id="update-dialog-title">{words.releaseUpdateTitle}</h2>
-              </div>
-            </div>
-            <Group className="update-dialog-header-actions" gap="sm" wrap="nowrap">
-              <Badge
-                className="update-dialog-state"
-                color={playbackInstallBlockedByCs2 ? "orange" : "blue"}
-                variant="light"
-                size="lg"
-                radius="xl"
-                leftSection={<span className="update-dialog-state-dot" aria-hidden="true" />}
-              >
-                <span role="status">
-                  {updateDialogBusy
-                    ? updateDialogStatus
-                    : words.releaseUpdateComponentsCount.replace("{count}", String(availableUpdateCount))}
-                </span>
-              </Badge>
-              <button
-                className="icon-button"
-                type="button"
-                disabled={updateDialogBusy}
-                onClick={dismissUpdatePrompt}
-                aria-label={words.close}
-              >
-                <CloseIcon size={16} />
-              </button>
-            </Group>
-          </header>
-
-          <Stack className="update-dialog-content" gap="md">
-            {guiUpdateOffered ? (
-              <Paper className="update-dialog-component" component="section" withBorder radius="md" p="lg" aria-labelledby="gui-update-component-title">
-                <div className="update-dialog-component-header">
-                  <div>
-                    <Text id="gui-update-component-title" fw={700}>DemoTracer</Text>
-                    <Text c="dimmed" size="xs">{words.releaseDesktopApp}</Text>
-                  </div>
-                  <div className="update-dialog-version-route" aria-label={words.releaseUpdateStatus}>
-                    <code>v{guiUpdate.currentVersion || "—"}</code>
-                    <ArrowIcon size={16} aria-hidden="true" />
-                    <code>v{guiUpdate.availableVersion || "—"}</code>
-                  </div>
-                </div>
-                <Text className="update-dialog-component-notes" component="p" mt="md" size="sm">
-                  {releaseNotesForLanguage(guiUpdate.notes, language) || words.releaseGenericNotes}
-                </Text>
-              </Paper>
-            ) : null}
-
-            {playbackUpdateOffered ? (
-              <Paper className="update-dialog-component" component="section" withBorder radius="md" p="lg" aria-labelledby="playback-update-component-title">
-                <div className="update-dialog-component-header">
-                  <div>
-                    <Text id="playback-update-component-title" fw={700}>Playback</Text>
-                    <Text c="dimmed" size="xs">{words.releasePlayback}</Text>
-                  </div>
-                  <div className="update-dialog-version-route" aria-label={words.releaseUpdateStatus}>
-                    <code>{playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy}</code>
-                    <ArrowIcon size={16} aria-hidden="true" />
-                    <code>v{playbackUpdate.latestVersion || "—"}</code>
-                  </div>
-                </div>
-                <Text className="update-dialog-component-notes" component="p" mt="md" size="sm">
-                  {releaseNotesForLanguage(playbackUpdate.notes, language) || words.releasePlaybackGenericNotes}
-                </Text>
-              </Paper>
-            ) : null}
-
-            <div id="update-dialog-description" className="update-dialog-guidance">
-              <Text className="update-dialog-scope" c="dimmed" size="xs">{words.releaseUpdateScope}</Text>
-              {guiUpdateOffered && playbackUpdateOffered ? (
-                <Text className="update-dialog-scope" c="dimmed" size="xs">{words.releaseUpdateSequence}</Text>
-              ) : null}
-            </div>
-
-            {updateDialogProgressActive ? (
-              <Paper className="update-dialog-progress" withBorder radius="md" p="sm" role="status" aria-live="polite">
-                <Group justify="space-between" mb={7}>
-                  <Text c="dimmed" size="xs">{guiUpdate.phase === "installing"
-                    ? words.releaseInstalling
-                    : guiUpdate.phase === "downloading" ? words.releaseDownloading : playbackInstallStatus}</Text>
-                  <Text className="update-dialog-progress-value" size="xs" fw={700}>{updateDialogProgress != null ? `${updateDialogProgress}%` : "…"}</Text>
-                </Group>
-                <Progress value={updateDialogProgress ?? 36} animated={updateDialogProgress == null} size="sm" radius="xl" />
-              </Paper>
-            ) : null}
-
-            {guiUpdate.phase === "installing" ? (
-              <Text className="update-dialog-status" c="dimmed" size="xs" role="status">{words.releaseInstallingDesktop}</Text>
-            ) : null}
-            {guiUpdate.phase === "error" ? (
-              <Text className="release-error update-dialog-error" c="red" size="sm"><AlertIcon size={15} />{words.releaseCheckUnavailable}</Text>
-            ) : null}
-            {playbackReleaseError && playbackUpdateOffered ? (
-              <Text className={`release-error update-dialog-error${playbackInstallBlockedByCs2 ? " is-warning" : ""}`} c={playbackInstallBlockedByCs2 ? "orange" : "red"} size="sm">
-                <AlertIcon size={15} />
-                {playbackInstallBlockedByCs2 ? words.releaseCloseCs2ToContinue : playbackReleaseError}
-              </Text>
-            ) : null}
-          </Stack>
-
-          <footer className="update-dialog-footer">
-            <Button variant="subtle" color="gray" disabled={updateDialogBusy} onClick={ignoreAvailableUpdateVersions}>
-              {words.releaseIgnoreVersion}
-            </Button>
-            <Group gap="sm">
-              <Button ref={updateLaterRef} variant="default" disabled={updateDialogBusy} onClick={dismissUpdatePrompt}>
-                {words.releaseLater}
-              </Button>
-              <Button disabled={updateDialogBusy || availableUpdateCount === 0} onClick={() => void installAvailableUpdates()}>
-                {guiUpdate.phase === "downloading" ? words.releaseDownloading
-                  : guiUpdate.phase === "installing" ? words.releaseInstalling
-                    : releaseAction === "installingOnline" ? playbackInstallStatus
-                    : guiUpdateRetryRequired ? words.releaseCheckNow
-                      : guiUpdateAvailable ? words.releaseUpdateAndRestart
-                      : words.releaseUpdateAll}
-              </Button>
-            </Group>
-          </footer>
-        </DialogPrimitive>
+          onDismiss={dismissUpdatePrompt}
+          onIgnore={ignoreAvailableUpdateVersions}
+          onInstall={() => void installAvailableUpdates()}
+        />
       ) : null}
 
       {overwriteConflict ? (
-        <DialogPrimitive labelledBy="overwrite-title" describedBy="overwrite-description" onDismiss={() => setOverwriteConflict(null)} initialFocusRef={chooseOtherOutputRef} dismissOnScrimClick={false}>
-          <header className="dialog-header">
-            <h2 id="overwrite-title">{words.overwriteTitle}</h2>
-            <button className="icon-button" type="button" onClick={() => setOverwriteConflict(null)} aria-label={words.close}><CloseIcon size={16} /></button>
-          </header>
-          <p id="overwrite-description" className="dialog-description">{words.overwriteBody}</p>
-          <code className="dialog-path">{overwriteConflict.root}</code>
-          <button className="text-button dialog-inline-action" type="button" onClick={() => void openPath(overwriteConflict.root)}><FolderIcon size={15} />{words.openExisting}</button>
-          <footer className="dialog-actions three-actions">
-            <button className="secondary-button" type="button" onClick={() => setOverwriteConflict(null)}>{words.cancel}</button>
-            <button ref={chooseOtherOutputRef} className="secondary-button" type="button" onClick={() => {
-              setOverwriteConflict(null);
-              void chooseOutput();
-            }}>{words.chooseAnotherOutput}</button>
-            <button
-              className="danger-button"
-              type="button"
-              disabled={conversionStartPending}
-              onClick={() => void runConversionStartExclusive(() => performConvert(true))}
-            >{words.replaceAndConvert}</button>
-          </footer>
-        </DialogPrimitive>
+        <OverwriteDialog
+          words={words}
+          conflict={overwriteConflict}
+          conversionStartPending={conversionStartPending}
+          initialFocusRef={chooseOtherOutputRef}
+          onDismiss={() => setOverwriteConflict(null)}
+          onOpenExisting={() => void openPath(overwriteConflict.root)}
+          onChooseAnother={() => {
+            setOverwriteConflict(null);
+            void chooseOutput();
+          }}
+          onReplace={() => void runConversionStartExclusive(() => performConvert(true))}
+        />
       ) : null}
 
       {duplicateDemoConflict ? (
-        <DialogPrimitive
-          labelledBy="duplicate-demo-title"
-          describedBy="duplicate-demo-description"
-          onDismiss={() => setDuplicateDemoConflict(null)}
+        <DuplicateDemoDialog
+          words={words}
+          conflict={duplicateDemoConflict}
           initialFocusRef={openExistingArchiveRef}
-          dismissOnScrimClick={false}
-        >
-          <header className="dialog-header">
-            <h2 id="duplicate-demo-title">{words.duplicateDemoTitle}</h2>
-            <button className="icon-button" type="button" onClick={() => setDuplicateDemoConflict(null)} aria-label={words.close}><CloseIcon size={16} /></button>
-          </header>
-          <p id="duplicate-demo-description" className="dialog-description">
-            {duplicateDemoConflict.batch
-              ? words.duplicateBatchBody
-                .replace("{existing}", String(duplicateDemoConflict.batch.replaceSourceIds.length))
-                .replace("{total}", String(duplicateDemoConflict.batch.selections.length))
-              : words.duplicateDemoBody}
-            {!duplicateDemoConflict.batch && duplicateDemoConflict.primary.matches.length > 1
-              ? ` ${words.duplicateDemoMatchCount.replace("{count}", String(duplicateDemoConflict.primary.matches.length))}`
-              : ""}
-          </p>
-          <strong className="dialog-target-name">
-            {duplicateDemoConflict.primary.matches[0].displayName
-              || fileName(duplicateDemoConflict.primary.matches[0].root)
-              || duplicateDemoConflict.primary.matches[0].demoId}
-          </strong>
-          <code className="dialog-path">{duplicateDemoConflict.primary.matches[0].root}</code>
-          <footer className="dialog-actions three-actions">
-            <button className="secondary-button" type="button" onClick={() => setDuplicateDemoConflict(null)}>{words.cancel}</button>
-            <button
-              className={duplicateDemoConflict.batch ? "danger-button" : "secondary-button"}
-              type="button"
-              onClick={() => {
-                const conflict = duplicateDemoConflict;
-                setDuplicateDemoConflict(null);
-                if (conflict.batch) {
-                  stageBatchSelections(
-                    conflict.batch.selections,
-                    conflict.batch.replaceSourceIds,
-                    conflict.batch.mergedSegments,
-                    conflict.batch.relinkedDuplicates,
-                  );
-                } else {
-                  void runAnalysis(conflict.primary.sourcePath);
-                }
-              }}
-            >
-              {duplicateDemoConflict.batch
-                ? words.analyzeBatchAgain.replace("{count}", String(duplicateDemoConflict.batch.selections.length))
-                : words.analyzeAgain}
-            </button>
-            <button ref={openExistingArchiveRef} className="primary-button" type="button" onClick={() => {
-              const manifestPath = duplicateDemoConflict.primary.matches[0].manifestPath;
-              setDuplicateDemoConflict(null);
-              void runManifest(manifestPath);
-            }}>{words.openExistingArchive}<ArrowIcon size={15} /></button>
-          </footer>
-        </DialogPrimitive>
+          onDismiss={() => setDuplicateDemoConflict(null)}
+          onAnalyzeAgain={(conflict) => {
+            setDuplicateDemoConflict(null);
+            if (conflict.batch) {
+              stageBatchSelections(
+                conflict.batch.selections,
+                conflict.batch.replaceSourceIds,
+                conflict.batch.mergedSegments,
+                conflict.batch.relinkedDuplicates,
+              );
+            } else {
+              void runAnalysis(conflict.primary.sourcePath);
+            }
+          }}
+          onOpenExisting={(manifestPath) => {
+            setDuplicateDemoConflict(null);
+            void runManifest(manifestPath);
+          }}
+        />
       ) : null}
 
       {archiveDeleteTarget ? (
-        <DialogPrimitive
-          labelledBy="delete-archive-title"
-          describedBy="delete-archive-description"
-          onDismiss={() => { if (!deletingManifest) setArchiveDeleteTarget(null); }}
+        <DeleteArchiveDialog
+          words={words}
+          target={archiveDeleteTarget}
+          deleting={Boolean(deletingManifest)}
           initialFocusRef={cancelArchiveDeleteRef}
-          dismissOnScrimClick={false}
-        >
-          <header className="dialog-header warning-header">
-            <span><AlertIcon size={18} /></span>
-            <h2 id="delete-archive-title">{words.deleteArchiveTitle}</h2>
-            <button className="icon-button" type="button" disabled={Boolean(deletingManifest)} onClick={() => setArchiveDeleteTarget(null)} aria-label={words.close}><CloseIcon size={16} /></button>
-          </header>
-          <p id="delete-archive-description" className="dialog-description">{words.deleteArchiveBody}</p>
-          <strong className="dialog-target-name">{archiveDeleteTarget.displayName || fileName(archiveDeleteTarget.root) || archiveDeleteTarget.demoId}</strong>
-          <footer className="dialog-actions">
-            <button ref={cancelArchiveDeleteRef} className="secondary-button" type="button" disabled={Boolean(deletingManifest)} onClick={() => setArchiveDeleteTarget(null)}>{words.cancel}</button>
-            <button className="danger-button" type="button" disabled={Boolean(deletingManifest)} onClick={() => void deleteArchiveEntry(archiveDeleteTarget)}>{deletingManifest ? words.deletingArchive : words.deleteArchive}</button>
-          </footer>
-        </DialogPrimitive>
+          onDismiss={() => setArchiveDeleteTarget(null)}
+          onDelete={() => void deleteArchiveEntry(archiveDeleteTarget)}
+        />
       ) : null}
 
       {reparseTarget ? (
-        <DialogPrimitive
-          labelledBy="reparse-title"
-          describedBy="reparse-description"
+        <ReparseDialog
+          words={words}
           onDismiss={() => setReparseTarget(null)}
-          dismissOnScrimClick={false}
-        >
-          <header className="dialog-header warning-header">
-            <span><AlertIcon size={18} /></span>
-            <h2 id="reparse-title">{words.reparseConfirmTitle}</h2>
-          </header>
-          <p id="reparse-description" className="dialog-description">{words.reparseConfirmBody}</p>
-          <footer className="dialog-actions">
-            <button className="secondary-button" type="button" onClick={() => setReparseTarget(null)}>{words.cancel}</button>
-            <button className="danger-button" type="button" onClick={confirmReparse}>{words.reparseConfirmAction}</button>
-          </footer>
-        </DialogPrimitive>
+          onConfirm={confirmReparse}
+        />
       ) : null}
 
       {cosmeticOpen ? (
-        <DialogPrimitive labelledBy="cosmetic-title" describedBy="cosmetic-description" onDismiss={() => setCosmeticOpen(false)} initialFocusRef={cosmeticInputRef} dismissOnScrimClick={false} className="dialog-surface cosmetic-dialog">
-          <header className="dialog-header warning-header">
-            <span><AlertIcon size={18} /></span>
-            <h2 id="cosmetic-title">{words.cosmeticTitle}</h2>
-            <button className="icon-button" type="button" onClick={() => setCosmeticOpen(false)} aria-label={words.close}><CloseIcon size={16} /></button>
-          </header>
-          <p id="cosmetic-description" className="dialog-description">{words.cosmeticBody}</p>
-          <div className="phrase-field">
-            <label htmlFor="cosmetic-confirmation-phrase">{words.typePhrase}</label>
-            <button className="phrase-copy-button" type="button" onClick={() => void copyText(COSMETIC_PHRASE, "phrase")} aria-label={words.copyPhrase}>
-              <code>{COSMETIC_PHRASE}</code>
-              <span>{copiedTarget === "phrase" ? <CheckIcon size={14} /> : <CopyIcon size={14} />}{copiedTarget === "phrase" ? words.copied : words.copyPhrase}</span>
-            </button>
-            <input id="cosmetic-confirmation-phrase" ref={cosmeticInputRef} autoComplete="off" spellCheck={false} value={cosmeticPhrase} onChange={(event) => setCosmeticPhrase(event.target.value)} />
-            <small>{words.phraseCaseSensitive}</small>
-          </div>
-          <footer className="dialog-actions">
-            <button className="secondary-button" type="button" onClick={() => setCosmeticOpen(false)}>{words.cancel}</button>
-            <button className="primary-button" type="button" disabled={!consentIsValid(cosmeticPhrase)} onClick={() => {
-              setCosmeticConsentAccepted(true);
-              setSettings((current) => ({ ...current, exportCosmetics: true }));
-              setCosmeticPhrase("");
-              setCosmeticOpen(false);
-            }}>{words.enableCosmetics}<ArrowIcon size={15} /></button>
-          </footer>
-        </DialogPrimitive>
+        <CosmeticConsentDialog
+          words={words}
+          phrase={cosmeticPhrase}
+          copied={copiedTarget === "phrase"}
+          initialFocusRef={cosmeticInputRef}
+          onDismiss={() => setCosmeticOpen(false)}
+          onPhraseChange={setCosmeticPhrase}
+          onCopyPhrase={() => void copyText(COSMETIC_PHRASE, "phrase")}
+          onEnable={() => {
+            setCosmeticConsentAccepted(true);
+            setSettings((current) => ({ ...current, exportCosmetics: true }));
+            setCosmeticPhrase("");
+            setCosmeticOpen(false);
+          }}
+        />
       ) : null}
 
       {closeOpen ? (
-        <DialogPrimitive labelledBy="close-task-title" describedBy="close-task-description" onDismiss={() => setCloseOpen(false)} initialFocusRef={keepWorkingRef} dismissOnScrimClick={false}>
-          <header className="dialog-header warning-header">
-            <span><AlertIcon size={18} /></span>
-            <h2 id="close-task-title">{words.closeTaskTitle}</h2>
-          </header>
-          <p id="close-task-description" className="dialog-description">{words.closeTaskBody}</p>
-          <footer className="dialog-actions">
-            <button ref={keepWorkingRef} className="primary-button" type="button" onClick={() => setCloseOpen(false)}>{words.keepWorking}</button>
-            <button className="danger-button" type="button" onClick={() => void exitDesktopApp()}>{words.closeAnyway}</button>
-          </footer>
-        </DialogPrimitive>
+        <CloseTaskDialog
+          words={words}
+          initialFocusRef={keepWorkingRef}
+          onDismiss={() => setCloseOpen(false)}
+          onExit={() => void exitDesktopApp()}
+        />
       ) : null}
 
       <span className="sr-only" role="status" aria-live="polite">{liveMessage}</span>
