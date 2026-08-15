@@ -235,6 +235,29 @@ namespace BotController
             return table->SetStringUserData(index, &userData, true);
         }
 
+        static bool ClearAvatarOverride(INetworkStringTable *table, const char *steamId,
+                                        int &index, char *err, size_t errLen)
+        {
+            index = table->FindStringIndex(steamId);
+            if (index < 0)
+                return true;
+            if (index == 0)
+            {
+                std::snprintf(err, errLen,
+                              "refusing to clear reserved index 0");
+                return false;
+            }
+
+            SetStringUserDataRequest_t emptyUserData{};
+            if (!table->SetStringUserData(index, &emptyUserData, true))
+            {
+                std::snprintf(err, errLen,
+                              "failed to clear avatar user data");
+                return false;
+            }
+            return true;
+        }
+
         static bool EnsureReliableAvatarData(const CCommandContext &context)
         {
             ConVarRefAbstract reliableAvatarData("sv_reliableavatardata");
@@ -415,6 +438,61 @@ CON_COMMAND_F(bc_avatar_override_probe,
     Commands::PrintToCaller(context,
                             "[BC] avatar override set %s (%zu bytes, index %d, table_count %d, sv_reliableavatardata=true)\n",
                             steamId, bytes.size(), index, table->GetNumStrings());
+}
+
+CON_COMMAND_F(bc_avatar_override_clear,
+              "bc_avatar_override_clear <steamid64>  "
+              "Clear DemoTracer-published ServerAvatarOverrides data for one SteamID.",
+              FCVAR_NONE)
+{
+    using namespace BotController;
+
+    if (args.ArgC() < 2)
+    {
+        Commands::PrintToCaller(context,
+                                "usage: bc_avatar_override_clear <steamid64>\n");
+        return;
+    }
+
+    const char *steamId = args.Arg(1);
+    if (!Commands::IsSteamId64(steamId))
+    {
+        Commands::PrintToCaller(context, "[BC] error: expected a SteamID64 key\n");
+        return;
+    }
+
+    if (!Commands::g_pStringTables)
+    {
+        Commands::PrintToCaller(context,
+                                "[BC] error: network string table server interface unavailable\n");
+        return;
+    }
+
+    INetworkStringTable *table =
+        Commands::g_pStringTables->FindTable("ServerAvatarOverrides");
+    if (!table)
+    {
+        Commands::PrintToCaller(context,
+                                "[BC] error: ServerAvatarOverrides table not found yet\n");
+        return;
+    }
+
+    if (!Commands::EnsureReliableAvatarData(context))
+        return;
+
+    int index = -1;
+    char err[128] = {0};
+    if (!Commands::ClearAvatarOverride(table, steamId, index, err, sizeof(err)))
+    {
+        Commands::PrintToCaller(context,
+                                "[BC] error: failed to clear avatar override for %s: %s\n",
+                                steamId, err[0] ? err : "unknown error");
+        return;
+    }
+
+    Commands::PrintToCaller(context,
+                            "[BC] avatar override cleared %s (index %d, table_count %d)\n",
+                            steamId, index, table->GetNumStrings());
 }
 
 CON_COMMAND_F(bc_lock,
