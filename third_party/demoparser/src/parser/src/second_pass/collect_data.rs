@@ -1811,13 +1811,10 @@ impl<'a> SecondPassParser<'a> {
 
     pub fn find_glove_paint_seed(&self, player_entid: &i32) -> Result<Variant, PropCollectionError> {
         match self.find_glove_attribute_value(player_entid, ECON_ATTR_SET_ITEM_TEXTURE_SEED) {
-            Ok(Variant::F32(f)) if f.is_finite() && f.fract() == 0.0 && f >= 0.0 => {
-                Ok(Variant::U32(f as u32))
-            }
-            Ok(Variant::U32(value)) => Ok(Variant::U32(value)),
-            Ok(Variant::I32(value)) if value >= 0 => Ok(Variant::U32(value as u32)),
-            Ok(_) => Err(PropCollectionError::GloveSkinIdxIncorrectVariant),
-            Err(e) => return Err(e),
+            Ok(value) => glove_paint_seed_from_attribute(value)
+                .map(Variant::U32)
+                .ok_or(PropCollectionError::GloveSkinIdxIncorrectVariant),
+            Err(e) => Err(e),
         }
     }
 
@@ -2068,6 +2065,18 @@ fn variant_to_nonnegative_u32(value: Variant) -> Option<u32> {
     }
 }
 
+fn glove_paint_seed_from_attribute(value: Variant) -> Option<u32> {
+    match value {
+        Variant::U32(value) => Some(value),
+        Variant::I32(value) if value >= 0 => Some(value as u32),
+        // CS2 transmits paint seeds through the float-valued econ attribute lane.
+        // Rendering converts that value to the integer pattern index, matching the
+        // existing weapon paint-seed path.
+        Variant::F32(value) if value.is_finite() && value >= 0.0 => Some(value as u32),
+        _ => None,
+    }
+}
+
 fn stable_owned_weapon_slot_key(
     steam_id: u64,
     team_num: u32,
@@ -2124,12 +2133,12 @@ fn refresh_owned_weapon_dynamic_fields(
 mod tests {
     use super::{
         clone_current_inventory_snapshot, inventory_cosmetics_are_reusable,
-        is_map_based_default_agent,
+        glove_paint_seed_from_attribute, is_map_based_default_agent,
         refresh_owned_weapon_dynamic_fields, stable_owned_weapon_slot_key,
         stickers_from_attributes, should_collect_player_rows, StickerAttribute, STEAM_ID64_BASE,
     };
     use crate::second_pass::parser_settings::PlayerInventorySnapshot;
-    use crate::second_pass::variants::InventoryWeaponCosmetic;
+    use crate::second_pass::variants::{InventoryWeaponCosmetic, Variant};
     use ahash::AHashMap;
     use std::cell::RefCell;
     use std::sync::Arc;
@@ -2148,6 +2157,30 @@ mod tests {
         assert!(!is_map_based_default_agent(
             "customplayer_ctm_swat_variantg"
         ));
+    }
+
+    #[test]
+    fn fractional_glove_seed_attributes_use_the_integer_pattern_index() {
+        assert_eq!(
+            glove_paint_seed_from_attribute(Variant::F32(699.1735)),
+            Some(699)
+        );
+        assert_eq!(
+            glove_paint_seed_from_attribute(Variant::F32(147.18864)),
+            Some(147)
+        );
+        assert_eq!(
+            glove_paint_seed_from_attribute(Variant::U32(3)),
+            Some(3)
+        );
+        assert_eq!(
+            glove_paint_seed_from_attribute(Variant::F32(f32::NAN)),
+            None
+        );
+        assert_eq!(
+            glove_paint_seed_from_attribute(Variant::F32(-1.0)),
+            None
+        );
     }
 
     #[test]
