@@ -147,8 +147,10 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        Server.ExecuteCommand(
-            $"bc_avatar_override_probe {steamId.Value.ToString(CultureInfo.InvariantCulture)} \"{EscapeConsoleString(commandPath)}\"");
+        Server.ExecuteCommand(BuildAvatarOverrideCommand(
+            steamId.Value,
+            commandPath,
+            slot));
         _session.HumanTeamAvatarOverrides[slot] = new AppliedHumanTeamAvatarOverride(
             userId,
             steamId.Value,
@@ -179,4 +181,11 @@ public sealed partial class DemoTracerPlugin
         ClearHumanTeamAvatarOverrides(reason);
         _session.TeamAvatarOverrides.Clear();
     }
+
+    internal static string BuildAvatarOverrideCommand(
+        ulong steamId,
+        string commandPath,
+        int slot)
+        => $"bc_avatar_override_probe {steamId.ToString(CultureInfo.InvariantCulture)} " +
+           $"\"{EscapeConsoleString(commandPath)}\" {slot.ToString(CultureInfo.InvariantCulture)}";
 }
