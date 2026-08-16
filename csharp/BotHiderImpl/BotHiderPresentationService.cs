@@ -523,7 +523,6 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             state.Incarnation,
             presentationOverride?.PlayerName ?? state.BasePlayerName,
             presentationOverride?.SteamId ?? state.BaseSteamId,
-            state.BasePing,
             presentationOverride?.CrosshairCode ?? state.BaseCrosshairCode,
             presentationOverride?.ScoreboardFlair ?? state.BaseScoreboardFlair);
         var effectiveScoreboardFlairManaged = presentationOverride?.ScoreboardFlair.HasValue == true;
@@ -589,21 +588,14 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
                     _publishedWrites++;
             }
 
-            var expectedPing = checked((uint)Math.Max(effective.Ping, 0));
-            if (player.Ping != expectedPing)
+            var expectedPing = checked((uint)Math.Max(state.BasePing, 0));
+            if (player.Ping != expectedPing &&
+                TryWriteEngineOwnedPing(player, state.BasePing))
             {
-                // Keep the exact schema lane used by the last known-good
-                // identity build; the property is read back only to verify it.
-                Schema.SetSchemaValue(
-                    player.Handle,
-                    "CCSPlayerController",
-                    "m_iPing",
-                    effective.Ping);
-                Utilities.SetStateChanged(player, "CCSPlayerController", "m_iPing");
-                if (player.Ping != expectedPing)
-                    throw new InvalidOperationException("controller ping write was not retained");
+                // Ping is display-only engine state. Keep it outside identity
+                // repair accounting and never publish it through SetStateChanged:
+                // m_iPing is present in schema, but it is not networked.
                 _publishedWrites++;
-                _controllerRepairs++;
             }
 
             if (ManagedSchemaWritesAllowed &&
@@ -728,6 +720,24 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         }
     }
 
+    private static bool TryWriteEngineOwnedPing(CCSPlayerController player, int ping)
+    {
+        try
+        {
+            Schema.SetSchemaValue(
+                player.Handle,
+                "CCSPlayerController",
+                "m_iPing",
+                Math.Max(ping, 0));
+            return true;
+        }
+        catch
+        {
+            // Cosmetic ping must never fail or roll back an identity lease.
+            return false;
+        }
+    }
+
     private static (bool Allowed, string Patch) DetectManagedSchemaRuntime()
     {
         foreach (var steamInfPath in ManagedSchemaSteamInfCandidates())
@@ -809,6 +819,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         string fieldName,
         int extraOffset = 0)
     {
+        if (!IsNetworkedSchemaField(className, fieldName))
+            return;
         try
         {
             Utilities.SetStateChanged(entity, className, fieldName, extraOffset);
@@ -905,8 +917,6 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
                                     player.PlayerName.Equals(requested.PlayerName, StringComparison.Ordinal);
             var steamIdMatches = !requested.SteamId.HasValue ||
                                  player.SteamID == requested.SteamId.Value;
-            var pingMatches = player.Ping ==
-                              checked((uint)Math.Max(_applied[requested.Slot]!.Value.Ping, 0));
             var scoreboardFlairMatches = !requested.ScoreboardFlair.HasValue ||
                                          ScoreboardFlairMatches(player, requested.ScoreboardFlair.Value);
             var crosshairMatches = RequestedCrosshairMatches(
@@ -915,7 +925,6 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             if (!CanCommitSynchronousPresentationLease(
                     playerNameMatches,
                     steamIdMatches,
-                    pingMatches,
                     scoreboardFlairMatches,
                     crosshairMatches))
             {
@@ -935,18 +944,16 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     internal static bool CanCommitSynchronousPresentationLease(
         bool playerNameMatches,
         bool steamIdMatches,
-        bool pingMatches,
         bool scoreboardFlairMatches,
         bool crosshairMatches)
     {
-        // Name and SteamID are the core identity transaction. Crosshair is an
-        // optional, compatibility-gated field that the periodic publisher can
-        // keep repairing; it must never roll an otherwise valid identity lease
-        // back to the bot's base persona.
+        // Ping is engine-owned and intentionally excluded from the presentation
+        // transaction. Crosshair is an optional, compatibility-gated field that
+        // the periodic publisher can keep repairing; neither may roll an
+        // otherwise valid identity lease back to the bot's base persona.
         _ = crosshairMatches;
         return playerNameMatches &&
                steamIdMatches &&
-               pingMatches &&
                scoreboardFlairMatches;
     }
 
@@ -1033,7 +1040,6 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         ulong Incarnation,
         string PlayerName,
         ulong SteamId,
-        int Ping,
         string CrosshairCode,
         uint ScoreboardFlair);
 }
