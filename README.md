@@ -175,9 +175,12 @@ ABI minor 33 adds `BotController.CapabilityHandoffBestWeapon` and
 discarded if replay control or a weapon lock resumes before execution.
 
 ABI minor 34 adds `BotController.CapabilityReplayInputHistory` and
-`LoadReplayWithInputHistory`. The loader accepts tick-aligned shooting history;
-runtime injection rebases demo tick counts to the current usercmd and does not
-reuse demo entity indexes.
+`LoadReplayWithInputHistory`. The export remains ABI-compatible, but the
+Windows runtime does not currently advertise the capability: mutating
+engine-owned `CSGOUserCmdPB` history entries across the module ABI boundary can
+corrupt the command ring. Matched callers fall back to `LoadReplayExtended`,
+preserving command, movement, and subtick playback while leaving native input
+history untouched.
 
 Replay handoff integrations can probe `CapabilityNativePerception`, then read
 `TryGetNativePerceptionState`. During replay, the native vision detours disable

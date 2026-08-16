@@ -15,6 +15,7 @@
 #include <convar.h>
 #include <eiface.h>
 #include <icvar.h>
+#include <iserver.h>
 #include <networkstringtabledefs.h>
 #include <playerslot.h>
 
@@ -33,6 +34,7 @@ namespace BotController
     {
         IVEngineServer2 *g_pEngine = nullptr;
         INetworkStringTableContainer *g_pStringTables = nullptr;
+        INetworkServerService *g_pNetworkServerService = nullptr;
 
         // ClientPrintf to the calling player, or server log if from console.
         void PrintToCaller(const CCommandContext &context, const char *fmt, ...)
@@ -287,6 +289,33 @@ namespace BotController
             return true;
         }
 
+        static bool RefreshClientUserInfo(int slot, char *err, size_t errLen)
+        {
+            if (!g_pNetworkServerService)
+            {
+                std::snprintf(err, errLen, "network server service unavailable");
+                return false;
+            }
+
+            auto *gameServer = g_pNetworkServerService->GetIGameServer();
+            if (!gameServer)
+            {
+                std::snprintf(err, errLen, "game server unavailable");
+                return false;
+            }
+            if (slot < 0 || slot >= gameServer->GetMaxClients())
+            {
+                std::snprintf(err, errLen, "refresh slot out of range");
+                return false;
+            }
+
+            // The PNG table update and userinfo broadcast must happen in this
+            // order. TAB reads the former directly, while the top HUD can keep
+            // the old avatar until player-info is republished for this slot.
+            gameServer->UserInfoChanged(CPlayerSlot(slot));
+            return true;
+        }
+
         static bool ParseReplaySnapMode(const char *s, MotionRecorder::ReplaySnapMode &out)
         {
             if (!s)
@@ -378,8 +407,8 @@ namespace BotController
 }
 
 CON_COMMAND_F(bc_avatar_override_probe,
-              "bc_avatar_override_probe <steamid64> <png_path>  "
-              "Experimental: set ServerAvatarOverrides user data for one SteamID.",
+              "bc_avatar_override_probe <steamid64> <png_path> [slot]  "
+              "Set ServerAvatarOverrides data and optionally refresh that slot's HUD userinfo.",
               FCVAR_NONE)
 {
     using namespace BotController;
@@ -387,7 +416,7 @@ CON_COMMAND_F(bc_avatar_override_probe,
     if (args.ArgC() < 3)
     {
         Commands::PrintToCaller(context,
-                                "usage: bc_avatar_override_probe <steamid64> <png_path>\n");
+                                "usage: bc_avatar_override_probe <steamid64> <png_path> [slot]\n");
         return;
     }
 
@@ -425,6 +454,20 @@ CON_COMMAND_F(bc_avatar_override_probe,
     if (!Commands::EnsureReliableAvatarData(context))
         return;
 
+    int refreshSlot = -1;
+    if (args.ArgC() >= 4)
+    {
+        char *end = nullptr;
+        const long parsed = std::strtol(args.Arg(3), &end, 10);
+        if (!end || *end != '\0' || parsed < 0 || parsed > 63)
+        {
+            Commands::PrintToCaller(context,
+                                    "[BC] error: avatar refresh slot must be 0..63\n");
+            return;
+        }
+        refreshSlot = static_cast<int>(parsed);
+    }
+
     int index = -1;
     if (!Commands::SetAvatarOverride(
             table, steamId, bytes, index, err, sizeof(err)))
@@ -435,9 +478,24 @@ CON_COMMAND_F(bc_avatar_override_probe,
         return;
     }
 
+    bool userInfoRefreshed = false;
+    if (refreshSlot >= 0)
+    {
+        if (!Commands::RefreshClientUserInfo(refreshSlot, err, sizeof(err)))
+        {
+            Commands::PrintToCaller(
+                context,
+                "[BC] error: avatar override set for %s but slot %d userinfo refresh failed: %s\n",
+                steamId, refreshSlot, err[0] ? err : "unknown error");
+            return;
+        }
+        userInfoRefreshed = true;
+    }
+
     Commands::PrintToCaller(context,
-                            "[BC] avatar override set %s (%zu bytes, index %d, table_count %d, sv_reliableavatardata=true)\n",
-                            steamId, bytes.size(), index, table->GetNumStrings());
+                            "[BC] avatar override set %s (%zu bytes, index %d, table_count %d, sv_reliableavatardata=true, userinfo=%s)\n",
+                            steamId, bytes.size(), index, table->GetNumStrings(),
+                            userInfoRefreshed ? "refreshed" : "unchanged");
 }
 
 CON_COMMAND_F(bc_avatar_override_clear,

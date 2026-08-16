@@ -22,7 +22,6 @@
 #include <cstdint>
 #include <cmath>
 #include <cstdio>
-#include <limits>
 #include <vector>
 
 namespace tg = BotController::targets;
@@ -258,129 +257,6 @@ namespace BotController
             base->set_forwardmove(forwardMove);
             base->set_leftmove(leftMove);
             base->set_upmove(0.0f);
-        }
-
-        static int32_t RebaseHistoryTick(int32_t value, int32_t sourceClientTick,
-                                         int32_t liveClientTick)
-        {
-            if (value < 0 || liveClientTick < 0 ||
-                sourceClientTick == std::numeric_limits<int32_t>::min())
-                return value;
-            const int64_t rebased = static_cast<int64_t>(liveClientTick) +
-                                    static_cast<int64_t>(value) - sourceClientTick;
-            return static_cast<int32_t>(std::clamp<int64_t>(
-                rebased, std::numeric_limits<int32_t>::min(),
-                std::numeric_limits<int32_t>::max()));
-        }
-
-        static void SetVector(CMsgVector *out, float x, float y, float z)
-        {
-            out->set_x(x);
-            out->set_y(y);
-            out->set_z(z);
-        }
-
-        static void SetAngles(CMsgQAngle *out, float x, float y, float z)
-        {
-            out->set_x(x);
-            out->set_y(y);
-            out->set_z(z);
-        }
-
-        static void ApplyReplayInputHistory(PlayerCommand *pc, CBaseUserCmdPB *base,
-                                            const MotionRecorder::ReplayCommandFrame &frame)
-        {
-            const ReplayInputHistoryTick *tick = frame.inputHistoryTick;
-            if (!pc || !base || !tick)
-                return;
-
-            constexpr uint32_t viewAngles = 1u << 0;
-            constexpr uint32_t renderTickCount = 1u << 1;
-            constexpr uint32_t renderTickFraction = 1u << 2;
-            constexpr uint32_t playerTickCount = 1u << 3;
-            constexpr uint32_t playerTickFraction = 1u << 4;
-            constexpr uint32_t clInterpFraction = 1u << 5;
-            constexpr uint32_t svInterp0SrcTick = 1u << 6;
-            constexpr uint32_t svInterp0DstTick = 1u << 7;
-            constexpr uint32_t svInterp0Fraction = 1u << 8;
-            constexpr uint32_t svInterp1SrcTick = 1u << 9;
-            constexpr uint32_t svInterp1DstTick = 1u << 10;
-            constexpr uint32_t svInterp1Fraction = 1u << 11;
-            constexpr uint32_t playerInterpSrcTick = 1u << 12;
-            constexpr uint32_t playerInterpDstTick = 1u << 13;
-            constexpr uint32_t playerInterpFraction = 1u << 14;
-            constexpr uint32_t frameNumber = 1u << 15;
-            constexpr uint32_t shootPosition = 1u << 17;
-            constexpr uint32_t targetHeadPosCheck = 1u << 18;
-            constexpr uint32_t targetAbsPosCheck = 1u << 19;
-            constexpr uint32_t targetAbsAngCheck = 1u << 20;
-
-            const int32_t liveClientTick = base->client_tick();
-            pc->clear_input_history();
-            for (int i = 0; i < frame.inputHistoryCount; ++i)
-            {
-                const ReplayInputHistoryEntry &source = frame.inputHistory[i];
-                CSGOInputHistoryEntryPB *entry = pc->add_input_history();
-                if ((source.fields & viewAngles) != 0)
-                    SetAngles(entry->mutable_view_angles(), source.viewPitch, source.viewYaw, source.viewRoll);
-                if ((source.fields & renderTickCount) != 0)
-                    entry->set_render_tick_count(RebaseHistoryTick(
-                        source.renderTickCount, tick->sourceClientTick, liveClientTick));
-                if ((source.fields & renderTickFraction) != 0)
-                    entry->set_render_tick_fraction(source.renderTickFraction);
-                if ((source.fields & playerTickCount) != 0)
-                    entry->set_player_tick_count(RebaseHistoryTick(
-                        source.playerTickCount, tick->sourceClientTick, liveClientTick));
-                if ((source.fields & playerTickFraction) != 0)
-                    entry->set_player_tick_fraction(source.playerTickFraction);
-                if ((source.fields & clInterpFraction) != 0)
-                    entry->mutable_cl_interp()->set_frac(source.clInterpFraction);
-
-                if ((source.fields & (svInterp0SrcTick | svInterp0DstTick | svInterp0Fraction)) != 0)
-                {
-                    auto *interp = entry->mutable_sv_interp0();
-                    if ((source.fields & svInterp0SrcTick) != 0)
-                        interp->set_src_tick(RebaseHistoryTick(source.svInterp0SrcTick, tick->sourceClientTick, liveClientTick));
-                    if ((source.fields & svInterp0DstTick) != 0)
-                        interp->set_dst_tick(RebaseHistoryTick(source.svInterp0DstTick, tick->sourceClientTick, liveClientTick));
-                    if ((source.fields & svInterp0Fraction) != 0)
-                        interp->set_frac(source.svInterp0Fraction);
-                }
-                if ((source.fields & (svInterp1SrcTick | svInterp1DstTick | svInterp1Fraction)) != 0)
-                {
-                    auto *interp = entry->mutable_sv_interp1();
-                    if ((source.fields & svInterp1SrcTick) != 0)
-                        interp->set_src_tick(RebaseHistoryTick(source.svInterp1SrcTick, tick->sourceClientTick, liveClientTick));
-                    if ((source.fields & svInterp1DstTick) != 0)
-                        interp->set_dst_tick(RebaseHistoryTick(source.svInterp1DstTick, tick->sourceClientTick, liveClientTick));
-                    if ((source.fields & svInterp1Fraction) != 0)
-                        interp->set_frac(source.svInterp1Fraction);
-                }
-                if ((source.fields & (playerInterpSrcTick | playerInterpDstTick | playerInterpFraction)) != 0)
-                {
-                    auto *interp = entry->mutable_player_interp();
-                    if ((source.fields & playerInterpSrcTick) != 0)
-                        interp->set_src_tick(RebaseHistoryTick(source.playerInterpSrcTick, tick->sourceClientTick, liveClientTick));
-                    if ((source.fields & playerInterpDstTick) != 0)
-                        interp->set_dst_tick(RebaseHistoryTick(source.playerInterpDstTick, tick->sourceClientTick, liveClientTick));
-                    if ((source.fields & playerInterpFraction) != 0)
-                        interp->set_frac(source.playerInterpFraction);
-                }
-                if ((source.fields & frameNumber) != 0)
-                    entry->set_frame_number(source.frameNumber);
-                if ((source.fields & shootPosition) != 0)
-                    SetVector(entry->mutable_shoot_position(), source.shootPositionX, source.shootPositionY, source.shootPositionZ);
-                if ((source.fields & targetHeadPosCheck) != 0)
-                    SetVector(entry->mutable_target_head_pos_check(), source.targetHeadPosCheckX, source.targetHeadPosCheckY, source.targetHeadPosCheckZ);
-                if ((source.fields & targetAbsPosCheck) != 0)
-                    SetVector(entry->mutable_target_abs_pos_check(), source.targetAbsPosCheckX, source.targetAbsPosCheckY, source.targetAbsPosCheckZ);
-                if ((source.fields & targetAbsAngCheck) != 0)
-                    SetAngles(entry->mutable_target_abs_ang_check(), source.targetAbsAngCheckX, source.targetAbsAngCheckY, source.targetAbsAngCheckZ);
-                // target_ent_index is intentionally not replayed: live entity indexes
-                // do not match the demo and there is no target-identity remapping contract.
-            }
-            pc->set_attack1_start_history_index(tick->attack1StartHistoryIndex);
-            pc->set_attack2_start_history_index(tick->attack2StartHistoryIndex);
         }
 
         void SetReplaySubtickViewDeltas(bool enabled)
@@ -826,8 +702,6 @@ namespace BotController
                                     m->set_analog_left_delta(subtick.analogLeft);
                             }
                         }
-
-                        ApplyReplayInputHistory(pc, base, frame);
 
                         MotionRecorder::OnReplayCommandPre(
                             slot, services, *frame.tick, frame.commandView);
