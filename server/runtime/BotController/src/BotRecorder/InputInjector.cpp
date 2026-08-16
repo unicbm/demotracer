@@ -67,6 +67,7 @@ namespace BotController
         static std::atomic<int> g_lastSlot{-1};
         static std::atomic<bool> g_replaySubtickViewDeltas{false};
 
+        constexpr uint64_t kInAttack = 1ULL << 0;
         constexpr uint64_t kInJump = 1ULL << 1;
         constexpr uint64_t kInDuck = 1ULL << 2;
         constexpr uint64_t kInForward = 1ULL << 3;
@@ -75,7 +76,7 @@ namespace BotController
         constexpr uint64_t kInMoveRight = 1ULL << 10;
         constexpr uint64_t kInSpeed = 1ULL << 16;
         constexpr uint64_t kMovementIntentButtons =
-            kInJump | kInDuck | kInForward | kInBack | kInMoveLeft |
+            kInAttack | kInJump | kInDuck | kInForward | kInBack | kInMoveLeft |
             kInMoveRight | kInSpeed;
         constexpr int kMovementIntentFlags =
             kUsercmdMovementIntentPreserveMoveAxes;
