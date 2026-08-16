@@ -455,7 +455,8 @@ public sealed partial class DemoTracerPlugin
         weapon.AcceptInput(
             "SetBodygroup",
             value: $"body,{WeaponPaintBodygroupValue(usesLegacyModel)}");
-        TrySetStateChanged(weapon, "CBaseModelEntity", "m_nBodyGroupChoices");
+        // SetBodygroup is the engine-owned publication path. Its internal
+        // m_nBodyGroupChoices storage is not a networked schema field.
     }
 
     internal static int WeaponPaintBodygroupValue(bool usesLegacyModel)
@@ -833,11 +834,13 @@ public sealed partial class DemoTracerPlugin
     {
         try
         {
+            if (!Schema.IsSchemaFieldNetworked(className, fieldName))
+                return;
             Utilities.SetStateChanged(weapon, className, fieldName);
         }
         catch
         {
-            // Some server/API versions expose the field but reject state-change marking.
+            // Some server/API versions cannot classify or publish the field.
         }
     }
 

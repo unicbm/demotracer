@@ -49,6 +49,10 @@ public sealed class BotRandomizerProviderInfo
 
     public bool WeaponPrebuildAvailable { get; set; }
 
+    // True only when externally owned paint can be supplied to the
+    // GiveNamedItem CEconItemView before the weapon entity is constructed.
+    public bool AuthoritativePaintPrebuildAvailable { get; set; }
+
     public string CatalogRepository { get; set; } = string.Empty;
 
     public string CatalogCommit { get; set; } = string.Empty;
@@ -103,6 +107,15 @@ public sealed class BotRandomizerWeaponWriteClaim
     public bool Stickers { get; set; }
 
     public bool Keychain { get; set; }
+
+    // Paint ownership requires the complete authoritative paint tuple. The
+    // provider validates and prebuilds these values before GiveNamedItem so
+    // model-sensitive weapons never start life with an unpainted item view.
+    public uint? PaintKit { get; set; }
+
+    public uint? PaintSeed { get; set; }
+
+    public float? PaintWear { get; set; }
 
     // When external paint evidence is authoritative but stickers remain random,
     // this optional hint selects the matching legacy/current sticker schema.

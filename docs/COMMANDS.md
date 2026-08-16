@@ -106,7 +106,10 @@ When the BotRandomizer v1 lease API is available, `agents`, `knives`, and
 when the selected preset enables it and the demo contains that cosmetic.
 Missing evidence is not converted into a default item and does not authorize
 DemoTracer to rewrite or rebuild the live entity. Review the GSLT warning in
-the root README before using cosmetic alignment.
+the root README before using cosmetic alignment. Weapon paint claims carry the
+complete normalized paint kit, seed, and wear tuple; BotRandomizer 1.5.1 or
+newer validates that tuple and supplies it before `GiveNamedItem` constructs
+the entity.
 
 ### Handoff
 

@@ -44,16 +44,14 @@ public sealed class BotHiderCrosshairPresentationTests
     }
 
     [Theory]
-    [InlineData(true, true, true, true, true, true)]
-    [InlineData(true, true, true, true, false, true)]
-    [InlineData(false, true, true, true, true, false)]
-    [InlineData(true, false, true, true, true, false)]
-    [InlineData(true, true, false, true, true, false)]
-    [InlineData(true, true, true, false, true, false)]
-    public void OptionalCrosshairMismatchNeverRollsBackCoreIdentityLease(
+    [InlineData(true, true, true, true, true)]
+    [InlineData(true, true, true, false, true)]
+    [InlineData(false, true, true, true, false)]
+    [InlineData(true, false, true, true, false)]
+    [InlineData(true, true, false, true, false)]
+    public void EngineOwnedPingAndOptionalCrosshairNeverRollBackCoreIdentityLease(
         bool playerNameMatches,
         bool steamIdMatches,
-        bool pingMatches,
         bool scoreboardFlairMatches,
         bool crosshairMatches,
         bool expected)
@@ -63,7 +61,6 @@ public sealed class BotHiderCrosshairPresentationTests
             BotHiderPresentationService.CanCommitSynchronousPresentationLease(
                 playerNameMatches,
                 steamIdMatches,
-                pingMatches,
                 scoreboardFlairMatches,
                 crosshairMatches));
     }

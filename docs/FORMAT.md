@@ -174,10 +174,15 @@ All stored floats must be finite. Converter output retains only valid entries
 referenced by `attack1_start_history_index` or `attack2_start_history_index`,
 deduplicates shared references, and remaps both indexes to the retained order.
 
-At injection, render/player and interpolation source/destination ticks use
-`live_client_tick + (stored_tick - source_client_tick)`. Fractions and spatial
-checks remain unchanged. `target_ent_index` is not injected because live entity
-indexes are not stable across demo and replay servers.
+The matched Windows runtime currently retains this evidence in the file but
+does not advertise or perform input-history injection. `CSGOUserCmdPB` and its
+entries are engine-owned; even in-place protobuf mutation can corrupt the live
+command ring across the module ABI boundary. When the capability is absent,
+the managed loader uses the extended replay entry point and leaves the entire
+live input-history graph untouched. The section remains available for a future
+engine-owned injection path. `target_ent_index` additionally requires live
+identity remapping because demo entity indexes are not stable on the replay
+server.
 
 ## v8 Columnar Delta-Varint Sections
 

@@ -485,7 +485,9 @@ Optional:
 BotRandomizer v1 coordination claims Agent, Knife, Gloves, and ordinary weapon
 fields only when the selected preset has positive demo evidence. Missing
 evidence is left untouched and remains available to BotRandomizer/native CS2
-behavior; DemoTracer does not rebuild an absent engine-owned knife.
+behavior; DemoTracer does not rebuild an absent engine-owned knife. Replay
+paint alignment requires BotRandomizer 1.5.1 or newer so the complete paint
+tuple is validated and supplied during item-view construction.
 '@
 $readme = $readme.Replace("__VERSION__", $Version)
 $readme = $readme.Replace("__DTR_READER_MIN__", [string]$playbackContract.dtr_reader.min)

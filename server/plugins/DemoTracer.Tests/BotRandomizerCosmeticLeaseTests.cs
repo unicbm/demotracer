@@ -64,7 +64,7 @@ public sealed class BotRandomizerCosmeticLeaseTests
         var claim = BuildClaim(Evidence(
             weapons:
             [
-                new DemoTracerBotRandomizerWeaponEvidence(7, true, false, false, false)
+                PaintedWeapon(7)
             ]));
 
         var weapon = Assert.Single(Assert.IsType<BotRandomizerCosmeticWriteClaim>(claim).Weapons);
@@ -77,21 +77,22 @@ public sealed class BotRandomizerCosmeticLeaseTests
     }
 
     [Theory]
-    [InlineData(60, false)]
-    [InlineData(61, true)]
+    [InlineData(60, 106u, false)]
+    [InlineData(61, 60u, true)]
     public void SilencedWeaponEvidenceClaimsTheExactDefinitionAndEconFamilies(
         int weaponDefinitionIndex,
+        uint paintKit,
         bool usesLegacyModel)
     {
         var claim = Assert.IsType<BotRandomizerCosmeticWriteClaim>(BuildClaim(Evidence(
             weapons:
             [
-                new DemoTracerBotRandomizerWeaponEvidence(
+                PaintedWeapon(
                     weaponDefinitionIndex,
-                    Paint: true,
-                    Stickers: true,
-                    Keychain: true,
-                    PaintUsesLegacyModel: usesLegacyModel)
+                    stickers: true,
+                    keychain: true,
+                    usesLegacyModel: usesLegacyModel,
+                    paintKit: paintKit)
             ])));
 
         var weapon = Assert.Single(claim.Weapons);
@@ -99,6 +100,9 @@ public sealed class BotRandomizerCosmeticLeaseTests
         Assert.True(weapon.Paint);
         Assert.True(weapon.Stickers);
         Assert.True(weapon.Keychain);
+        Assert.Equal(paintKit, weapon.PaintKit);
+        Assert.Equal(321u, weapon.PaintSeed);
+        Assert.Equal(0.15f, weapon.PaintWear);
         Assert.Equal(usesLegacyModel, weapon.PaintUsesLegacyModel);
     }
 
@@ -108,7 +112,7 @@ public sealed class BotRandomizerCosmeticLeaseTests
         var claim = BuildClaim(Evidence(
             weapons:
             [
-                new DemoTracerBotRandomizerWeaponEvidence(7, true, false, false, false)
+                PaintedWeapon(7)
             ]));
 
         var weapon = Assert.Single(Assert.IsType<BotRandomizerCosmeticWriteClaim>(claim).Weapons);
@@ -125,7 +129,7 @@ public sealed class BotRandomizerCosmeticLeaseTests
         var claim = BuildClaim(Evidence(
             weapons:
             [
-                new DemoTracerBotRandomizerWeaponEvidence(7, true, true, false, true)
+                PaintedWeapon(7, stickers: true, usesLegacyModel: true)
             ]));
 
         var weapon = Assert.Single(Assert.IsType<BotRandomizerCosmeticWriteClaim>(claim).Weapons);
@@ -133,6 +137,46 @@ public sealed class BotRandomizerCosmeticLeaseTests
         Assert.True(weapon.Stickers);
         Assert.False(weapon.Keychain);
         Assert.True(weapon.PaintUsesLegacyModel);
+    }
+
+    [Fact]
+    public void IncompletePaintTupleNeverClaimsPaintOwnership()
+    {
+        var claim = Assert.IsType<BotRandomizerCosmeticWriteClaim>(BuildClaim(Evidence(
+            weapons:
+            [
+                new DemoTracerBotRandomizerWeaponEvidence(
+                    7,
+                    Paint: true,
+                    Stickers: true,
+                    Keychain: false,
+                    PaintUsesLegacyModel: false,
+                    PaintKit: 44,
+                    PaintSeed: null,
+                    PaintWear: 0.15f)
+            ])));
+
+        var weapon = Assert.Single(claim.Weapons);
+        Assert.False(weapon.Paint);
+        Assert.Null(weapon.PaintKit);
+        Assert.Null(weapon.PaintSeed);
+        Assert.Null(weapon.PaintWear);
+        Assert.True(weapon.Stickers);
+    }
+
+    [Fact]
+    public void PaintClaimsRequireProviderSideAuthoritativePrebuild()
+    {
+        var paintClaim = Assert.IsType<BotRandomizerCosmeticWriteClaim>(BuildClaim(Evidence(
+            weapons: [PaintedWeapon(7)])));
+        var attachmentOnlyClaim = Assert.IsType<BotRandomizerCosmeticWriteClaim>(BuildClaim(Evidence(
+            weapons:
+            [
+                new DemoTracerBotRandomizerWeaponEvidence(7, false, true, false, null)
+            ])));
+
+        Assert.True(DemoTracerPlugin.RequestsRequireAuthoritativePaintPrebuild([paintClaim]));
+        Assert.False(DemoTracerPlugin.RequestsRequireAuthoritativePaintPrebuild([attachmentOnlyClaim]));
     }
 
     [Fact]
@@ -153,7 +197,7 @@ public sealed class BotRandomizerCosmeticLeaseTests
         var apiClaim = Assert.IsType<BotRandomizerCosmeticWriteClaim>(BuildClaim(Evidence(
             weapons:
             [
-                new DemoTracerBotRandomizerWeaponEvidence(7, true, false, false, false)
+                PaintedWeapon(7)
             ])));
         var snapshot = new DemoTracerBotRandomizerLeaseSnapshot();
         snapshot.Activate("token", "epoch-a", [apiClaim]);
@@ -175,7 +219,7 @@ public sealed class BotRandomizerCosmeticLeaseTests
             musicKit: true,
             weapons:
             [
-                new DemoTracerBotRandomizerWeaponEvidence(7, true, true, true, false)
+                PaintedWeapon(7, stickers: true, keychain: true)
             ])));
         var snapshot = new DemoTracerBotRandomizerLeaseSnapshot();
         snapshot.Activate("token", "epoch-a", [apiClaim]);
@@ -203,7 +247,7 @@ public sealed class BotRandomizerCosmeticLeaseTests
             gloves: true,
             weapons:
             [
-                new DemoTracerBotRandomizerWeaponEvidence(7, true, true, true, false)
+                PaintedWeapon(7, stickers: true, keychain: true)
             ])));
         var snapshot = new DemoTracerBotRandomizerLeaseSnapshot();
         snapshot.Activate("token", "epoch-a", [apiClaim]);
@@ -326,6 +370,24 @@ public sealed class BotRandomizerCosmeticLeaseTests
         IReadOnlyList<DemoTracerBotRandomizerWeaponEvidence>? weapons = null)
         => new(agent, knife, gloves, musicKit, weapons ?? []);
 
+    private static DemoTracerBotRandomizerWeaponEvidence PaintedWeapon(
+        int weaponDefinitionIndex,
+        bool stickers = false,
+        bool keychain = false,
+        bool usesLegacyModel = false,
+        uint paintKit = 44,
+        uint paintSeed = 321,
+        float paintWear = 0.15f)
+        => new(
+            weaponDefinitionIndex,
+            Paint: true,
+            Stickers: stickers,
+            Keychain: keychain,
+            PaintUsesLegacyModel: usesLegacyModel,
+            PaintKit: paintKit,
+            PaintSeed: paintSeed,
+            PaintWear: paintWear);
+
     private const int Slot = 3;
     private const ulong Incarnation = 11;
     private const ulong SubjectSteamId = 76561198000000003;
@@ -343,6 +405,9 @@ public sealed class BotRandomizerCosmeticLeaseTests
                left.Paint == right.Paint &&
                left.Stickers == right.Stickers &&
                left.Keychain == right.Keychain &&
+               left.PaintKit == right.PaintKit &&
+               left.PaintSeed == right.PaintSeed &&
+               left.PaintWear == right.PaintWear &&
                left.PaintUsesLegacyModel == right.PaintUsesLegacyModel;
 
         public int GetHashCode(BotRandomizerWeaponWriteClaim value)
@@ -351,6 +416,9 @@ public sealed class BotRandomizerCosmeticLeaseTests
                 value.Paint,
                 value.Stickers,
                 value.Keychain,
+                value.PaintKit,
+                value.PaintSeed,
+                value.PaintWear,
                 value.PaintUsesLegacyModel);
     }
 }

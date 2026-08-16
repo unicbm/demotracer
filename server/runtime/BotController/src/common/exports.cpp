@@ -37,7 +37,6 @@ namespace
     constexpr uint64_t kCapabilityReleaseReplayBuffer = 1ULL << 12;
     constexpr uint64_t kCapabilityButtonOnlyMovementIntent = 1ULL << 13;
     constexpr uint64_t kCapabilityHandoffBestWeapon = 1ULL << 14;
-    constexpr uint64_t kCapabilityReplayInputHistory = 1ULL << 15;
     constexpr uint64_t kCapabilityReplayPawnEquipment = 1ULL << 16;
     constexpr uint64_t kBotControllerCapabilities =
         kCapabilityReplaySlotState |
@@ -55,7 +54,6 @@ namespace
         kCapabilityReleaseReplayBuffer |
         kCapabilityButtonOnlyMovementIntent |
         kCapabilityHandoffBestWeapon |
-        kCapabilityReplayInputHistory |
         kCapabilityReplayPawnEquipment;
 
 #pragma pack(push, 4)

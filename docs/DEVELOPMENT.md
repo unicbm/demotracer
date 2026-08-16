@@ -37,7 +37,9 @@ Metamod:Source, CounterStrikeSharp 1.0.371 or newer, and a matching DemoTracer
 bundle.
 
 BotRandomizer 1.5 integration is optional and uses its separately installed v1
-API. Ray-Trace 1.0.16 or newer is optional for stricter handoff line-of-sight
+API. Replay weapon paint alignment requires BotRandomizer 1.5.1 or newer so
+the normalized paint kit, seed, and wear are present in the preconstructed item
+view. Ray-Trace 1.0.16 or newer is optional for stricter handoff line-of-sight
 checks. Do not mix BotController or BotHider binaries from full
 CS2-Bot-Improver packages into a DemoTracer bundle.
 

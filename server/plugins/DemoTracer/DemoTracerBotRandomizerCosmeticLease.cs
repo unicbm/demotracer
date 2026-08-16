@@ -27,7 +27,10 @@ internal sealed record DemoTracerBotRandomizerWeaponEvidence(
     bool Paint,
     bool Stickers,
     bool Keychain,
-    bool? PaintUsesLegacyModel);
+    bool? PaintUsesLegacyModel,
+    uint? PaintKit = null,
+    uint? PaintSeed = null,
+    float? PaintWear = null);
 
 internal sealed record DemoTracerBotRandomizerClaimEvidence(
     bool Agent,
@@ -40,7 +43,10 @@ internal sealed record DemoTracerActiveWeaponWriteClaim(
     bool Paint,
     bool Stickers,
     bool Keychain,
-    bool? PaintUsesLegacyModel)
+    bool? PaintUsesLegacyModel,
+    uint? PaintKit,
+    uint? PaintSeed,
+    float? PaintWear)
 {
     internal bool Allows(DemoTracerCosmeticWriteField field)
         => field switch
@@ -111,7 +117,10 @@ internal sealed class DemoTracerBotRandomizerLeaseSnapshot
                         weapon.Paint,
                         weapon.Stickers,
                         weapon.Keychain,
-                        weapon.PaintUsesLegacyModel));
+                        weapon.PaintUsesLegacyModel,
+                        weapon.PaintKit,
+                        weapon.PaintSeed,
+                        weapon.PaintWear));
             _claims[claim.Slot] = new DemoTracerActiveCosmeticWriteClaim(
                 claim.Slot,
                 claim.Incarnation,
@@ -165,6 +174,9 @@ internal sealed class DemoTracerBotRandomizerLeaseSnapshot
                     Paint = pair.Value.Paint,
                     Stickers = pair.Value.Stickers,
                     Keychain = pair.Value.Keychain,
+                    PaintKit = pair.Value.PaintKit,
+                    PaintSeed = pair.Value.PaintSeed,
+                    PaintWear = pair.Value.PaintWear,
                     PaintUsesLegacyModel = pair.Value.PaintUsesLegacyModel
                 })
                 .ToArray()
@@ -258,6 +270,16 @@ public sealed partial class DemoTracerPlugin
         {
             ReleaseBotRandomizerCosmeticLease("no_authenticated_replay_claims");
             return true;
+        }
+
+        if (RequestsRequireAuthoritativePaintPrebuild(requests) &&
+            (!provider.WeaponPrebuildAvailable ||
+             !provider.AuthoritativePaintPrebuildAvailable))
+        {
+            InvalidateBotRandomizerCosmeticLease("authoritative_paint_prebuild_unavailable");
+            _nextBotRandomizerLeaseRetryAt = Server.CurrentTime + BotRandomizerLeaseRetrySeconds;
+            ReportBotRandomizerLeaseError("authoritative_paint_prebuild_unavailable", announce);
+            return false;
         }
 
         var signature = BuildBotRandomizerClaimSignature(provider.ProviderEpoch, requests);
@@ -415,7 +437,10 @@ public sealed partial class DemoTracerPlugin
                     keychain,
                     paint
                         ? IsLegacyCosmeticPaint(weapon.WeaponDefIndex, (int)weapon.PaintKit)
-                        : null));
+                        : null,
+                    PaintKit: paint ? weapon.PaintKit : null,
+                    PaintSeed: paint ? weapon.Seed : null,
+                    PaintWear: paint ? weapon.Wear : null));
             }
         }
 
@@ -460,14 +485,22 @@ public sealed partial class DemoTracerPlugin
             .GroupBy(weapon => weapon.WeaponDefinitionIndex)
             .Where(group => group.Count() == 1)
             .Select(group => group.First())
-            .Select(weapon => new BotRandomizerWeaponWriteClaim
+            .Select(weapon =>
             {
-                WeaponDefinitionIndex = weapon.WeaponDefinitionIndex,
-                Paint = weapon.Paint,
-                Stickers = weapon.Stickers,
-                Keychain = weapon.Keychain,
-                PaintUsesLegacyModel = weapon.Paint ? weapon.PaintUsesLegacyModel : null
+                var paint = HasCompleteAuthoritativePaintEvidence(weapon);
+                return new BotRandomizerWeaponWriteClaim
+                {
+                    WeaponDefinitionIndex = weapon.WeaponDefinitionIndex,
+                    Paint = paint,
+                    Stickers = weapon.Stickers,
+                    Keychain = weapon.Keychain,
+                    PaintKit = paint ? weapon.PaintKit : null,
+                    PaintSeed = paint ? weapon.PaintSeed : null,
+                    PaintWear = paint ? weapon.PaintWear : null,
+                    PaintUsesLegacyModel = paint ? weapon.PaintUsesLegacyModel : null
+                };
             })
+            .Where(weapon => weapon.Paint || weapon.Stickers || weapon.Keychain)
             .ToArray();
         if (!evidence.Agent &&
             !evidence.Knife &&
@@ -494,6 +527,21 @@ public sealed partial class DemoTracerPlugin
         };
     }
 
+    internal static bool HasCompleteAuthoritativePaintEvidence(
+        DemoTracerBotRandomizerWeaponEvidence weapon)
+        => weapon.Paint &&
+           weapon.PaintKit is { } paintKit &&
+           paintKit is > 0 and <= int.MaxValue &&
+           weapon.PaintSeed is { } paintSeed &&
+           paintSeed <= int.MaxValue &&
+           weapon.PaintWear is { } wear &&
+           float.IsFinite(wear) &&
+           wear is >= 0.0f and <= 1.0f;
+
+    internal static bool RequestsRequireAuthoritativePaintPrebuild(
+        IEnumerable<BotRandomizerCosmeticWriteClaim> claims)
+        => claims.Any(claim => (claim.Weapons ?? []).Any(weapon => weapon.Paint));
+
     private static string BuildBotRandomizerClaimSignature(
         string providerEpoch,
         IEnumerable<BotRandomizerCosmeticWriteClaim> claims)
@@ -516,6 +564,9 @@ public sealed partial class DemoTracerPlugin
                     .Append(weapon.Paint ? '1' : '0')
                     .Append(weapon.Stickers ? '1' : '0')
                     .Append(weapon.Keychain ? '1' : '0').Append(':')
+                    .Append(weapon.PaintKit?.ToString() ?? "null").Append(':')
+                    .Append(weapon.PaintSeed?.ToString() ?? "null").Append(':')
+                    .Append(weapon.PaintWear?.ToString("R", System.Globalization.CultureInfo.InvariantCulture) ?? "null").Append(':')
                     .Append(weapon.PaintUsesLegacyModel?.ToString() ?? "null").Append('|');
             }
         }

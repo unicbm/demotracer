@@ -62,7 +62,6 @@ internal static partial class BotControllerNative
         CapabilityControllerBotOffset |
         CapabilityExtendedReplay |
         CapabilityHandoffBestWeapon |
-        CapabilityReplayInputHistory |
         CapabilityReplayPawnEquipment;
 
     public static string RuntimePlatformName

@@ -61,4 +61,17 @@ public sealed class ReplayTeamAvatarPolicyTests
 
         Assert.Equal("solo-team-avatar", key);
     }
+
+    [Fact]
+    public void AvatarOverrideCommandCarriesTheExactSlotForHudUserInfoRefresh()
+    {
+        var command = DemoTracerPlugin.BuildAvatarOverrideCommand(
+            Team[0],
+            "C:/avatar-cache/team.png",
+            slot: 7);
+
+        Assert.Equal(
+            $"bc_avatar_override_probe {Team[0]} \"C:/avatar-cache/team.png\" 7",
+            command);
+    }
 }

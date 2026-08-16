@@ -8,6 +8,7 @@
 
 #include <eiface.h>
 #include <icvar.h>
+#include <iserver.h>
 #include <convar.h>
 #include <interfaces/interfaces.h>
 #include <networksystem/inetworkmessages.h>
@@ -134,6 +135,14 @@ bool BotControllerPlugin::Load(PluginId id, ISmmAPI *ismm,
             "[BotController] WARN: network string table server interface unavailable; "
             "bc_avatar_override_probe disabled\n");
     }
+    BotController::Commands::g_pNetworkServerService = static_cast<INetworkServerService *>(
+        ismm->GetEngineFactory()(NETWORKSERVERSERVICE_INTERFACE_VERSION, nullptr));
+    if (!BotController::Commands::g_pNetworkServerService)
+    {
+        BotController::DebugOut(
+            "[BotController] WARN: network server service unavailable; "
+            "avatar HUD userinfo refresh disabled\n");
+    }
     BotController::Dispatch::g_pGameClients =
         static_cast<ISource2GameClients *>(serverIface);
     auto *networkMessages = static_cast<INetworkMessages *>(
@@ -232,6 +241,7 @@ bool BotControllerPlugin::Unload(char * /*error*/, size_t /*maxlen*/)
     BotController::VoiceSender::SetInterfaces(nullptr, nullptr);
     BotController::Commands::g_pEngine = nullptr;
     BotController::Commands::g_pStringTables = nullptr;
+    BotController::Commands::g_pNetworkServerService = nullptr;
     BotController::Schema::Reset();
     ConVar_Unregister();
     g_pCVar = nullptr;
