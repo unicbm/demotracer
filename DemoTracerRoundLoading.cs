@@ -594,8 +594,7 @@ public sealed partial class DemoTracerPlugin
 
         Server.ExecuteCommand(BuildAvatarOverrideCommand(
             avatarSteamId,
-            commandPath,
-            slot));
+            commandPath));
         ScheduleBotHiderAvatarIdentityReassert();
         Server.PrintToConsole(
             $"dtr: replay avatar queued slot={slot} player={playerName} sid={steamId} avatar_sid={avatarSteamId} path={avatar.Path} cache={commandPath}");

@@ -122,6 +122,7 @@ public sealed partial class DemoTracerPlugin
     private int? _activeReplayRetentionTCode;
     private int? _activeReplayRetentionCtCode;
     private readonly HashSet<int> _pendingHumanTeamChangeSlots = new();
+    private readonly Dictionary<int, (int? UserId, CsTeam Team)> _nativeHumanTeamChanges = new();
     private int? _replayRetentionBotQuotaBaseline;
 
     [ConsoleCommand("dtr_retain", "dtr_retain <t-order-code> <ct-order-code>")]
@@ -301,6 +302,7 @@ public sealed partial class DemoTracerPlugin
         }
         RestoreReplayRetentionBotQuota();
         _pendingHumanTeamChangeSlots.Clear();
+        _nativeHumanTeamChanges.Clear();
     }
 
     private int ResolveReplayRetentionRank(ulong steamId, int fallbackRank)
@@ -322,11 +324,20 @@ public sealed partial class DemoTracerPlugin
             player.IsBot ||
             _botHiderBridge.IsManagedBot(player.Slot) ||
             command.ArgCount < 2 ||
-            !TryParseJoinTeam(command.GetArg(1), out var destination) ||
-            player.Team == destination)
+            !TryParseJoinTeam(command.GetArg(1), out var destination))
         {
             return HookResult.Continue;
         }
+
+        if (_nativeHumanTeamChanges.Remove(player.Slot, out var nativeChange) &&
+            nativeChange.UserId == player.UserId &&
+            nativeChange.Team == destination)
+        {
+            return HookResult.Continue;
+        }
+
+        if (player.Team == destination)
+            return HookResult.Continue;
 
         if (_pendingHumanTeamChangeSlots.Contains(player.Slot))
             return HookResult.Handled;
@@ -446,7 +457,12 @@ public sealed partial class DemoTracerPlugin
 
         try
         {
-            current.ChangeTeam(destination);
+            // The original jointeam path owns bot_auto_vacate, team limits, and
+            // population accounting. DTR only chooses and releases the replay
+            // bot that yields its place.
+            _nativeHumanTeamChanges[slot] = (expectedUserId, destination);
+            current.ExecuteClientCommandFromServer(
+                $"jointeam {((int)destination).ToString(CultureInfo.InvariantCulture)}");
         }
         catch (Exception ex)
         {
@@ -454,8 +470,7 @@ public sealed partial class DemoTracerPlugin
         }
         finally
         {
-            // Let the human occupy the vacancy before restoring the fill target.
-            // Restoring first can synchronously create a replacement bot.
+            _nativeHumanTeamChanges.Remove(slot);
             FinishReplayRetentionBotQuotaReservation(slot);
         }
     }

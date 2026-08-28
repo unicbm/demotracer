@@ -82,36 +82,25 @@ public sealed partial class DemoTracerPlugin
     private void ScheduleAvatarOverrideUserInfoRefresh()
     {
         if (_replayIdentityMode == ReplayIdentityMode.Avatar)
-            Server.NextFrame(RefreshCurrentAvatarOverrideUserInfo);
+            Server.NextFrame(RefreshCurrentHumanAvatarOverrideUserInfo);
     }
 
-    private void RefreshCurrentAvatarOverrideUserInfo()
+    private void RefreshCurrentHumanAvatarOverrideUserInfo()
     {
         if (_replayIdentityMode != ReplayIdentityMode.Avatar)
             return;
 
-        var replaySlots = _session.LoadedReplays.Keys
-            .Concat(_retainedBotHiderPresentation.Keys)
-            .ToHashSet();
-        var candidateSlots = replaySlots
-            .Concat(_session.HumanTeamAvatarOverrides.Keys)
-            .Distinct()
-            .Order()
-            .ToArray();
-        foreach (var slot in candidateSlots)
+        foreach (var pair in _session.HumanTeamAvatarOverrides.OrderBy(pair => pair.Key))
         {
+            var slot = pair.Key;
+            var applied = pair.Value;
             var player = Utilities.GetPlayerFromSlot(slot);
-            if (player is not { IsValid: true })
-                continue;
-
-            var replayAvatar = replaySlots.Contains(slot) &&
-                               _botHiderBridge.IsManagedBot(slot);
-            var humanAvatar =
-                _session.HumanTeamAvatarOverrides.TryGetValue(slot, out var applied) &&
+            if (player is { IsValid: true } &&
                 player.UserId == applied.UserId &&
-                NormalizeOptionalULong(player.SteamID) == applied.SteamId;
-            if (replayAvatar || humanAvatar)
+                NormalizeOptionalULong(player.SteamID) == applied.SteamId)
+            {
                 Server.ExecuteCommand(BuildAvatarUserInfoRefreshCommand(slot));
+            }
         }
     }
 
@@ -219,10 +208,16 @@ public sealed partial class DemoTracerPlugin
 
     internal static string BuildAvatarOverrideCommand(
         ulong steamId,
+        string commandPath)
+        => $"bc_avatar_override_probe {steamId.ToString(CultureInfo.InvariantCulture)} " +
+           $"\"{EscapeConsoleString(commandPath)}\"";
+
+    internal static string BuildAvatarOverrideCommand(
+        ulong steamId,
         string commandPath,
         int slot)
-        => $"bc_avatar_override_probe {steamId.ToString(CultureInfo.InvariantCulture)} " +
-           $"\"{EscapeConsoleString(commandPath)}\" {slot.ToString(CultureInfo.InvariantCulture)}";
+        => $"{BuildAvatarOverrideCommand(steamId, commandPath)} " +
+           slot.ToString(CultureInfo.InvariantCulture);
 
     internal static string BuildAvatarOverrideClearCommand(ulong steamId, int slot)
         => $"bc_avatar_override_clear {steamId.ToString(CultureInfo.InvariantCulture)} " +
