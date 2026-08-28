@@ -316,6 +316,16 @@ namespace BotController
             return true;
         }
 
+        static bool ParseAvatarRefreshSlot(const char *value, int &slot)
+        {
+            char *end = nullptr;
+            const long parsed = std::strtol(value, &end, 10);
+            if (!end || *end != '\0' || parsed < 0 || parsed > 63)
+                return false;
+            slot = static_cast<int>(parsed);
+            return true;
+        }
+
         static bool ParseReplaySnapMode(const char *s, MotionRecorder::ReplaySnapMode &out)
         {
             if (!s)
@@ -457,15 +467,12 @@ CON_COMMAND_F(bc_avatar_override_probe,
     int refreshSlot = -1;
     if (args.ArgC() >= 4)
     {
-        char *end = nullptr;
-        const long parsed = std::strtol(args.Arg(3), &end, 10);
-        if (!end || *end != '\0' || parsed < 0 || parsed > 63)
+        if (!Commands::ParseAvatarRefreshSlot(args.Arg(3), refreshSlot))
         {
             Commands::PrintToCaller(context,
                                     "[BC] error: avatar refresh slot must be 0..63\n");
             return;
         }
-        refreshSlot = static_cast<int>(parsed);
     }
 
     int index = -1;
@@ -499,16 +506,16 @@ CON_COMMAND_F(bc_avatar_override_probe,
 }
 
 CON_COMMAND_F(bc_avatar_override_clear,
-              "bc_avatar_override_clear <steamid64>  "
-              "Clear DemoTracer-published ServerAvatarOverrides data for one SteamID.",
+              "bc_avatar_override_clear <steamid64> <slot>  "
+              "Clear one ServerAvatarOverrides entry and refresh that slot's HUD userinfo.",
               FCVAR_NONE)
 {
     using namespace BotController;
 
-    if (args.ArgC() < 2)
+    if (args.ArgC() < 3)
     {
         Commands::PrintToCaller(context,
-                                "usage: bc_avatar_override_clear <steamid64>\n");
+                                "usage: bc_avatar_override_clear <steamid64> <slot>\n");
         return;
     }
 
@@ -516,6 +523,14 @@ CON_COMMAND_F(bc_avatar_override_clear,
     if (!Commands::IsSteamId64(steamId))
     {
         Commands::PrintToCaller(context, "[BC] error: expected a SteamID64 key\n");
+        return;
+    }
+
+    int refreshSlot = -1;
+    if (!Commands::ParseAvatarRefreshSlot(args.Arg(2), refreshSlot))
+    {
+        Commands::PrintToCaller(context,
+                                "[BC] error: avatar refresh slot must be 0..63\n");
         return;
     }
 
@@ -548,9 +563,53 @@ CON_COMMAND_F(bc_avatar_override_clear,
         return;
     }
 
+    if (!Commands::RefreshClientUserInfo(refreshSlot, err, sizeof(err)))
+    {
+        Commands::PrintToCaller(
+            context,
+            "[BC] error: avatar override cleared for %s but slot %d userinfo refresh failed: %s\n",
+            steamId, refreshSlot, err[0] ? err : "unknown error");
+        return;
+    }
+
     Commands::PrintToCaller(context,
-                            "[BC] avatar override cleared %s (index %d, table_count %d)\n",
-                            steamId, index, table->GetNumStrings());
+                            "[BC] avatar override cleared %s (index %d, table_count %d, userinfo=slot%d)\n",
+                            steamId, index, table->GetNumStrings(), refreshSlot);
+}
+
+CON_COMMAND_F(bc_avatar_userinfo_refresh,
+              "bc_avatar_userinfo_refresh <slot>  Refresh one slot's HUD userinfo.",
+              FCVAR_NONE)
+{
+    using namespace BotController;
+
+    if (args.ArgC() < 2)
+    {
+        Commands::PrintToCaller(context,
+                                "usage: bc_avatar_userinfo_refresh <slot>\n");
+        return;
+    }
+
+    int slot = -1;
+    if (!Commands::ParseAvatarRefreshSlot(args.Arg(1), slot))
+    {
+        Commands::PrintToCaller(context,
+                                "[BC] error: avatar refresh slot must be 0..63\n");
+        return;
+    }
+
+    char err[128] = {0};
+    if (!Commands::RefreshClientUserInfo(slot, err, sizeof(err)))
+    {
+        Commands::PrintToCaller(context,
+                                "[BC] error: slot %d userinfo refresh failed: %s\n",
+                                slot, err[0] ? err : "unknown error");
+        return;
+    }
+
+    Commands::PrintToCaller(context,
+                            "[BC] avatar userinfo refreshed slot %d\n",
+                            slot);
 }
 
 CON_COMMAND_F(bc_lock,
