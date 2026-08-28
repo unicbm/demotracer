@@ -619,20 +619,17 @@ namespace cs2bh
         }
     }
 
-    // Override member offsets from gamedata.json; missing entries keep their fallback
+    // Load engine-private member offsets from gamedata.json. Compiled defaults
+    // remain unavailable so a missing entry cannot silently select an old CS2
+    // layout.
     static void LoadMemberOffsets(const nlohmann::json &gamedata)
     {
         using sig::FindPlatformOffset;
         // CServerSideClient layout — shifts as a block across game updates
-        ssc::OFFSET_m_UserIDString = FindPlatformOffset(gamedata, "CServerSideClient::m_UserIDString", ssc::OFFSET_m_UserIDString);
         ssc::OFFSET_m_Name = FindPlatformOffset(gamedata, "CServerSideClient::m_Name", ssc::OFFSET_m_Name);
-        ssc::OFFSET_m_nClientSlot = FindPlatformOffset(gamedata, "CServerSideClient::m_nClientSlot", ssc::OFFSET_m_nClientSlot);
         ssc::OFFSET_m_nEntityIndex = FindPlatformOffset(gamedata, "CServerSideClient::m_nEntityIndex", ssc::OFFSET_m_nEntityIndex);
-        ssc::OFFSET_m_Server = FindPlatformOffset(gamedata, "CServerSideClient::m_Server", ssc::OFFSET_m_Server);
         ssc::OFFSET_m_NetChannel = FindPlatformOffset(gamedata, "CServerSideClient::m_NetChannel", ssc::OFFSET_m_NetChannel);
         ssc::OFFSET_m_nConnectionTypeFlags = FindPlatformOffset(gamedata, "CServerSideClient::m_nConnectionTypeFlags", ssc::OFFSET_m_nConnectionTypeFlags);
-        ssc::OFFSET_m_nSignonState = FindPlatformOffset(gamedata, "CServerSideClient::m_nSignonState", ssc::OFFSET_m_nSignonState);
-        ssc::OFFSET_m_pAttachedTo = FindPlatformOffset(gamedata, "CServerSideClient::m_pAttachedTo", ssc::OFFSET_m_pAttachedTo);
         ssc::OFFSET_m_bFakePlayer = FindPlatformOffset(gamedata, "CServerSideClient::m_bFakePlayer", ssc::OFFSET_m_bFakePlayer);
         ssc::OFFSET_m_UserID = FindPlatformOffset(gamedata, "CServerSideClient::m_UserID", ssc::OFFSET_m_UserID);
         ssc::OFFSET_m_SteamID = FindPlatformOffset(gamedata, "CServerSideClient::m_SteamID", ssc::OFFSET_m_SteamID);
@@ -642,8 +639,6 @@ namespace cs2bh
         targets::kClientListOffset = FindPlatformOffset(gamedata, "CNetworkGameServerBase::m_Clients", targets::kClientListOffset);
         // CBasePlayerController fakeclient flags
         targets::kController_FakeClientFlagsOffset = FindPlatformOffset(gamedata, "CBasePlayerController::FakeClientFlags", targets::kController_FakeClientFlagsOffset);
-        // CBaseEntity team number, used only for JoinTeam diagnostics
-        targets::kController_TeamOffset = FindPlatformOffset(gamedata, "CBaseEntity::m_iTeamNum", targets::kController_TeamOffset);
 #if defined(_WIN32)
         targets::kVTSlot_ClientSetName = FindPlatformOffset(
             gamedata, "CServerSideClient::SetName", targets::kVTSlot_ClientSetName);
@@ -662,6 +657,38 @@ namespace cs2bh
         targets::kEntIdentity_ClassNameOffset = FindPlatformOffset(
             gamedata, "CEntityIdentity::m_designerName",
             targets::kEntIdentity_ClassNameOffset);
+    }
+
+    static const char *FirstMissingMemberOffset()
+    {
+        const std::array<std::pair<const char *, int>, 16> required = {{
+            {"CServerSideClient::m_Name", ssc::OFFSET_m_Name},
+            {"CServerSideClient::m_nEntityIndex", ssc::OFFSET_m_nEntityIndex},
+            {"CServerSideClient::m_NetChannel", ssc::OFFSET_m_NetChannel},
+            {"CServerSideClient::m_nConnectionTypeFlags", ssc::OFFSET_m_nConnectionTypeFlags},
+            {"CServerSideClient::m_bFakePlayer", ssc::OFFSET_m_bFakePlayer},
+            {"CServerSideClient::m_UserID", ssc::OFFSET_m_UserID},
+            {"CServerSideClient::m_SteamID", ssc::OFFSET_m_SteamID},
+            {"CServerSideClient::m_SteamIDMirror", ssc::OFFSET_m_SteamIDMirror},
+            {"CServerSideClient::m_bIsHLTV", ssc::OFFSET_m_bIsHLTV},
+            {"CNetworkGameServerBase::m_Clients", targets::kClientListOffset},
+            {"CBasePlayerController::FakeClientFlags", targets::kController_FakeClientFlagsOffset},
+            {"GameResourceServiceServer::m_pEntitySystem", targets::kEntSys_OffsetInGameResSvc},
+            {"CEntitySystem::m_EntityList", targets::kEntSys_IdentityChunksOffset},
+            {"CEntityIdentity::Size", targets::kEntIdentity_Size},
+            {"CEntityIdentity::m_pInstance", targets::kEntIdentity_InstanceOffset},
+            {"CEntityIdentity::m_designerName", targets::kEntIdentity_ClassNameOffset},
+        }};
+        for (const auto &[name, offset] : required)
+        {
+            if (offset < 0)
+                return name;
+        }
+#if defined(_WIN32)
+        if (targets::kVTSlot_ClientSetName < 0)
+            return "CServerSideClient::SetName";
+#endif
+        return nullptr;
     }
 
     // Resolves and prepares the bot quota flip-around detour
@@ -1044,6 +1071,9 @@ namespace cs2bh
     // Clears FL_BOT for collected pawns and marks only those field writes changed
     std::vector<BotPawnRef> ApplyBotFlagOverride()
     {
+        if (targets::kBaseEntity_FlagsOffset < 0)
+            return {};
+
         std::vector<BotPawnRef> pawns = CollectManagedBotPawns();
         std::vector<BotPawnRef> modified;
         modified.reserve(pawns.size());
@@ -1462,38 +1492,6 @@ namespace cs2bh
 #else
         return std::strcmp(storedName, expectedName) == 0;
 #endif
-    }
-
-    // Schema field writes
-    // TODO: replace with SchemaSystemTypeScope::FindDeclaredClass
-
-    static void WriteControllerPing(void *controller, uint32_t ping)
-    {
-        if (!controller)
-            return;
-        auto *raw = reinterpret_cast<unsigned char *>(controller);
-        *reinterpret_cast<uint32_t *>(raw + targets::kSchemaFallback_m_iPing) = ping;
-        // TODO: call CCSPlayerController::NetworkStateChanged(offset, -1, -1)
-    }
-
-    // Stamp a string_t (pooled name) for m_iszPlayerName
-    // For v0.2.x we leave this write disabled and rely on CServerSideClient::m_Name instead
-    static void WriteControllerPlayerName(void * /*controller*/, const char * /*name*/)
-    {
-        // intentional no-op for v0.2.x
-    }
-
-    // Stamp synthetic SteamID64 into the controller
-    static void WriteControllerSteamId(void * /*controller*/, uint64_t /*sid64*/)
-    {
-        // intentional no-op for v0.2.x
-    }
-
-    // Walk EntitySystem for the controller pointer
-    // For v0.2.x we use pszName + slot bookkeeping only
-    static void *ResolveControllerBySlot(int /*slot*/)
-    {
-        return nullptr;
     }
 
     // Identifies SourceTV before the server-side HLTV flag is initialized
@@ -2532,53 +2530,46 @@ namespace cs2bh
             nlohmann::json gamedata;
             if (!sig::LoadGamedata(gdPath.c_str(), gamedata))
             {
-                META_CONPRINTF("[BOTHIDER] warning: gamedata.json not loaded at '%s' — "
-                               "controller cleanup disabled\n",
-                               gdPath.c_str());
+                std::snprintf(error, maxlen,
+                              "required gamedata.json not loaded at '%s'",
+                              gdPath.c_str());
+                return false;
             }
-            else
+            LoadMemberOffsets(gamedata);
+            if (const char *missing = FirstMissingMemberOffset())
             {
-                // Override member offsets from gamedata.json (fallback kept if absent)
-                LoadMemberOffsets(gamedata);
-                META_CONPRINTF(
-                    "[BOTHIDER] gamedata targets: SetName=#%d team=%d entitySystem=%d "
-                    "entityList=%d identitySize=%d instance=%d className=%d\n",
-#if defined(_WIN32)
-                    targets::kVTSlot_ClientSetName,
-#else
-                    -1,
-#endif
-                    targets::kController_TeamOffset,
-                    targets::kEntSys_OffsetInGameResSvc,
-                    targets::kEntSys_IdentityChunksOffset,
-                    targets::kEntIdentity_Size,
-                    targets::kEntIdentity_InstanceOffset,
-                    targets::kEntIdentity_ClassNameOffset);
-#if defined(_WIN32)
-                if (targets::kVTSlot_ClientSetName < 0)
-                {
-                    META_CONPRINTF(
-                        "[BOTHIDER] warning: CServerSideClient::SetName vtable slot missing - "
-                        "name overwrite disabled\n");
-                }
-#endif
-
-                sig::ModuleInfo serverModule = sig::ModuleFromInterfacePtr(gameclients);
-                if (!serverModule)
-                    serverModule = sig::ModuleFromName(targets::kServerModuleName);
-                ResolveUtilRemoveAndEntSys(gamedata, serverModule);
-
-                // Install the bot-quota flip-around detour
-                InstallQuotaHook(gamedata, serverModule);
-
-#if defined(_WIN32)
-                // Restore managed-bot identity only during team validation.
-                InstallHandleJoinTeamHook(gamedata, serverModule);
-#endif
-
-                // Install the pass-through engine entity-packing detour
-                InstallPackEntitiesHook(gamedata);
+                std::snprintf(error, maxlen,
+                              "required gamedata target missing: %s", missing);
+                return false;
             }
+            META_CONPRINTF(
+                "[BOTHIDER] gamedata targets: SetName=#%d entitySystem=%d "
+                "entityList=%d identitySize=%d instance=%d className=%d\n",
+#if defined(_WIN32)
+                targets::kVTSlot_ClientSetName,
+#else
+                -1,
+#endif
+                targets::kEntSys_OffsetInGameResSvc,
+                targets::kEntSys_IdentityChunksOffset,
+                targets::kEntIdentity_Size,
+                targets::kEntIdentity_InstanceOffset,
+                targets::kEntIdentity_ClassNameOffset);
+            sig::ModuleInfo serverModule = sig::ModuleFromInterfacePtr(gameclients);
+            if (!serverModule)
+                serverModule = sig::ModuleFromName(targets::kServerModuleName);
+            ResolveUtilRemoveAndEntSys(gamedata, serverModule);
+
+            // Install the bot-quota flip-around detour
+            InstallQuotaHook(gamedata, serverModule);
+
+#if defined(_WIN32)
+            // Restore managed-bot identity only during team validation.
+            InstallHandleJoinTeamHook(gamedata, serverModule);
+#endif
+
+            // Install the pass-through engine entity-packing detour
+            InstallPackEntitiesHook(gamedata);
         }
         if (g_pfnUtilRemove)
         {
@@ -2601,16 +2592,24 @@ namespace cs2bh
             int pawnOff = schema::GetFieldOffset("CBasePlayerController", "m_hPawn");
             int playerPawnOff = schema::GetFieldOffset("CCSPlayerController", "m_hPlayerPawn");
             int idleOff = schema::GetFieldOffset("CCSPlayerPawnBase", "m_flIdleTimeSinceLastAction");
+            targets::kBaseEntity_FlagsOffset =
+                schema::GetFieldOffset("CBaseEntity", "m_fFlags");
+            targets::kController_TeamOffset =
+                schema::GetFieldOffset("CBaseEntity", "m_iTeamNum");
             g_BotPawnHandleOffset = playerPawnOff >= 0 ? playerPawnOff : pawnOff;
             META_CONPRINTF("[BOTHIDER] schema resolved m_hPlayerPawn=%d m_hPawn=%d "
-                           "m_flIdleTimeSinceLastAction=%d\n",
-                           playerPawnOff, pawnOff, idleOff);
-            if (g_BotPawnHandleOffset < 0)
-                META_CONPRINTF("[BOTHIDER] warning: bot pawn handle unresolved - FL_BOT override disabled\n");
+                           "m_flIdleTimeSinceLastAction=%d m_fFlags=%d m_iTeamNum=%d\n",
+                           playerPawnOff, pawnOff, idleOff,
+                           targets::kBaseEntity_FlagsOffset,
+                           targets::kController_TeamOffset);
+            if (g_BotPawnHandleOffset < 0 || targets::kBaseEntity_FlagsOffset < 0)
+                META_CONPRINTF("[BOTHIDER] warning: bot pawn handle or m_fFlags unresolved - FL_BOT override disabled\n");
         }
         else
         {
             g_BotPawnHandleOffset = -1;
+            targets::kBaseEntity_FlagsOffset = -1;
+            targets::kController_TeamOffset = -1;
             META_CONPRINTF("[BOTHIDER] warning: SchemaSystem unresolved — idle-kick and FL_BOT overrides disabled\n");
         }
 

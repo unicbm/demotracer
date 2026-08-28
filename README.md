@@ -34,9 +34,14 @@ A later successful DTR batch atomically replaces it; a failed partial load keeps
 the previous complete batch. Explicit slot unload/kick, disconnect, map change,
 slot reuse, plugin unload, or provider loss end the affected presentation.
 
-Crosshair publication uses
-`CCSPlayerController.m_szCrosshairCodes` plus CounterStrikeSharp state-change
-replication. The path is server-only and requires no client-side injection.
+Crosshair publication writes and verifies
+`CCSPlayerController.m_szCrosshairCodes`, then marks that network field changed.
+Network metadata is resolved on demand only after a live controller exists;
+querying it during plugin load can cache the not-yet-ready serializer as a
+false non-networked result. Publication occurs once for a new slot incarnation
+or presentation lease and again only when the engine actually changes the
+stored value. The path is server-only and requires no client-side injection or
+fragile `client.dll` signature hook.
 
 ## Runtime commands
 

@@ -88,20 +88,6 @@
     },
     "comment": "controller fakeclient flags"
   },
-  "CBaseEntity::m_iTeamNum": {
-    "offsets": {
-      "windows": 836,
-      "linux": -1
-    },
-    "comment": "reads the current controller team"
-  },
-  "CServerSideClient::m_UserIDString": {
-    "offsets": {
-      "windows": 56,
-      "linux": 56
-    },
-    "comment": "user id string"
-  },
   "CServerSideClient::m_Name": {
     "offsets": {
       "windows": 64,
@@ -109,26 +95,12 @@
     },
     "comment": "display name string"
   },
-  "CServerSideClient::m_nClientSlot": {
-    "offsets": {
-      "windows": 72,
-      "linux": 72
-    },
-    "comment": "client slot"
-  },
   "CServerSideClient::m_nEntityIndex": {
     "offsets": {
       "windows": 76,
       "linux": 76
     },
     "comment": "entity index"
-  },
-  "CServerSideClient::m_Server": {
-    "offsets": {
-      "windows": 80,
-      "linux": 80
-    },
-    "comment": "network server pointer"
   },
   "CServerSideClient::m_NetChannel": {
     "offsets": {
@@ -143,20 +115,6 @@
       "linux": 96
     },
     "comment": "connection-type byte"
-  },
-  "CServerSideClient::m_nSignonState": {
-    "offsets": {
-      "windows": 100,
-      "linux": 100
-    },
-    "comment": "signon state"
-  },
-  "CServerSideClient::m_pAttachedTo": {
-    "offsets": {
-      "windows": 144,
-      "linux": 144
-    },
-    "comment": "attached client pointer"
   },
   "CServerSideClient::m_bFakePlayer": {
     "offsets": {

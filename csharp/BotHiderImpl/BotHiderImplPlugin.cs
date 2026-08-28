@@ -12,8 +12,11 @@ namespace BotHiderImpl;
 
 public sealed class BotHiderImplPlugin : BasePlugin
 {
+    private const float FastApplyIntervalSeconds = 0.25f;
+    private const int FastApplyTicks = 12;
+
     public override string ModuleName => "DemoTracer BotHider";
-    public override string ModuleVersion => "0.1.0";
+    public override string ModuleVersion => "0.1.4";
     public override string ModuleAuthor => "XBribo contributors, unicbm";
     public override string ModuleDescription =>
         "DemoTracer-managed bot identity and presentation runtime.";
@@ -46,13 +49,8 @@ public sealed class BotHiderImplPlugin : BasePlugin
         StartFastApplyWindow();
         Server.PrintToConsole(
             $"[DemoTracer BotHider] loaded api={DemoTracerBotHiderContract.ApiVersion} " +
-            $"provider_epoch={_presentation.GetProviderInfo().ProviderEpoch}");
-        if (!BotHiderPresentationService.ManagedSchemaWritesAllowed)
-        {
-            Server.PrintToConsole(
-                $"[DemoTracer BotHider] compatibility safe mode active for CS2 " +
-                $"{BotHiderPresentationService.DetectedCs2Patch}; native identity publication remains enabled");
-        }
+            $"provider_epoch={_presentation.GetProviderInfo().ProviderEpoch} " +
+            "crosshair_writer=networked_on_demand");
     }
 
     public override void Unload(bool hotReload)
@@ -60,8 +58,7 @@ public sealed class BotHiderImplPlugin : BasePlugin
         _harmony?.UnpatchAll(_harmony.Id);
         _harmony = null;
         IsBotPatch.Api = null;
-        _fastApplyTimer?.Kill();
-        _fastApplyTimer = null;
+        StopFastApplyWindow();
         _presentation?.Dispose();
         _presentation = null;
         _client?.Dispose();
@@ -70,12 +67,16 @@ public sealed class BotHiderImplPlugin : BasePlugin
 
     private void OnMapStart(string mapName)
     {
+        StopFastApplyWindow();
         _presentation?.ResetForMapBoundary();
         StartFastApplyWindow();
     }
 
     private void OnMapEnd()
-        => _presentation?.ResetForMapBoundary();
+    {
+        StopFastApplyWindow();
+        _presentation?.ResetForMapBoundary();
+    }
 
     private void OnClientDisconnect(int slot)
         => _presentation?.HandleClientDisconnect(slot);
@@ -152,13 +153,20 @@ public sealed class BotHiderImplPlugin : BasePlugin
 
     private void StartFastApplyWindow()
     {
-        _fastApplyRemaining = Math.Max(_fastApplyRemaining, 80);
+        _fastApplyRemaining = Math.Max(_fastApplyRemaining, FastApplyTicks);
         if (_fastApplyTimer != null)
             return;
         _fastApplyTimer = AddTimer(
-            0.25f,
+            FastApplyIntervalSeconds,
             RunFastApplyTick,
             TimerFlags.REPEAT | TimerFlags.STOP_ON_MAPCHANGE);
+    }
+
+    private void StopFastApplyWindow()
+    {
+        _fastApplyTimer?.Kill();
+        _fastApplyTimer = null;
+        _fastApplyRemaining = 0;
     }
 
     private void RunFastApplyTick()
@@ -247,7 +255,8 @@ public sealed class BotHiderImplPlugin : BasePlugin
             $"epoch={provider.ProviderEpoch} map_epoch={provider.MapEpoch} " +
             $"managed={diagnostics.ManagedSlots} leases={diagnostics.ActiveLeases}/" +
             $"{diagnostics.LeasedSlots} writes={diagnostics.PublishedWrites} " +
-            $"controller_repairs={diagnostics.ControllerRepairs}");
+            $"controller_repairs={diagnostics.ControllerRepairs} " +
+            "crosshair_writer=networked_on_demand");
         if (diagnostics.Signatures.Length > 0)
             command.ReplyToCommand($"[DemoTracer BotHider] hooks: {string.Join(' ', diagnostics.Signatures)}");
 
