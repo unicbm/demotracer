@@ -44,15 +44,15 @@ public sealed partial class DemoTracerPlugin
             }
         }
 
-        public BotRandomizerWriteLeaseResult Acquire(
+        public BotRandomizerReplayPlanResult Acquire(
             string owner,
-            BotRandomizerCosmeticWriteClaim[] claims)
+            BotRandomizerReplayCosmeticPlan[] plans)
         {
             if (!TryGetApi(out var api))
                 return Fail("provider_unavailable");
             try
             {
-                return api.AcquireWriteLease(owner, claims);
+                return api.AcquireReplayPlan(owner, plans);
             }
             catch (Exception ex)
             {
@@ -61,15 +61,15 @@ public sealed partial class DemoTracerPlugin
             }
         }
 
-        public BotRandomizerWriteLeaseResult Replace(
-            string leaseToken,
-            BotRandomizerCosmeticWriteClaim[] claims)
+        public BotRandomizerReplayPlanResult Replace(
+            string planToken,
+            BotRandomizerReplayCosmeticPlan[] plans)
         {
             if (!TryGetApi(out var api))
                 return Fail("provider_unavailable");
             try
             {
-                return api.ReplaceWriteLease(leaseToken, claims);
+                return api.ReplaceReplayPlan(planToken, plans);
             }
             catch (Exception ex)
             {
@@ -84,7 +84,7 @@ public sealed partial class DemoTracerPlugin
                 return false;
             try
             {
-                return api.HeartbeatWriteLease(leaseToken);
+                return api.HeartbeatReplayPlan(leaseToken);
             }
             catch
             {
@@ -101,7 +101,7 @@ public sealed partial class DemoTracerPlugin
                 return false;
             try
             {
-                return api.ReleaseWriteLease(leaseToken);
+                return api.ReleaseReplayPlan(leaseToken);
             }
             catch
             {
@@ -116,7 +116,7 @@ public sealed partial class DemoTracerPlugin
                 return 0;
             try
             {
-                return api.ReleaseWriteLeasesByOwner(owner);
+                return api.ReleaseReplayPlansByOwner(owner);
             }
             catch
             {
@@ -241,7 +241,7 @@ public sealed partial class DemoTracerPlugin
             }
         }
 
-        private static BotRandomizerWriteLeaseResult Fail(string reason)
+        private static BotRandomizerReplayPlanResult Fail(string reason)
             => new()
             {
                 Ok = false,

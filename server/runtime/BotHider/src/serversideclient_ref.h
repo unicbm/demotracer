@@ -8,21 +8,18 @@
 namespace cs2bh::ssc
 {
 
-    // offsets — defaults are fallbacks, overridden at load from gamedata.json
-    inline int OFFSET_m_UserIDString = 56;  // CUtlString
-    inline int OFFSET_m_Name = 64;          // CUtlString
-    inline int OFFSET_m_nClientSlot = 72;   // CPlayerSlot (int)
-    inline int OFFSET_m_nEntityIndex = 76;  // CEntityIndex (int)
-    inline int OFFSET_m_Server = 80;        // CNetworkGameServerBase*
-    inline int OFFSET_m_NetChannel = 88;    // INetChannel*
-    inline int OFFSET_m_nConnectionTypeFlags = 96; // byte, fake-client mask 0x08
-    inline int OFFSET_m_nSignonState = 100; // SignonState_t
-    inline int OFFSET_m_pAttachedTo = 144;
-    inline int OFFSET_m_bFakePlayer = 160; // bool
-    inline int OFFSET_m_UserID = 168;      // short
-    inline int OFFSET_m_SteamID = 171;     // CSteamID
-    inline int OFFSET_m_SteamIDMirror = 179; // mirrored CSteamID
-    inline int OFFSET_m_bIsHLTV = 322;     // bool
+    // Engine-private layout. Every value must come from the packaged gamedata;
+    // retaining compiled fallbacks would turn a missing or stale file into
+    // unchecked writes through an old CS2 layout.
+    inline int OFFSET_m_Name = -1;          // CUtlString
+    inline int OFFSET_m_nEntityIndex = -1;  // CEntityIndex (int)
+    inline int OFFSET_m_NetChannel = -1;    // INetChannel*
+    inline int OFFSET_m_nConnectionTypeFlags = -1; // byte, fake-client mask 0x08
+    inline int OFFSET_m_bFakePlayer = -1; // bool
+    inline int OFFSET_m_UserID = -1;      // short
+    inline int OFFSET_m_SteamID = -1;     // CSteamID
+    inline int OFFSET_m_SteamIDMirror = -1; // mirrored CSteamID
+    inline int OFFSET_m_bIsHLTV = -1;     // bool
 
     // Read CUtlString { char* m_pString } at member offset
     inline const char *ReadName(const void *client)

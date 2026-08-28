@@ -37,7 +37,7 @@ public sealed partial class DemoTracerPlugin
             if (weapon == null || !weapon.IsValid)
                 continue;
 
-            var itemName = NormalizeWeaponClassName(weapon.DesignerName);
+            var itemName = ObservedReplayWeaponClassName(weapon);
             var slot = GetReplayWeaponSlot(itemName);
             if (slot is ReplayWeaponSlot.Knife or ReplayWeaponSlot.C4 or ReplayWeaponSlot.Other)
                 continue;
@@ -70,7 +70,7 @@ public sealed partial class DemoTracerPlugin
         {
             var weapon = handle.Value;
             if (weapon == null || !weapon.IsValid ||
-                !WeaponClassMatches(weapon.DesignerName, className))
+                !ReplayWeaponMatches(weapon, className))
             {
                 continue;
             }
@@ -127,12 +127,12 @@ public sealed partial class DemoTracerPlugin
             if (weapon == null || !weapon.IsValid)
                 continue;
 
-            if (GetReplayWeaponSlot(NormalizeWeaponClassName(weapon.DesignerName)) == slot)
+            if (GetReplayWeaponSlot(ObservedReplayWeaponClassName(weapon)) == slot)
                 yield return weapon;
         }
     }
 
-    private static bool HasReplayWeapon(CCSPlayerPawn pawn, string className)
+    private bool HasReplayWeapon(CCSPlayerPawn pawn, string className)
     {
         if (pawn.WeaponServices == null)
             return false;
@@ -140,7 +140,7 @@ public sealed partial class DemoTracerPlugin
         var activeWeapon = pawn.WeaponServices.ActiveWeapon.Value;
         if (activeWeapon != null &&
             activeWeapon.IsValid &&
-            WeaponClassMatches(activeWeapon.DesignerName, className))
+            ReplayWeaponMatches(activeWeapon, className))
         {
             return true;
         }
@@ -150,7 +150,7 @@ public sealed partial class DemoTracerPlugin
             var weapon = handle.Value;
             if (weapon == null || !weapon.IsValid)
                 continue;
-            if (WeaponClassMatches(weapon.DesignerName, className))
+            if (ReplayWeaponMatches(weapon, className))
                 return true;
         }
         return false;
@@ -171,12 +171,23 @@ public sealed partial class DemoTracerPlugin
             var weapon = handle.Value;
             if (weapon == null || !weapon.IsValid)
                 continue;
-            if (WeaponClassMatches(weapon.DesignerName, expectedClassName))
+            if (ReplayWeaponMatches(weapon, expectedClassName))
                 continue;
-            if (GetReplayWeaponSlot(weapon.DesignerName) == slot)
+            if (GetReplayWeaponSlot(ObservedReplayWeaponClassName(weapon)) == slot)
                 return true;
         }
 
         return false;
     }
+
+    private string ObservedReplayWeaponClassName(CBasePlayerWeapon weapon)
+    {
+        var itemDefinitionIndex = (int)(weapon.AttributeManager?.Item?.ItemDefinitionIndex ?? 0);
+        return NormalizeWeaponClassName(_replayEquipment.ResolveObservedClassName(
+            weapon.DesignerName,
+            itemDefinitionIndex));
+    }
+
+    private bool ReplayWeaponMatches(CBasePlayerWeapon weapon, string expectedClassName)
+        => WeaponClassMatches(ObservedReplayWeaponClassName(weapon), expectedClassName);
 }

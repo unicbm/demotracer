@@ -85,7 +85,6 @@ public sealed partial class DemoTracerPlugin
         if (BotControllerNative.SwitchBotWeapon(slot, normalized))
         {
             _session.LastReplayWeaponDef[slot] = normalized;
-            ApplyReplayWeaponCosmeticForSlot(slot, normalized);
         }
         else if (TryGetWeaponClassByDefIndex(normalized, out var expectedClassName) &&
                  player.PlayerPawn.Value is { IsValid: true } pawn &&
@@ -144,7 +143,6 @@ public sealed partial class DemoTracerPlugin
             return false;
 
         _session.LastEnsuredWeaponDef[slot] = normalized;
-        ApplyReplayWeaponCosmeticForSlot(slot, normalized);
         if (forceSwitch)
         {
             if (!BotControllerNative.SwitchBotWeapon(slot, normalized))

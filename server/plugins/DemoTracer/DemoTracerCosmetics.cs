@@ -4,68 +4,14 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-using CounterStrikeSharp.API;
-using CounterStrikeSharp.API.Core;
-using CounterStrikeSharp.API.Modules.Memory;
-using CounterStrikeSharp.API.Modules.Memory.DynamicFunctions;
-using CounterStrikeSharp.API.Modules.Timers;
-using CounterStrikeSharp.API.Modules.Utils;
 using System.Globalization;
-using System.Reflection;
-using System.Runtime.InteropServices;
 
 namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
-    private const string AttributeSetterWindowsSignature = "40 53 55 41 56 48 81 EC 90 00 00 00";
-    private const string AttributeSetterLinuxSignature = "55 48 89 E5 41 57 41 56 49 89 FE 41 55 41 54 53 48 89 F3 48 83 EC ? F3 0F 11 85";
-    private static readonly Lazy<MemoryFunctionVoid<nint, string, float>?> AttributeSetter = new(CreateAttributeSetter);
     private readonly HashSet<(int WeaponDefIndex, uint PaintKit)> _legacyCosmeticPaints = new();
     private readonly ReplayCosmeticAlignmentTracker _cosmeticAlignmentTracker = new();
-    private readonly Dictionary<(int Slot, nint EntityHandle), AppliedCosmeticEntityWrite> _appliedWeaponCosmeticWrites = new();
-    private readonly Dictionary<(int Slot, nint EntityHandle), AppliedCosmeticEntityWrite> _appliedKnifeCosmeticWrites = new();
-    private readonly Dictionary<int, AppliedGloveCosmetic> _appliedGloveCosmetics = new();
-    private readonly Dictionary<int, int> _gloveCosmeticTokens = new();
-    private readonly Dictionary<int, NativeAgentModelCapture> _nativeAgentModels = new();
-    private bool _cosmeticGiveNamedItemHooked;
-    private int _nextGloveCosmeticToken;
-    private long _cosmeticLifecycleGeneration;
-
-    private void HookCosmeticGiveNamedItem()
-    {
-        if (_cosmeticGiveNamedItemHooked)
-            return;
-
-        try
-        {
-            VirtualFunctions.GiveNamedItemFunc.Hook(OnGiveNamedItemPostForCosmetics, HookMode.Post);
-            _cosmeticGiveNamedItemHooked = true;
-        }
-        catch (Exception ex)
-        {
-            Server.PrintToConsole($"dtr: cosmetic GiveNamedItem hook unavailable: {ex.Message}");
-        }
-    }
-
-    private void UnhookCosmeticGiveNamedItem()
-    {
-        if (!_cosmeticGiveNamedItemHooked)
-            return;
-
-        try
-        {
-            VirtualFunctions.GiveNamedItemFunc.Unhook(OnGiveNamedItemPostForCosmetics, HookMode.Post);
-        }
-        catch (Exception ex)
-        {
-            Server.PrintToConsole($"dtr: cosmetic GiveNamedItem unhook failed: {ex.Message}");
-        }
-        finally
-        {
-            _cosmeticGiveNamedItemHooked = false;
-        }
-    }
 
     private ReplayCosmetics NormalizeReplayCosmetics(ReplayCosmetics? cosmetics)
     {
@@ -325,104 +271,28 @@ public sealed partial class DemoTracerPlugin
         return path;
     }
 
-    internal static string? NormalizeNativeAgentModelPath(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-        var path = value.Trim().Replace('/', '\\').ToLowerInvariant();
-        if (path.Length is < 24 or > 192 ||
-            !path.StartsWith("characters\\models\\", StringComparison.Ordinal) ||
-            !path.EndsWith(".vmdl", StringComparison.Ordinal) ||
-            path.Contains("..", StringComparison.Ordinal) ||
-            path.Contains(':', StringComparison.Ordinal) ||
-            path.Contains('\0'))
-        {
-            return null;
-        }
-
-        foreach (var ch in path)
-        {
-            if (!char.IsAsciiLetterOrDigit(ch) && ch is not ('_' or '\\' or '.' or '-'))
-                return null;
-        }
-        return path;
-    }
-
-    private void CaptureNativeAgentModelForSpawn(CCSPlayerController player)
-    {
-        var slot = player.Slot;
-        _nativeAgentModels.Remove(slot);
-        if (player is not { IsValid: true, IsBot: true } ||
-            player.UserId is not int userId ||
-            player.Team is not (CsTeam.Terrorist or CsTeam.CounterTerrorist))
-        {
-            return;
-        }
-
-        try
-        {
-            var pawn = player.PlayerPawn.Value;
-            if (pawn is not { IsValid: true } ||
-                NormalizeNativeAgentModelPath(
-                    pawn.CBodyComponent?.SceneNode?.GetSkeletonInstance().ModelState.ModelName) is not { } modelPath)
-            {
-                return;
-            }
-
-            _nativeAgentModels[slot] = new NativeAgentModelCapture(
-                userId,
-                pawn.EntityHandle.Raw,
-                player.Team,
-                modelPath);
-        }
-        catch
-        {
-            // A missing model-state wrapper must not turn spawn handling into
-            // a gameplay failure. Without a validated capture we simply skip
-            // the default-model write while retaining Agent ownership.
-        }
-    }
-
     private bool IsWeaponCosmeticDefIndex(int weaponDefIndex)
         => IsWeaponCosmeticCategory(weaponDefIndex);
 
     private bool IsWeaponCosmeticCategory(int weaponDefIndex)
         => _replayEquipment.IsWeaponCosmeticCategory(NormalizeWeaponDefIndex(weaponDefIndex));
 
-    private bool IsKnifeCosmeticDefIndex(int weaponDefIndex)
+    private bool IsExactKnifeCosmeticDefIndex(int weaponDefIndex)
         => IsKnownKnifeCosmeticItemDefIndex(weaponDefIndex);
+
+    private bool IsLegacyCosmeticPaint(int weaponDefIndex, int paintKit)
+        => paintKit > 0 &&
+           _legacyCosmeticPaints.Contains((NormalizeWeaponDefIndex(weaponDefIndex), (uint)paintKit));
 
     private void ResetCosmeticAlignState(bool resetCounters = false)
     {
-        _cosmeticLifecycleGeneration++;
         _session.CosmeticSyncedSlots.Clear();
         _cosmeticAlignmentTracker.Clear();
-        _appliedWeaponCosmeticWrites.Clear();
-        _appliedKnifeCosmeticWrites.Clear();
-        _session.ActiveWeaponCosmetics.Clear();
-        _appliedGloveCosmetics.Clear();
-        _gloveCosmeticTokens.Clear();
         if (resetCounters)
         {
             _cosmeticAppliedCount = 0;
             _cosmeticSkippedCount = 0;
         }
-    }
-
-    private void ScheduleCosmeticNextFrame(Action callback)
-    {
-        var generation = _cosmeticLifecycleGeneration;
-        Server.NextFrame(() =>
-        {
-            if (generation != _cosmeticLifecycleGeneration ||
-                !_mapActive ||
-                _lifecycleResetInProgress)
-            {
-                return;
-            }
-
-            callback();
-        });
     }
 
     private void ResetStickerAlignState(bool resetCounters = false)
@@ -479,11 +349,5 @@ public sealed partial class DemoTracerPlugin
 
         return (files, weapons, knives, gloves, agents, stickers, charms);
     }
-
-    private readonly record struct NativeAgentModelCapture(
-        int UserId,
-        uint PawnEntityHandle,
-        CsTeam Team,
-        string ModelPath);
 
 }

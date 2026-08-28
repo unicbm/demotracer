@@ -70,10 +70,15 @@ evidence is left untouched.
 
 Advanced projectile diagnostics:
 
+Projectile alignment is uniform for every grenade kind: DemoTracer applies the
+recorded initial position and velocity once through CS2's entity teleport path
+when the projectile entity is born, then leaves flight, collision, detonation,
+and effect propagation to CS2. Effect
+positions are diagnostic evidence only; playback never teleports a projectile to
+an effect point or forces detonation.
+
 | Command | Purpose |
 | --- | --- |
-| `dtr_projectile_align_ticks <status|default|once|2..512|until_delete>` | Set the temporary projectile correction window. |
-| `dtr_molotov_align_point <status|off|teleport|detonate> [lead_ticks]` | Control experimental fire alignment. |
 | `dtr_projectile_align_log [clear|all|molotov|fire]` | Print or clear alignment diagnostics. |
 
 ### Identity and Presentation
@@ -101,15 +106,13 @@ dtr_cosmetics <weapons|knives|gloves|names|agents|stickers|charms|preserve_nativ
 default-off and are claimed only when the demo contains positive evidence for
 that weapon definition.
 
-When the BotRandomizer v1 lease API is available, `agents`, `knives`, and
-`gloves` use the same positive-evidence rule: DemoTracer claims a field only
-when the selected preset enables it and the demo contains that cosmetic.
-Missing evidence is not converted into a default item and does not authorize
-DemoTracer to rewrite or rebuild the live entity. Review the GSLT warning in
-the root README before using cosmetic alignment. Weapon paint claims carry the
-complete normalized paint kit, seed, and wear tuple; BotRandomizer 1.5.1 or
-newer validates that tuple and supplies it before `GiveNamedItem` constructs
-the entity.
+The playback bundle includes the matched BotRandomizer v2 replay-plan provider.
+DemoTracer submits normalized demo evidence as parameters only; BotRandomizer
+is the sole cosmetic entity writer. Weapons and knives are prepared before
+`GiveNamedItem` constructs them, while Agent, gloves, and music kits are applied
+from BotRandomizer's next-spawn lifecycle. Missing Agent evidence preserves the
+engine-selected model. DemoTracer never rebuilds or hot-repairs cosmetic
+entities. Review the GSLT warning in the root README before enabling cosmetics.
 
 ### Handoff
 
@@ -223,6 +226,6 @@ Kept for existing scripts; new tooling should use the commands above.
   incendiary effects. Uncertain evidence stays on native CS2 behavior.
 - Voice requires usable voice netmessages. Sticker and keychain transforms
   cannot reproduce every CS2 presentation detail exactly.
-- Cosmetic writes are explicit opt-in and positive-evidence-only. With
-  BotRandomizer installed, missing provider leases or authenticated replay
-  identity cause DemoTracer to fail closed without stopping playback.
+- Cosmetic writes are explicit opt-in and positive-evidence-only. A missing or
+  incompatible bundled provider makes DemoTracer fail closed without stopping
+  playback; there is no managed direct-write fallback.

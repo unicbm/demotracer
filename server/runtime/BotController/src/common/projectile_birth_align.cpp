@@ -20,14 +20,12 @@ namespace BotController::ProjectileBirthAlign
     namespace
     {
         constexpr int kMaxPending = 64;
-        constexpr int kMaxAttempts = 4;
 
         struct Pending
         {
             uint64_t entityPtr;
             std::array<float, 3> position;
             std::array<float, 3> velocity;
-            int attemptsRemaining;
         };
 
         std::mutex g_mutex;
@@ -171,8 +169,7 @@ namespace BotController::ProjectileBirthAlign
         g_pending.push_back(Pending{
             entityPtr,
             {posX, posY, posZ},
-            {velX, velY, velZ},
-            kMaxAttempts});
+            {velX, velY, velZ}});
         g_pendingCount.store(static_cast<int>(g_pending.size()),
                              std::memory_order_release);
         ++g_queued;
@@ -224,22 +221,10 @@ namespace BotController::ProjectileBirthAlign
         while (it != g_pending.end())
         {
             if (Apply(*it))
-            {
                 ++g_applied;
-                it = g_pending.erase(it);
-                continue;
-            }
-
-            --it->attemptsRemaining;
-            if (it->attemptsRemaining <= 0)
-            {
-                ++g_failed;
-                it = g_pending.erase(it);
-            }
             else
-            {
-                ++it;
-            }
+                ++g_failed;
+            it = g_pending.erase(it);
         }
         g_pendingCount.store(static_cast<int>(g_pending.size()),
                              std::memory_order_release);

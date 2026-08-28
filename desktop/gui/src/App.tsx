@@ -136,6 +136,7 @@ import {
   withExportRoot,
 } from "./library";
 import {
+  buildArchiveSessionMeta,
   EMPTY_LIBRARY_WORKSPACE,
   LIBRARY_SESSION_STORAGE_KEY,
   libraryWorkspaceReducer,
@@ -356,6 +357,7 @@ function App() {
     guiUpdateOffered,
     playbackUpdateOffered,
     availableUpdateCount,
+    promptTitle: updatePromptTitle,
     promptSummary: updatePromptSummary,
     dialogBusy: updateDialogBusy,
     dialogStatus: updateDialogStatus,
@@ -476,7 +478,13 @@ function App() {
     ? archive.displayName || fileName(archive.demoPath) || archive.demoId
     : activeSection === "analysis" ? sourceFileName : "";
   const analysisSessionMeta = activeSection === "analysis" && phase === "archive" && archive
-    ? [fileName(archive.sourcePath || archive.demoPath), archive.map, `${archive.rounds.length} ${words.rounds}`].filter(Boolean).join(" · ")
+    ? buildArchiveSessionMeta(
+      analysisSessionTitle,
+      fileName(archive.sourcePath || archive.demoPath),
+      archive.map,
+      archive.rounds.length,
+      words.rounds,
+    )
     : activeSection === "analysis" && analysis
       ? [analysis.map || "—", `${analysis.rounds.length} ${words.rounds}`].join(" · ")
       : "";
@@ -2846,7 +2854,7 @@ function App() {
           <aside className="update-discovery-banner" aria-labelledby="update-banner-title">
             <span className="update-discovery-mark" aria-hidden="true"><ArrowIcon size={16} /></span>
             <div className="update-discovery-copy">
-              <strong id="update-banner-title">{words.releaseUpdateBannerTitle}</strong>
+              <strong id="update-banner-title">{updatePromptTitle}</strong>
               <span>{updatePromptSummary}</span>
             </div>
             <button className="secondary-button update-discovery-action" type="button" onClick={() => setUpdateDialogOpen(true)}>

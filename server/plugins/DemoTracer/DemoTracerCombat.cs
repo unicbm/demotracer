@@ -39,7 +39,13 @@ public sealed partial class DemoTracerPlugin
         }
 
         if (stopped > 0)
+        {
+            // Stopping native replay can republish the bots' base userinfo.
+            // The lease contents and signature are intentionally unchanged at
+            // handoff, so a heartbeat alone cannot repair that external write.
+            _ = SyncBotHiderPresentationLease(announce: false, forceReplace: true);
             Server.PrintToConsole($"dtr: handoff stopped {stopped} replay slot(s), reason={reason}");
+        }
     }
 
     private int GetDeathHandoffSlot(EventPlayerDeath @event)

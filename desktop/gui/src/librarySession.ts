@@ -45,6 +45,27 @@ export const EMPTY_LIBRARY_WORKSPACE: LibraryWorkspaceState = {
   commandMode: "sequence",
 };
 
+export function buildArchiveSessionMeta(
+  title: string,
+  sourceFileName: string,
+  map: string,
+  roundCount: number,
+  roundsLabel: string,
+): string {
+  const normalizedTitle = normalizeDemoLabel(title);
+  const normalizedSource = normalizeDemoLabel(sourceFileName);
+  const distinctSource = normalizedSource && normalizedSource !== normalizedTitle
+    ? sourceFileName.trim()
+    : "";
+  return [distinctSource, map, `${roundCount} ${roundsLabel}`]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function normalizeDemoLabel(value: string): string {
+  return value.trim().replace(/\.dem$/i, "").toLowerCase();
+}
+
 export function libraryWorkspaceReducer(
   state: LibraryWorkspaceState,
   action: LibraryWorkspaceAction,

@@ -11,10 +11,14 @@
   "bot_controller": {
     "abi_major": 18,
     "min_abi_minor": 35,
-    "required_capabilities_hex": "0x1c1ff"
+    "required_capabilities_hex": "0x141ff"
   },
   "bot_hider": {
     "api": 1
+  },
+  "bot_randomizer": {
+    "api": 2,
+    "provider_version": "1.6.2"
   },
   "demotracer": {
     "companion_api": 7

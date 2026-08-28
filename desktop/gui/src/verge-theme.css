@@ -1914,6 +1914,11 @@ textarea {
   font-style: normal;
 }
 
+.settings-subpage-row.has-update em {
+  color: var(--trace);
+  font-weight: var(--weight-semibold);
+}
+
 .settings-subpage-row > svg {
   color: var(--text-tertiary);
 }

@@ -40,7 +40,6 @@ public sealed partial class DemoTracerPlugin
         StopVoiceTestPlayback("unload_all", printSummary: false);
         ClearLoadedAutoVoiceClip();
         ClearLoadedAutoChat();
-        RestoreAllReplayMusicKits("unload_all");
         ReleaseBotRandomizerCosmeticLease("unload_all");
         foreach (var slot in _session.LoadedSlots.ToArray())
         {
@@ -102,7 +101,6 @@ public sealed partial class DemoTracerPlugin
             var hadReplayState = _session.ReplaySlots.HasAnyState ||
                                  _session.LoadedReplays.Count > 0 ||
                                  _retainedReplayViewmodelSlots.Count > 0 ||
-                                 _session.PendingProjectileAlign.Count > 0 ||
                                  _roundBannerPlayback != null ||
                                  _voiceTestPlayback != null ||
                                  _chatPlayback != null ||
@@ -113,14 +111,6 @@ public sealed partial class DemoTracerPlugin
             StopVoiceTestPlayback(reason, printSummary: false);
             CancelDtrRoundBanner(resetRound: true);
             InvalidateFreezePreroll();
-            if (reason.StartsWith("map_start:", StringComparison.OrdinalIgnoreCase))
-            {
-                _session.ReplayMusicKitBaselines.Clear();
-            }
-            else
-            {
-                RestoreAllReplayMusicKits(reason);
-            }
             ReleaseBotRandomizerCosmeticLease(reason);
 
             if (BotControllerNative.IsCompatible)
@@ -171,7 +161,6 @@ public sealed partial class DemoTracerPlugin
         if (_session.ReplaySlots.HasAnyState ||
             _session.LoadedReplays.Count > 0 ||
             _retainedReplayViewmodelSlots.Count > 0 ||
-            _session.PendingProjectileAlign.Count > 0 ||
             _session.Plan.Armed ||
             _session.Plan.SequenceActive ||
             HasPlayoffSchedulingState())
@@ -220,7 +209,6 @@ public sealed partial class DemoTracerPlugin
         _session.LastLockedWeaponTarget.Clear();
         ClearAllPendingWeaponSlotReplacements("replay_execution_stopped");
         _session.ProjectileAlignNextBySlot.Clear();
-        _session.PendingProjectileAlign.Clear();
         BotControllerNative.ClearProjectileBirthAlign();
         _session.RebuiltInventorySlots.Clear();
         _session.ReplayStartedAt.Clear();

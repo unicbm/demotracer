@@ -10,9 +10,6 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
 {
     private const int MaxSlots = 64;
     private const int MaxOwnerLength = 64;
-    private static readonly Version MaxVerifiedManagedSchemaPatch = new(1, 41, 7, 3);
-    private static readonly Lazy<(bool Allowed, string Patch)> ManagedSchemaRuntime =
-        new(DetectManagedSchemaRuntime);
     private static readonly TimeSpan LeaseTimeout = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan PresentationFailureLogInterval = TimeSpan.FromSeconds(30);
 
@@ -44,9 +41,6 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     }
 
     public int ApiVersion => DemoTracerBotHiderContract.ApiVersion;
-
-    internal static bool ManagedSchemaWritesAllowed => ManagedSchemaRuntime.Value.Allowed;
-    internal static string DetectedCs2Patch => ManagedSchemaRuntime.Value.Patch;
 
     public BotHiderProviderInfo GetProviderInfo()
     {
@@ -598,17 +592,19 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
                 _publishedWrites++;
             }
 
-            if (ManagedSchemaWritesAllowed &&
-                IsNetworkedSchemaField("CCSPlayerController", "m_szCrosshairCodes"))
+            if (TryWriteNetworkedCrosshair(
+                    effective.CrosshairCode,
+                    forceNativeIdentityReassert,
+                    () => player.CrosshairCodes,
+                    value => player.CrosshairCodes = value,
+                    () => TryPublishCrosshairStateChanged(player),
+                    out var crosshairChanged,
+                    out var crosshairPublished))
             {
-                var currentCrosshair = player.CrosshairCodes ?? string.Empty;
-                if (!currentCrosshair.Equals(effective.CrosshairCode, StringComparison.Ordinal))
-                {
-                    player.CrosshairCodes = effective.CrosshairCode;
-                    Utilities.SetStateChanged(player, "CCSPlayerController", "m_szCrosshairCodes");
+                if (crosshairChanged || crosshairPublished)
                     _publishedWrites++;
+                if (crosshairChanged)
                     _controllerRepairs++;
-                }
             }
 
             var scoreboardFlairNeedsWrite = effectiveScoreboardFlairManaged ||
@@ -699,7 +695,6 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
                 "m_rank",
                 index * sizeof(uint));
         }
-        TrySetStateChanged(player, "CCSPlayerController", "m_pInventoryServices");
         return true;
     }
 
@@ -738,79 +733,53 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         }
     }
 
-    private static (bool Allowed, string Patch) DetectManagedSchemaRuntime()
+    internal static bool TryWriteNetworkedCrosshair(
+        string expected,
+        bool forcePublication,
+        Func<string?> read,
+        Action<string> write,
+        Func<bool> publish,
+        out bool changed,
+        out bool published)
     {
-        foreach (var steamInfPath in ManagedSchemaSteamInfCandidates())
+        changed = false;
+        published = false;
+        try
         {
-            try
+            if (!string.Equals(read() ?? string.Empty, expected, StringComparison.Ordinal))
             {
-                if (!File.Exists(steamInfPath))
-                    continue;
-                var patchLine = File.ReadLines(steamInfPath)
-                    .FirstOrDefault(line => line.StartsWith("PatchVersion=", StringComparison.OrdinalIgnoreCase));
-                var patch = patchLine?["PatchVersion=".Length..].Trim();
-                if (string.IsNullOrWhiteSpace(patch))
-                    continue;
-                return Version.TryParse(patch, out var current) &&
-                       current.CompareTo(MaxVerifiedManagedSchemaPatch) <= 0
-                    ? (true, patch)
-                    : (false, patch);
-            }
-            catch
-            {
-                // Continue to the assembly-derived CS2 directory.
-            }
-        }
+                write(expected);
+                if (!string.Equals(read() ?? string.Empty, expected, StringComparison.Ordinal))
+                    return false;
 
-        return (false, "unknown");
+                changed = true;
+            }
+
+            if (!changed && !forcePublication)
+                return true;
+
+            published = publish();
+            if (!published)
+                return false;
+            return true;
+        }
+        catch
+        {
+            // Crosshair presentation remains optional. A failed publication
+            // must not roll back an otherwise valid identity lease.
+            return false;
+        }
     }
 
-    private static IReadOnlyList<string> ManagedSchemaSteamInfCandidates()
+    private static bool TryPublishCrosshairStateChanged(CCSPlayerController player)
     {
-        var candidates = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Resolve network metadata only after a live controller exists. An
+        // early lookup can cache an unavailable serializer as non-networked.
+        if (!IsNetworkedSchemaField("CCSPlayerController", "m_szCrosshairCodes"))
+            return false;
 
-        void AddCandidate(string? candidate)
-        {
-            if (string.IsNullOrWhiteSpace(candidate))
-                return;
-            try
-            {
-                var fullPath = Path.GetFullPath(candidate);
-                if (seen.Add(fullPath))
-                    candidates.Add(fullPath);
-            }
-            catch
-            {
-            }
-        }
-
-        string? gameDirectory = null;
-        try
-        {
-            gameDirectory = Server.GameDirectory;
-        }
-        catch
-        {
-        }
-        if (!string.IsNullOrWhiteSpace(gameDirectory))
-            AddCandidate(Path.Combine(gameDirectory, "steam.inf"));
-
-        string? directory = null;
-        try
-        {
-            directory = Path.GetDirectoryName(typeof(BotHiderPresentationService).Assembly.Location);
-        }
-        catch
-        {
-        }
-        for (var depth = 0; depth < 8 && !string.IsNullOrWhiteSpace(directory); depth++)
-        {
-            AddCandidate(Path.Combine(directory, "steam.inf"));
-            directory = Directory.GetParent(directory)?.FullName;
-        }
-
-        return candidates;
+        Utilities.SetStateChanged(player, "CCSPlayerController", "m_szCrosshairCodes");
+        return true;
     }
 
     private static void TrySetStateChanged(
@@ -947,10 +916,9 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         bool scoreboardFlairMatches,
         bool crosshairMatches)
     {
-        // Ping is engine-owned and intentionally excluded from the presentation
-        // transaction. Crosshair is an optional, compatibility-gated field that
-        // the periodic publisher can keep repairing; neither may roll an
-        // otherwise valid identity lease back to the bot's base persona.
+        // Ping and crosshair are engine-owned presentation state. The periodic
+        // publisher can keep repairing them, but neither may roll an otherwise
+        // valid identity lease back to the bot's base persona.
         _ = crosshairMatches;
         return playerNameMatches &&
                steamIdMatches &&

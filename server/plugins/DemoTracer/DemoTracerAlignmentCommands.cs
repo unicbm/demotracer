@@ -43,59 +43,7 @@ public sealed partial class DemoTracerPlugin
             SetProjectileAlignEnabled(ParseOnOff(command.GetArg(1), _projectileAlignEnabled));
 
         command.ReplyToCommand("[DTR WARN] legacy command: use dtr_align projectiles <on|off>");
-        command.ReplyToCommand($"dtr: projectile_align={_projectileAlignEnabled} ticks={FormatProjectileAlignTicks()} molotov_point={FormatMolotovPointAlignMode(_molotovPointAlignMode)}:{_molotovPointAlignLeadTicks}");
-    }
-
-    [ConsoleCommand("dtr_projectile_align_ticks", "dtr_projectile_align_ticks <status|default|once|2..512|until_delete>")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void ProjectileAlignTicksCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        if (command.ArgCount >= 2)
-        {
-            if (!TryParseProjectileAlignTicks(command.GetArg(1), out var ticks))
-            {
-                command.ReplyToCommand("usage: dtr_projectile_align_ticks <status|default|once|2..512|until_delete>");
-                return;
-            }
-
-            if (ticks != int.MinValue)
-                SetProjectileAlignTicks(ticks);
-        }
-
-        command.ReplyToCommand($"dtr: projectile_align_ticks={FormatProjectileAlignTicks()}");
-    }
-
-    [ConsoleCommand("dtr_molotov_align_point", "dtr_molotov_align_point <status|off|teleport|detonate> [lead_ticks]")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void MolotovAlignPointCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        if (command.ArgCount >= 2)
-        {
-            if (!TryParseMolotovPointAlignMode(command.GetArg(1), out var mode))
-            {
-                command.ReplyToCommand("usage: dtr_molotov_align_point <status|off|teleport|detonate> [lead_ticks]");
-                return;
-            }
-
-            if (mode.HasValue)
-                _molotovPointAlignMode = mode.Value;
-        }
-
-        if (command.ArgCount >= 3)
-        {
-            if (!int.TryParse(command.GetArg(2), NumberStyles.Integer, CultureInfo.InvariantCulture, out var leadTicks) ||
-                leadTicks < 0 ||
-                leadTicks > MolotovPointAlignMaxLeadTicks)
-            {
-                command.ReplyToCommand($"usage: dtr_molotov_align_point <status|off|teleport|detonate> [0..{MolotovPointAlignMaxLeadTicks}]");
-                return;
-            }
-
-            _molotovPointAlignLeadTicks = leadTicks;
-        }
-
-        command.ReplyToCommand(
-            $"dtr: molotov_align_point={FormatMolotovPointAlignMode(_molotovPointAlignMode)} lead_ticks={_molotovPointAlignLeadTicks}");
+        command.ReplyToCommand($"dtr: projectile_align={_projectileAlignEnabled} mode=engine_birth_once");
     }
 
     [ConsoleCommand("dtr_projectile_align_log", "dtr_projectile_align_log [clear|all|molotov|fire]")]
@@ -393,7 +341,7 @@ public sealed partial class DemoTracerPlugin
     private void ReplyAlignStatus(Action<string> reply)
     {
         reply($"[DTR ALIGN] preset={AlignPresetName()}");
-        reply($"[DTR ALIGN] weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_ticks={FormatProjectileAlignTicks()} molotov_point={FormatMolotovPointAlignMode(_molotovPointAlignMode)}:{_molotovPointAlignLeadTicks} crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)}");
+        reply($"[DTR ALIGN] weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_mode=birth_once crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)}");
         reply("[DTR ALIGN] note: cosmetics moved to dtr_cosmetics; scoreboard moved to dtr_match");
     }
 
@@ -525,7 +473,6 @@ public sealed partial class DemoTracerPlugin
         _session.RebuiltInventorySlots.Clear();
         _session.LastReplayWeaponDef.Clear();
         _session.LastLockedWeaponTarget.Clear();
-        _session.ActiveWeaponCosmetics.Clear();
         foreach (var slot in _session.LoadedSlots)
             BotControllerNative.UnlockWeaponSlot(slot);
         _ = SyncBotRandomizerCosmeticLease(announce: false);
@@ -538,26 +485,7 @@ public sealed partial class DemoTracerPlugin
             return;
 
         _session.ProjectileAlignNextBySlot.Clear();
-        _session.PendingProjectileAlign.Clear();
         BotControllerNative.ClearProjectileBirthAlign();
     }
-
-    private void SetProjectileAlignTicks(int totalWrites)
-    {
-        _projectileAlignTotalWrites = totalWrites;
-        foreach (var pending in _session.PendingProjectileAlign.Values)
-        {
-            if (!pending.Matched)
-                continue;
-
-            pending.TotalWritesTarget = totalWrites;
-            pending.WritesRemaining = RemainingProjectileAlignWrites(totalWrites, pending.WritesApplied);
-        }
-    }
-
-    private static int RemainingProjectileAlignWrites(int totalWrites, int writesApplied)
-        => totalWrites == ProjectileAlignUntilDelete
-            ? ProjectileAlignUntilDelete
-            : Math.Max(0, totalWrites - writesApplied);
 
 }

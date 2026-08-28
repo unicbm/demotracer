@@ -117,6 +117,11 @@ internal sealed class ReplayEquipmentCatalog
         return weaponDefIndex;
     }
 
+    public string ResolveObservedClassName(string designerName, int itemDefinitionIndex)
+        => itemDefinitionIndex > 0 && ByDefIndex.TryGetValue(itemDefinitionIndex, out var definition)
+            ? definition.ClassName
+            : designerName;
+
     private static bool TryReadIntProperty(JsonElement value, string propertyName, out int parsed)
     {
         parsed = 0;

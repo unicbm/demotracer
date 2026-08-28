@@ -67,7 +67,6 @@ public sealed partial class DemoTracerPlugin
     private void ForgetLoadedReplayMetadata(int slot)
     {
         InvalidateInitialSpawnAssignment();
-        RestoreReplayMusicKitForSlot(slot, "forget_replay");
         InvalidateReplayIdentityGeneration(slot);
         InvalidateReplayWriteEpoch(slot);
         _session.LoadedReplays.Remove(slot);
@@ -77,7 +76,6 @@ public sealed partial class DemoTracerPlugin
         _session.ReplayHifiEventNextBySlot.Remove(slot);
         _session.RebuiltInventorySlots.Remove(slot);
         _session.BalanceSyncedSlots.Remove(slot);
-        InvalidateReplayMusicKitRepair(slot);
         InvalidateLoadedReplayCosmeticAlignmentForSlot(slot);
         _session.ScoreboardSyncedSlots.Remove(slot);
         _ = SyncBotHiderPresentationLease(announce: false);
@@ -103,9 +101,6 @@ public sealed partial class DemoTracerPlugin
     {
         InvalidateInitialSpawnAssignment();
         RestoreReplayBotViewmodel(slot);
-        var hadPreviousGeneration = _session.ReplayIdentityGenerationBySlot.TryGetValue(
-            slot,
-            out var previousGeneration);
         var metadata = replayMetadata ?? ReadReplayMetadataOrEmpty(path);
         TryBuildWeaponPlan(metadata.WeaponDefIndices ?? [], out var scannedFirstDef, out var scannedPreloadDefs);
         var firstDef = NormalizeWeaponDefIndex(manifestFirstWeaponDefIndex);
@@ -154,16 +149,8 @@ public sealed partial class DemoTracerPlugin
             metadata.PlayStartTickIndex,
             metadata.RoundStartOrigin,
             retentionRank);
-        InvalidateReplayMusicKitRepair(slot);
         ClearPendingWeaponSlotReplacementsForSlot(slot);
-        var generation = BeginReplayIdentityGeneration(slot);
-        if (_session.ReplayMusicKitBaselines.TryGetValue(slot, out var musicKitBaseline))
-        {
-            if (hadPreviousGeneration && musicKitBaseline.Generation == previousGeneration)
-                _session.ReplayMusicKitBaselines[slot] = musicKitBaseline with { Generation = generation };
-            else
-                _session.ReplayMusicKitBaselines.Remove(slot);
-        }
+        _ = BeginReplayIdentityGeneration(slot);
         _session.LastEnsuredWeaponDef.Remove(slot);
         _session.LastReplayWeaponDef.Remove(slot);
         _session.LastLockedWeaponTarget.Remove(slot);
@@ -176,8 +163,6 @@ public sealed partial class DemoTracerPlugin
         InvalidateLoadedReplayCosmeticAlignmentForSlot(slot);
         _session.ScoreboardSyncedSlots.Remove(slot);
         _session.SafeC4Aligned = false;
-        if (normalizedMusicKitId <= 0)
-            RestoreReplayMusicKitForSlot(slot, "manifest_without_music_kit");
         _ = SyncBotHiderPresentationLease(announce: false);
         _ = SyncBotRandomizerCosmeticLease(announce: false);
     }

@@ -64,7 +64,10 @@ roster, round timeline, playback presets, and generated commands.
 
 Cosmetic and identity data is evidence-gated: DemoTracer preserves what the
 demo actually contains and avoids inventing missing values. Selected items can
-also be handed off to the supported Inventory Simulator workflow.
+also be handed off to the supported Inventory Simulator workflow. During
+playback, DemoTracer passes validated cosmetic parameters to the matched
+BotRandomizer provider; BotRandomizer alone applies them during natural bot
+spawn and item construction.
 
 ## What Can Be Replayed
 
@@ -152,6 +155,7 @@ official builds. See the [Trademark and Official Build Policy](TRADEMARKS.md).
 DemoTracer builds on
 [CS2-Bot-Controller](https://github.com/XBribo/CS2-Bot-Controller),
 [CS2-Bot-Hider](https://github.com/XBribo/CS2-Bot-Hider),
+[CS2-Bot-Improver](https://github.com/ed0ard/CS2-Bot-Improver),
 [demoparser](https://github.com/LaihoE/demoparser),
 [minidemo-encoder](https://github.com/csgowiki/minidemo-encoder),
 Metamod:Source, and CounterStrikeSharp. `minidemo-encoder` provided an early
