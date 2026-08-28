@@ -444,10 +444,6 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        // Restore the fill target immediately before ChangeTeam. The selected
-        // replay controller is now gone, so the human consumes its vacancy
-        // without giving the bot quota manager a frame to refill it.
-        FinishReplayRetentionBotQuotaReservation(slot);
         try
         {
             current.ChangeTeam(destination);
@@ -455,6 +451,12 @@ public sealed partial class DemoTracerPlugin
         catch (Exception ex)
         {
             Server.PrintToConsole($"dtr: retained human join failed slot={slot} team={destination}: {ex.Message}");
+        }
+        finally
+        {
+            // Let the human occupy the vacancy before restoring the fill target.
+            // Restoring first can synchronously create a replacement bot.
+            FinishReplayRetentionBotQuotaReservation(slot);
         }
     }
 

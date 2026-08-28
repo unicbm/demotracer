@@ -747,6 +747,33 @@ public sealed partial class DemoTracerPlugin
         }
     }
 
+    private static bool TryReadSwitchingTeamsAtRoundReset(
+        out bool switchingTeamsAtRoundReset,
+        out string reason)
+    {
+        switchingTeamsAtRoundReset = false;
+        try
+        {
+            var proxy = Utilities
+                .FindAllEntitiesByDesignerName<CCSGameRulesProxy>("cs_gamerules")
+                .FirstOrDefault(entity => entity is { IsValid: true });
+            if (proxy is not { IsValid: true } || proxy.GameRules == null)
+            {
+                reason = "cs_gamerules is unavailable";
+                return false;
+            }
+
+            switchingTeamsAtRoundReset = proxy.GameRules.SwitchingTeamsAtRoundReset;
+            reason = string.Empty;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = $"failed to read cs_gamerules: {ex.Message}";
+            return false;
+        }
+    }
+
     private static bool TryReadFreezeTimeConVar(out float seconds, out string reason)
     {
         seconds = 0.0f;

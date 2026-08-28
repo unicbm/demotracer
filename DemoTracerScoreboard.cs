@@ -75,7 +75,7 @@ public sealed partial class DemoTracerPlugin
 
     private void ApplyLoadedReplayScoreboards()
     {
-        if (!ManagedSchemaWritesAllowed() || !_scoreboardAlignEnabled)
+        if (!_scoreboardAlignEnabled)
             return;
 
         ApplyLoadedRoundScoreboard();
@@ -91,7 +91,7 @@ public sealed partial class DemoTracerPlugin
 
     private void ApplyLoadedRoundScoreboard()
     {
-        if (!ManagedSchemaWritesAllowed() || !_scoreboardAlignEnabled)
+        if (!_scoreboardAlignEnabled)
             return;
 
         var scoreboard = _session.LoadedRoundScoreboard;
@@ -142,7 +142,7 @@ public sealed partial class DemoTracerPlugin
 
     private void ApplyReplayPlayerScoreboardForSlot(int slot, ReplayPlayerScoreboard scoreboard)
     {
-        if (!ManagedSchemaWritesAllowed() || !_scoreboardAlignEnabled)
+        if (!_scoreboardAlignEnabled)
             return;
 
         if (!HasScoreboardEvidence(scoreboard))
@@ -241,11 +241,14 @@ public sealed partial class DemoTracerPlugin
     {
         try
         {
+            if (!Schema.IsSchemaFieldNetworked(className, fieldName))
+                return;
             Utilities.SetStateChanged(entity, className, fieldName, extraOffset);
         }
         catch
         {
-            // Scoreboard fields vary across game/CSS builds; direct writes are still useful for probing.
+            // Scoreboard fields vary across game/CSS builds. The schema value
+            // write is still useful when the engine owns publication.
         }
     }
 }

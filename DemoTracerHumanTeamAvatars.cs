@@ -79,6 +79,42 @@ public sealed partial class DemoTracerPlugin
     private void ScheduleHumanTeamAvatarOverrideReconciliation()
         => Server.NextFrame(ReconcileHumanTeamAvatarOverrides);
 
+    private void ScheduleAvatarOverrideUserInfoRefresh()
+    {
+        if (_replayIdentityMode == ReplayIdentityMode.Avatar)
+            Server.NextFrame(RefreshCurrentAvatarOverrideUserInfo);
+    }
+
+    private void RefreshCurrentAvatarOverrideUserInfo()
+    {
+        if (_replayIdentityMode != ReplayIdentityMode.Avatar)
+            return;
+
+        var replaySlots = _session.LoadedReplays.Keys
+            .Concat(_retainedBotHiderPresentation.Keys)
+            .ToHashSet();
+        var candidateSlots = replaySlots
+            .Concat(_session.HumanTeamAvatarOverrides.Keys)
+            .Distinct()
+            .Order()
+            .ToArray();
+        foreach (var slot in candidateSlots)
+        {
+            var player = Utilities.GetPlayerFromSlot(slot);
+            if (player is not { IsValid: true })
+                continue;
+
+            var replayAvatar = replaySlots.Contains(slot) &&
+                               _botHiderBridge.IsManagedBot(slot);
+            var humanAvatar =
+                _session.HumanTeamAvatarOverrides.TryGetValue(slot, out var applied) &&
+                player.UserId == applied.UserId &&
+                NormalizeOptionalULong(player.SteamID) == applied.SteamId;
+            if (replayAvatar || humanAvatar)
+                Server.ExecuteCommand(BuildAvatarUserInfoRefreshCommand(slot));
+        }
+    }
+
     private void ReconcileHumanTeamAvatarOverrides()
     {
         if (_replayIdentityMode != ReplayIdentityMode.Avatar)
@@ -164,8 +200,7 @@ public sealed partial class DemoTracerPlugin
         if (!_session.HumanTeamAvatarOverrides.Remove(slot, out var applied))
             return;
 
-        Server.ExecuteCommand(
-            $"bc_avatar_override_clear {applied.SteamId.ToString(CultureInfo.InvariantCulture)}");
+        Server.ExecuteCommand(BuildAvatarOverrideClearCommand(applied.SteamId, slot));
         Server.PrintToConsole(
             $"dtr: human team avatar cleared slot={slot} sid={applied.SteamId} reason={reason}");
     }
@@ -188,4 +223,11 @@ public sealed partial class DemoTracerPlugin
         int slot)
         => $"bc_avatar_override_probe {steamId.ToString(CultureInfo.InvariantCulture)} " +
            $"\"{EscapeConsoleString(commandPath)}\" {slot.ToString(CultureInfo.InvariantCulture)}";
+
+    internal static string BuildAvatarOverrideClearCommand(ulong steamId, int slot)
+        => $"bc_avatar_override_clear {steamId.ToString(CultureInfo.InvariantCulture)} " +
+           slot.ToString(CultureInfo.InvariantCulture);
+
+    internal static string BuildAvatarUserInfoRefreshCommand(int slot)
+        => $"bc_avatar_userinfo_refresh {slot.ToString(CultureInfo.InvariantCulture)}";
 }

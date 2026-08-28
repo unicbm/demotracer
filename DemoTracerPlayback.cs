@@ -171,7 +171,7 @@ public sealed partial class DemoTracerPlugin
         command.ReplyToCommand(
             restart
                 ? $"[DTR OK] Planned SEQUENCE. manifest=\"{manifestPath}\"; from_source_round={startRound}; restart=now."
-                : $"[DTR OK] Armed SEQUENCE. manifest=\"{manifestPath}\"; from_source_round={startRound}; waiting for next round_start.");
+                : $"[DTR OK] Armed SEQUENCE. manifest=\"{manifestPath}\"; from_source_round={startRound}; waiting for next round_prestart.");
         command.ReplyToCommand(
             $"[DTR OK] Sequence has {rounds.Length - _session.Plan.SequenceIndex} round(s) remaining from source_round={startRound}.");
         IssueRestartIfRequested(command, restart);
@@ -258,14 +258,14 @@ public sealed partial class DemoTracerPlugin
         reply(
             restart
                 ? $"[DTR OK] Planned SINGLE ROUND. manifest=\"{manifestPath}\"; source_round={round}; restart=now."
-                : $"[DTR OK] Armed SINGLE ROUND. manifest=\"{manifestPath}\"; source_round={round}; waiting for next round_start.");
+                : $"[DTR OK] Armed SINGLE ROUND. manifest=\"{manifestPath}\"; source_round={round}; waiting for next round_prestart.");
         reply("[DTR OK] This plan will not advance to later manifest rounds.");
         IssueRestartIfRequested(restart, reply);
     }
 
     private bool PrepareNextSequenceRound(
         string reason,
-        bool pollIfPending = true)
+        bool switchingTeamsAtRoundReset = false)
     {
         if (_session.Plan.SequenceIndex < 0 || _session.Plan.SequenceIndex >= _session.Plan.SequenceRounds.Length)
         {
@@ -280,21 +280,23 @@ public sealed partial class DemoTracerPlugin
         var round = _session.Plan.SequenceRounds[_session.Plan.SequenceIndex];
         if (!ReplayPrefetchReady())
         {
-            if (pollIfPending)
-                PollPendingSequencePreparation(round, reason);
+            PollPendingSequenceRestart(round, reason);
             Server.PrintToConsole(
-                $"dtr: sequence round {round} is still decoding off-thread; the game thread will not wait");
+                $"dtr: sequence round {round} is still decoding on round_prestart; keeping it armed for the next server round");
             return false;
         }
 
-        var load = LoadRound(_session.Plan.SequenceManifestPath, round);
+        var load = LoadRound(
+            _session.Plan.SequenceManifestPath,
+            round,
+            switchingTeamsAtRoundReset);
         if (!load.Ok)
         {
             _session.Plan.SequencePrepared = false;
             _session.Plan.SequencePreparedRound = -1;
             Server.PrintToConsole(
                 $"[DTR WARN] sequence source round {round} could not be prepared on {reason}; " +
-                $"keeping it armed for the next round_start: {load.Message}");
+                $"keeping it armed for the next round_prestart: {load.Message}");
             return false;
         }
 
@@ -306,7 +308,7 @@ public sealed partial class DemoTracerPlugin
         return true;
     }
 
-    private void PollPendingSequencePreparation(int round, string reason)
+    private void PollPendingSequenceRestart(int round, string reason)
     {
         var token = ++_session.Plan.SequencePreparePollToken;
         void Poll()
@@ -322,10 +324,6 @@ public sealed partial class DemoTracerPlugin
                 {
                     return;
                 }
-
-                // Loading replay buffers after freeze time would mutate bot
-                // presentation during live play. Leave the completed prefetch
-                // cached for the next round_start instead.
                 if (!TryReadFreezePhaseRemaining(out _, out _))
                     return;
                 if (!ReplayPrefetchReady())
@@ -334,12 +332,13 @@ public sealed partial class DemoTracerPlugin
                     return;
                 }
 
-                if (PrepareNextSequenceRound(
-                        $"{reason} prefetch ready",
-                        pollIfPending: false))
-                {
-                    ScheduleFreezePrerollStart($"sequence round {round}");
-                }
+                // The current pawn inventory already exists. Restart instead of
+                // loading late so round_prestart can submit the plan before the
+                // next GiveNamedItem construction.
+                _session.Plan.SequencePreparePollToken++;
+                Server.PrintToConsole(
+                    $"dtr: sequence round {round} finished decoding after spawn on {reason}; restarting once for spawn-safe preparation");
+                Server.ExecuteCommand("mp_restartgame 1");
             }, TimerFlags.STOP_ON_MAPCHANGE);
         }
 
@@ -348,7 +347,7 @@ public sealed partial class DemoTracerPlugin
 
     private bool PrepareArmedRound(
         string reason,
-        bool pollIfPending = true)
+        bool switchingTeamsAtRoundReset = false)
     {
         if (!_session.Plan.Armed)
             return false;
@@ -367,14 +366,13 @@ public sealed partial class DemoTracerPlugin
         var label = _session.Plan.ArmedLabel;
         if (!ReplayPrefetchReady())
         {
-            if (pollIfPending)
-                PollPendingArmedPreparation(manifestPath, sourceRound, reason);
+            PollPendingArmedRestart(manifestPath, sourceRound, reason);
             Server.PrintToConsole(
-                $"dtr: single source_round={sourceRound} is still decoding off-thread; the game thread will not wait");
+                $"dtr: single source_round={sourceRound} is still decoding on round_prestart; keeping it armed for the next server round");
             return false;
         }
 
-        var load = LoadRound(manifestPath, sourceRound);
+        var load = LoadRound(manifestPath, sourceRound, switchingTeamsAtRoundReset);
         if (!load.Ok)
         {
             _session.Plan.ClearArmed();
@@ -390,11 +388,11 @@ public sealed partial class DemoTracerPlugin
         _session.Plan.ArmedLabel = label;
         PrepareLoadedReplayOwnership();
         TryStartDtrRoundBanner($"single_r{sourceRound}");
-        Server.PrintToConsole($"[DTR OK] round_start: loaded SINGLE source_round={sourceRound} on {reason}: {load.Message}");
+        Server.PrintToConsole($"[DTR OK] round_prestart: loaded SINGLE source_round={sourceRound} on {reason}: {load.Message}");
         return true;
     }
 
-    private void PollPendingArmedPreparation(
+    private void PollPendingArmedRestart(
         string manifestPath,
         int sourceRound,
         string reason)
@@ -414,7 +412,6 @@ public sealed partial class DemoTracerPlugin
                 {
                     return;
                 }
-
                 if (!TryReadFreezePhaseRemaining(out _, out _))
                     return;
                 if (!ReplayPrefetchReady())
@@ -423,12 +420,10 @@ public sealed partial class DemoTracerPlugin
                     return;
                 }
 
-                if (PrepareArmedRound(
-                        $"{reason} prefetch ready",
-                        pollIfPending: false))
-                {
-                    ScheduleFreezePrerollStart(_session.Plan.ArmedLabel);
-                }
+                _session.Plan.ArmedPreparePollToken++;
+                Server.PrintToConsole(
+                    $"dtr: single source_round={sourceRound} finished decoding after spawn on {reason}; restarting once for spawn-safe preparation");
+                Server.ExecuteCommand("mp_restartgame 1");
             }, TimerFlags.STOP_ON_MAPCHANGE);
         }
 
@@ -444,7 +439,7 @@ public sealed partial class DemoTracerPlugin
                 : -1;
             Server.PrintToConsole(
                 $"[DTR WARN] sequence source round {pendingRound} was not prepared by round_freeze_end; " +
-                "skipping this server round and keeping the sequence armed for the next round_start");
+                "skipping this server round and keeping the sequence armed for the next round_prestart");
             return;
         }
 

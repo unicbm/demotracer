@@ -278,7 +278,6 @@ public sealed partial class DemoTracerPlugin
     {
         _cosmeticAlignEnabled = AnyCosmeticFeatureEnabled();
         if (!_cosmeticAlignEnabled)
-            RestoreAllReplayMusicKits("cosmetics_disabled");
         _ = SyncBotRandomizerCosmeticLease(announce: false);
     }
 

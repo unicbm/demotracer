@@ -38,6 +38,7 @@ public sealed partial class DemoTracerPlugin
         var pawn = player?.PlayerPawn.Value;
         if (player is not { IsValid: true, PawnIsAlive: true } ||
             pawn is not { IsValid: true } ||
+            !ReplayTeamAssignmentPolicy.LiveTeamMatches(replay.ManifestTeam, player.Team) ||
             player.UserId is not int playerUserId)
             return;
 
@@ -204,9 +205,6 @@ public sealed partial class DemoTracerPlugin
             player.PlayerPawn is not { IsValid: true, Value.IsValid: true })
             return false;
 
-        if (!ManagedSchemaWritesAllowed())
-            return true;
-
         var pawn = player.PlayerPawn.Value;
         pawn.Health = ReplayStartHealth;
         Utilities.SetStateChanged(pawn, "CBaseEntity", "m_iHealth");
@@ -219,7 +217,6 @@ public sealed partial class DemoTracerPlugin
             _session.BalanceSyncedSlots.Contains(slot) ||
             !ReplayRuntimePolicy.TryResolveRoundStartBalance(
                 _balanceAlignEnabled,
-                ManagedSchemaWritesAllowed(),
                 replay.RoundStartBalance,
                 ReadServerMaxMoney(),
                 out var balance))
@@ -236,8 +233,9 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
+        // Account is engine-managed through the money service. The controller
+        // service pointer itself is not a networked field.
         moneyServices.Account = balance;
-        Utilities.SetStateChanged(player, "CCSPlayerController", "m_pInGameMoneyServices");
         _session.BalanceSyncedSlots.Add(slot);
     }
 
@@ -299,7 +297,7 @@ public sealed partial class DemoTracerPlugin
             currentSlotWeapons.Count == 1 &&
             ReplayWeaponReplacementPolicy.CanReplaceOccupiedWeaponSlot(
                 slot,
-                NormalizeWeaponClassName(currentSlotWeapons[0].DesignerName),
+                ObservedReplayWeaponClassName(currentSlotWeapons[0]),
                 targetItem);
         switch (ReplayWeaponReplacementPolicy.DecideSlotPlanAction(
                     targetItem != null,

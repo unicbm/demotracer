@@ -6,6 +6,7 @@
 
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Modules.Memory;
 using DemoTracerBotHiderApi;
 
 namespace DemoTracer;
@@ -225,9 +226,6 @@ public sealed partial class DemoTracerPlugin
 
     private void ApplyReplayBotViewmodel(CCSPlayerController bot, ReplayViewmodel viewmodel)
     {
-        if (!ManagedSchemaWritesAllowed())
-            return;
-
         var slot = bot.Slot;
         if (slot is < 0 or >= MaxPlayerSlots)
             return;
@@ -287,9 +285,6 @@ public sealed partial class DemoTracerPlugin
             return;
 
         _session.ReplayOriginalViewmodels.Remove(slot);
-
-        if (!ManagedSchemaWritesAllowed())
-            return;
 
         var bot = Utilities.GetPlayerFromSlot(slot);
         var pawn = bot?.PlayerPawn.Value;
@@ -360,9 +355,6 @@ public sealed partial class DemoTracerPlugin
 
     private static bool TryApplyViewmodelToPawn(CCSPlayerPawn pawn, ReplayViewmodel viewmodel, string reason)
     {
-        if (!ManagedSchemaWritesAllowed())
-            return false;
-
         try
         {
             if (viewmodel.LeftHanded.HasValue)
@@ -439,6 +431,8 @@ public sealed partial class DemoTracerPlugin
     {
         try
         {
+            if (!Schema.IsSchemaFieldNetworked("CCSPlayerPawn", field))
+                return;
             Utilities.SetStateChanged(pawn, "CCSPlayerPawn", field);
         }
         catch

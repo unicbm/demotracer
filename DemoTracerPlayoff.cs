@@ -136,7 +136,10 @@ public sealed partial class DemoTracerPlugin
             FinishReplayPrefetchRound();
     }
 
-    private bool PrepareNextPlayoffRound(string prepareReason, bool allowLoad = true)
+    private bool PrepareNextPlayoffRound(
+        string prepareReason,
+        bool allowLoad = true,
+        bool switchingTeamsAtRoundReset = false)
     {
         if (!IsPlayoffPlanReady())
             return false;
@@ -150,12 +153,9 @@ public sealed partial class DemoTracerPlugin
             _session.Plan.PlayoffPendingCanLoad = true;
             if (ReplayPrefetchReady())
             {
-                return CompletePendingPlayoffPreparation(
-                    waitForDecode: false,
-                    scheduleFreezePreroll: false);
+                return CompletePendingPlayoffPreparation(switchingTeamsAtRoundReset);
             }
 
-            PollPendingPlayoffPreparation(_session.Plan.PlayoffPrepareToken);
             return false;
         }
 
@@ -245,12 +245,10 @@ public sealed partial class DemoTracerPlugin
             $"T=r{tRound} from {tCandidateCount} full-buy candidate(s), " +
             $"CT=r{ctRound} from {ctCandidateCount} full-buy candidate(s)";
         _session.Plan.PlayoffPendingPrepareReason = prepareReason;
-        var token = ++_session.Plan.PlayoffPrepareToken;
+        _session.Plan.PlayoffPrepareToken++;
         Server.PrintToConsole(
             $"dtr: playoff extra round {_session.Plan.PlayoffRoundIndex + 1} selected on {prepareReason}; " +
             $"{_session.Plan.PlayoffPendingReason}; decoding replay data off-thread");
-        if (allowLoad)
-            PollPendingPlayoffPreparation(token);
         return false;
     }
 
@@ -344,33 +342,11 @@ public sealed partial class DemoTracerPlugin
             steamIds);
     }
 
-    private void PollPendingPlayoffPreparation(int token)
-    {
-        AddTimer(ReplayReadinessPollSeconds, () =>
-        {
-            if (!_session.Plan.PlayoffPreparePending || token != _session.Plan.PlayoffPrepareToken)
-                return;
-            if (!_session.Plan.PlayoffPendingCanLoad)
-                return;
-            if (!ReplayPrefetchReady())
-            {
-                PollPendingPlayoffPreparation(token);
-                return;
-            }
-
-            _ = CompletePendingPlayoffPreparation(
-                waitForDecode: false,
-                scheduleFreezePreroll: true);
-        }, TimerFlags.STOP_ON_MAPCHANGE);
-    }
-
-    private bool CompletePendingPlayoffPreparation(
-        bool waitForDecode,
-        bool scheduleFreezePreroll)
+    private bool CompletePendingPlayoffPreparation(bool switchingTeamsAtRoundReset)
     {
         if (!_session.Plan.PlayoffPreparePending)
             return _session.Plan.PlayoffPrepared;
-        if (!waitForDecode && !ReplayPrefetchReady())
+        if (!ReplayPrefetchReady())
             return false;
 
         var tRound = _session.Plan.PlayoffPendingTRound;
@@ -381,7 +357,11 @@ public sealed partial class DemoTracerPlugin
         if (!IsPlayoffPlanReady())
             return false;
 
-        var load = LoadPlayoffRound(_session.Plan.SequenceManifestPath, tRound, ctRound);
+        var load = LoadPlayoffRound(
+            _session.Plan.SequenceManifestPath,
+            tRound,
+            ctRound,
+            switchingTeamsAtRoundReset);
         if (!load.Ok)
         {
             Server.PrintToConsole(
@@ -397,27 +377,12 @@ public sealed partial class DemoTracerPlugin
         TryStartDtrRoundBanner($"playoff_t{tRound}_ct{ctRound}");
         Server.PrintToConsole(
             $"dtr: prepared playoff extra round {_session.Plan.PlayoffRoundIndex + 1} on {prepareReason} -> {_session.Plan.PlayoffPreparedLabel}");
-        if (scheduleFreezePreroll &&
-            TryReadFreezePhaseRemaining(out var freezeRemaining, out _) &&
-            freezeRemaining > 0.0f)
-        {
-            ScheduleFreezePrerollStart($"playoff extra round {_session.Plan.PlayoffRoundIndex + 1}");
-        }
         return true;
     }
 
     private void StartPreparedPlayoffRound()
     {
         var extraRound = _session.Plan.PlayoffRoundIndex + 1;
-        if (!_session.Plan.PlayoffPrepared &&
-            _session.Plan.PlayoffPreparePending &&
-            ReplayPrefetchReady())
-        {
-            _ = CompletePendingPlayoffPreparation(
-                waitForDecode: false,
-                scheduleFreezePreroll: false);
-        }
-
         if (!_session.Plan.PlayoffPrepared)
         {
             if (_session.LoadedSlots.Count > 0)

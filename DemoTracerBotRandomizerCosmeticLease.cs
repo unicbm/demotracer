@@ -6,182 +6,121 @@
 
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using BotRandomizerApi;
 using CounterStrikeSharp.API;
 
 namespace DemoTracer;
 
-internal enum DemoTracerCosmeticWriteField
+internal sealed class DemoTracerBotRandomizerPlanSnapshot
 {
-    Agent,
-    Knife,
-    Gloves,
-    MusicKit,
-    WeaponPaint,
-    WeaponStickers,
-    WeaponKeychain
-}
-
-internal sealed record DemoTracerBotRandomizerWeaponEvidence(
-    int WeaponDefinitionIndex,
-    bool Paint,
-    bool Stickers,
-    bool Keychain,
-    bool? PaintUsesLegacyModel,
-    uint? PaintKit = null,
-    uint? PaintSeed = null,
-    float? PaintWear = null);
-
-internal sealed record DemoTracerBotRandomizerClaimEvidence(
-    bool Agent,
-    bool Knife,
-    bool Gloves,
-    bool MusicKit,
-    IReadOnlyList<DemoTracerBotRandomizerWeaponEvidence> Weapons);
-
-internal sealed record DemoTracerActiveWeaponWriteClaim(
-    bool Paint,
-    bool Stickers,
-    bool Keychain,
-    bool? PaintUsesLegacyModel,
-    uint? PaintKit,
-    uint? PaintSeed,
-    float? PaintWear)
-{
-    internal bool Allows(DemoTracerCosmeticWriteField field)
-        => field switch
-        {
-            DemoTracerCosmeticWriteField.WeaponPaint => Paint,
-            DemoTracerCosmeticWriteField.WeaponStickers => Stickers,
-            DemoTracerCosmeticWriteField.WeaponKeychain => Keychain,
-            _ => false
-        };
-}
-
-internal sealed record DemoTracerActiveCosmeticWriteClaim(
-    int Slot,
-    ulong Incarnation,
-    ulong SubjectSteamId,
-    bool Agent,
-    bool Knife,
-    bool Gloves,
-    bool MusicKit,
-    IReadOnlyDictionary<int, DemoTracerActiveWeaponWriteClaim> Weapons)
-{
-    internal bool MatchesIdentity(ulong incarnation, ulong subjectSteamId)
-        => Incarnation == incarnation &&
-           SubjectSteamId != 0 &&
-           SubjectSteamId == subjectSteamId;
-
-    internal bool Allows(DemoTracerCosmeticWriteField field, int weaponDefinitionIndex = 0)
-        => field switch
-        {
-            DemoTracerCosmeticWriteField.Agent => Agent,
-            DemoTracerCosmeticWriteField.Knife => Knife,
-            DemoTracerCosmeticWriteField.Gloves => Gloves,
-            DemoTracerCosmeticWriteField.MusicKit => MusicKit,
-            DemoTracerCosmeticWriteField.WeaponPaint or
-            DemoTracerCosmeticWriteField.WeaponStickers or
-            DemoTracerCosmeticWriteField.WeaponKeychain =>
-                Weapons.TryGetValue(weaponDefinitionIndex, out var weapon) && weapon.Allows(field),
-            _ => false
-        };
-}
-
-internal sealed class DemoTracerBotRandomizerLeaseSnapshot
-{
-    private readonly Dictionary<int, DemoTracerActiveCosmeticWriteClaim> _claims = new();
+    private readonly Dictionary<int, BotRandomizerReplayCosmeticPlan> _plans = [];
 
     internal string Token { get; private set; } = string.Empty;
     internal string ProviderEpoch { get; private set; } = string.Empty;
-    internal IReadOnlyDictionary<int, DemoTracerActiveCosmeticWriteClaim> Claims => _claims;
+    internal IReadOnlyDictionary<int, BotRandomizerReplayCosmeticPlan> Plans => _plans;
 
     internal void Activate(
         string token,
         string providerEpoch,
-        IEnumerable<BotRandomizerCosmeticWriteClaim> claims)
+        IEnumerable<BotRandomizerReplayCosmeticPlan> plans)
     {
         Token = token;
         ProviderEpoch = providerEpoch;
-        _claims.Clear();
-        foreach (var claim in claims)
-        {
-            if (claim.SubjectSteamId is not { } subjectSteamId || subjectSteamId == 0)
-                continue;
-
-            var weapons = (claim.Weapons ?? [])
-                .Where(weapon => weapon.Paint || weapon.Stickers || weapon.Keychain)
-                .ToDictionary(
-                    weapon => weapon.WeaponDefinitionIndex,
-                    weapon => new DemoTracerActiveWeaponWriteClaim(
-                        weapon.Paint,
-                        weapon.Stickers,
-                        weapon.Keychain,
-                        weapon.PaintUsesLegacyModel,
-                        weapon.PaintKit,
-                        weapon.PaintSeed,
-                        weapon.PaintWear));
-            _claims[claim.Slot] = new DemoTracerActiveCosmeticWriteClaim(
-                claim.Slot,
-                claim.Incarnation,
-                subjectSteamId,
-                claim.Agent,
-                claim.Knife,
-                claim.Gloves,
-                claim.MusicKit,
-                weapons);
-        }
+        _plans.Clear();
+        foreach (var plan in plans)
+            _plans[plan.Slot] = Clone(plan);
     }
 
     internal void Invalidate()
     {
         Token = string.Empty;
         ProviderEpoch = string.Empty;
-        _claims.Clear();
+        _plans.Clear();
     }
 
-    internal bool TryGet(
-        int slot,
-        ulong subjectSteamId,
-        out DemoTracerActiveCosmeticWriteClaim claim)
-        => _claims.TryGetValue(slot, out claim!) &&
+    internal bool TryGet(int slot, ulong subjectSteamId, out BotRandomizerReplayCosmeticPlan plan)
+        => _plans.TryGetValue(slot, out plan!) &&
            subjectSteamId != 0 &&
-           claim.SubjectSteamId == subjectSteamId;
+           plan.SubjectSteamId == subjectSteamId;
 
-    internal bool TryBuildRetainedApiClaim(
+    internal bool TryBuildRetainedPlan(
         int slot,
         ulong subjectSteamId,
-        out BotRandomizerCosmeticWriteClaim claim)
+        out BotRandomizerReplayCosmeticPlan plan)
     {
-        claim = null!;
+        plan = null!;
         if (!TryGet(slot, subjectSteamId, out var active))
             return false;
-
-        claim = new BotRandomizerCosmeticWriteClaim
-        {
-            Slot = active.Slot,
-            Incarnation = active.Incarnation,
-            SubjectSteamId = active.SubjectSteamId,
-            Agent = active.Agent,
-            Knife = active.Knife,
-            Gloves = active.Gloves,
-            MusicKit = active.MusicKit,
-            Weapons = active.Weapons
-                .OrderBy(pair => pair.Key)
-                .Select(pair => new BotRandomizerWeaponWriteClaim
-                {
-                    WeaponDefinitionIndex = pair.Key,
-                    Paint = pair.Value.Paint,
-                    Stickers = pair.Value.Stickers,
-                    Keychain = pair.Value.Keychain,
-                    PaintKit = pair.Value.PaintKit,
-                    PaintSeed = pair.Value.PaintSeed,
-                    PaintWear = pair.Value.PaintWear,
-                    PaintUsesLegacyModel = pair.Value.PaintUsesLegacyModel
-                })
-                .ToArray()
-        };
+        plan = Clone(active);
         return true;
+    }
+
+    private static BotRandomizerReplayCosmeticPlan Clone(BotRandomizerReplayCosmeticPlan plan)
+        => new()
+        {
+            Slot = plan.Slot,
+            Incarnation = plan.Incarnation,
+            SubjectSteamId = plan.SubjectSteamId,
+            SpawnTeam = plan.SpawnTeam,
+            Agent = new BotRandomizerAgentPlan
+            {
+                Mode = plan.Agent.Mode,
+                ItemDefinitionIndex = plan.Agent.ItemDefinitionIndex,
+                ModelPath = plan.Agent.ModelPath
+            },
+            Knife = CloneItem(plan.Knife),
+            Gloves = CloneItem(plan.Gloves),
+            MusicKit = plan.MusicKit,
+            Weapons = (plan.Weapons ?? []).Select(CloneWeapon).ToArray()
+        };
+
+    private static BotRandomizerReplayItem? CloneItem(BotRandomizerReplayItem? item)
+        => item is null ? null : CopyItem(item, new BotRandomizerReplayItem());
+
+    private static BotRandomizerReplayWeapon CloneWeapon(BotRandomizerReplayWeapon weapon)
+    {
+        var clone = CopyItem(weapon, new BotRandomizerReplayWeapon());
+        clone.PaintUsesLegacyModel = weapon.PaintUsesLegacyModel;
+        clone.Stickers = (weapon.Stickers ?? []).Select(sticker => new BotRandomizerReplaySticker
+        {
+            Slot = sticker.Slot,
+            StickerId = sticker.StickerId,
+            Schema = sticker.Schema,
+            Wear = sticker.Wear,
+            OffsetX = sticker.OffsetX,
+            OffsetY = sticker.OffsetY,
+            Scale = sticker.Scale,
+            Rotation = sticker.Rotation
+        }).ToArray();
+        clone.Keychains = (weapon.Keychains ?? []).Select(keychain => new BotRandomizerReplayKeychain
+        {
+            Slot = keychain.Slot,
+            KeychainId = keychain.KeychainId,
+            Seed = keychain.Seed,
+            StickerId = keychain.StickerId,
+            Highlight = keychain.Highlight,
+            OffsetX = keychain.OffsetX,
+            OffsetY = keychain.OffsetY,
+            OffsetZ = keychain.OffsetZ
+        }).ToArray();
+        return clone;
+    }
+
+    private static T CopyItem<T>(BotRandomizerReplayItem source, T target)
+        where T : BotRandomizerReplayItem
+    {
+        target.ItemDefinitionIndex = source.ItemDefinitionIndex;
+        target.PaintKit = source.PaintKit;
+        target.PaintSeed = source.PaintSeed;
+        target.PaintWear = source.PaintWear;
+        target.Quality = source.Quality;
+        target.StattrakCounter = source.StattrakCounter;
+        target.OriginalOwnerSteamId = source.OriginalOwnerSteamId;
+        target.ItemAccountId = source.ItemAccountId;
+        target.ItemId = source.ItemId;
+        target.CustomName = source.CustomName;
+        return target;
     }
 }
 
@@ -190,25 +129,19 @@ public sealed partial class DemoTracerPlugin
     private const float BotRandomizerLeaseHeartbeatSeconds = 1.0f;
     private const float BotRandomizerLeaseRetrySeconds = 1.0f;
     private readonly DemoTracerBotRandomizerBridge _botRandomizerBridge = new();
-    private readonly DemoTracerBotRandomizerLeaseSnapshot _botRandomizerLease = new();
+    private readonly DemoTracerBotRandomizerPlanSnapshot _botRandomizerLease = new();
     private string _botRandomizerLeaseSignature = string.Empty;
     private string _lastBotRandomizerLeaseError = string.Empty;
     private float _nextBotRandomizerLeaseHeartbeatAt;
     private float _nextBotRandomizerLeaseRetryAt;
     private int _botRandomizerLeaseTransitionDepth;
 
-    private void BeginBotRandomizerCosmeticLeaseTransition()
-    {
-        _botRandomizerLeaseTransitionDepth++;
-    }
+    private void BeginBotRandomizerCosmeticLeaseTransition() => _botRandomizerLeaseTransitionDepth++;
 
     private void EndBotRandomizerCosmeticLeaseTransition()
     {
-        if (_botRandomizerLeaseTransitionDepth <= 0)
+        if (_botRandomizerLeaseTransitionDepth <= 0 || --_botRandomizerLeaseTransitionDepth > 0)
             return;
-        if (--_botRandomizerLeaseTransitionDepth > 0)
-            return;
-
         _ = SyncBotRandomizerCosmeticLease(announce: false);
     }
 
@@ -241,17 +174,10 @@ public sealed partial class DemoTracerPlugin
         if (_botRandomizerLeaseTransitionDepth > 0)
             return true;
 
-        if (_session.LoadedReplays.Count == 0)
-        {
-            ReleaseBotRandomizerCosmeticLease("no_replay_identity_claims");
-            return true;
-        }
-
         var provider = _botRandomizerBridge.GetProviderInfo();
         if (provider == null ||
             provider.ApiVersion != BotRandomizerContract.ApiVersion ||
-            !provider.Ready ||
-            provider.Draining)
+            !provider.Ready || provider.Draining)
         {
             InvalidateBotRandomizerCosmeticLease("provider_unavailable");
             _nextBotRandomizerLeaseRetryAt = Server.CurrentTime + BotRandomizerLeaseRetrySeconds;
@@ -265,24 +191,23 @@ public sealed partial class DemoTracerPlugin
             InvalidateBotRandomizerCosmeticLease("provider_epoch_changed");
         }
 
-        var requests = BuildBotRandomizerCosmeticWriteClaims();
+        var requests = BuildBotRandomizerReplayPlans();
         if (requests.Length == 0)
         {
-            ReleaseBotRandomizerCosmeticLease("no_authenticated_replay_claims");
+            ReleaseBotRandomizerCosmeticLease("no_replay_plans");
             return true;
         }
 
-        if (RequestsRequireAuthoritativePaintPrebuild(requests) &&
-            (!provider.WeaponPrebuildAvailable ||
-             !provider.AuthoritativePaintPrebuildAvailable))
+        if (RequestsRequireReplayPrebuild(requests) &&
+            (!provider.WeaponPrebuildAvailable || !provider.ReplayPlanPrebuildAvailable))
         {
-            InvalidateBotRandomizerCosmeticLease("authoritative_paint_prebuild_unavailable");
+            InvalidateBotRandomizerCosmeticLease("replay_prebuild_unavailable");
             _nextBotRandomizerLeaseRetryAt = Server.CurrentTime + BotRandomizerLeaseRetrySeconds;
-            ReportBotRandomizerLeaseError("authoritative_paint_prebuild_unavailable", announce);
+            ReportBotRandomizerLeaseError("replay_prebuild_unavailable", announce);
             return false;
         }
 
-        var signature = BuildBotRandomizerClaimSignature(provider.ProviderEpoch, requests);
+        var signature = BuildBotRandomizerPlanSignature(provider.ProviderEpoch, requests);
         if (!string.IsNullOrWhiteSpace(_botRandomizerLease.Token) &&
             signature.Equals(_botRandomizerLeaseSignature, StringComparison.Ordinal))
         {
@@ -290,30 +215,23 @@ public sealed partial class DemoTracerPlugin
             return true;
         }
 
-        BotRandomizerWriteLeaseResult result;
+        BotRandomizerReplayPlanResult result;
         if (string.IsNullOrWhiteSpace(_botRandomizerLease.Token))
         {
-            result = AcquireBotRandomizerCosmeticLease(requests);
+            result = AcquireBotRandomizerReplayPlan(requests);
         }
         else
         {
-            var token = _botRandomizerLease.Token;
-            result = _botRandomizerBridge.Replace(token, requests);
+            result = _botRandomizerBridge.Replace(_botRandomizerLease.Token, requests);
             if (!result.Ok && result.Reason.Equals("lease_not_found", StringComparison.Ordinal))
             {
                 InvalidateBotRandomizerCosmeticLease("lease_not_found");
-                result = AcquireBotRandomizerCosmeticLease(requests);
+                result = AcquireBotRandomizerReplayPlan(requests);
             }
         }
 
-        if (!result.Ok || string.IsNullOrWhiteSpace(result.LeaseToken))
+        if (!result.Ok || string.IsNullOrWhiteSpace(result.PlanToken))
         {
-            // A failed replacement leaves the provider's old lease intact, but
-            // its fields no longer match current evidence. Preserve that old
-            // lease as an exclusion fence and keep new writes fail-closed until
-            // an atomic replacement succeeds. Dropping the local token here
-            // would force ReleaseOwner on retry and expose an already aligned
-            // takeover pawn to BotRandomizer.
             if (!ShouldRetainActiveBotRandomizerLeaseAfterSyncFailure(
                     !string.IsNullOrWhiteSpace(_botRandomizerLease.Token),
                     result.Reason))
@@ -326,23 +244,24 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
-        _botRandomizerLease.Activate(result.LeaseToken, result.ProviderEpoch, requests);
+        _botRandomizerLease.Activate(result.PlanToken, result.ProviderEpoch, requests);
         _botRandomizerLeaseSignature = signature;
         _lastBotRandomizerLeaseError = string.Empty;
         _nextBotRandomizerLeaseHeartbeatAt = Server.CurrentTime + BotRandomizerLeaseHeartbeatSeconds;
         _nextBotRandomizerLeaseRetryAt = 0.0f;
-        ScheduleBotRandomizerLeasePresentationReconciliation(result.Slots);
+        foreach (var slot in result.Slots)
+            QueueLoadedReplayCosmeticAlignmentForSlot(slot);
         if (announce)
         {
             Server.PrintToConsole(
-                $"dtr: BotRandomizer cosmetic lease active slots={string.Join(',', result.Slots)} " +
-                $"provider_epoch={result.ProviderEpoch}");
+                $"dtr: BotRandomizer replay cosmetic plan accepted slots={string.Join(',', result.Slots)} " +
+                $"apply=next_spawn provider_epoch={result.ProviderEpoch}");
         }
         return true;
     }
 
-    private BotRandomizerWriteLeaseResult AcquireBotRandomizerCosmeticLease(
-        BotRandomizerCosmeticWriteClaim[] requests)
+    private BotRandomizerReplayPlanResult AcquireBotRandomizerReplayPlan(
+        BotRandomizerReplayCosmeticPlan[] requests)
     {
         var result = _botRandomizerBridge.Acquire(BotRandomizerContract.DemoTracerOwner, requests);
         if (!result.Ok && result.Reason.StartsWith("slot_leased:", StringComparison.Ordinal))
@@ -353,59 +272,157 @@ public sealed partial class DemoTracerPlugin
         return result;
     }
 
-    private BotRandomizerCosmeticWriteClaim[] BuildBotRandomizerCosmeticWriteClaims()
+    private BotRandomizerReplayCosmeticPlan[] BuildBotRandomizerReplayPlans()
     {
-        var claims = new List<BotRandomizerCosmeticWriteClaim>();
+        var plans = new List<BotRandomizerReplayCosmeticPlan>();
         foreach (var pair in _session.LoadedReplays.OrderBy(pair => pair.Key))
         {
             var slot = pair.Key;
             var replay = pair.Value;
-            // The provider lease is both write authorization and an exclusion
-            // fence. Releasing replay input ownership (for example, when a
-            // human takes over the bot) must stop DemoTracer writes without
-            // letting BotRandomizer hot-swap the already aligned live pawn back
-            // to its random cosmetics. Keep the fence for that exact pawn; its
-            // spawn/identity invalidation removes the alignment and releases it.
             var canWriteReplaySlot = CanWriteReplaySlot(slot);
-            var currentPawnCosmeticsAligned =
-                HasCurrentLoadedReplayCosmeticAlignment(slot, replay);
-            if (!ShouldHoldBotRandomizerCosmeticLease(
-                    canWriteReplaySlot,
-                    currentPawnCosmeticsAligned))
-            {
+            var currentPlanAccepted = HasCurrentLoadedReplayCosmeticAlignment(slot, replay);
+            if (!ShouldHoldBotRandomizerCosmeticLease(canWriteReplaySlot, currentPlanAccepted))
                 continue;
-            }
 
             if (canWriteReplaySlot &&
-                HasActiveBotHiderReplayIdentity(slot, replay.SteamId) &&
-                _botRandomizerBridge.TryGetManagedBot(slot, out var managed))
+                _botRandomizerBridge.TryGetManagedBot(slot, out var managed) &&
+                BuildBotRandomizerReplayPlan(managed.Slot, managed.Incarnation, replay) is { } plan)
             {
-                var evidence = BuildBotRandomizerPositiveEvidence(replay);
-                var claim = BuildBotRandomizerWriteClaim(
-                    managed.Slot,
-                    managed.Incarnation,
-                    replay.SteamId,
-                    evidence);
-                if (claim != null)
-                    claims.Add(claim);
+                plans.Add(plan);
                 continue;
             }
 
-            // Human takeover intentionally makes the slot unwritable and may
-            // temporarily hide its bot controller from either provider. Keep
-            // the exact already-authenticated claim in the existing lease;
-            // this path authorizes no DemoTracer writes.
-            if (currentPawnCosmeticsAligned &&
-                _botRandomizerLease.TryBuildRetainedApiClaim(
-                    slot,
-                    replay.SteamId,
-                    out var retained))
+            if (currentPlanAccepted &&
+                _botRandomizerLease.TryBuildRetainedPlan(slot, replay.SteamId, out var retained))
             {
-                claims.Add(retained);
+                plans.Add(retained);
             }
         }
-        return claims.ToArray();
+        return plans.ToArray();
     }
+
+    private BotRandomizerReplayCosmeticPlan? BuildBotRandomizerReplayPlan(
+        int slot,
+        ulong incarnation,
+        LoadedReplay replay)
+    {
+        if (slot < 0 || incarnation == 0 || replay.SteamId == 0)
+            return null;
+
+        var agent = new BotRandomizerAgentPlan { Mode = BotRandomizerAgentPlanMode.Randomized };
+        if (_cosmeticAlignEnabled && _cosmeticAgentsEnabled)
+        {
+            agent = replay.Cosmetics.Agent is { } replayAgent
+                ? new BotRandomizerAgentPlan
+                {
+                    Mode = BotRandomizerAgentPlanMode.ReplayModel,
+                    ItemDefinitionIndex = replayAgent.ItemDefIndex,
+                    ModelPath = replayAgent.ModelPath
+                }
+                : new BotRandomizerAgentPlan { Mode = BotRandomizerAgentPlanMode.PreserveEngineDefault };
+        }
+
+        var plan = new BotRandomizerReplayCosmeticPlan
+        {
+            Slot = slot,
+            Incarnation = incarnation,
+            SubjectSteamId = replay.SteamId,
+            SpawnTeam = replay.ManifestTeam.HasValue
+                ? (byte)replay.ManifestTeam.Value
+                : (byte)0,
+            Agent = agent,
+            Knife = _cosmeticAlignEnabled && _weaponAlignEnabled && _cosmeticKnivesEnabled
+                ? ToReplayItem(replay.Cosmetics.Knife)
+                : null,
+            Gloves = _cosmeticAlignEnabled && _weaponAlignEnabled && _cosmeticGlovesEnabled
+                ? ToReplayItem(replay.Cosmetics.Glove)
+                : null,
+            MusicKit = ReplayMusicKitAlignmentAllowed(replay.MusicKitId) ? replay.MusicKitId : null,
+            Weapons = BuildReplayWeapons(replay)
+        };
+
+        var claimsAnything = plan.Agent.Mode != BotRandomizerAgentPlanMode.Randomized ||
+                             plan.Knife is not null || plan.Gloves is not null ||
+                             plan.MusicKit is not null || plan.Weapons.Length > 0;
+        return claimsAnything ? plan : null;
+    }
+
+    private BotRandomizerReplayWeapon[] BuildReplayWeapons(LoadedReplay replay)
+    {
+        if (!_cosmeticAlignEnabled || !_weaponAlignEnabled || !_cosmeticWeaponsEnabled)
+            return [];
+
+        return replay.Cosmetics.Weapons
+            .Where(weapon => HasCompleteAuthoritativePaintEvidence(weapon))
+            .OrderBy(weapon => weapon.WeaponDefIndex)
+            .Select(weapon => new BotRandomizerReplayWeapon
+            {
+                ItemDefinitionIndex = weapon.WeaponDefIndex,
+                PaintKit = weapon.PaintKit,
+                PaintSeed = weapon.Seed,
+                PaintWear = weapon.Wear,
+                Quality = weapon.Quality,
+                StattrakCounter = weapon.StattrakCounter,
+                OriginalOwnerSteamId = weapon.OriginalOwnerSteamId,
+                ItemAccountId = weapon.ItemAccountId,
+                ItemId = weapon.ItemId,
+                CustomName = _cosmeticNamesEnabled ? weapon.CustomName : null,
+                PaintUsesLegacyModel = IsLegacyCosmeticPaint(weapon.WeaponDefIndex, (int)weapon.PaintKit),
+                Stickers = _stickerAlignEnabled
+                    ? weapon.Stickers.Select(sticker => new BotRandomizerReplaySticker
+                    {
+                        Slot = sticker.Slot,
+                        StickerId = sticker.StickerId,
+                        Schema = (uint)sticker.Slot,
+                        Wear = sticker.Wear,
+                        OffsetX = sticker.OffsetX,
+                        OffsetY = sticker.OffsetY,
+                        Scale = sticker.Scale,
+                        Rotation = sticker.Rotation
+                    }).ToArray()
+                    : [],
+                Keychains = _charmAlignEnabled
+                    ? weapon.Charms.Select(charm => new BotRandomizerReplayKeychain
+                    {
+                        Slot = charm.Slot,
+                        KeychainId = charm.CharmId,
+                        Seed = charm.Seed is { } seed && seed <= int.MaxValue ? (int)seed : 0,
+                        StickerId = charm.StickerId,
+                        Highlight = charm.Highlight,
+                        OffsetX = charm.OffsetX,
+                        OffsetY = charm.OffsetY,
+                        OffsetZ = charm.OffsetZ
+                    }).ToArray()
+                    : []
+            })
+            .ToArray();
+    }
+
+    private BotRandomizerReplayItem? ToReplayItem(ReplayItemCosmetic? item)
+    {
+        if (item?.ItemDefIndex is not { } itemDefIndex || itemDefIndex <= 0)
+            return null;
+        return new BotRandomizerReplayItem
+        {
+            ItemDefinitionIndex = itemDefIndex,
+            PaintKit = item.PaintKit,
+            PaintSeed = item.Seed,
+            PaintWear = item.Wear,
+            OriginalOwnerSteamId = item.OriginalOwnerSteamId,
+            ItemAccountId = item.ItemAccountId,
+            ItemId = item.ItemId,
+            CustomName = _cosmeticNamesEnabled ? item.CustomName : null
+        };
+    }
+
+    private static bool HasCompleteAuthoritativePaintEvidence(ReplayWeaponCosmetic weapon)
+        => weapon.WeaponDefIndex > 0 &&
+           weapon.PaintKit is > 0 and <= int.MaxValue &&
+           weapon.Seed <= int.MaxValue &&
+           float.IsFinite(weapon.Wear) && weapon.Wear is >= 0.0f and <= 1.0f;
+
+    internal static bool RequestsRequireReplayPrebuild(IEnumerable<BotRandomizerReplayCosmeticPlan> plans)
+        => plans.Any(plan => plan.Knife is not null || (plan.Weapons?.Length ?? 0) > 0);
 
     internal static bool ShouldHoldBotRandomizerCosmeticLease(
         bool canWriteReplaySlot,
@@ -416,208 +433,28 @@ public sealed partial class DemoTracerPlugin
         bool hadActiveLease,
         string? reason)
         => hadActiveLease &&
-           !string.Equals(reason, "lease_not_found", StringComparison.Ordinal);
+           !string.Equals(reason, "lease_not_found", StringComparison.Ordinal) &&
+           !IsBotRandomizerRosterTopologyFailure(reason);
 
-    private DemoTracerBotRandomizerClaimEvidence BuildBotRandomizerPositiveEvidence(LoadedReplay replay)
-    {
-        var weapons = new List<DemoTracerBotRandomizerWeaponEvidence>();
-        if (_cosmeticAlignEnabled && _weaponAlignEnabled)
-        {
-            foreach (var weapon in replay.Cosmetics.Weapons)
-            {
-                var paint = _cosmeticWeaponsEnabled;
-                var stickers = _stickerAlignEnabled && weapon.Stickers.Count > 0;
-                var keychain = _charmAlignEnabled && weapon.Charms.Count > 0;
-                if (!paint && !stickers && !keychain)
-                    continue;
-                weapons.Add(new DemoTracerBotRandomizerWeaponEvidence(
-                    weapon.WeaponDefIndex,
-                    paint,
-                    stickers,
-                    keychain,
-                    paint
-                        ? IsLegacyCosmeticPaint(weapon.WeaponDefIndex, (int)weapon.PaintKit)
-                        : null,
-                    PaintKit: paint ? weapon.PaintKit : null,
-                    PaintSeed: paint ? weapon.Seed : null,
-                    PaintWear: paint ? weapon.Wear : null));
-            }
-        }
+    internal static bool IsBotRandomizerRosterTopologyFailure(string? reason)
+        => reason != null &&
+           (reason.StartsWith("invalid_spawn_team:", StringComparison.Ordinal) ||
+            reason.StartsWith("stale_incarnation:", StringComparison.Ordinal) ||
+            reason.StartsWith("slot_not_managed:", StringComparison.Ordinal));
 
-        return new DemoTracerBotRandomizerClaimEvidence(
-            // Agent alignment owns both explicit demo Agents and the absence
-            // of Agent evidence. The latter means preserve the engine/map
-            // default, not hand the pawn to BotRandomizer.
-            Agent: ShouldClaimAgentOwnership(
-                _cosmeticAlignEnabled,
-                _cosmeticAgentsEnabled),
-            Knife: _cosmeticAlignEnabled &&
-                   _weaponAlignEnabled &&
-                   _cosmeticKnivesEnabled &&
-                   replay.Cosmetics.Knife != null,
-            Gloves: _cosmeticAlignEnabled &&
-                    _weaponAlignEnabled &&
-                    _cosmeticGlovesEnabled &&
-                    replay.Cosmetics.Glove != null,
-            MusicKit: ReplayMusicKitAlignmentAllowed(replay.MusicKitId),
-            Weapons: weapons);
-    }
-
-    internal static bool ShouldClaimAgentOwnership(
-        bool cosmeticAlignEnabled,
-        bool cosmeticAgentsEnabled)
-        => cosmeticAlignEnabled && cosmeticAgentsEnabled;
-
-    internal static BotRandomizerCosmeticWriteClaim? BuildBotRandomizerWriteClaim(
-        int slot,
-        ulong incarnation,
-        ulong subjectSteamId,
-        DemoTracerBotRandomizerClaimEvidence evidence)
-    {
-        if (slot < 0 || incarnation == 0 || subjectSteamId == 0)
-            return null;
-
-        var weapons = evidence.Weapons
-            .Where(weapon =>
-                weapon.WeaponDefinitionIndex > 0 &&
-                (weapon.Paint || weapon.Stickers || weapon.Keychain))
-            .OrderBy(weapon => weapon.WeaponDefinitionIndex)
-            .GroupBy(weapon => weapon.WeaponDefinitionIndex)
-            .Where(group => group.Count() == 1)
-            .Select(group => group.First())
-            .Select(weapon =>
-            {
-                var paint = HasCompleteAuthoritativePaintEvidence(weapon);
-                return new BotRandomizerWeaponWriteClaim
-                {
-                    WeaponDefinitionIndex = weapon.WeaponDefinitionIndex,
-                    Paint = paint,
-                    Stickers = weapon.Stickers,
-                    Keychain = weapon.Keychain,
-                    PaintKit = paint ? weapon.PaintKit : null,
-                    PaintSeed = paint ? weapon.PaintSeed : null,
-                    PaintWear = paint ? weapon.PaintWear : null,
-                    PaintUsesLegacyModel = paint ? weapon.PaintUsesLegacyModel : null
-                };
-            })
-            .Where(weapon => weapon.Paint || weapon.Stickers || weapon.Keychain)
-            .ToArray();
-        if (!evidence.Agent &&
-            !evidence.Knife &&
-            !evidence.Gloves &&
-            !evidence.MusicKit &&
-            weapons.Length == 0)
-        {
-            return null;
-        }
-
-        return new BotRandomizerCosmeticWriteClaim
-        {
-            Slot = slot,
-            Incarnation = incarnation,
-            SubjectSteamId = subjectSteamId,
-            // Agent is identity-level ownership: absent demo evidence means
-            // preserve the captured map default. Item fields remain strictly
-            // positive-evidence-only to avoid inventory mutation races.
-            Agent = evidence.Agent,
-            Knife = evidence.Knife,
-            Gloves = evidence.Gloves,
-            MusicKit = evidence.MusicKit,
-            Weapons = weapons
-        };
-    }
-
-    internal static bool HasCompleteAuthoritativePaintEvidence(
-        DemoTracerBotRandomizerWeaponEvidence weapon)
-        => weapon.Paint &&
-           weapon.PaintKit is { } paintKit &&
-           paintKit is > 0 and <= int.MaxValue &&
-           weapon.PaintSeed is { } paintSeed &&
-           paintSeed <= int.MaxValue &&
-           weapon.PaintWear is { } wear &&
-           float.IsFinite(wear) &&
-           wear is >= 0.0f and <= 1.0f;
-
-    internal static bool RequestsRequireAuthoritativePaintPrebuild(
-        IEnumerable<BotRandomizerCosmeticWriteClaim> claims)
-        => claims.Any(claim => (claim.Weapons ?? []).Any(weapon => weapon.Paint));
-
-    private static string BuildBotRandomizerClaimSignature(
+    private static string BuildBotRandomizerPlanSignature(
         string providerEpoch,
-        IEnumerable<BotRandomizerCosmeticWriteClaim> claims)
+        IEnumerable<BotRandomizerReplayCosmeticPlan> plans)
     {
-        var builder = new StringBuilder(providerEpoch).Append('|');
-        foreach (var claim in claims.OrderBy(claim => claim.Slot))
-        {
-            builder
-                .Append(claim.Slot).Append(':')
-                .Append(claim.Incarnation).Append(':')
-                .Append(claim.SubjectSteamId).Append(':')
-                .Append(claim.Agent ? '1' : '0')
-                .Append(claim.Knife ? '1' : '0')
-                .Append(claim.Gloves ? '1' : '0')
-                .Append(claim.MusicKit ? '1' : '0').Append('|');
-            foreach (var weapon in claim.Weapons.OrderBy(weapon => weapon.WeaponDefinitionIndex))
-            {
-                builder
-                    .Append(weapon.WeaponDefinitionIndex).Append(':')
-                    .Append(weapon.Paint ? '1' : '0')
-                    .Append(weapon.Stickers ? '1' : '0')
-                    .Append(weapon.Keychain ? '1' : '0').Append(':')
-                    .Append(weapon.PaintKit?.ToString() ?? "null").Append(':')
-                    .Append(weapon.PaintSeed?.ToString() ?? "null").Append(':')
-                    .Append(weapon.PaintWear?.ToString("R", System.Globalization.CultureInfo.InvariantCulture) ?? "null").Append(':')
-                    .Append(weapon.PaintUsesLegacyModel?.ToString() ?? "null").Append('|');
-            }
-        }
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())));
+        var canonical = plans.OrderBy(plan => plan.Slot).ToArray();
+        var json = JsonSerializer.Serialize(canonical);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(providerEpoch + "|" + json)));
     }
-
-    private bool TryValidateBotRandomizerClaim(
-        int slot,
-        ulong subjectSteamId,
-        DemoTracerCosmeticWriteField field,
-        int weaponDefinitionIndex = 0)
-    {
-        if (!CanWriteReplaySlot(slot) ||
-            !_botRandomizerLease.TryGet(slot, subjectSteamId, out var claim) ||
-            !claim.Allows(field, weaponDefinitionIndex))
-        {
-            return false;
-        }
-
-        var provider = _botRandomizerBridge.GetProviderInfo();
-        if (provider == null ||
-            !provider.Ready ||
-            provider.Draining ||
-            !provider.ProviderEpoch.Equals(_botRandomizerLease.ProviderEpoch, StringComparison.Ordinal) ||
-            !_botRandomizerBridge.Heartbeat(_botRandomizerLease.Token) ||
-            !_botRandomizerBridge.TryGetManagedBot(slot, out var managed) ||
-            !claim.MatchesIdentity(managed.Incarnation, subjectSteamId) ||
-            !HasActiveBotHiderReplayIdentity(slot, subjectSteamId))
-        {
-            InvalidateBotRandomizerCosmeticLease("active_claim_validation_failed");
-            return false;
-        }
-
-        _nextBotRandomizerLeaseHeartbeatAt = Server.CurrentTime + BotRandomizerLeaseHeartbeatSeconds;
-        return true;
-    }
-
-    private bool HasActiveBotRandomizerClaim(
-        int slot,
-        ulong subjectSteamId,
-        DemoTracerCosmeticWriteField field,
-        int weaponDefinitionIndex = 0)
-        => _botRandomizerLease.TryGet(slot, subjectSteamId, out var claim) &&
-           claim.Allows(field, weaponDefinitionIndex);
 
     private bool ProviderEpochMatchesActiveBotRandomizerLease()
     {
         var provider = _botRandomizerBridge.GetProviderInfo();
-        return provider != null &&
-               provider.Ready &&
-               !provider.Draining &&
+        return provider != null && provider.Ready && !provider.Draining &&
                provider.ProviderEpoch.Equals(_botRandomizerLease.ProviderEpoch, StringComparison.Ordinal);
     }
 
@@ -629,7 +466,7 @@ public sealed partial class DemoTracerPlugin
         _nextBotRandomizerLeaseHeartbeatAt = 0.0f;
         _nextBotRandomizerLeaseRetryAt = Server.CurrentTime;
         if (hadActiveLease)
-            Server.PrintToConsole($"dtr: BotRandomizer cosmetic lease invalidated reason={reason}");
+            Server.PrintToConsole($"dtr: BotRandomizer replay plan invalidated reason={reason}");
     }
 
     private void ReleaseBotRandomizerCosmeticLease(string reason)
@@ -648,39 +485,23 @@ public sealed partial class DemoTracerPlugin
 
         if (!_botRandomizerBridge.Release(token))
             _ = _botRandomizerBridge.ReleaseOwner(BotRandomizerContract.DemoTracerOwner);
-        Server.PrintToConsole($"dtr: BotRandomizer cosmetic lease released reason={reason}");
+        Server.PrintToConsole($"dtr: BotRandomizer replay plan released reason={reason}");
     }
 
     private void ReportBotRandomizerLeaseError(string reason, bool announce)
     {
         reason = string.IsNullOrWhiteSpace(reason) ? "unknown" : reason;
         if (announce || !_lastBotRandomizerLeaseError.Equals(reason, StringComparison.Ordinal))
-            Server.PrintToConsole($"dtr: BotRandomizer cosmetic lease unavailable: {reason}");
+            Server.PrintToConsole($"dtr: BotRandomizer replay plan unavailable: {reason}");
         _lastBotRandomizerLeaseError = reason;
     }
-
-    private void ScheduleBotRandomizerLeasePresentationReconciliation(IEnumerable<int> slots)
-    {
-        foreach (var slot in slots.Distinct())
-        {
-            // A presentation lease only transfers cosmetic write ownership.
-            // It must never invalidate an already aligned pawn: the slot may
-            // have been handed to a human and therefore be intentionally
-            // unwritable. Queueing is idempotent for an aligned live pawn.
-            QueueLoadedReplayCosmeticAlignmentForSlot(slot);
-            ScheduleReplayMusicKitRepairForSlot(slot);
-        }
-    }
-
-    internal static bool ShouldClearCompleteAttributeLists(DemoTracerCosmeticWriteField field)
-        => field is DemoTracerCosmeticWriteField.Knife or DemoTracerCosmeticWriteField.Gloves;
 
     private string FormatBotRandomizerLeaseStatus()
     {
         var diagnostics = _botRandomizerBridge.GetDiagnostics();
         return
-            $"randomizer_lease={(!string.IsNullOrWhiteSpace(_botRandomizerLease.Token) ? "active" : "inactive")}" +
-            $" randomizer_claim_slots={_botRandomizerLease.Claims.Count}" +
+            $"randomizer_plan={(!string.IsNullOrWhiteSpace(_botRandomizerLease.Token) ? "active" : "inactive")}" +
+            $" randomizer_plan_slots={_botRandomizerLease.Plans.Count}" +
             $" randomizer_provider_ready={(diagnostics?.Ready == true ? "on" : "off")}";
     }
 }

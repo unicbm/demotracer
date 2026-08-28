@@ -25,7 +25,7 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin : BasePlugin
 {
     public override string ModuleName => "CS2 DemoTracer";
-    public override string ModuleVersion => "1.1.8";
+    public override string ModuleVersion => "1.2.0";
     public override string ModuleAuthor => "unicbm";
     public override string ModuleDescription => "Trace CS2 demos into bot-executable route replays.";
 
@@ -49,14 +49,8 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private const float HandoffThreat360HoldSeconds = 0.08f;
     private const float HandoffThreat360MaxVerticalDelta = 128.0f;
     private const float HandoffThreat360ChestZScale = 0.62f;
-    private const int ProjectileAlignMatchAttempts = 8;
-    private const int ProjectileAlignDefaultTotalWrites = 1;
-    private const int ProjectileAlignUntilDelete = -1;
-    private const int ProjectileAlignMaxTotalWrites = 512;
     private const int ProjectileAlignLogMaxEntries = 128;
-    private const float FireProjectileAlignMaxInitialPositionDistance = 128.0f;
-    private const int MolotovPointAlignDefaultLeadTicks = 1;
-    private const int MolotovPointAlignMaxLeadTicks = 8;
+    private const float ProjectileAlignMaxInitialPositionDistance = 128.0f;
     private const int MinManifestAbiVersion = 12;
     private const int MaxManifestAbiVersion = 17;
     private const int MaxPlayerSlots = BotControllerNative.MaxSlots;
@@ -78,8 +72,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private static readonly byte[] AvatarPngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
     private const string FreezeTimeConVarName = "mp_freezetime";
     private const string MaxMoneyConVarName = "mp_maxmoney";
-    private static readonly Lazy<(bool Allowed, string Patch)> ManagedSchemaRuntime =
-        new(DetectManagedSchemaRuntime);
+    private static readonly Lazy<string> Cs2PatchVersion = new(DetectCs2PatchVersion);
     private const string CosmeticRiskNotice = "[DTR WARN] cosmetic alignment consumes opt-in manifest cosmetics evidence and may carry Valve GSLT/server-guideline risk outside local/private replay validation.";
     private const string LeftHandDesiredFidelityNotice = "[DTR WARN] left_hand_desired=off 会降低保真度，但显著增高handoff流畅性。Reload loaded replays or plans for this setting to apply.";
 
@@ -88,9 +81,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private readonly DemoTracerApiFacade _apiFacade;
     private bool _weaponAlignEnabled = true;
     private bool _projectileAlignEnabled = true;
-    private int _projectileAlignTotalWrites = ProjectileAlignDefaultTotalWrites;
-    private MolotovPointAlignMode _molotovPointAlignMode = MolotovPointAlignMode.Detonate;
-    private int _molotovPointAlignLeadTicks = MolotovPointAlignDefaultLeadTicks;
     private bool _cosmeticAlignEnabled;
     private bool _cosmeticWeaponsEnabled;
     private bool _cosmeticKnivesEnabled;
@@ -128,20 +118,12 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         RegisterReplayRetentionJoinHook();
         RegisterReplayBuySuppressionHooks();
         LoadRuntimeConfig(message => Server.PrintToConsole(message), announceMissing: true);
-        if (!ManagedSchemaWritesAllowed())
-        {
-            Server.PrintToConsole(
-                $"dtr: compatibility safe mode active for CS2 {ManagedSchemaRuntime.Value.Patch}; " +
-                $"managed presentation/schema writes are verified only through {ReplayRuntimePolicy.MaxVerifiedManagedSchemaPatch}");
-        }
         LoadCs2LibEconIndex();
-        HookCosmeticGiveNamedItem();
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
         RegisterListener<Listeners.OnMapEnd>(OnMapEnd);
         RegisterListener<Listeners.OnClientDisconnect>(OnClientDisconnect);
         RegisterListener<Listeners.OnTick>(OnTick);
         RegisterListener<Listeners.OnEntitySpawned>(OnEntitySpawned);
-        RegisterListener<Listeners.OnEntityDeleted>(OnEntityDeleted);
         Capabilities.RegisterPluginCapability(ApiCapability, () => (IDemoTracerApi)_apiFacade);
         ConfigureNativeSafetyOffsets();
         ConfigureNativeProjectileBirthAlignOffsets();
@@ -165,7 +147,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         StopRuntimeHealthHeartbeat();
         UnregisterReplayBuySuppressionHooks();
         UnregisterReplayRetentionJoinHook();
-        UnhookCosmeticGiveNamedItem();
         ClearReplayStateForLifecycle(hotReload ? "plugin_reload" : "plugin_unload");
         BotControllerNative.ClearAllBuyPlans();
         _ = _botRandomizerBridge.ReleaseOwner(BotRandomizerApi.BotRandomizerContract.DemoTracerOwner);
@@ -190,21 +171,21 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         if (playerSlot < 0 || playerSlot >= MaxPlayerSlots)
             return;
 
+        var disconnectsReplaySlot = HasReplayLifecycleState(includeNative: true) &&
+                                    IsDisconnectingReplaySlot(playerSlot);
         ClearHumanTeamAvatarOverrideForSlot(playerSlot, "client_disconnect");
+        if (disconnectsReplaySlot)
+        {
+            RemoveReplaySlot(
+                playerSlot,
+                $"client_disconnect:{playerSlot}",
+                out _,
+                out _);
+            return;
+        }
+
         ForgetRetainedBotHiderPresentation(playerSlot);
         ClearReplayCrosshairPresentationEntry(playerSlot);
-        _appliedGloveCosmetics.Remove(playerSlot);
-        _gloveCosmeticTokens.Remove(playerSlot);
-        _nativeAgentModels.Remove(playerSlot);
-        _ = SyncBotRandomizerCosmeticLease(announce: false);
-
-        if (!HasReplayLifecycleState(includeNative: true))
-            return;
-
-        if (!IsDisconnectingReplaySlot(playerSlot))
-            return;
-
-        ClearDisconnectedReplaySlot(playerSlot, $"client_disconnect:{playerSlot}");
     }
 
     private bool IsDisconnectingReplaySlot(int slot)
@@ -222,15 +203,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
 
         var state = BotControllerNative.GetReplayState(slot);
         return state.Playing || state.Total > 0;
-    }
-
-    private void ClearDisconnectedReplaySlot(int slot, string reason)
-    {
-        BotControllerNative.UnloadReplay(slot);
-        _session.WarmReplayBufferSlots.Remove(slot);
-        ReleaseReplaySlot(slot, reason);
-        _session.ReplaySlots.Unload(slot);
-        ForgetLoadedReplayMetadata(slot);
     }
 
     private static void ConfigureNativeSafetyOffsets()

@@ -12,51 +12,6 @@ internal readonly record struct FreezePrerollTiming(
 
 internal static class ReplayRuntimePolicy
 {
-    internal static Version MaxVerifiedManagedSchemaPatch { get; } = new(1, 41, 7, 4);
-
-    internal static IReadOnlyList<string> ManagedSchemaSteamInfCandidates(
-        string? gameDirectory,
-        string? assemblyLocation)
-    {
-        var candidates = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        void AddCandidate(string? candidate)
-        {
-            if (string.IsNullOrWhiteSpace(candidate))
-                return;
-            try
-            {
-                var fullPath = Path.GetFullPath(candidate);
-                if (seen.Add(fullPath))
-                    candidates.Add(fullPath);
-            }
-            catch
-            {
-                // Invalid host paths are ignored; detection remains fail-closed.
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(gameDirectory))
-            AddCandidate(Path.Combine(gameDirectory, "steam.inf"));
-
-        string? directory = null;
-        try
-        {
-            directory = Path.GetDirectoryName(assemblyLocation);
-        }
-        catch
-        {
-        }
-        for (var depth = 0; depth < 8 && !string.IsNullOrWhiteSpace(directory); depth++)
-        {
-            AddCandidate(Path.Combine(directory, "steam.inf"));
-            directory = Directory.GetParent(directory)?.FullName;
-        }
-
-        return candidates;
-    }
-
     internal static FreezePrerollTiming ComputeFreezePrerollTiming(
         float freezeTimeSeconds,
         float phaseRemainingSeconds,
@@ -76,31 +31,18 @@ internal static class ReplayRuntimePolicy
 
     internal static bool TryResolveRoundStartBalance(
         bool enabled,
-        bool runtimeSupported,
         uint? evidence,
         int? serverMaxMoney,
         out int balance)
     {
         balance = 0;
-        if (!enabled || !runtimeSupported || evidence is null)
+        if (!enabled || evidence is null)
             return false;
 
         var maximum = serverMaxMoney is >= 0 ? serverMaxMoney.Value : int.MaxValue;
         balance = (int)Math.Min(evidence.Value, (uint)maximum);
         return true;
     }
-
-    internal static bool MusicKitStateMatches(
-        int expectedMusicKitId,
-        int? inventoryMusicKitId,
-        int controllerMusicKitId,
-        int controllerMusicKitMvps,
-        bool mvpNoMusic)
-        => expectedMusicKitId is > 0 and <= ushort.MaxValue &&
-           inventoryMusicKitId == (ushort)expectedMusicKitId &&
-           controllerMusicKitId == expectedMusicKitId &&
-           controllerMusicKitMvps == 0 &&
-           !mvpNoMusic;
 
     internal static bool PawnEquipmentStateMatches(
         int expectedArmor,
@@ -121,18 +63,4 @@ internal static class ReplayRuntimePolicy
            controllerHelmet == expectedHelmet &&
            controllerDefuser == expectedDefuser;
 
-    internal static bool ShouldApplyMusicKit(
-        bool cosmeticAlignEnabled,
-        bool runtimeSupported,
-        int musicKitId)
-        => cosmeticAlignEnabled &&
-           runtimeSupported &&
-           musicKitId is > 0 and <= ushort.MaxValue;
-
-    internal static bool ShouldApplyScoreboardFlair(bool identitySupportsFlair)
-        => identitySupportsFlair;
-
-    internal static bool IsManagedSchemaPatchSupported(string? patch)
-        => Version.TryParse(patch, out var current) &&
-           current.CompareTo(MaxVerifiedManagedSchemaPatch) <= 0;
 }

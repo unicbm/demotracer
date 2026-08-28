@@ -29,8 +29,6 @@ public sealed partial class DemoTracerPlugin
         ProcessDtrRoundBanner();
         ProcessVoiceTestPlayback();
         ProcessChatPlayback();
-        ProcessPendingProjectileAlign();
-
         if (_session.LoadedSlots.Count == 0)
         {
             SetReplayPovMask(0);
@@ -122,10 +120,6 @@ public sealed partial class DemoTracerPlugin
                 _session.LastReplayWeaponDef.Remove(slot);
                 continue;
             }
-            ApplyActiveReplayWeaponCosmeticForSlot(
-                slot,
-                weaponDefIndex,
-                playerSnapshot: playerSnapshot);
             if (_session.LastReplayWeaponDef.TryGetValue(slot, out var lastDef) &&
                 lastDef == weaponDefIndex)
                 continue;
@@ -277,7 +271,7 @@ public sealed partial class DemoTracerPlugin
             : $"weapon_{normalized}";
     }
 
-    private static IEnumerable<CBasePlayerWeapon> GetReplayWeaponsByClass(CCSPlayerPawn pawn, string className)
+    private IEnumerable<CBasePlayerWeapon> GetReplayWeaponsByClass(CCSPlayerPawn pawn, string className)
     {
         if (pawn.WeaponServices == null)
             yield break;
@@ -287,7 +281,7 @@ public sealed partial class DemoTracerPlugin
             var weapon = handle.Value;
             if (weapon == null || !weapon.IsValid)
                 continue;
-            if (WeaponClassMatches(weapon.DesignerName, className))
+            if (ReplayWeaponMatches(weapon, className))
                 yield return weapon;
         }
     }
