@@ -12,6 +12,9 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $projectPath = Join-Path $repoRoot "server\plugins\DemoTracer.Tests\DemoTracer.Tests.csproj"
+$botRandomizerSelfTest = Join-Path $repoRoot "server\runtime\BotRandomizer\tests\BotRandomizer.SelfTest\BotRandomizer.SelfTest.csproj"
+$botRandomizerCatalog = Join-Path $repoRoot "server\runtime\BotRandomizer\cosmetic_catalog.json"
+$replayEconIndex = Join-Path $repoRoot "shared\econ\cs2-lib-econ-index.v1.json"
 $nugetConfigPath = Join-Path $repoRoot "NuGet.Config"
 
 function Test-DotnetHasSdk([string]$Command) {
@@ -55,4 +58,6 @@ Write-Host "Using $dotnet"
 Invoke-Dotnet $dotnet @("restore", $projectPath, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false")
 Invoke-Dotnet $dotnet @("build", $projectPath, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false")
 Invoke-Dotnet $dotnet @("test", $projectPath, "-c", $Configuration, "--no-build", "--no-restore", "-m:1", "-nodeReuse:false")
+Invoke-Dotnet $dotnet @("restore", $botRandomizerSelfTest, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false")
+Invoke-Dotnet $dotnet @("run", "--project", $botRandomizerSelfTest, "-c", $Configuration, "--no-restore", "--", $botRandomizerCatalog, $replayEconIndex)
 & (Join-Path $PSScriptRoot "check-demotracer-source-governance.ps1") -RepoRoot $repoRoot

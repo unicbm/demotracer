@@ -134,8 +134,7 @@ export function UpdateDialog({
           <Paper className="update-dialog-component" component="section" withBorder radius="md" p="lg" aria-labelledby="playback-update-component-title">
             <div className="update-dialog-component-header">
               <div>
-                <Text id="playback-update-component-title" fw={700}>Playback</Text>
-                <Text c="dimmed" size="xs">{words.releasePlayback}</Text>
+                <Text id="playback-update-component-title" fw={700}>{words.releasePlayback}</Text>
               </div>
               <div className="update-dialog-version-route" aria-label={words.releaseUpdateStatus}>
                 <code>{playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy}</code>
@@ -193,8 +192,9 @@ export function UpdateDialog({
               : guiUpdate.phase === "installing" ? words.releaseInstalling
                 : releaseAction === "installingOnline" ? playbackInstallStatus
                   : guiUpdateRetryRequired ? words.releaseCheckNow
-                    : guiUpdateAvailable ? words.releaseUpdateAndRestart
-                      : words.releaseUpdateAll}
+                    : guiUpdateAvailable && playbackUpdateOffered ? words.releaseUpdateAll
+                      : guiUpdateAvailable ? words.releaseUpdateAndRestart
+                        : words.releaseInstallPlaybackUpdate}
           </Button>
         </Group>
       </footer>

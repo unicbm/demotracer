@@ -103,14 +103,6 @@ public sealed partial class DemoTracerPlugin
         ReplayVector3? RoundStartOrigin,
         int RetentionRank);
 
-    private readonly record struct ReplayMusicKitBaseline(
-        long Generation,
-        int UserId,
-        ushort InventoryMusicKitId,
-        int ControllerMusicKitId,
-        int ControllerMusicKitMvps,
-        bool MvpNoMusic);
-
     private readonly record struct ReplayAssignment(
         ManifestFile File,
         CCSPlayerController Bot,
@@ -144,22 +136,6 @@ public sealed partial class DemoTracerPlugin
         string FallbackItem,
         ReplayWeaponSlot WeaponSlot);
 
-    private readonly record struct PendingReplayKnifeSubclassRepair(
-        int PlayerSlot,
-        int PlayerUserId,
-        uint PawnEntityHandle,
-        uint WeaponEntityHandle,
-        long ReplayWriteEpoch,
-        ulong ReplaySteamId,
-        int ItemDefinitionIndex);
-
-    private readonly record struct AppliedActiveWeaponCosmetic(int WeaponDefIndex, nint WeaponHandle);
-
-    private readonly record struct AppliedCosmeticEntityWrite(
-        long ReplayIdentityGeneration,
-        ulong ReplaySteamId,
-        object CosmeticSource);
-
     private readonly record struct PendingBulletHit(int AttackerSlot, float Time);
 
     private readonly record struct PendingBulletDamage(int AttackerSlot, int Damage, float Time);
@@ -169,42 +145,7 @@ public sealed partial class DemoTracerPlugin
     private enum ProjectileAlignDecision
     {
         Apply,
-        Retry,
         Skip
-    }
-
-    private enum MolotovPointAlignMode
-    {
-        Off,
-        Teleport,
-        Detonate
-    }
-
-    private sealed class PendingProjectileAlign(
-        uint index,
-        IntPtr handle,
-        ReplayProjectileKind kind,
-        int weaponDefIndex)
-    {
-        public uint Index { get; } = index;
-        public IntPtr Handle { get; } = handle;
-        public ReplayProjectileKind Kind { get; } = kind;
-        public int WeaponDefIndex { get; } = weaponDefIndex;
-        public ReplayProjectileEvent Align { get; set; }
-        public int Slot { get; set; } = -1;
-        public int EventIndex { get; set; } = -1;
-        public int MatchAttemptsRemaining { get; set; }
-        public int WritesRemaining { get; set; }
-        public int TotalWritesTarget { get; set; } = ProjectileAlignDefaultTotalWrites;
-        public int WritesApplied { get; set; }
-        public int LastNativeBirthRc { get; set; } = -99;
-        public float FirstWriteTime { get; set; }
-        public float LastWriteTime { get; set; }
-        public bool Matched { get; set; }
-        public bool MolotovPointAlignArmed { get; set; }
-        public bool MolotovPointAlignApplied { get; set; }
-        public MolotovPointAlignMode MolotovPointAlignMode { get; set; } = MolotovPointAlignMode.Off;
-        public int MolotovPointAlignTargetTickIndex { get; set; } = -1;
     }
 
     private enum HandoffMode
@@ -237,59 +178,6 @@ public sealed partial class DemoTracerPlugin
 
     private static string FormatOnOff(bool value)
         => value ? "on" : "off";
-
-    private static bool TryParseProjectileAlignTicks(string value, out int ticks)
-    {
-        var normalized = value.Trim().ToLowerInvariant();
-        ticks = normalized switch
-        {
-            "status" => int.MinValue,
-            "default" or "normal" => ProjectileAlignDefaultTotalWrites,
-            "once" or "single" => 1,
-            "until_delete" or "until-delete" or "per_tick" or "per-tick" or "tick" or "every_tick" or "every-tick" => ProjectileAlignUntilDelete,
-            _ => 0
-        };
-        if (ticks != 0)
-            return true;
-
-        if (!int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out ticks))
-            return false;
-        if (ticks < 1 || ticks > ProjectileAlignMaxTotalWrites)
-            return false;
-        return true;
-    }
-
-    private string FormatProjectileAlignTicks()
-        => _projectileAlignTotalWrites == ProjectileAlignUntilDelete
-            ? "until_delete"
-            : _projectileAlignTotalWrites.ToString(CultureInfo.InvariantCulture);
-
-    private static bool TryParseMolotovPointAlignMode(string value, out MolotovPointAlignMode? mode)
-    {
-        mode = value.Trim().ToLowerInvariant() switch
-        {
-            "status" => null,
-            "off" or "0" or "false" or "none" => MolotovPointAlignMode.Off,
-            "teleport" or "tp" => MolotovPointAlignMode.Teleport,
-            "detonate" or "effect" or "point" or "1" or "true" => MolotovPointAlignMode.Detonate,
-            _ => null
-        };
-
-        return mode.HasValue || value.Equals("status", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string FormatMolotovPointAlignMode(MolotovPointAlignMode mode)
-        => mode switch
-        {
-            MolotovPointAlignMode.Teleport => "teleport",
-            MolotovPointAlignMode.Detonate => "detonate",
-            _ => "off"
-        };
-
-    private static string FormatPendingMolotovPointAlign(PendingProjectileAlign pending)
-        => pending.MolotovPointAlignArmed
-            ? $"{FormatMolotovPointAlignMode(pending.MolotovPointAlignMode)}:{pending.MolotovPointAlignTargetTickIndex}"
-            : "off";
 
     private static string CurrentMapName()
     {

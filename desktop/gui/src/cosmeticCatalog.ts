@@ -137,7 +137,7 @@ export function buildCosmeticViewerUrl(
   cosmetic: CosmeticEvidence,
   language: Language,
 ): string | null {
-  if (cosmetic.kind !== "weapon" && cosmetic.kind !== "knife") return null;
+  if (cosmetic.kind !== "weapon" && cosmetic.kind !== "knife" && cosmetic.kind !== "glove") return null;
   const entry = resolveCosmeticCatalog(cosmetic, language);
   if (!entry) return null;
 

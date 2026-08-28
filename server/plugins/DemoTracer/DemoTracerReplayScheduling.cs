@@ -13,7 +13,6 @@ internal enum ReplaySlotWorkKind
 {
     Reconcile,
     LoadoutRetry,
-    MusicKitRepair,
 }
 
 internal enum ReplayRoundWorkKind
@@ -110,8 +109,7 @@ public sealed partial class DemoTracerPlugin
             // handle, while the weapon inventory remains independently cached.
             ApplyReplayLoadoutForSlot(context.Slot, replay);
             PreloadReplayWeaponsForSlot(context.Slot, replay);
-            if (!TryAlignLoadedReplayCosmeticsForSlot(context.Slot, replay))
-                QueueLoadedReplayCosmeticAlignmentForSlot(context.Slot);
+            QueueLoadedReplayCosmeticAlignmentForSlot(context.Slot);
         });
     }
 

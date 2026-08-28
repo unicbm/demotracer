@@ -118,6 +118,16 @@ function formatTickRate(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
+function formatMessage(
+  template: string,
+  values: Record<string, string | number>,
+): string {
+  return Object.entries(values).reduce(
+    (message, [key, value]) => message.replaceAll(`{${key}}`, String(value)),
+    template,
+  );
+}
+
 function platformName(value: string): string {
   return value.toLowerCase() === "faceit" ? "FACEIT" : value;
 }
@@ -343,7 +353,10 @@ function LibraryRow({
             className="library-series-map-open"
             type="button"
             disabled={disabled}
-            aria-label={`${displayMap(entry.map)}: ${seriesScoreLabel}`}
+            aria-label={formatMessage(words.mapScoreLabel, {
+              map: displayMap(entry.map),
+              score: seriesScoreLabel,
+            })}
             onClick={activate}
           >
             <div className="library-series-map-art">
@@ -406,7 +419,9 @@ function LibraryRow({
       }}
       onContextMenu={onOpenContextMenu}
     >
-      <div className="library-row-date" title={entry.serverName ? `${words.demoServerName}: ${entry.serverName}` : undefined}>
+      <div className="library-row-date" title={entry.serverName
+        ? formatMessage(words.demoServerNameValue, { server: entry.serverName })
+        : undefined}>
         <time dateTime={demoDate.iso} title={demoDate.iso ? undefined : words.matchTimeUnknown}>
           <strong>{demoDate.date}</strong>
           <small>
@@ -415,7 +430,10 @@ function LibraryRow({
           </small>
         </time>
       </div>
-      <div className="library-row-match" aria-label={`${firstName} vs ${secondName}`}>
+      <div className="library-row-match" aria-label={formatMessage(words.matchupLabel, {
+        first: firstName,
+        second: secondName,
+      })}>
         <div className="library-row-team">
           {firstRepresentative ? <SteamAvatar overrideUrl={firstArchiveAvatar} profile={profiles.get(firstRepresentative.steamId)} fallbackName={firstRepresentative.name} playerColor={firstRepresentative.playerColor} size="compact" /> : null}
           <span className="library-row-team-copy">
@@ -423,7 +441,7 @@ function LibraryRow({
             {firstPlayerNames.length > 0 ? <small title={firstPlayerNames.join(" · ")}>{firstPlayerNames.join(" · ")}</small> : null}
           </span>
         </div>
-        <span>vs</span>
+        <span>{words.versusShort}</span>
         <div className="library-row-team is-opponent">
           <span className="library-row-team-copy">
             <strong title={secondName}>{secondName}</strong>
@@ -602,7 +620,7 @@ function LibrarySeriesGroup({
       ? "BO3"
       : ordered.length === 1
         ? "BO1"
-        : `${ordered.length} MAPS`;
+        : formatMessage(words.seriesMapCount, { count: ordered.length });
   const playedAt = ordered
     .map((entry) => playedAtTimestamp(entry.playedAt))
     .filter((timestamp) => timestamp > 0)
@@ -626,7 +644,10 @@ function LibrarySeriesGroup({
       ref={groupRef}
       className="library-series-group"
       style={mapArtworkStyle(ordered[0].map)}
-      aria-label={`${context.firstName} vs ${context.secondName}`}
+      aria-label={formatMessage(words.matchupLabel, {
+        first: context.firstName,
+        second: context.secondName,
+      })}
       onContextMenu={(event) => onOpenSeriesContextMenu(event, ordered)}
     >
       <div
@@ -634,7 +655,9 @@ function LibrarySeriesGroup({
         role="button"
         tabIndex={primaryDisabled ? -1 : 0}
         aria-disabled={primaryDisabled}
-        aria-label={`${words.openArchive}: ${displayMap(primaryEntry.map)}`}
+        aria-label={formatMessage(words.openMapArchiveLabel, {
+          map: displayMap(primaryEntry.map),
+        })}
         onClick={activatePrimary}
         onKeyDown={activatePrimaryFromKeyboard}
       >
@@ -651,7 +674,11 @@ function LibrarySeriesGroup({
         role="button"
         tabIndex={primaryDisabled ? -1 : 0}
         aria-disabled={primaryDisabled}
-        aria-label={`${context.firstName} vs ${context.secondName}: ${words.openArchive} ${displayMap(primaryEntry.map)}`}
+        aria-label={formatMessage(words.openMatchMapArchiveLabel, {
+          first: context.firstName,
+          second: context.secondName,
+          map: displayMap(primaryEntry.map),
+        })}
         onClick={activatePrimary}
         onKeyDown={activatePrimaryFromKeyboard}
       >
@@ -844,6 +871,9 @@ export function LibraryWorkspace({
     const repairActionLabel = repairing
       ? (needsMetadata ? words.repairingMetadata : words.linkingSourceDemo)
       : repairLabel;
+    const noteActionLabel = entry.note?.trim()
+      ? words.editArchiveNote
+      : words.addArchiveNote;
     setEntryMenu({
       x: event.clientX,
       y: event.clientY,
@@ -851,9 +881,9 @@ export function LibraryWorkspace({
       items: [
         { label: words.openArchive, icon: <ReplayIcon size={15} />, disabled, onSelect: () => onOpenEntry(entry) },
         { label: words.viewDtrProperties, icon: <TraceMark size={15} />, onSelect: () => inspectEntry(entry) },
-        { label: words.archiveCustomNote, icon: <NoteIcon size={15} />, onSelect: () => editNote(entry) },
+        { label: noteActionLabel, icon: <NoteIcon size={15} />, onSelect: () => editNote(entry) },
         { label: words.openManifestLocation, icon: <FolderIcon size={15} />, onSelect: () => onRevealManifest(entry) },
-        { label: `${words.copyPath} · ${words.manifest}`, icon: <CopyIcon size={15} />, onSelect: () => onCopyManifestPath(entry) },
+        { label: words.copyManifestPath, icon: <CopyIcon size={15} />, onSelect: () => onCopyManifestPath(entry) },
         { label: words.openDemoLocation, icon: <FolderIcon size={15} />, disabled: needsSourceLink, onSelect: () => onRevealDemo(entry) },
         { label: words.copyDemoPath, icon: <CopyIcon size={15} />, disabled: needsSourceLink, onSelect: () => onCopyDemoPath(entry) },
         { label: words.reparseDemo, icon: <RefreshIcon size={15} />, dividerBefore: true, disabled: disabled || taskBusy, onSelect: () => onReparseEntry(entry) },
@@ -871,7 +901,10 @@ export function LibraryWorkspace({
       y: event.clientY,
       label: words.archiveContextMenu,
       items: series.map((entry, index) => ({
-        label: `${words.map} ${entry.series?.order ?? index + 1} · ${displayMap(entry.map)}`,
+        label: formatMessage(words.seriesMapMenuItem, {
+          order: entry.series?.order ?? index + 1,
+          map: displayMap(entry.map),
+        }),
         icon: <ReplayIcon size={15} />,
         disabled,
         onSelect: () => onOpenEntry(entry),
@@ -884,6 +917,9 @@ export function LibraryWorkspace({
   const hasMissingSourceArchives = (scan?.entries ?? []).some((entry) => (
     !entry.sourcePath || entry.sourceAvailable === false
   ));
+  const noteDialogLabel = noteEntry?.note?.trim()
+    ? words.editArchiveNote
+    : words.addArchiveNote;
   const entries = (scan?.entries ?? [])
     .filter((entry) => !normalizedQuery || entrySearchText(entry).includes(normalizedQuery))
     .filter((entry) => !mapFilter || entry.map === mapFilter)
@@ -988,7 +1024,7 @@ export function LibraryWorkspace({
                       <li key={root}>
                         <span><code title={root}>{root}</code>{isExport ? <small>{words.defaultExport}</small> : null}</span>
                         {!isExport ? (
-                          <button className="icon-button" type="button" onClick={() => onRemoveRoot(root)} disabled={maintenanceBusy} aria-label={`${words.removeFolder}: ${root}`} title={words.removeFolder}>
+                          <button className="icon-button" type="button" onClick={() => onRemoveRoot(root)} disabled={maintenanceBusy} aria-label={formatMessage(words.removeFolderPath, { path: root })} title={words.removeFolder}>
                             <CloseIcon size={14} />
                           </button>
                         ) : null}
@@ -1192,7 +1228,7 @@ export function LibraryWorkspace({
           }}>
             <header>
               <div>
-                <span>{words.archiveCustomNote}</span>
+                <span>{noteDialogLabel}</span>
                 <h2 id="archive-note-title">{noteEntry.displayName || noteEntry.demoId}</h2>
               </div>
               <button className="icon-button" type="button" disabled={noteSaving} onClick={closeNote} aria-label={words.close} title={words.close}>
@@ -1205,7 +1241,7 @@ export function LibraryWorkspace({
                 value={noteDraft}
                 maxLength={240}
                 disabled={noteSaving}
-                aria-label={words.archiveCustomNote}
+                aria-label={noteDialogLabel}
                 placeholder={words.archiveNotePlaceholder}
                 onChange={(event) => setNoteDraft(event.target.value)}
               />

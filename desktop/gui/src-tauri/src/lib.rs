@@ -7149,6 +7149,26 @@ mod tests {
     }
 
     #[test]
+    fn source_demo_resolution_relocates_a_legacy_series_part() {
+        let temp = ManifestTestDir::new("relocated-legacy-source-series");
+        temp.write_file("match-p1.dem", b"part one");
+        let second = temp.write_file("match-p2.dem", b"part two");
+        let expected = sha256_hex(b"part two");
+        let old_path = PathBuf::from(r"C:\Moved\match-p2.dem");
+
+        let resolved = resolve_source_demo(
+            &expected,
+            old_path.to_str(),
+            "match-p2.dem",
+            second.to_str(),
+        )
+        .unwrap();
+
+        assert_eq!(resolved.primary_path(), second);
+        assert_eq!(resolved.parts.len(), 1);
+    }
+
+    #[test]
     fn source_demo_resolution_returns_a_relocatable_hint_only_when_needed() {
         let missing = PathBuf::from(r"C:\Moved\original.dem");
         let error = resolve_source_demo(&"aa".repeat(32), missing.to_str(), "original.dem", None)

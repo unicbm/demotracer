@@ -25,8 +25,11 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin
 {
     [GameEventHandler]
-    public HookResult OnRoundStart(EventRoundStart @event, GameEventInfo info)
+    public HookResult OnRoundPrestart(EventRoundPrestart @event, GameEventInfo info)
     {
+        // CS2 constructs the new pawn inventory after round_prestart but before
+        // round_start. BotRandomizer must therefore receive the complete replay
+        // plan here so its GiveNamedItem hook can build the correct item views.
         BeginReplayRoundWorkEpoch();
         ResetDtrRoundBannerForRound();
         BeginBotHiderPresentationTransition();
@@ -39,9 +42,9 @@ public sealed partial class DemoTracerPlugin
                 StopLoadedReplaySlots("playoff_pending_fallback");
                 InvalidateInitialSpawnAssignment();
             }
-            else if (StopReplayStateForRoundBoundary("round_start"))
+            else if (StopReplayStateForRoundBoundary("round_prestart"))
             {
-                Server.PrintToConsole("[DTR WARN] round_start stopped stale DTR replay state");
+                Server.PrintToConsole("[DTR WARN] round_prestart stopped stale DTR replay state");
             }
 
             if ((_session.Plan.SequenceActive || _session.Plan.Armed || HasPlayoffSchedulingState()) && IsWarmupPeriod())
@@ -51,20 +54,32 @@ public sealed partial class DemoTracerPlugin
                 return HookResult.Continue;
             }
 
+            if (!TryReadSwitchingTeamsAtRoundReset(
+                    out var switchingTeamsAtRoundReset,
+                    out var teamTransitionError))
+            {
+                Server.PrintToConsole(
+                    $"[DTR ERR] round_prestart cannot resolve the upcoming team transition: {teamTransitionError}");
+                return HookResult.Continue;
+            }
+
             if (_session.Plan.SequenceActive)
             {
-                if (PrepareNextSequenceRound("round_start"))
-                    ScheduleFreezePrerollStart($"sequence round {_session.Plan.SequencePreparedRound}");
+                _ = PrepareNextSequenceRound(
+                    "round_prestart",
+                    switchingTeamsAtRoundReset);
             }
             else if (IsPlayoffPlanReady())
             {
-                if (PrepareNextPlayoffRound("round_start"))
-                    ScheduleFreezePrerollStart($"playoff extra round {_session.Plan.PlayoffRoundIndex + 1}");
+                _ = PrepareNextPlayoffRound(
+                    "round_prestart",
+                    switchingTeamsAtRoundReset: switchingTeamsAtRoundReset);
             }
             else if (_session.Plan.Armed)
             {
-                if (PrepareArmedRound("round_start"))
-                    ScheduleFreezePrerollStart(_session.Plan.ArmedLabel);
+                _ = PrepareArmedRound(
+                    "round_prestart",
+                    switchingTeamsAtRoundReset);
             }
             if (retainedPlayoffFallback &&
                 !_session.Plan.PlayoffPrepared &&
@@ -72,8 +87,6 @@ public sealed partial class DemoTracerPlugin
             {
                 PrepareLoadedReplayOwnership();
             }
-            if (_session.LoadedSlots.Count > 0)
-                ScheduleRoundBoundarySpawnReconciliation();
             return HookResult.Continue;
         }
         finally
@@ -81,6 +94,31 @@ public sealed partial class DemoTracerPlugin
             EndBotHiderPresentationTransition();
             EndBotRandomizerCosmeticLeaseTransition();
         }
+    }
+
+    [GameEventHandler]
+    public HookResult OnRoundStart(EventRoundStart @event, GameEventInfo info)
+    {
+        if ((_session.Plan.SequenceActive || _session.Plan.Armed || HasPlayoffSchedulingState()) && IsWarmupPeriod())
+        {
+            Server.PrintToConsole("[DTR ERR] 热身阶段无法进行回放");
+            StopAllState("warmup_block");
+            return HookResult.Continue;
+        }
+
+        // Preparation after this event is too late for spawn-time cosmetic
+        // construction. Only schedule playback for a plan accepted in
+        // round_prestart; otherwise leave it armed for the next server round.
+        if (_session.Plan.SequenceActive && _session.Plan.SequencePrepared)
+            ScheduleFreezePrerollStart($"sequence round {_session.Plan.SequencePreparedRound}");
+        else if (IsPlayoffPlanReady() && _session.Plan.PlayoffPrepared)
+            ScheduleFreezePrerollStart($"playoff extra round {_session.Plan.PlayoffRoundIndex + 1}");
+        else if (_session.Plan.Armed && _session.Plan.ArmedPrepared)
+            ScheduleFreezePrerollStart(_session.Plan.ArmedLabel);
+
+        if (_session.LoadedSlots.Count > 0)
+            ScheduleRoundBoundarySpawnReconciliation();
+        return HookResult.Continue;
     }
 
     [GameEventHandler]
@@ -100,6 +138,7 @@ public sealed partial class DemoTracerPlugin
                          _session.Plan.Armed &&
                          _session.Plan.ArmedLoop;
         ResumeFreezePrerollReplays(resumeLoop);
+        ScheduleAvatarOverrideUserInfoRefresh();
 
         var missingFreezePrerollSlots = MissingFreezePrerollResumeSlots();
         if (missingFreezePrerollSlots.Length > 0)
@@ -125,7 +164,7 @@ public sealed partial class DemoTracerPlugin
             return HookResult.Continue;
         if (!_session.Plan.ArmedPrepared)
         {
-            Server.PrintToConsole($"[DTR WARN] armed round is waiting for the next full round_start: {_session.Plan.ArmedLabel}");
+            Server.PrintToConsole($"[DTR WARN] armed round is waiting for the next full round_prestart: {_session.Plan.ArmedLabel}");
             return HookResult.Continue;
         }
 
@@ -145,11 +184,21 @@ public sealed partial class DemoTracerPlugin
     {
         if (@event.Userid is { IsValid: true } player)
         {
-            // This handler runs before BotRandomizer's spawn callback. Capture
-            // the engine-selected map default so missing demo Agent evidence
-            // has a concrete, identity-bound value to preserve.
-            CaptureNativeAgentModelForSpawn(player);
             var spawnedSlot = player.Slot;
+            if (_session.LoadedReplays.TryGetValue(spawnedSlot, out var spawnedReplay) &&
+                !ReplayTeamAssignmentPolicy.LiveTeamMatches(
+                    spawnedReplay.ManifestTeam,
+                    player.Team))
+            {
+                Server.PrintToConsole(
+                    $"[DTR ERR] spawn team mismatch slot={spawnedSlot} " +
+                    $"actual={player.Team} manifest={spawnedReplay.ManifestTeam}; removing replay slot");
+                RemoveReplaySlot(
+                    spawnedSlot,
+                    "spawn_team_mismatch",
+                    out _,
+                    out _);
+            }
             if (_retainedReplayViewmodelSlots.Contains(player.Slot) &&
                 !_session.ReplaySlots.IsPlaying(player.Slot))
             {
@@ -167,9 +216,9 @@ public sealed partial class DemoTracerPlugin
                 if (_session.ReplaySlots.IsOwned(player.Slot) &&
                     _session.LoadedReplays.ContainsKey(player.Slot))
                 {
-                    // Establish the replay identity and its Agent/Knife/Gloves
-                    // writer lease in the spawn event itself. BotRandomizer's
-                    // pawn writes run on its later spawn callback.
+                    // Refresh the complete plan at the natural spawn boundary.
+                    // Round-start preparation normally installed it before item
+                    // construction; a newly accepted plan waits for the next spawn.
                     _ = SyncBotHiderPresentationLease(announce: false);
                     _ = SyncBotRandomizerCosmeticLease(announce: false);
                     // Buy plans are slot-scoped, but the engine creates a new
@@ -178,7 +227,6 @@ public sealed partial class DemoTracerPlugin
                     _ = BotControllerNative.SetBuySkip(spawnedSlot);
                     ScheduleReplaySlotReconciliation(spawnedSlot);
                 }
-                ScheduleReplayMusicKitRepairForSlot(spawnedSlot);
                 ScheduleInitialRoundSpawnAssignment();
                 ScheduleRoundBoundarySpawnReconciliation();
             }
@@ -190,11 +238,11 @@ public sealed partial class DemoTracerPlugin
     [GameEventHandler]
     public HookResult OnPlayerTeam(EventPlayerTeam @event, GameEventInfo info)
     {
-        if (@event.Userid is { IsValid: true } player &&
-            IsHumanAvatarOverrideCandidate(player))
-        {
+        if (@event.Userid is not { IsValid: true } player)
+            return HookResult.Continue;
+
+        if (IsHumanAvatarOverrideCandidate(player))
             ScheduleHumanTeamAvatarOverrideReconciliation();
-        }
 
         return HookResult.Continue;
     }
@@ -202,24 +250,25 @@ public sealed partial class DemoTracerPlugin
     [GameEventHandler]
     public HookResult OnPlayerDeath(EventPlayerDeath @event, GameEventInfo info)
     {
-        if (@event.Userid is { IsValid: true } victim)
+        var handoffSlot = HandoffIncludesDeath(_handoffMode) && HasActiveReplaySlots()
+            ? GetDeathHandoffSlot(@event)
+            : -1;
+        if (handoffSlot >= 0)
+            HandoffActiveReplays($"player_death_slot{handoffSlot}", handoffSlot);
+
+        if (@event.Userid is { IsValid: true } victim &&
+            handoffSlot != victim.Slot)
         {
             if (IsReplaySlotPlaying(victim.Slot))
             {
                 BotControllerNative.StopReplay(victim.Slot);
                 ReleaseReplaySlot(victim.Slot, "replay_target_death");
+                _ = SyncBotHiderPresentationLease(announce: false, forceReplace: true);
             }
             else if (_retainedReplayViewmodelSlots.Contains(victim.Slot))
             {
                 RestoreReplayBotViewmodel(victim.Slot);
             }
-        }
-
-        if (HandoffIncludesDeath(_handoffMode) && HasActiveReplaySlots())
-        {
-            var triggerSlot = GetDeathHandoffSlot(@event);
-            if (triggerSlot >= 0)
-                HandoffActiveReplays($"player_death_slot{triggerSlot}", triggerSlot);
         }
 
         return HookResult.Continue;

@@ -34,13 +34,33 @@ public sealed partial class DemoTracerPlugin
             : $"[DTR ERR] failed to stop slot {slot}");
     }
 
+    private void RemoveReplaySlot(
+        int slot,
+        string reason,
+        out bool stopped,
+        out bool unloaded)
+    {
+        stopped = BotControllerNative.StopReplay(slot);
+        unloaded = BotControllerNative.UnloadReplay(slot);
+        CommitReplaySlotRemoval(slot, reason);
+    }
+
+    private void CommitReplaySlotRemoval(int slot, string reason)
+    {
+        ReleaseReplaySlot(slot, reason);
+        _session.ReplaySlots.Unload(slot);
+        _session.WarmReplayBufferSlots.Remove(slot);
+        ForgetRetainedBotHiderPresentation(slot);
+        ForgetLoadedReplayMetadata(slot);
+    }
+
     private static void IssueRestartIfRequested(CommandInfo command, bool restart)
     {
         if (!restart)
             return;
 
         Server.ExecuteCommand("mp_restartgame 1");
-        command.ReplyToCommand("[DTR OK] Issued \"mp_restartgame 1\". Waiting for next round_start.");
+        command.ReplyToCommand("[DTR OK] Issued \"mp_restartgame 1\". Waiting for next round_prestart.");
     }
 
     private static void IssueRestartIfRequested(bool restart, Action<string> reply)
@@ -49,7 +69,7 @@ public sealed partial class DemoTracerPlugin
             return;
 
         Server.ExecuteCommand("mp_restartgame 1");
-        reply("[DTR OK] Issued \"mp_restartgame 1\". Waiting for next round_start.");
+        reply("[DTR OK] Issued \"mp_restartgame 1\". Waiting for next round_prestart.");
     }
 
     private void MarkReplayStarted(int slot)
@@ -77,7 +97,6 @@ public sealed partial class DemoTracerPlugin
         _session.ReplaySlots.Release(slot);
         CancelSafeC4MutationWithoutTarget();
         ClearPendingWeaponSlotReplacementsForSlot(slot);
-        CancelPendingProjectileAlignForSlot(slot, reason);
         _cosmeticAlignmentTracker.CancelPending(slot);
         _session.FreezePrerollSlots.Remove(slot);
         _session.ResumedFreezePrerollSlots.Remove(slot);
@@ -167,8 +186,9 @@ public sealed partial class DemoTracerPlugin
         {
             // dtr_go immediately follows this plan update with mp_restartgame.
             // Keep the current identity/cosmetic ownership intact until the
-            // round_start transition can replace all leases atomically.
-            reply("[DTR WARN] 当前DTR将在round_start被原子替换");
+            // round_prestart transition can replace all leases atomically before
+            // the next pawn inventory is constructed.
+            reply("[DTR WARN] 当前DTR将在round_prestart被原子替换");
             return true;
         }
 

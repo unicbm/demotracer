@@ -13,6 +13,7 @@
 # Native runtime builds
 /server/runtime/BotController/build/
 /server/runtime/BotController/out/
+/server/runtime/BotController/tests/build/
 /dist/
 /desktop/gui/node_modules/
 /cloudflare/telemetry/node_modules/

@@ -385,12 +385,7 @@ public sealed partial class DemoTracerPlugin
         }
 
         controller = current;
-        stopped = BotControllerNative.StopReplay(candidate.Slot);
-        unloaded = BotControllerNative.UnloadReplay(candidate.Slot);
-        ReleaseReplaySlot(candidate.Slot, reason);
-        _session.ReplaySlots.Unload(candidate.Slot);
-        ForgetRetainedBotHiderPresentation(candidate.Slot);
-        ForgetLoadedReplayMetadata(candidate.Slot);
+        RemoveReplaySlot(candidate.Slot, reason, out stopped, out unloaded);
         return true;
     }
 
@@ -432,10 +427,7 @@ public sealed partial class DemoTracerPlugin
         if (ok || hadRetainedPresentation)
         {
             StopVoiceTestPlayback("unload", printSummary: false);
-            _session.ReplaySlots.Unload(slot);
-            ReleaseReplaySlot(slot, "unload");
-            ForgetRetainedBotHiderPresentation(slot);
-            ForgetLoadedReplayMetadata(slot);
+            CommitReplaySlotRemoval(slot, "unload");
         }
 
         if (!ok && !hadRetainedPresentation)

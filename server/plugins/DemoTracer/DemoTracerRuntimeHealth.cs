@@ -131,6 +131,13 @@ public sealed partial class DemoTracerPlugin
             provider.ApiVersion == DemoTracerBotHiderContract.ApiVersion &&
             provider.Connected &&
             !provider.Draining;
+        var botRandomizerProvider = _botRandomizerBridge.ProbeProviderInfo();
+        var botRandomizerAvailable =
+            botRandomizerProvider != null &&
+            botRandomizerProvider.ApiVersion == BotRandomizerApi.BotRandomizerContract.ApiVersion &&
+            botRandomizerProvider.Ready &&
+            !botRandomizerProvider.Draining &&
+            botRandomizerProvider.ReplayPlanPrebuildAvailable;
 
         return new RuntimeHealthSnapshot(
             SchemaVersion: RuntimeHealthSchemaVersion,
@@ -154,6 +161,12 @@ public sealed partial class DemoTracerPlugin
                 Connected: provider?.Connected ?? false,
                 Draining: provider?.Draining ?? false,
                 Available: botHiderAvailable),
+            BotRandomizer: new RuntimeBotRandomizerHealth(
+                ProviderApi: botRandomizerProvider?.ApiVersion,
+                Ready: botRandomizerProvider?.Ready ?? false,
+                Draining: botRandomizerProvider?.Draining ?? false,
+                ReplayPlanPrebuildAvailable: botRandomizerProvider?.ReplayPlanPrebuildAvailable ?? false,
+                Available: botRandomizerAvailable),
             Cosmetics: new RuntimeCosmeticAlignmentHealth(
                 AlignmentEnabled: _cosmeticAlignEnabled,
                 WeaponsEnabled: _cosmeticWeaponsEnabled,
@@ -165,8 +178,8 @@ public sealed partial class DemoTracerPlugin
                 CharmsEnabled: _charmAlignEnabled,
                 PreserveNativeEnabled: _preserveNativeBotCosmetics),
             ManagedSchema: new RuntimeManagedSchemaHealth(
-                Allowed: ManagedSchemaRuntime.Value.Allowed,
-                Patch: ManagedSchemaRuntime.Value.Patch),
+                Allowed: true,
+                Patch: Cs2PatchVersion.Value),
             ReplayWeapons: BuildRuntimeReplayWeaponHealth(),
             LoadedCssPluginDirectories: DiscoverLoadedCssPluginDirectories());
     }
@@ -226,11 +239,11 @@ public sealed partial class DemoTracerPlugin
                         out var claim))
                 {
                     cosmeticClaim = new RuntimeReplayCosmeticClaimHealth(
-                        Agent: claim.Agent,
-                        Knife: claim.Knife,
-                        Gloves: claim.Gloves,
-                        MusicKit: claim.MusicKit,
-                        WeaponCount: claim.Weapons.Count);
+                        Agent: claim.Agent.Mode != BotRandomizerApi.BotRandomizerAgentPlanMode.Randomized,
+                        Knife: claim.Knife is not null,
+                        Gloves: claim.Gloves is not null,
+                        MusicKit: claim.MusicKit is not null,
+                        WeaponCount: claim.Weapons.Length);
                 }
 
                 snapshots.Add(new RuntimeReplayWeaponHealth(
@@ -454,6 +467,7 @@ public sealed partial class DemoTracerPlugin
         string CounterStrikeSharpVersion,
         RuntimeBotControllerHealth BotController,
         RuntimeBotHiderHealth BotHider,
+        RuntimeBotRandomizerHealth BotRandomizer,
         RuntimeCosmeticAlignmentHealth Cosmetics,
         RuntimeManagedSchemaHealth ManagedSchema,
         RuntimeReplayWeaponHealth[] ReplayWeapons,
@@ -476,6 +490,13 @@ public sealed partial class DemoTracerPlugin
         int? ProviderApi,
         bool Connected,
         bool Draining,
+        bool Available);
+
+    private sealed record RuntimeBotRandomizerHealth(
+        int? ProviderApi,
+        bool Ready,
+        bool Draining,
+        bool ReplayPlanPrebuildAvailable,
         bool Available);
 
     private sealed record RuntimeCosmeticAlignmentHealth(

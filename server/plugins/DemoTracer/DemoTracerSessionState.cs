@@ -31,8 +31,6 @@ public sealed partial class DemoTracerPlugin
         public Dictionary<int, int> ProjectileAlignNextBySlot { get; } = [];
         public Dictionary<int, int> ReplayHifiEventNextBySlot { get; } = [];
         public Dictionary<int, long> ReplayIdentityGenerationBySlot { get; } = [];
-        public Dictionary<uint, PendingProjectileAlign> PendingProjectileAlign { get; } = [];
-        public List<KeyValuePair<uint, PendingProjectileAlign>> PendingProjectileAlignTickScratch { get; } = [];
         public Queue<string> ProjectileAlignLog { get; } = [];
         public HashSet<int> RebuiltInventorySlots { get; } = [];
         public HashSet<int> WeaponLoadoutSyncedSlots { get; } = [];
@@ -43,9 +41,7 @@ public sealed partial class DemoTracerPlugin
         public Dictionary<int, PendingBulletHit> PendingBulletHits { get; } = [];
         public Dictionary<int, PendingBulletDamage> PendingBulletDamages { get; } = [];
         public Dictionary<int, PendingThreat360> PendingThreat360 { get; } = [];
-        public Dictionary<int, ReplayMusicKitBaseline> ReplayMusicKitBaselines { get; } = [];
         public HashSet<int> CosmeticSyncedSlots { get; } = [];
-        public Dictionary<int, AppliedActiveWeaponCosmetic> ActiveWeaponCosmetics { get; } = [];
         public HashSet<int> ScoreboardSyncedSlots { get; } = [];
         public Dictionary<int, ReplayViewmodel> ReplayOriginalViewmodels { get; } = [];
         public Dictionary<int, ReplayViewmodel> ReplayAppliedViewmodels { get; } = [];

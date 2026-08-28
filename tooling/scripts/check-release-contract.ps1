@@ -107,6 +107,8 @@ if ($runtimeMinor -lt [int]$contract.bot_controller.min_abi_minor) {
 
 Assert-Equal "DemoTracer companion API" (Read-RegexValue "server\plugins\DemoTracer\BotControllerNativeTypes.cs" 'DemoTracerApiVersion\s*=\s*(\d+)' "DemoTracer companion API") ([string]$contract.demotracer.companion_api)
 Assert-Equal "BotHider API" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderApi\IBotHiderApi.cs" 'ApiVersion\s*=\s*(\d+)' "BotHider API") ([string]$contract.bot_hider.api)
+Assert-Equal "BotRandomizer API" (Read-RegexValue "server\vendor\BotRandomizerApi\IBotRandomizerApi.cs" 'ApiVersion\s*=\s*(\d+)' "BotRandomizer API") ([string]$contract.bot_randomizer.api)
+Assert-Equal "BotRandomizer provider" (Read-RegexValue "server\runtime\BotRandomizer\BotRandomizer.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "BotRandomizer provider version") ([string]$contract.bot_randomizer.provider_version)
 Assert-Equal "DemoTracer target framework" (Read-RegexValue "server\plugins\DemoTracer\DemoTracer.csproj" '<TargetFramework>([^<]+)</TargetFramework>' "DemoTracer target framework") ([string]$contract.counterstrikesharp.target_framework)
 Assert-Equal "CounterStrikeSharp minimum version" (Read-RegexValue "server\plugins\DemoTracer\DemoTracer.csproj" 'CounterStrikeSharp\.API" Version="([^"]+)"' "CounterStrikeSharp version") ([string]$contract.counterstrikesharp.minimum_version)
 
@@ -147,6 +149,16 @@ Assert-TextPresent "tooling\scripts\publish-r2.ps1" 'demotracer-css-v\$PlaybackV
 Assert-TextPresent "tooling\scripts\publish-r2.ps1" 'latest\.playback\.sha256' "published CSS hash verification"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'addons\\counterstrikesharp\\shared\\BotRandomizerApi' "packaged BotRandomizer API directory"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+BotRandomizerApi\.dll[^\r\n]+BotRandomizerApi\.dll' "packaged BotRandomizer API assembly"
+Assert-TextPresent "tooling\scripts\package-server.ps1" 'addons\\counterstrikesharp\\plugins\\BotRandomizer' "packaged BotRandomizer provider directory"
+Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+BotRandomizer\.dll[^\r\n]+BotRandomizer\.dll' "packaged BotRandomizer provider assembly"
+Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+cosmetic_catalog\.json[^\r\n]+cosmetic_catalog\.json' "packaged BotRandomizer cosmetic catalog"
+Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+cs2-lib-econ-index\.v1\.json[^\r\n]+cs2-lib-econ-index\.v1\.json' "packaged BotRandomizer replay econ index"
+Assert-TextPresent "server\plugins\DemoTracer\DemoTracerGameEvents.cs" 'OnRoundPrestart\(EventRoundPrestart' "pre-spawn replay plan preparation"
+Assert-TextPresent "server\plugins\DemoTracer\DemoTracerGameEvents.cs" 'PrepareNextSequenceRound\(\s*"round_prestart"(?:\s*,|\s*\))' "sequence plan prepared before spawn"
+Assert-TextAbsent "server\plugins\DemoTracer\DemoTracerGameEvents.cs" 'PrepareNextSequenceRound\("round_start"\)' "late sequence plan preparation"
+Assert-TextAbsent "server\plugins\DemoTracer\DemoTracerPlayback.cs" 'PollPendingSequencePreparation|PollPendingArmedPreparation' "late freeze-time replay plan preparation"
+Assert-PathAbsent "server\plugins\DemoTracer\DemoTracerCosmeticEntityWrites.cs" "DemoTracer cosmetic entity writer"
+Assert-TextAbsent "server\plugins\DemoTracer\DemoTracerCosmeticPlayback.cs" 'ChangeSubclass|FallbackPaintKit\s*=|EconGloves|SetModel\(' "DemoTracer cosmetic playback writer"
 Assert-PathAbsent "tooling\scripts\package-gui-update-test.ps1" "GUI updater test packager"
 if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "tooling\scripts\publish-r2.ps1") -PathType Leaf)) {
     throw "R2 updater publisher is missing"

@@ -303,6 +303,9 @@ export function useUpdateController({
   const playbackUpdateOffered = actionablePlaybackUpdate;
   const actionableUpdateAvailable = actionableGuiUpdate || actionablePlaybackUpdate;
   const availableUpdateCount = Number(guiUpdateOffered) + Number(playbackUpdateOffered);
+  const promptTitle = guiUpdateOffered
+    ? words.releaseUpdateBannerTitle
+    : words.releasePlaybackUpdateBannerTitle;
   const promptSummary = [
     actionableGuiUpdate
       ? `DemoTracer v${guiUpdate.currentVersion || appVersion} → v${guiUpdate.availableVersion}`
@@ -398,6 +401,7 @@ export function useUpdateController({
     guiUpdateOffered,
     playbackUpdateOffered,
     availableUpdateCount,
+    promptTitle,
     promptSummary,
     dialogBusy,
     dialogStatus,

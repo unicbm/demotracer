@@ -10,6 +10,7 @@
 | `server/plugins/DemoTracerApi/` | Contract-only companion API installed under CounterStrikeSharp `shared/` |
 | `server/runtime/BotController/` | Native replay buffers, movement/input injection, weapon control, and C ABI |
 | `server/runtime/BotHider/` | Native and managed bot identity/presentation provider |
+| `server/runtime/BotRandomizer/` | Bundled and version-locked cosmetic entity writer |
 | `shared/contracts/` | Versioned desktop/server release contracts |
 | `shared/econ/` | Cross-runtime projection generated from the pinned `@ianlucas/cs2-lib` package |
 | `tooling/` | Validation, packaging, signing, and publishing automation |
@@ -29,26 +30,27 @@ sources are recorded under `third_party/`, `tooling/cs2-lib-data/`, lockfiles,
 and their accompanying notices. Generated catalog projections are never edited
 by hand.
 
-`server/runtime/BotController` and `server/runtime/BotHider` are maintained
+`server/runtime/BotController`, `server/runtime/BotHider`, and
+`server/runtime/BotRandomizer` are maintained
 derivatives of XBribo's projects. Preserve their own licenses, attribution, and
 `UPSTREAM.md` files; they are not first-party DemoTracer source for copyright
 header purposes. The playback server additionally requires Windows x64 CS2,
 Metamod:Source, CounterStrikeSharp 1.0.371 or newer, and a matching DemoTracer
 bundle.
 
-BotRandomizer 1.5 integration is optional and uses its separately installed v1
-API. Replay weapon paint alignment requires BotRandomizer 1.5.1 or newer so
-the normalized paint kit, seed, and wear are present in the preconstructed item
-view. Ray-Trace 1.0.16 or newer is optional for stricter handoff line-of-sight
-checks. Do not mix BotController or BotHider binaries from full
+BotRandomizer 1.6 is part of the matched playback bundle and implements the v2
+replay-plan API. DemoTracer owns normalization and plan lifetime only;
+BotRandomizer owns all cosmetic entity writes at spawn or item construction.
+Ray-Trace 1.0.16 or newer is optional for stricter handoff line-of-sight checks.
+Do not mix BotController, BotHider, or BotRandomizer binaries from full
 CS2-Bot-Improver packages into a DemoTracer bundle.
 
 | Contract | Required value |
 | --- | --- |
-| `.dtr` writer / reader | v8 / v3-v8 |
+| `.dtr` writer / reader | v9 / v3-v9 |
 | Manifest ABI | 17 |
-| BotController native ABI | 16, minor 33+ |
-| BotHider / BotRandomizer API | 1 / 1 |
+| BotController native ABI | 18, minor 35+ |
+| BotHider / BotRandomizer API | 1 / 2 |
 | DemoTracer companion API | 7 |
 
 ## Build and Test
@@ -160,9 +162,10 @@ measurements.
 - Movement replay uses native movement/input hooks; teleport is not the primary
   playback path.
 - Ordinary weapon, attachment, and scoreboard alignment remain default-off and
-  demo-backed. BotRandomizer coordination claims Agent, Knife, Gloves, and
-  ordinary weapon fields only when the selected preset has positive demo
-  evidence. Missing cosmetic evidence must not trigger entity reconstruction.
+  demo-backed. DemoTracer may only submit complete cosmetic plans through the
+  BotRandomizer v2 API. BotRandomizer is the only cosmetic entity writer and
+  consumes plans during natural spawn/item construction; DemoTracer must not
+  add a parallel econ/model/bodygroup repair path.
 
 ### Replay slot lifecycle
 

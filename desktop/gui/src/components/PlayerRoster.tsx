@@ -79,6 +79,15 @@ export function hasSteamProfile(steamId: string): boolean {
   return /^[1-9]\d{16}$/.test(steamId);
 }
 
+const INSPECT_COMMAND_PREFIX = "csgo_econ_action_preview ";
+const INSPECT_URL_PREFIX = "steam://run/730/en/+csgo_econ_action_preview%20";
+
+function inspectSteamUrl(cosmetic: CosmeticEvidence): string | null {
+  if (cosmetic.inspectUrl) return cosmetic.inspectUrl;
+  if (!cosmetic.inspectCommand?.startsWith(INSPECT_COMMAND_PREFIX)) return null;
+  return `${INSPECT_URL_PREFIX}${cosmetic.inspectCommand.slice(INSPECT_COMMAND_PREFIX.length)}`;
+}
+
 function targetFor(
   playerKey: string,
   kind: "steam" | "crosshair" | "viewmodel" | "inspect",
@@ -468,6 +477,7 @@ function CosmeticCard({
   const displayName = cosmeticDisplayName(cosmetic, words, catalogEntry);
   const title = displayName.full;
   const viewerUrl = buildCosmeticViewerUrl(cosmetic, language);
+  const inspectUrl = inspectSteamUrl(cosmetic);
   const attachmentEntries = [
     ...stickers.map((sticker) => resolveStickerCatalog(sticker.stickerId, language)),
     ...charms.map((charm) => resolveCharmCatalog(charm.charmId, charm.stickerId, language)),
@@ -476,16 +486,17 @@ function CosmeticCard({
     event.preventDefault();
     setHoverAnchor(null);
     const items = [
-      cosmetic.inspectUrl ? {
+      inspectUrl ? {
         label: words.inspectInGame,
         icon: <ExternalLinkIcon size={15} />,
-        onSelect: () => onOpenExternal(cosmetic.inspectUrl!),
+        onSelect: () => onOpenExternal(inspectUrl),
       } : null,
-      cosmetic.inspectUrl ? {
+      inspectUrl ? {
         label: words.copyInspectUrl,
         icon: <CopyIcon size={15} />,
-        onSelect: () => onCopy(cosmetic.inspectUrl!, targetFor(playerKey, "inspect", index)),
-      } : cosmetic.inspectCommand ? {
+        onSelect: () => onCopy(inspectUrl, targetFor(playerKey, "inspect", index)),
+      } : null,
+      cosmetic.inspectCommand ? {
         label: words.copyInspectCommand,
         icon: <CopyIcon size={15} />,
         onSelect: () => onCopy(cosmetic.inspectCommand!, targetFor(playerKey, "inspect", index)),
@@ -493,13 +504,13 @@ function CosmeticCard({
       viewerUrl ? {
         label: words.openPreview360,
         icon: <ReplayIcon size={15} />,
-        dividerBefore: Boolean(cosmetic.inspectUrl || cosmetic.inspectCommand),
+        dividerBefore: Boolean(inspectUrl || cosmetic.inspectCommand),
         onSelect: () => onPreview(title, viewerUrl),
       } : null,
       inventoryItem && !inventorySelectionDisabled ? {
         label: inventorySelected ? words.removeFromInventorySimulatorSelection : words.selectForInventorySimulator,
         icon: inventorySelected ? <CheckIcon size={15} /> : <PlusIcon size={15} />,
-        dividerBefore: Boolean(cosmetic.inspectUrl || cosmetic.inspectCommand || viewerUrl),
+        dividerBefore: Boolean(inspectUrl || cosmetic.inspectCommand || viewerUrl),
         onSelect: onToggleInventorySelection,
       } : null,
     ].filter((item): item is NonNullable<typeof item> => item !== null);

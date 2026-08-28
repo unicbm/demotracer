@@ -54,8 +54,6 @@ public sealed partial class DemoTracerPlugin
     {
         PrepareLoadedReplayOwnership();
         CancelPendingReplaySlotReconciliations();
-        ApplyLoadedReplayMusicKits();
-        ScheduleLoadedReplayMusicKitRepairs();
 
         if (_weaponAlignEnabled)
         {
@@ -82,8 +80,7 @@ public sealed partial class DemoTracerPlugin
                     continue;
                 if (_session.LoadedReplays.TryGetValue(slot, out var replay))
                 {
-                    if (!TryAlignLoadedReplayCosmeticsForSlot(slot, replay))
-                        QueueLoadedReplayCosmeticAlignmentForSlot(slot);
+                    QueueLoadedReplayCosmeticAlignmentForSlot(slot);
                 }
             }
         }
@@ -92,296 +89,21 @@ public sealed partial class DemoTracerPlugin
         AlignSafeC4OwnerForLoadedReplays();
     }
 
-    private void ApplyLoadedReplayMusicKits()
-    {
-        if (!_cosmeticAlignEnabled)
-            return;
-
-        foreach (var slot in _session.LoadedSlots)
-        {
-            if (!IsReplaySlotStillSafe(slot) ||
-                !_session.LoadedReplays.TryGetValue(slot, out var replay) ||
-                replay.MusicKitId <= 0)
-            {
-                continue;
-            }
-
-            _ = ApplyReplayMusicKitForSlot(slot, replay.MusicKitId);
-        }
-    }
-
-    private bool ApplyReplayMusicKitForSlot(int slot, int musicKitId)
-    {
-        if (!ReplayMusicKitAlignmentAllowed(musicKitId) ||
-            !IsReplaySlotStillSafe(slot) ||
-            !_session.LoadedReplays.TryGetValue(slot, out var replay) ||
-            !TryValidateBotRandomizerClaim(
-                slot,
-                replay.SteamId,
-                DemoTracerCosmeticWriteField.MusicKit))
-            return false;
-
-        var player = Utilities.GetPlayerFromSlot(slot);
-        if (player is not { IsValid: true })
-            return false;
-
-        try
-        {
-            if (ReplayMusicKitStateMatches(player, musicKitId))
-                return true;
-            return ApplyReplayMusicKit(player, musicKitId, replay.SteamId);
-        }
-        catch (Exception ex)
-        {
-            Server.PrintToConsole($"dtr: music kit apply failed slot={slot} kit={musicKitId}: {ex.Message}");
-            return false;
-        }
-    }
-
-    private void ScheduleLoadedReplayMusicKitRepairs()
-    {
-        if (!_cosmeticAlignEnabled)
-            return;
-
-        foreach (var slot in _session.LoadedSlots.ToArray())
-            ScheduleReplayMusicKitRepairForSlot(slot);
-    }
-
-    private void ScheduleReplayMusicKitRepairForSlot(int slot)
-    {
-        if (!_session.LoadedReplays.TryGetValue(slot, out var replay) ||
-            !ReplayMusicKitAlignmentAllowed(replay.MusicKitId))
-            return;
-
-        var expectedMusicKitId = replay.MusicKitId;
-        ScheduleReplaySlotNextFrame(slot, ReplaySlotWorkKind.MusicKitRepair, context =>
-        {
-            if (!_session.LoadedReplays.TryGetValue(slot, out var current) ||
-                current.MusicKitId != expectedMusicKitId)
-            {
-                return;
-            }
-
-            _ = ApplyReplayMusicKitForSlot(context.Slot, expectedMusicKitId);
-        });
-    }
-
-    private bool ApplyReplayMusicKit(
-        CCSPlayerController player,
-        int musicKitId,
-        ulong replaySteamId)
-    {
-        if (!ReplayMusicKitAlignmentAllowed(musicKitId) ||
-            player is not { IsValid: true } ||
-            !TryValidateBotRandomizerClaim(
-                player.Slot,
-                replaySteamId,
-                DemoTracerCosmeticWriteField.MusicKit) ||
-            musicKitId is > ushort.MaxValue)
-            return false;
-
-        var inventory = player.InventoryServices;
-        if (inventory is null || !CaptureReplayMusicKitBaseline(player, inventory))
-            return false;
-
-        inventory.MusicID = (ushort)musicKitId;
-        TrySetReplayMusicKitStateChanged(
-            player,
-            "CCSPlayerController",
-            "m_pInventoryServices");
-
-        player.MusicKitID = musicKitId;
-        TrySetReplayMusicKitStateChanged(player, "CCSPlayerController", "m_iMusicKitID");
-        player.MusicKitMVPs = 0;
-        TrySetReplayMusicKitStateChanged(player, "CCSPlayerController", "m_iMusicKitMVPs");
-        player.MvpNoMusic = false;
-        TrySetReplayMusicKitStateChanged(player, "CCSPlayerController", "m_bMvpNoMusic");
-
-        return ReplayMusicKitStateMatches(player, musicKitId);
-    }
-
-    private bool CaptureReplayMusicKitBaseline(
-        CCSPlayerController player,
-        CCSPlayerController_InventoryServices inventory)
-    {
-        var slot = player.Slot;
-        if (player.UserId is not int userId ||
-            !_session.ReplayIdentityGenerationBySlot.TryGetValue(slot, out var generation))
-            return false;
-
-        if (_session.ReplayMusicKitBaselines.TryGetValue(slot, out var existing))
-        {
-            if (existing.Generation == generation && existing.UserId == userId)
-                return true;
-            _session.ReplayMusicKitBaselines.Remove(slot);
-        }
-
-        _session.ReplayMusicKitBaselines[slot] = new ReplayMusicKitBaseline(
-            generation,
-            userId,
-            inventory.MusicID,
-            player.MusicKitID,
-            player.MusicKitMVPs,
-            player.MvpNoMusic);
-        return true;
-    }
-
-    private void RestoreReplayMusicKitForSlot(int slot, string reason)
-    {
-        InvalidateReplayMusicKitRepair(slot);
-        if (!ManagedSchemaWritesAllowed())
-        {
-            _session.ReplayMusicKitBaselines.Remove(slot);
-            return;
-        }
-
-        if (!_session.ReplayMusicKitBaselines.TryGetValue(slot, out var baseline))
-            return;
-        if (!_session.LoadedReplays.TryGetValue(slot, out var replay) ||
-            !TryValidateBotRandomizerClaim(
-                slot,
-                replay.SteamId,
-                DemoTracerCosmeticWriteField.MusicKit))
-        {
-            _session.ReplayMusicKitBaselines.Remove(slot);
-            return;
-        }
-
-        if (!IsReplayIdentityGenerationCurrent(slot, baseline.Generation) ||
-            !IsReplaySlotStillSafe(slot))
-        {
-            _session.ReplayMusicKitBaselines.Remove(slot);
-            return;
-        }
-
-        var player = Utilities.GetPlayerFromSlot(slot);
-        if (player is not { IsValid: true } ||
-            player.UserId != baseline.UserId)
-        {
-            _session.ReplayMusicKitBaselines.Remove(slot);
-            return;
-        }
-        var inventory = player.InventoryServices;
-        if (inventory is null)
-        {
-            _session.ReplayMusicKitBaselines.Remove(slot);
-            return;
-        }
-
-        try
-        {
-            inventory.MusicID = baseline.InventoryMusicKitId;
-            TrySetReplayMusicKitStateChanged(
-                player,
-                "CCSPlayerController",
-                "m_pInventoryServices");
-
-            player.MusicKitID = baseline.ControllerMusicKitId;
-            TrySetReplayMusicKitStateChanged(player, "CCSPlayerController", "m_iMusicKitID");
-            player.MusicKitMVPs = baseline.ControllerMusicKitMvps;
-            TrySetReplayMusicKitStateChanged(player, "CCSPlayerController", "m_iMusicKitMVPs");
-            player.MvpNoMusic = baseline.MvpNoMusic;
-            TrySetReplayMusicKitStateChanged(player, "CCSPlayerController", "m_bMvpNoMusic");
-        }
-        catch (Exception ex)
-        {
-            Server.PrintToConsole(
-                $"dtr: music kit restore failed slot={slot} reason={reason}: {ex.Message}");
-        }
-        finally
-        {
-            _session.ReplayMusicKitBaselines.Remove(slot);
-        }
-    }
-
-    private void RestoreAllReplayMusicKits(string reason)
-    {
-        foreach (var slot in _session.ReplayMusicKitBaselines.Keys.ToArray())
-            RestoreReplayMusicKitForSlot(slot, reason);
-        _session.ReplayMusicKitBaselines.Clear();
-        _replaySlotWork.CancelWhere(key => key.Kind == ReplaySlotWorkKind.MusicKitRepair);
-    }
-
-    private void InvalidateReplayMusicKitRepair(int slot)
-        => _replaySlotWork.Cancel(new ReplaySlotWorkKey(slot, ReplaySlotWorkKind.MusicKitRepair));
-
-    private static bool ReplayMusicKitStateMatches(CCSPlayerController player, int expectedMusicKitId)
-    {
-        var inventory = player.InventoryServices;
-        return ReplayRuntimePolicy.MusicKitStateMatches(
-            expectedMusicKitId,
-            inventory is null ? null : inventory.MusicID,
-            player.MusicKitID,
-            player.MusicKitMVPs,
-            player.MvpNoMusic);
-    }
-
     private bool ReplayMusicKitAlignmentAllowed(int musicKitId)
-        => ReplayRuntimePolicy.ShouldApplyMusicKit(
-            _cosmeticAlignEnabled,
-            ManagedSchemaWritesAllowed(),
-            musicKitId);
+        => _cosmeticAlignEnabled && IsKnownMusicKitId(musicKitId);
 
-    private static bool ManagedSchemaWritesAllowed()
-        => ManagedSchemaRuntime.Value.Allowed;
-
-    private static (bool Allowed, string Patch) DetectManagedSchemaRuntime()
-    {
-        string? gameDirectory = null;
-        try
-        {
-            gameDirectory = Server.GameDirectory;
-        }
-        catch
-        {
-        }
-        var candidates = ReplayRuntimePolicy.ManagedSchemaSteamInfCandidates(
-            gameDirectory,
-            typeof(DemoTracerPlugin).Assembly.Location);
-        foreach (var steamInfPath in candidates)
-        {
-            try
-            {
-                if (!File.Exists(steamInfPath))
-                    continue;
-                var patchLine = File.ReadLines(steamInfPath)
-                    .FirstOrDefault(line => line.StartsWith("PatchVersion=", StringComparison.OrdinalIgnoreCase));
-                var patch = patchLine?["PatchVersion=".Length..].Trim();
-                if (string.IsNullOrWhiteSpace(patch))
-                    continue;
-                return ReplayRuntimePolicy.IsManagedSchemaPatchSupported(patch)
-                    ? (true, patch)
-                    : (false, patch);
-            }
-            catch
-            {
-                // Keep probing deterministic assembly ancestors. CSS may
-                // report a relative game directory depending on host launch.
-            }
-        }
-
-        return (false, "unknown");
-    }
-
-    private static void TrySetReplayMusicKitStateChanged(
-        CBaseEntity entity,
-        string className,
-        string fieldName)
+    private static string DetectCs2PatchVersion()
     {
         try
         {
-            // Current CSS exposes these controller values for direct server-side
-            // reads/writes but does not network every field. Calling
-            // SetStateChanged for a non-networked field only emits warnings and
-            // duplicates BotRandomizer's presentation traffic.
-            if (!Schema.IsSchemaFieldNetworked(className, fieldName))
-                return;
-            Utilities.SetStateChanged(entity, className, fieldName);
+            var steamInfPath = Path.Combine(Server.GameDirectory, "steam.inf");
+            var patchLine = File.ReadLines(steamInfPath)
+                .FirstOrDefault(line => line.StartsWith("PatchVersion=", StringComparison.OrdinalIgnoreCase));
+            return patchLine?["PatchVersion=".Length..].Trim() ?? "unknown";
         }
         catch
         {
-            // Presentation metadata is best-effort; the MVP event still carries
-            // the demo-backed kit even when a field cannot be network-dirtied.
+            return "unknown";
         }
     }
 
@@ -416,6 +138,19 @@ public sealed partial class DemoTracerPlugin
         var player = Utilities.GetPlayerFromSlot(targetSlot);
         if (player is not { IsValid: true, PawnIsAlive: true })
             return;
+        if (!_session.LoadedReplays.TryGetValue(targetSlot, out var targetReplay))
+        {
+            Server.PrintToConsole(
+                $"[DTR ERR] refusing C4 alignment slot={targetSlot}: replay is not loaded");
+            return;
+        }
+        if (!ReplayTeamAssignmentPolicy.CanAlignC4(targetReplay.ManifestTeam, player.Team))
+        {
+            Server.PrintToConsole(
+                $"[DTR ERR] refusing C4 alignment slot={targetSlot} " +
+                $"actual={player.Team} manifest={targetReplay.ManifestTeam}");
+            return;
+        }
 
         var foreignOwners = new List<(CCSPlayerController Player, bool CanMutate)>();
 

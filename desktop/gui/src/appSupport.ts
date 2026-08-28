@@ -52,6 +52,7 @@ import type {
   TaskEvent,
   TaskPhase,
 } from "./types";
+import { detailedAnalysisErrorMessage } from "./errorPresentation";
 
 export const DEFAULT_SETTINGS: ConverterSettings = {
   side: "both",
@@ -560,7 +561,7 @@ export function userFacingErrorMessage(error: { code: string; message: string; p
     return words.errorPlayback;
   }
   if (code.includes("analysis") || code.includes("demo") || code.includes("parse")) {
-    return words.errorAnalysis;
+    return detailedAnalysisErrorMessage(words.errorAnalysis, error.message, language);
   }
   return words.errorGeneric.replace("{code}", error.code);
 }

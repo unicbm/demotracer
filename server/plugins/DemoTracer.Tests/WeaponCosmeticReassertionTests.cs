@@ -4,67 +4,26 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+using System.Reflection;
+
 namespace DemoTracer.Tests;
 
 public sealed class WeaponCosmeticReassertionTests
 {
     [Theory]
-    [InlineData(60)]
-    [InlineData(61)]
-    public void SilencedWeaponPaintCacheRequiresLiveEconState(int weaponDefIndex)
+    [InlineData("TryApplyWeaponCosmetic")]
+    [InlineData("TryApplyKnifeCosmetic")]
+    [InlineData("TryApplyGloveCosmetic")]
+    [InlineData("TryApplyAgentCosmetic")]
+    [InlineData("ApplyReplayMusicKit")]
+    [InlineData("HookCosmeticGiveNamedItem")]
+    [InlineData("ReassertReplayKnifeSubclass")]
+    public void DemoTracerDoesNotContainACosmeticEntityWriter(string retiredMethod)
     {
-        Assert.True(DemoTracerPlugin.WeaponPaintStateMatches(
-            actualWeaponDefIndex: weaponDefIndex,
-            actualPaintKit: 711,
-            actualSeed: 420,
-            actualWear: 0.125f,
-            expectedWeaponDefIndex: weaponDefIndex,
-            expectedPaintKit: 711,
-            expectedSeed: 420,
-            expectedWear: 0.125f));
+        var method = typeof(DemoTracerPlugin).GetMethod(
+            retiredMethod,
+            BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
 
-        Assert.False(DemoTracerPlugin.WeaponPaintStateMatches(
-            actualWeaponDefIndex: weaponDefIndex,
-            actualPaintKit: 0,
-            actualSeed: 420,
-            actualWear: 0.125f,
-            expectedWeaponDefIndex: weaponDefIndex,
-            expectedPaintKit: 711,
-            expectedSeed: 420,
-            expectedWear: 0.125f));
-    }
-
-    [Theory]
-    [InlineData(16, 711, 420, 0.125f)]
-    [InlineData(60, 0, 420, 0.125f)]
-    [InlineData(60, 711, 0, 0.125f)]
-    [InlineData(60, 711, 420, 0.5f)]
-    public void AnyOverwrittenPaintFieldInvalidatesTheCache(
-        int actualWeaponDefIndex,
-        int actualPaintKit,
-        int actualSeed,
-        float actualWear)
-    {
-        Assert.False(DemoTracerPlugin.WeaponPaintStateMatches(
-            actualWeaponDefIndex,
-            actualPaintKit,
-            actualSeed,
-            actualWear,
-            expectedWeaponDefIndex: 60,
-            expectedPaintKit: 711,
-            expectedSeed: 420,
-            expectedWear: 0.125f));
-    }
-
-    [Theory]
-    [InlineData(false, 0)]
-    [InlineData(true, 1)]
-    public void PaintModelSelectionUsesCatalogLegacyEvidenceForEveryWeapon(
-        bool usesLegacyModel,
-        int expectedBodygroup)
-    {
-        Assert.Equal(
-            expectedBodygroup,
-            DemoTracerPlugin.WeaponPaintBodygroupValue(usesLegacyModel));
+        Assert.Null(method);
     }
 }

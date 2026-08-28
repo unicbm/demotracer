@@ -20,6 +20,22 @@ public sealed class ReplayEquipmentCatalogTests
         Assert.Equal(61, Catalog.ByClassName["weapon_usp_silencer"].WeaponDefIndex);
     }
 
+    [Theory]
+    [InlineData("weapon_hkp2000", 61, "weapon_usp_silencer")]
+    [InlineData("weapon_m4a1", 60, "weapon_m4a1_silencer")]
+    [InlineData("weapon_usp_silencer", 32, "weapon_hkp2000")]
+    [InlineData("weapon_m4a1_silencer", 16, "weapon_m4a1")]
+    [InlineData("weapon_hkp2000", 0, "weapon_hkp2000")]
+    public void ObservedEconDefinitionWinsOverTransientEntityClass(
+        string designerName,
+        int itemDefinitionIndex,
+        string expectedClassName)
+    {
+        Assert.Equal(
+            expectedClassName,
+            Catalog.ResolveObservedClassName(designerName, itemDefinitionIndex));
+    }
+
     [Fact]
     public void KnifeVariantsNormalizeOnlyAfterTheCatalogIsLoaded()
     {

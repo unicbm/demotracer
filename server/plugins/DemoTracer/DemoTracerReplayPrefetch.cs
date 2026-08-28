@@ -30,7 +30,7 @@ public sealed partial class DemoTracerPlugin
         else if (IsPlayoffPlanReady())
         {
             // Select and decode while the completed round still carries the
-            // retained roster evidence, but let round_start own bot loading.
+            // retained roster evidence, but let round_prestart own bot loading.
             _ = PrepareNextPlayoffRound("round_end prefetch", allowLoad: false);
         }
 

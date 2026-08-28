@@ -72,14 +72,14 @@ weapon, knife, or glove cosmetic:
 }
 ```
 
-`command` is always present when the cosmetic has a usable item definition,
-paint kit, seed, and wear. `steam_url` is omitted when the complete URL would
-exceed the Steam protocol's 300-character launch limit. The uppercase payload
-is a deterministic CS2 `CEconItemPreviewDataBlock` protobuf with the native
-leading byte and xCRC trailer. It contains appearance evidence only and is not
-an inventory/market asset identifier. Because this is additive derived JSON
-that old readers ignore, it does not change the `.dtr` format or manifest ABI
-17.
+`command` and `steam_url` contain the same preview payload and are emitted
+together when the cosmetic has a usable item definition, paint kit, seed, and
+wear. The URL is the command wrapped in Steam's CS2 launch URI. The uppercase
+payload is a deterministic CS2 `CEconItemPreviewDataBlock` protobuf with the
+native leading byte and xCRC trailer. It contains appearance evidence only and
+is not an inventory/market asset identifier. Because this is additive derived
+JSON that old readers ignore, it does not change the `.dtr` format or manifest
+ABI 17.
 
 Glove evidence is retained when the demo exposes an exact item definition,
 paint kit, and wear but omits the texture seed. Such entries carry

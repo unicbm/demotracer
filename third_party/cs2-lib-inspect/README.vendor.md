@@ -1,8 +1,7 @@
 # cs2-lib-inspect attribution
 
 `desktop/converter/src/inspect_link.rs` ports the CS2 preview protobuf field layout,
-native leading byte, xCRC calculation, and 300-character URL fallback behavior
-from
+native leading byte, and xCRC calculation from
 [`ianlucas/cs2-lib-inspect`](https://github.com/ianlucas/cs2-lib-inspect).
 Its conditional NameTag field follows the inspect-compatible grammar from
 [`ianlucas/cs2-lib`](https://github.com/ianlucas/cs2-lib); incompatible demo

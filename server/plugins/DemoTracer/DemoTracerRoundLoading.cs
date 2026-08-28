@@ -24,17 +24,35 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
-    private LoadRoundResult LoadRound(string manifestPath, int round)
-        => LoadRoundSelection(manifestPath, round, round, steamIdMatch: false);
+    private LoadRoundResult LoadRound(
+        string manifestPath,
+        int round,
+        bool switchingTeamsAtRoundReset = false)
+        => LoadRoundSelection(
+            manifestPath,
+            round,
+            round,
+            steamIdMatch: false,
+            switchingTeamsAtRoundReset);
 
-    private LoadRoundResult LoadPlayoffRound(string manifestPath, int tRound, int ctRound)
-        => LoadRoundSelection(manifestPath, tRound, ctRound, steamIdMatch: true);
+    private LoadRoundResult LoadPlayoffRound(
+        string manifestPath,
+        int tRound,
+        int ctRound,
+        bool switchingTeamsAtRoundReset = false)
+        => LoadRoundSelection(
+            manifestPath,
+            tRound,
+            ctRound,
+            steamIdMatch: true,
+            switchingTeamsAtRoundReset);
 
     private LoadRoundResult LoadRoundSelection(
         string manifestPath,
         int tRound,
         int ctRound,
-        bool steamIdMatch)
+        bool steamIdMatch,
+        bool switchingTeamsAtRoundReset)
     {
         var replayStateReplaced = false;
         var companionLeaseTransitionStarted = false;
@@ -77,8 +95,16 @@ public sealed partial class DemoTracerPlugin
             var roundScoreboard = roundMetadata?.Scoreboard;
 
             var targets = FindReplayTargets();
-            var tBots = targets.Where(bot => bot.Team == CsTeam.Terrorist).ToList();
-            var ctBots = targets.Where(bot => bot.Team == CsTeam.CounterTerrorist).ToList();
+            var tBots = targets
+                .Where(bot => ReplayTeamAssignmentPolicy.ResolveUpcomingTeam(
+                    bot.Team,
+                    switchingTeamsAtRoundReset) == CsTeam.Terrorist)
+                .ToList();
+            var ctBots = targets
+                .Where(bot => ReplayTeamAssignmentPolicy.ResolveUpcomingTeam(
+                    bot.Team,
+                    switchingTeamsAtRoundReset) == CsTeam.CounterTerrorist)
+                .ToList();
 
             if (!_partialReplayEnabled && (tBots.Count < allTFiles.Count || ctBots.Count < allCtFiles.Count))
             {
@@ -506,8 +532,7 @@ public sealed partial class DemoTracerPlugin
     }
 
     private bool ReplayIdentityShouldApplyScoreboardFlair()
-        => ReplayRuntimePolicy.ShouldApplyScoreboardFlair(
-            _replayIdentityMode is ReplayIdentityMode.Steam or ReplayIdentityMode.Avatar);
+        => _replayIdentityMode is ReplayIdentityMode.Steam or ReplayIdentityMode.Avatar;
 
     private void ScheduleReplayAvatarOverride(
         int slot,

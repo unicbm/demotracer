@@ -349,18 +349,20 @@ function EditableNumberInput({
 function SettingsSubpageRow({
   title,
   status,
+  tone,
   kind = "subpage",
   disabled = false,
   onClick,
 }: {
   title: string;
   status?: string;
+  tone?: "update";
   kind?: "subpage" | "folder" | "external";
   disabled?: boolean;
   onClick: () => void;
 }) {
   return (
-    <button className={`settings-subpage-row is-${kind}`} type="button" disabled={disabled} onClick={onClick}>
+    <button className={`settings-subpage-row is-${kind}${tone === "update" ? " has-update" : ""}`} type="button" disabled={disabled} onClick={onClick}>
       <span><strong>{title}</strong></span>
       {status ? <em>{status}</em> : null}
       {kind === "folder" ? <FolderIcon size={14} /> : kind === "external" ? <ExternalLinkIcon size={14} /> : <ChevronIcon size={15} />}
@@ -931,7 +933,6 @@ export function SettingsWorkspace({
         <div className="release-product-hero">
           <span className="release-product-mark" aria-hidden="true"><TraceMark size={27} /></span>
           <div className="release-product-copy">
-            <span>{words.releaseDesktopApp}</span>
             <h3 id="desktop-release-title">DemoTracer <code>v{guiUpdate.currentVersion || appVersion || playbackRelease?.appVersion || "1.0.0"}</code></h3>
             <p>{words.releaseAutomaticUpdates}</p>
           </div>
@@ -994,6 +995,26 @@ export function SettingsWorkspace({
               <span>{words.releaseCs2Directory}</span>
               <code title={environment.cs2Path}>{environment.cs2Path}</code>
             </div>
+            <div className={`playback-settings-row is-action is-update-status${playbackUpdate.phase === "available" ? " has-update" : ""}${playbackUpdate.error ? " has-error" : ""}`}>
+              <div>
+                <span>{playbackUpdateLabel}</span>
+                {playbackUpdate.phase === "available" && playbackUpdate.latestVersion ? (
+                  <small className="playback-update-route">
+                    {playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy} → v{playbackUpdate.latestVersion}
+                  </small>
+                ) : playbackUpdate.error ? <small>{playbackUpdate.error}</small> : null}
+              </div>
+              {playbackUpdate.phase === "available" ? (
+                <button className="primary-button" type="button" disabled={playbackUpdateBusy} onClick={onInstallLatestPlayback}>
+                  <ReplayIcon size={15} />{releaseAction === "installingOnline" ? playbackInstallLabel : words.releaseInstallPlaybackUpdate}
+                </button>
+              ) : (
+                <button className="secondary-button" type="button" disabled={playbackUpdateBusy} onClick={onCheckPlaybackUpdate}>
+                  <RefreshIcon className={playbackUpdate.phase === "checking" ? "release-spin" : undefined} size={15} />
+                  {playbackUpdate.phase === "checking" ? words.releaseChecking : words.releaseCheckNow}
+                </button>
+              )}
+            </div>
             <div className="playback-settings-row">
               <span>{words.releaseInstalledBundle}</span>
               <strong>{playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy}</strong>
@@ -1005,33 +1026,6 @@ export function SettingsWorkspace({
               </div>
               <strong>{playbackRelease?.loadedPluginVersion ? `v${playbackRelease.loadedPluginVersion}` : words.releaseNotRunning}</strong>
             </div>
-            <div className="playback-settings-row">
-              <span>{words.releaseLatestVersion}</span>
-              <strong>{playbackUpdate.latestVersion ? `v${playbackUpdate.latestVersion}` : "—"}</strong>
-            </div>
-            <div className={`playback-settings-row is-action${playbackUpdate.error ? " has-error" : ""}`}>
-              <div>
-                <span>{words.releaseUpdateStatus}</span>
-                {playbackUpdate.error ? <small>{playbackUpdate.error}</small> : null}
-              </div>
-              <div className="playback-row-action">
-                <span className={`release-status-pill is-${playbackUpdate.phase}`} role="status">
-                  <i aria-hidden="true" />{playbackUpdateLabel}
-                </span>
-                <button className="secondary-button" type="button" disabled={playbackUpdateBusy} onClick={onCheckPlaybackUpdate}>
-                  <RefreshIcon className={playbackUpdate.phase === "checking" ? "release-spin" : undefined} size={15} />
-                  {playbackUpdate.phase === "checking" ? words.releaseChecking : words.releaseCheckNow}
-                </button>
-              </div>
-            </div>
-            {playbackUpdate.phase === "available" ? (
-              <div className="playback-settings-row is-action">
-                <span>{words.releaseInstallLatestPlayback}</span>
-                <button className="primary-button" type="button" disabled={playbackUpdateBusy} onClick={onInstallLatestPlayback}>
-                  <ReplayIcon size={15} />{releaseAction === "installingOnline" ? playbackInstallLabel : words.releaseInstallNow}
-                </button>
-              </div>
-            ) : null}
             <div className="playback-settings-row is-action">
               <span>{words.releaseLocalPackage}</span>
               <button className="secondary-button" type="button" disabled={releaseBusy} onClick={onInstallPlaybackBundle}>
@@ -1293,7 +1287,6 @@ export function SettingsWorkspace({
           <span><FolderIcon size={22} /></span>
           <div>
             <h3>{words.serverConfigNeedsPath}</h3>
-            <p>{words.serverConfigNeedsPathHelp}</p>
             <button className="secondary-button server-config-choose-path" type="button" onClick={onBrowseCs2}>
               <FolderIcon size={15} />{words.browseFolder}
             </button>
@@ -1302,7 +1295,7 @@ export function SettingsWorkspace({
       ) : !serverConfigDocument ? (
         <section className="settings-card diagnostic-empty">
           <span><SlidersIcon size={22} /></span>
-          <div><h3>{words.serverConfigNotLoaded}</h3><p>{words.serverConfigNotLoadedHelp}</p></div>
+          <div><h3>{words.serverConfigNotLoaded}</h3></div>
         </section>
       ) : (
         <>
@@ -1618,7 +1611,9 @@ export function SettingsWorkspace({
   };
   const playbackReleaseStatus = !environment.cs2Path.trim()
     ? words.releaseUnverified
-    : playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy;
+    : playbackUpdate.phase === "available" && playbackUpdate.latestVersion
+      ? `${playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy} → v${playbackUpdate.latestVersion}`
+      : playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy;
   const modalTitle = settingsModal === "desktopUpdate" ? words.releaseDesktopApp
     : settingsModal === "playbackInstall" ? words.releasePlayback
       : settingsModal === "environment" ? words.advancedEnvironmentDiagnostics
@@ -1677,12 +1672,12 @@ export function SettingsWorkspace({
                 />
                 <SettingsSubpageRow
                   title={words.archiveLibraryDirectories}
-                  status={words.advancedConfiguredFolders.replace("{count}", String(archiveRoots.length))}
+                  status={(archiveRoots.length === 1 ? words.libraryFolderCountOne : words.libraryFolderCountMany).replace("{count}", String(archiveRoots.length))}
                   onClick={() => setSettingsModal("storage")}
                 />
                 <SettingsSubpageRow
                   title={words.rawDemoDirectories}
-                  status={words.advancedConfiguredFolders.replace("{count}", String(environment.demoRoots.length))}
+                  status={(environment.demoRoots.length === 1 ? words.libraryFolderCountOne : words.libraryFolderCountMany).replace("{count}", String(environment.demoRoots.length))}
                   onClick={() => setSettingsModal("storage")}
                 />
               </div>
@@ -1696,7 +1691,12 @@ export function SettingsWorkspace({
               </header>
               <div className="settings-subpage-list">
                 <SettingsSubpageRow title={`${words.releaseDesktopApp} · v${guiUpdate.currentVersion || appVersion || "—"}`} status={guiStatus} onClick={() => setSettingsModal("desktopUpdate")} />
-                <SettingsSubpageRow title={words.releasePlayback} status={playbackReleaseStatus} onClick={() => setSettingsModal("playbackInstall")} />
+                <SettingsSubpageRow
+                  title={words.releasePlayback}
+                  status={playbackReleaseStatus}
+                  tone={playbackUpdate.phase === "available" ? "update" : undefined}
+                  onClick={() => setSettingsModal("playbackInstall")}
+                />
               </div>
             </section>
             <section className="settings-dashboard-panel" aria-label={words.demoTracerAdvancedSettings}>

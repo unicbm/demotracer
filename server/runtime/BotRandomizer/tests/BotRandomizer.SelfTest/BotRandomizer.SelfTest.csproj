@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>BotRandomizer.SelfTest</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\vendor\BotRandomizerApi\BotRandomizerApi.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Cosmetics\AttributeEncoding.cs" Link="Cosmetics\AttributeEncoding.cs" />
+    <Compile Include="..\..\Cosmetics\CharmPlacementCatalog.cs" Link="Cosmetics\CharmPlacementCatalog.cs" />
+    <Compile Include="..\..\Cosmetics\CosmeticCatalog.cs" Link="Cosmetics\CosmeticCatalog.cs" />
+    <Compile Include="..\..\Cosmetics\EconItemIdAllocator.cs" Link="Cosmetics\EconItemIdAllocator.cs" />
+    <Compile Include="..\..\Cosmetics\CosmeticModels.cs" Link="Cosmetics\CosmeticModels.cs" />
+    <Compile Include="..\..\Cosmetics\CosmeticRoller.cs" Link="Cosmetics\CosmeticRoller.cs" />
+    <Compile Include="..\..\Cosmetics\CosmeticStateStore.cs" Link="Cosmetics\CosmeticStateStore.cs" />
+    <Compile Include="..\..\Cosmetics\CosmeticWriteLeases.cs" Link="Cosmetics\CosmeticWriteLeases.cs" />
+    <Compile Include="..\..\Cosmetics\RandomizerAssets.cs" Link="Cosmetics\RandomizerAssets.cs" />
+    <Compile Include="..\..\Cosmetics\ReplayEconIndex.cs" Link="Cosmetics\ReplayEconIndex.cs" />
+    <Compile Include="..\..\Cosmetics\WeaponWearAllocator.cs" Link="Cosmetics\WeaponWearAllocator.cs" />
+  </ItemGroup>
+
+</Project>

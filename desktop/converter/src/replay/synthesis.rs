@@ -650,6 +650,21 @@ mod tests {
     }
 
     #[test]
+    fn synthesis_preserves_grenade_release_subtick_phase() {
+        let mut release = subtick(0.125, 1);
+        release.pressed = 0.0;
+        let mut first = row(10, 46);
+        first.subtick_moves = vec![release];
+
+        let rec = synthesize_player_rec(&[first, row(11, 46)], "de_mirage", 64.0, 1).unwrap();
+
+        assert_eq!(rec.ticks[0].num_subtick, 1);
+        assert_eq!(rec.subticks[0].when, 0.125);
+        assert_eq!(rec.subticks[0].button, 1);
+        assert_eq!(rec.subticks[0].pressed, 0.0);
+    }
+
+    #[test]
     fn synthesis_can_disable_subticks() {
         let mut r0 = row(10, 7);
         r0.subtick_moves = vec![subtick(0.25, 1)];

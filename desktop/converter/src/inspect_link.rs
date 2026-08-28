@@ -15,7 +15,6 @@ use std::sync::OnceLock;
 
 const PREVIEW_COMMAND: &str = "csgo_econ_action_preview ";
 const PREVIEW_URL: &str = "steam://run/730/en/+csgo_econ_action_preview%20";
-const STEAM_PROTOCOL_CHAR_LIMIT: usize = 300;
 
 pub(crate) fn weapon_inspect(
     cosmetic: &ReplayWeaponCosmetic,
@@ -117,8 +116,7 @@ fn build_inspect(preview: PreviewData<'_>) -> ReplayCosmeticInspect {
 
     let hex = uppercase_hex(&payload);
     let command = format!("{PREVIEW_COMMAND}{hex}");
-    let steam_url = (PREVIEW_URL.len() + hex.len() <= STEAM_PROTOCOL_CHAR_LIMIT)
-        .then(|| format!("{PREVIEW_URL}{hex}"));
+    let steam_url = Some(format!("{PREVIEW_URL}{hex}"));
     ReplayCosmeticInspect { command, steam_url }
 }
 
@@ -296,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn long_sticker_payload_keeps_command_without_steam_url() {
+    fn long_sticker_payload_keeps_equivalent_command_and_steam_url() {
         let stickers = (0..5)
             .map(|slot| ReplayWeaponSticker {
                 slot,
@@ -324,7 +322,10 @@ mod tests {
             inspect: None,
         };
         let inspect = weapon_inspect(&cosmetic, Some(6)).unwrap();
-        assert!(inspect.command.starts_with(PREVIEW_COMMAND));
-        assert!(inspect.steam_url.is_none());
+        let payload = inspect.command.strip_prefix(PREVIEW_COMMAND).unwrap();
+        assert_eq!(
+            inspect.steam_url.as_deref(),
+            Some(format!("{PREVIEW_URL}{payload}").as_str())
+        );
     }
 }

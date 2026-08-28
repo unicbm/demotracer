@@ -9,17 +9,14 @@ namespace DemoTracer.Tests;
 public sealed class RoundStartBalanceTests
 {
     [Theory]
-    [InlineData(false, true, 5_250U)]
-    [InlineData(true, false, 5_250U)]
-    [InlineData(true, true, null)]
-    public void RequiresOptInRuntimeSupportAndDemoEvidence(
+    [InlineData(false, 5_250U)]
+    [InlineData(true, null)]
+    public void RequiresOptInAndDemoEvidence(
         bool enabled,
-        bool runtimeSupported,
         uint? evidence)
     {
         var resolved = ReplayRuntimePolicy.TryResolveRoundStartBalance(
             enabled,
-            runtimeSupported,
             evidence,
             16_000,
             out var balance);
@@ -33,7 +30,6 @@ public sealed class RoundStartBalanceTests
     {
         var resolved = ReplayRuntimePolicy.TryResolveRoundStartBalance(
             enabled: true,
-            runtimeSupported: true,
             evidence: 0,
             serverMaxMoney: 16_000,
             out var balance);
@@ -47,7 +43,6 @@ public sealed class RoundStartBalanceTests
     {
         var resolved = ReplayRuntimePolicy.TryResolveRoundStartBalance(
             enabled: true,
-            runtimeSupported: true,
             evidence: 20_000,
             serverMaxMoney: 16_000,
             out var balance);

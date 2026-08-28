@@ -7,6 +7,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  buildArchiveSessionMeta,
   EMPTY_LIBRARY_WORKSPACE,
   LIBRARY_SESSION_STORAGE_KEY,
   libraryWorkspaceReducer,
@@ -72,6 +73,26 @@ function archive(): ManifestArchive {
 }
 
 describe("library workspace session", () => {
+  it("does not repeat a demo filename that only differs by the .dem suffix", () => {
+    assert.equal(
+      buildArchiveSessionMeta(
+        "g161-20260725233910922111563_de_dust2",
+        "g161-20260725233910922111563_de_dust2.dem",
+        "de_dust2",
+        23,
+        "回合",
+      ),
+      "de_dust2 · 23 回合",
+    );
+  });
+
+  it("keeps a distinct source filename when the archive has a descriptive title", () => {
+    assert.equal(
+      buildArchiveSessionMeta("Falcons vs Astralis", "match-2026.dem", "de_mirage", 24, "rounds"),
+      "match-2026.dem · de_mirage · 24 rounds",
+    );
+  });
+
   it("opens an archive in analysis and keeps it while navigating through the library", () => {
     const opened = libraryWorkspaceReducer(EMPTY_LIBRARY_WORKSPACE, { type: "open", archive: archive() });
     assert.equal(opened.activeSection, "analysis");

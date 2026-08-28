@@ -36,6 +36,11 @@ pub(crate) const REQUIRED_RECEIPT_PATHS: &[&str] = &[
     "addons/counterstrikesharp/plugins/demotracer/cs2-lib-econ-index.v1.json",
     "addons/counterstrikesharp/plugins/demotracerbothider/demotracerbothider.dll",
     "addons/counterstrikesharp/shared/demotracerbothiderapi/demotracerbothiderapi.dll",
+    "addons/counterstrikesharp/plugins/botrandomizer/botrandomizer.dll",
+    "addons/counterstrikesharp/plugins/botrandomizer/cosmetic_catalog.json",
+    "addons/counterstrikesharp/plugins/botrandomizer/cs2-lib-econ-index.v1.json",
+    "addons/counterstrikesharp/plugins/botrandomizer/charm_placements.json",
+    "addons/counterstrikesharp/shared/botrandomizerapi/botrandomizerapi.dll",
     "addons/counterstrikesharp/shared/0harmony/0harmony.dll",
 ];
 const BOT_IMPROVER_142_CONTROLLER_SHA256: &str =
@@ -165,6 +170,8 @@ pub(crate) struct InstallReceiptSummaryDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bot_hider_api: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub bot_randomizer_api: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub demo_tracer_api: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verified: Option<bool>,
@@ -202,6 +209,7 @@ pub(crate) struct PlaybackContractWire {
     pub(crate) dtr_reader: DtrReaderContractWire,
     pub(crate) bot_controller: BotControllerContractWire,
     pub(crate) bot_hider: BotHiderContractWire,
+    pub(crate) bot_randomizer: BotRandomizerContractWire,
     pub(crate) demotracer: DemoTracerContractWire,
     pub(crate) counterstrikesharp: CounterStrikeSharpContractWire,
 }
@@ -222,6 +230,12 @@ pub(crate) struct BotControllerContractWire {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct BotHiderContractWire {
     pub(crate) api: i32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub(crate) struct BotRandomizerContractWire {
+    pub(crate) api: i32,
+    pub(crate) provider_version: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -246,6 +260,7 @@ struct RuntimeHealthWire {
     counter_strike_sharp_version: String,
     bot_controller: RuntimeBotControllerWire,
     bot_hider: RuntimeBotHiderWire,
+    bot_randomizer: RuntimeBotRandomizerWire,
     cosmetics: RuntimeCosmeticsWire,
     loaded_css_plugin_directories: Vec<String>,
 }
@@ -275,6 +290,16 @@ struct RuntimeBotHiderWire {
     provider_api: Option<i32>,
     connected: bool,
     draining: bool,
+    available: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeBotRandomizerWire {
+    provider_api: Option<i32>,
+    ready: bool,
+    draining: bool,
+    replay_plan_prebuild_available: bool,
     available: bool,
 }
 
@@ -854,6 +879,11 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
         && health.bot_hider.connected
         && !health.bot_hider.draining
         && health.bot_hider.provider_api == Some(expected.bot_hider.api);
+    let randomizer_compatible = health.bot_randomizer.available
+        && health.bot_randomizer.ready
+        && !health.bot_randomizer.draining
+        && health.bot_randomizer.replay_plan_prebuild_available
+        && health.bot_randomizer.provider_api == Some(expected.bot_randomizer.api);
 
     let mut checks = vec![DiagnosticCheckDto {
         id: "runtime.heartbeat".to_string(),
@@ -942,6 +972,44 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
         evidence_path: Some(path.display().to_string()),
         action: (!hider_compatible).then(|| {
             "Verify DemoTracerBotHider is the only BotHider presentation provider and reinstall the matching bundle if needed."
+                .to_string()
+        }),
+    });
+    checks.push(DiagnosticCheckDto {
+        id: "runtime.botRandomizer".to_string(),
+        group: "runtime".to_string(),
+        status: if randomizer_compatible {
+            DiagnosticStatus::Pass
+        } else {
+            DiagnosticStatus::Error
+        },
+        title: "Live BotRandomizer replay-plan provider".to_string(),
+        summary: if randomizer_compatible {
+            "The bundled cosmetic provider accepts complete replay plans and can prebuild item views."
+                .to_string()
+        } else {
+            "The required replay cosmetic provider is unavailable, on the wrong API, or cannot prebuild item views."
+                .to_string()
+        },
+        expected: Some(format!(
+            "API {}, ready, replay prebuild available, not draining",
+            expected.bot_randomizer.api
+        )),
+        actual: Some(format!(
+            "API {}, ready={}, prebuild={}, available={}, draining={}",
+            health
+                .bot_randomizer
+                .provider_api
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unavailable".to_string()),
+            health.bot_randomizer.ready,
+            health.bot_randomizer.replay_plan_prebuild_available,
+            health.bot_randomizer.available,
+            health.bot_randomizer.draining
+        )),
+        evidence_path: Some(path.display().to_string()),
+        action: (!randomizer_compatible).then(|| {
+            "Reinstall the complete DemoTracer playback bundle so BotRandomizer and BotRandomizerApi match DemoTracer."
                 .to_string()
         }),
     });
@@ -1261,6 +1329,7 @@ fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto
     audit.summary.bot_controller_abi = Some(receipt.compatibility.bot_controller.abi_major);
     audit.summary.bot_controller_minor = Some(receipt.compatibility.bot_controller.min_abi_minor);
     audit.summary.bot_hider_api = Some(receipt.compatibility.bot_hider.api);
+    audit.summary.bot_randomizer_api = Some(receipt.compatibility.bot_randomizer.api);
     audit.summary.demo_tracer_api = Some(receipt.compatibility.demotracer.companion_api);
 
     let contract_errors = contract_errors(&receipt);
@@ -1348,7 +1417,14 @@ fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto
                 .collect::<Vec<_>>()
                 .join("; ")
         },
-        expected: Some("DemoTracer ABI 18/minor 33+, BotHider API 1, matching component hashes".to_string()),
+        expected: embedded_playback_contract().ok().map(|expected| {
+            format!(
+                "DemoTracer ABI {}/minor {}+, BotHider API {}, matching component hashes",
+                expected.bot_controller.abi_major,
+                expected.bot_controller.min_abi_minor,
+                expected.bot_hider.api
+            )
+        }),
         actual: Some(format!(
             "ABI {}/{}, BotHider API {}, mismatched files {}",
             receipt.compatibility.bot_controller.abi_major,
@@ -1434,6 +1510,15 @@ fn contract_errors(receipt: &InstallReceiptWire) -> Vec<String> {
         errors.push(format!(
             "BotHider API {} is not {}",
             actual.bot_hider.api, expected.bot_hider.api
+        ));
+    }
+    if actual.bot_randomizer != expected.bot_randomizer {
+        errors.push(format!(
+            "BotRandomizer {}/API {} is not {}/API {}",
+            actual.bot_randomizer.provider_version,
+            actual.bot_randomizer.api,
+            expected.bot_randomizer.provider_version,
+            expected.bot_randomizer.api
         ));
     }
     if actual.demotracer.companion_api != expected.demotracer.companion_api {
@@ -1526,6 +1611,10 @@ pub(crate) fn receipt_component(normalized_path: &str) -> Option<&'static str> {
         || normalized_path.starts_with("addons/counterstrikesharp/shared/demotracerapi/")
     {
         Some("demotracer")
+    } else if normalized_path.starts_with("addons/counterstrikesharp/plugins/botrandomizer/")
+        || normalized_path.starts_with("addons/counterstrikesharp/shared/botrandomizerapi/")
+    {
+        Some("bot_randomizer_managed")
     } else if normalized_path.starts_with("addons/") {
         Some("shared_dependency")
     } else {
@@ -1665,6 +1754,8 @@ fn classify_plugin(assembly_files: &[String]) -> &'static str {
         .any(|identity| matches!(identity.as_str(), "demotracer" | "demotracerbothider"))
     {
         "demotracer"
+    } else if identities.contains("botrandomizer") {
+        "dependency"
     } else if identities
         .iter()
         .any(|identity| matches!(identity.as_str(), "raytraceimpl" | "raytrace"))
@@ -1689,6 +1780,21 @@ fn detect_conflicts(
     runtime: &RuntimeAudit,
 ) -> Vec<DiagnosticConflictDto> {
     let mut conflicts = Vec::new();
+    let bundled_bot_randomizer_verified = receipt.summary.verified == Some(true)
+        && !receipt
+            .component_mismatches
+            .contains("bot_randomizer_managed");
+    let bundled_bot_randomizer_directory = game_csgo
+        .join("addons/counterstrikesharp/plugins/BotRandomizer")
+        .to_string_lossy()
+        .replace('\\', "/");
+    let is_bundled_bot_randomizer = |plugin: &CssPluginDto| {
+        bundled_bot_randomizer_verified
+            && plugin
+                .directory
+                .replace('\\', "/")
+                .eq_ignore_ascii_case(&bundled_bot_randomizer_directory)
+    };
     let names = plugins
         .iter()
         .flat_map(plugin_assembly_identities)
@@ -1849,7 +1955,10 @@ fn detect_conflicts(
                 affected_features: vec!["cosmetics".to_string(), "agents".to_string()],
             });
         }
-        if identities.contains("botrandomizer") && plugin.runtime_state != "notLoaded" {
+        if identities.contains("botrandomizer")
+            && plugin.runtime_state != "notLoaded"
+            && !is_bundled_bot_randomizer(plugin)
+        {
             let runtime_loaded = plugin.runtime_state == "loaded";
             let agent_alignment_enabled = runtime
                 .cosmetics
@@ -1868,13 +1977,13 @@ fn detect_conflicts(
                 .to_string(),
                 title: "CS2-Bot-Improver BotRandomizer is installed".to_string(),
                 summary: if runtime_loaded && agent_alignment_enabled {
-                    "A fresh heartbeat shows BotRandomizer loaded while DemoTracer agent alignment is enabled. Both can write bot presentation state; disable one side unless that interaction is intentional."
+                    "A fresh heartbeat shows an additional BotRandomizer loaded while DemoTracer's bundled provider is accepting replay plans. Two cosmetic providers can write the same bot presentation state; keep only the bundled provider."
                         .to_string()
                 } else if runtime_loaded {
-                    "A fresh heartbeat shows BotRandomizer loaded. It can update bot agent models or music kits after handoff; DemoTracer agent alignment is currently not proven to overlap."
+                    "A fresh heartbeat shows an additional BotRandomizer loaded. It can compete with DemoTracer's bundled provider for bot agent, music, inventory, or model state."
                         .to_string()
                 } else {
-                    "BotRandomizer is installed, but loaded state is unverified. It can update bot agent models or music kits after handoff."
+                    "An additional BotRandomizer is installed, but loaded state is unverified. Remove it so the bundled replay-plan provider remains the sole cosmetic writer."
                         .to_string()
                 },
                 evidence_path: plugin.directory.clone(),
@@ -1883,9 +1992,13 @@ fn detect_conflicts(
         }
     }
 
+    let external_bot_randomizer_present = plugins.iter().any(|plugin| {
+        plugin_has_identity(plugin, "botrandomizer") && !is_bundled_bot_randomizer(plugin)
+    });
     let improver_plugins = names
         .iter()
         .filter(|name| BOT_IMPROVER_PLUGIN_NAMES.contains(&name.as_str()))
+        .filter(|name| name.as_str() != "botrandomizer" || external_bot_randomizer_present)
         .cloned()
         .collect::<Vec<_>>();
     let native_present = is_normal_file_below(game_csgo, &controller_path)
@@ -2438,6 +2551,10 @@ mod tests {
             receipt_component("addons/counterstrikesharp/shared/demotracerapi/demotracerapi.dll"),
             Some("demotracer")
         );
+        assert_eq!(
+            receipt_component("addons/counterstrikesharp/plugins/botrandomizer/botrandomizer.dll"),
+            Some("bot_randomizer_managed")
+        );
     }
 
     #[test]
@@ -2460,7 +2577,7 @@ mod tests {
                 "buildId": "fixture",
                 "compatible": true,
                 "requiredCapabilities": {
-                    "mask": "0x1c1ff",
+                    "mask": "0x141ff",
                     "present": true,
                     "missing": "0x0"
                 }
@@ -2469,6 +2586,13 @@ mod tests {
                 "providerApi": 1,
                 "connected": true,
                 "draining": false,
+                "available": true
+            },
+            "botRandomizer": {
+                "providerApi": 2,
+                "ready": true,
+                "draining": false,
+                "replayPlanPrebuildAvailable": true,
                 "available": true
             },
             "cosmetics": {
@@ -2502,6 +2626,9 @@ mod tests {
         assert!(audit.checks.iter().any(|check| {
             check.id == "runtime.botHider" && check.status == DiagnosticStatus::Pass
         }));
+        assert!(audit.checks.iter().any(|check| {
+            check.id == "runtime.botRandomizer" && check.status == DiagnosticStatus::Pass
+        }));
     }
 
     #[test]
@@ -2523,9 +2650,10 @@ mod tests {
                 "capabilities": "0x1ffff",
                 "buildId": "fixture",
                 "compatible": true,
-                "requiredCapabilities": { "mask": "0x1c1ff", "present": true, "missing": "0x0" }
+                "requiredCapabilities": { "mask": "0x141ff", "present": true, "missing": "0x0" }
             },
             "botHider": { "providerApi": 1, "connected": true, "draining": false, "available": true },
+            "botRandomizer": { "providerApi": 2, "ready": true, "draining": false, "replayPlanPrebuildAvailable": true, "available": true },
             "cosmetics": {
                 "alignmentEnabled": false,
                 "weaponsEnabled": false,

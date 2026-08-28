@@ -31,7 +31,7 @@ public sealed partial class DemoTracerPlugin
         string targetItem,
         ReplayWeaponSlot weaponSlot)
     {
-        var weaponName = NormalizeWeaponClassName(weapon.DesignerName);
+        var weaponName = ObservedReplayWeaponClassName(weapon);
         var weaponEntityHandle = weapon.EntityHandle.Raw;
         if (weaponEntityHandle == Utilities.InvalidEHandleIndex ||
             !ReplayWeaponReplacementPolicy.CanReplaceOccupiedWeaponSlot(
@@ -64,7 +64,7 @@ public sealed partial class DemoTracerPlugin
         if (weapon is not { IsValid: true })
             return true;
         if (weapon.EntityHandle.Raw != weaponEntityHandle ||
-            !WeaponClassMatches(weapon.DesignerName, weaponName))
+            !ReplayWeaponMatches(weapon, weaponName))
         {
             Server.PrintToConsole(
                 $"[DTR WARN] detached weapon identity changed slot={player.Slot}:{weaponSlot} item={weaponName}");
@@ -113,7 +113,7 @@ public sealed partial class DemoTracerPlugin
             var weapon = new CHandle<CBasePlayerWeapon>(weaponEntityHandle).Value;
             var identityMatches = weapon is { IsValid: true } &&
                                   weapon.EntityHandle.Raw == weaponEntityHandle &&
-                                  WeaponClassMatches(weapon.DesignerName, weaponName);
+                                  ReplayWeaponMatches(weapon, weaponName);
             if (!identityMatches)
                 return;
 

@@ -21,7 +21,7 @@ public sealed partial class DemoTracerPlugin
         int playerUserId,
         long replayWriteEpoch)
     {
-        var currentItem = NormalizeWeaponClassName(currentWeapon.DesignerName);
+        var currentItem = ObservedReplayWeaponClassName(currentWeapon);
         var currentSlotWeapons = GetWeaponsInReplaySlot(pawn, weaponSlot).ToList();
         if (player.UserId != playerUserId ||
             !IsReplayWriteEpochCurrent(player.Slot, replayWriteEpoch) ||
