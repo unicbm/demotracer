@@ -63,7 +63,7 @@ public sealed class ReplayTeamAvatarPolicyTests
     }
 
     [Fact]
-    public void AvatarOverrideCommandCarriesTheExactSlotForHudUserInfoRefresh()
+    public void HumanAvatarOverrideCommandCarriesTheExactSlotForHudUserInfoRefresh()
     {
         var command = DemoTracerPlugin.BuildAvatarOverrideCommand(
             Team[0],
@@ -72,6 +72,18 @@ public sealed class ReplayTeamAvatarPolicyTests
 
         Assert.Equal(
             $"bc_avatar_override_probe {Team[0]} \"C:/avatar-cache/team.png\" 7",
+            command);
+    }
+
+    [Fact]
+    public void ReplayAvatarOverrideWaitsForBotHiderToPublishUserInfo()
+    {
+        var command = DemoTracerPlugin.BuildAvatarOverrideCommand(
+            Team[0],
+            "C:/avatar-cache/player.png");
+
+        Assert.Equal(
+            $"bc_avatar_override_probe {Team[0]} \"C:/avatar-cache/player.png\"",
             command);
     }
 
