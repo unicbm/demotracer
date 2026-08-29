@@ -2572,7 +2572,7 @@ mod tests {
             "counterStrikeSharpVersion": "1.0.371.0",
             "botController": {
                 "abiMajor": 18,
-                "abiMinor": 35,
+                "abiMinor": 36,
                 "capabilities": "0x1ffff",
                 "buildId": "fixture",
                 "compatible": true,
@@ -2646,7 +2646,7 @@ mod tests {
             "counterStrikeSharpVersion": "1.0.371.0",
             "botController": {
                 "abiMajor": 18,
-                "abiMinor": 35,
+                "abiMinor": 36,
                 "capabilities": "0x1ffff",
                 "buildId": "fixture",
                 "compatible": true,

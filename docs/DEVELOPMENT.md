@@ -47,9 +47,9 @@ CS2-Bot-Improver packages into a DemoTracer bundle.
 
 | Contract | Required value |
 | --- | --- |
-| `.dtr` writer / reader | v9 / v3-v9 |
+| `.dtr` writer / reader | v10 / v3-v10 |
 | Manifest ABI | 17 |
-| BotController native ABI | 18, minor 35+ |
+| BotController native ABI | 18, minor 36+ |
 | BotHider / BotRandomizer API | 1 / 2 |
 | DemoTracer companion API | 7 |
 

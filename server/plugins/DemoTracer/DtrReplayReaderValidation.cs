@@ -36,8 +36,14 @@ internal static partial class DtrReplayReader
         for (var i = 0; i < replay.Subticks.Length; i++)
         {
             var subtick = replay.Subticks[i];
-            if (!float.IsFinite(subtick.When) || subtick.When < 0.0f || subtick.When >= 1.0f)
-                throw new InvalidDataException($"subtick {i} when must be finite and in [0, 1)");
+            var validWhen = float.IsFinite(subtick.When) &&
+                subtick.When < 1.0f &&
+                (replay.Version >= 10 || subtick.When >= 0.0f);
+            if (!validWhen)
+            {
+                var range = replay.Version >= 10 ? "below 1" : "in [0, 1)";
+                throw new InvalidDataException($"subtick {i} when must be finite and {range}");
+            }
             RequireFinite(
                 [subtick.Pressed, subtick.AnalogForward, subtick.AnalogLeft, subtick.PitchDelta, subtick.YawDelta],
                 $"subtick {i}");

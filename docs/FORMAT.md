@@ -94,7 +94,7 @@ attributes. No inspect payload is generated for partial glove evidence.
 | Field | Type | Notes |
 | --- | --- | --- |
 | magic | 8 bytes | `CSDTRREC` |
-| version | `u32` | Current writer emits `9` |
+| version | `u32` | Current writer emits `10` |
 | tick_rate | `f32` | Demo tickrate estimate |
 | round | `u32` | `total_rounds_played` window |
 | side | `u8` | `2=T`, `3=CT`, `0=unknown` |
@@ -290,10 +290,11 @@ must remain separate so releases and short press-release sequences survive.
 | pitch_delta | `f32` |
 | yaw_delta | `f32` |
 
-Source order is preserved for accepted subtick moves. The current DTR playback
-contract only serializes finite `when` values in `[0, 1)` because the matched
-native loader validates that executable range; out-of-range values observed in
-the DEM remain a known source limitation rather than being clamped or reordered.
+Source order is preserved for accepted subtick moves. DTR v10 preserves every
+finite `when < 1` value, including negative engine-authored phases for buffered
+input events that predate the current command window. These values are passed
+through unchanged; they are never clamped, wrapped, or moved to another tick.
+Readers retain the historical `[0, 1)` validation for DTR v3 through v9.
 
 ### `ProjectileEventV4`
 
@@ -381,8 +382,8 @@ Projectile metadata entries contain:
 ## Parser Checklist
 
 1. Read and validate magic `CSDTRREC`.
-2. Require `version == 9` for current writer output, or accept `version == 3`
-   through `8` for backward compatibility.
+2. Require `version == 10` for current writer output, or accept `version == 3`
+   through `9` for backward compatibility.
 3. Read `tick_count`, `subtick_count`, `projectile_count`,
    `play_start_tick_index`, `metadata_json_len`, `map`, and `player_name`. For
    v3, treat `projectile_count` as `0`; for v3/v4, treat
@@ -392,7 +393,7 @@ Projectile metadata entries contain:
 5. For v7+, require snapshot, tick metadata, and subtick sections; require
    projectile/high-fidelity sections when their header counts are non-zero.
    Require snapshot/command section version 1 for v7 and version 2 for v8+.
-   For v9, also require the input-history section and validate its per-tick
+   For v9+, also require the input-history section and validate its per-tick
    counts and attack indexes.
 6. For v3-v6, require legacy `codec == 1`, verify legacy body length, then
    Brotli-decompress exactly `body_compressed_len` bytes.

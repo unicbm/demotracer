@@ -323,6 +323,30 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Fact]
+    public void ReadsV10BackdatedSubtickWhenBitExactly()
+    {
+        const float when = -1.671875f;
+        var path = WriteFile(writer => WriteSingleSubtickReplay(writer, version: 10, when));
+
+        var replay = DtrReplayReader.Read(path);
+
+        Assert.Equal(10U, replay.Version);
+        var subtick = Assert.Single(replay.Subticks);
+        Assert.Equal(BitConverter.SingleToUInt32Bits(when), BitConverter.SingleToUInt32Bits(subtick.When));
+    }
+
+    [Fact]
+    public void RejectsBackdatedSubtickWhenBeforeV10()
+    {
+        var path = WriteFile(writer =>
+            WriteSingleSubtickReplay(writer, version: 9, when: -1.0f / 128.0f));
+
+        var error = Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path));
+
+        Assert.Contains("when must be finite and in [0, 1)", error.Message);
+    }
+
+    [Fact]
     public void ClearsImpossibleSharedSpawnTransitionVelocity()
     {
         var before = new NativeMovementSnapshot
@@ -652,6 +676,53 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         WriteHeaderPrefix(writer, version, tickCount, subtickCount, projectileCount, metadataJsonLength);
         writer.Write((ushort)0);
         writer.Write((ushort)0);
+    }
+
+    private static void WriteSingleSubtickReplay(BinaryWriter writer, uint version, float when)
+    {
+        var snapshots = BuildV2SnapshotPayload(
+            [new NativeMovementSnapshot(), new NativeMovementSnapshot()]);
+        byte[] tickMetadata;
+        using (var stream = new MemoryStream())
+        using (var payload = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+        {
+            payload.Write(-1);
+            payload.Write(1U);
+            payload.Flush();
+            tickMetadata = stream.ToArray();
+        }
+        byte[] subticks;
+        using (var stream = new MemoryStream())
+        using (var payload = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+        {
+            payload.Write(when);
+            payload.Write(8U);
+            payload.Write(1.0f);
+            payload.Write(0.0f);
+            payload.Write(0.0f);
+            payload.Write(0.0f);
+            payload.Write(0.0f);
+            payload.Flush();
+            subticks = stream.ToArray();
+        }
+        byte[] inputHistory;
+        using (var stream = new MemoryStream())
+        using (var payload = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+        {
+            payload.Write(100);
+            payload.Write(-1);
+            payload.Write(-1);
+            payload.Write(0U);
+            payload.Flush();
+            inputHistory = stream.ToArray();
+        }
+
+        WriteCompleteHeader(writer, version, tickCount: 1, subtickCount: 1);
+        writer.Write(4U);
+        WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
+        WriteSection(writer, 2, CodecNone, 1, tickMetadata);
+        WriteSection(writer, 5, CodecNone, 1, subticks);
+        WriteSection(writer, 8, CodecNone, 1, inputHistory);
     }
 
     private static void WriteHeaderPrefix(
