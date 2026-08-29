@@ -854,7 +854,10 @@ impl ParsedPlayerTick {
             (self.buttons, 0, 0)
         };
         let physically_ducked = (self.entity_flags & FL_DUCKING) != 0;
-        let wants_duck = ((buttons | buttons1) & IN_DUCK) != 0;
+        // buttonstate1 is the held-at-command-end plane. buttonstate2 is a
+        // transition plane and can describe a release, so it is not evidence
+        // that duck remains desired.
+        let wants_duck = (buttons & IN_DUCK) != 0;
         let ducked = self.ducked.unwrap_or(physically_ducked);
         let ducking = self.ducking.unwrap_or(wants_duck && !physically_ducked);
         let desires_duck = self.desires_duck.unwrap_or(wants_duck);
@@ -1029,6 +1032,21 @@ mod tests {
         assert_eq!(command.buttons1, 0);
         assert_eq!(command.buttons2, 0);
         assert_ne!(command.fields & COMMAND_FIELD_BUTTONS, 0);
+    }
+
+    #[test]
+    fn duck_release_transition_does_not_count_as_held_desire() {
+        const IN_DUCK: u64 = 1 << 2;
+        let snapshot = ParsedPlayerTick {
+            buttonstates_present: true,
+            buttonstate1: 0,
+            buttonstate2: IN_DUCK,
+            ..ParsedPlayerTick::default()
+        }
+        .snapshot();
+
+        assert_eq!(snapshot.ducking, 0);
+        assert_eq!(snapshot.desires_duck, 0);
     }
 }
 
