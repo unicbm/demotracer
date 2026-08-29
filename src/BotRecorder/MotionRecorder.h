@@ -43,7 +43,7 @@ namespace BotController
 
     struct SubtickMove
     {
-        float when;          // [0,1) time within the tick
+        float when;          // finite engine-relative phase below 1; negative = backdated
         uint32_t button;     // 0 = analog, else engine button bit
         float pressed;       // digital: 1=down 0=up (stored as float)
         float analogForward; // analog_forward_delta

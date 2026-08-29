@@ -63,7 +63,7 @@ namespace
         for (int i = 0; i < subCount; ++i)
         {
             const auto &sub = subs[i];
-            if (!std::isfinite(sub.when) || sub.when < 0.0f || sub.when >= 1.0f ||
+            if (!std::isfinite(sub.when) || sub.when >= 1.0f ||
                 !std::isfinite(sub.pressed) ||
                 !std::isfinite(sub.analogForward) ||
                 !std::isfinite(sub.analogLeft) ||

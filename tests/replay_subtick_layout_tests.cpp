@@ -277,6 +277,19 @@ namespace
               "out-of-range subtick time accepted");
         CheckStagingA(staged);
 
+        const std::vector<SubtickMove> backdatedSubs{Sub(-1.671875f)};
+        ReplayLoadStaging backdatedStaged;
+        Check(TryStageReplayLoad(
+                  validTicks.data(), static_cast<int>(validTicks.size()),
+                  backdatedSubs.data(), static_cast<int>(backdatedSubs.size()),
+                  validCommands.data(), static_cast<int>(validCommands.size()),
+                  validExtras.data(), static_cast<int>(validExtras.size()), backdatedStaged),
+              "backdated engine subtick time rejected");
+        Check(backdatedStaged.subs.size() == 1,
+              "backdated subtick staging count changed");
+        Check(backdatedStaged.subs[0].when == -1.671875f,
+              "backdated subtick time changed during staging");
+
         auto invalidCommands = validCommands;
         invalidCommands[0].fields = 1u << 31;
         Check(!TryStageReplayLoad(
