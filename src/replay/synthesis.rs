@@ -382,7 +382,7 @@ fn sanitize_subticks(
 
 fn subtick_is_valid(subtick: &SubtickMove) -> bool {
     subtick.when.is_finite()
-        && (0.0..1.0).contains(&subtick.when)
+        && subtick.when < 1.0
         && subtick.pressed.is_finite()
         && subtick.analog_forward.is_finite()
         && subtick.analog_left.is_finite()
@@ -619,7 +619,12 @@ mod tests {
     #[test]
     fn synthesis_preserves_wire_order_and_bounds_subticks() {
         let mut r0 = row(10, 7);
-        r0.subtick_moves = vec![subtick(0.7, 2), subtick(1.0, 3), subtick(0.1, 1)];
+        r0.subtick_moves = vec![
+            subtick(-1.0 / 128.0, 4),
+            subtick(0.7, 2),
+            subtick(1.0, 3),
+            subtick(0.1, 1),
+        ];
         r0.subtick_button_truncated = 1;
         let mut r1 = row(11, 7);
         r1.subtick_moves = (0..40).map(|i| subtick(i as f32 / 80.0, i)).collect();
@@ -635,12 +640,14 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(rec.ticks[0].num_subtick, 2);
+        assert_eq!(rec.ticks[0].num_subtick, 3);
         assert_eq!(rec.ticks[1].num_subtick, MAX_SUBTICKS_PER_TICK as u32);
-        assert_eq!(rec.subticks[0].button, 2);
-        assert_eq!(rec.subticks[1].button, 1);
-        assert_eq!(stats.source_subticks, 43);
-        assert_eq!(stats.written_subticks, 38);
+        assert_eq!(rec.subticks[0].when.to_bits(), (-1.0_f32 / 128.0).to_bits());
+        assert_eq!(rec.subticks[0].button, 4);
+        assert_eq!(rec.subticks[1].button, 2);
+        assert_eq!(rec.subticks[2].button, 1);
+        assert_eq!(stats.source_subticks, 44);
+        assert_eq!(stats.written_subticks, 39);
         assert_eq!(stats.ticks_with_source_subticks, 2);
         assert_eq!(stats.ticks_with_written_subticks, 2);
         assert_eq!(stats.dropped_invalid_subticks, 1);

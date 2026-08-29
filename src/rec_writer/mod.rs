@@ -184,7 +184,7 @@ pub fn read_rec_file_with_limits(path: &Path, limits: DtrReadLimits) -> Result<C
 }
 
 pub fn write_rec<W: Write>(writer: &mut W, rec: &Cs2Rec) -> Result<()> {
-    validate_rec_semantics(rec)?;
+    validate_rec_semantics(rec, DTR_FORMAT_VERSION)?;
     validate_subtick_count(rec)?;
     validate_play_start_tick(rec.ticks.len(), rec.header.play_start_tick_index)?;
     validate_snapshot_chain(rec)?;
@@ -402,12 +402,12 @@ fn read_rec_bounded<R: Read>(reader: &mut ReadBudget<R>, limits: DtrReadLimits) 
 }
 
 fn finish_read_rec<R: Read>(reader: &mut ReadBudget<R>, rec: Cs2Rec) -> Result<Cs2Rec> {
-    validate_rec_semantics(&rec)?;
+    validate_rec_semantics(&rec, rec.header.version)?;
     reader.require_eof()?;
     Ok(rec)
 }
 
-fn validate_rec_semantics(rec: &Cs2Rec) -> Result<()> {
+fn validate_rec_semantics(rec: &Cs2Rec, format_version: u32) -> Result<()> {
     if !rec.header.tick_rate.is_finite() || rec.header.tick_rate <= 0.0 {
         return Err(Error::InvalidRec(
             "tick_rate must be finite and positive".to_string(),
@@ -432,9 +432,17 @@ fn validate_rec_semantics(rec: &Cs2Rec) -> Result<()> {
     }
 
     for (index, subtick) in rec.subticks.iter().enumerate() {
-        if !subtick.when.is_finite() || !(0.0..1.0).contains(&subtick.when) {
+        let valid_when = subtick.when.is_finite()
+            && subtick.when < 1.0
+            && (format_version >= 10 || subtick.when >= 0.0);
+        if !valid_when {
             return Err(Error::InvalidRec(format!(
-                "subtick {index} when must be finite and in [0, 1)"
+                "subtick {index} when must be finite and {}",
+                if format_version >= 10 {
+                    "below 1"
+                } else {
+                    "in [0, 1)"
+                }
             )));
         }
         validate_finite_values(
@@ -1717,7 +1725,7 @@ fn require_versioned_section_header_shape(
                 )));
             }
         }
-        (8 | 9, SECTION_VERSION_V2) => {
+        (8 | 9 | 10, SECTION_VERSION_V2) => {
             if expected_elements == 0 && byte_len != 0 {
                 return Err(Error::InvalidRec(format!(
                     "empty {name} section has non-zero byte length {byte_len}"
@@ -2965,6 +2973,34 @@ mod tests {
             parsed.subticks[0].analog_forward.to_bits(),
             (-0.0_f32).to_bits()
         );
+    }
+
+    #[test]
+    fn rec_v10_roundtrips_backdated_subtick_when() {
+        let mut rec = sample_rec();
+        rec.subticks[0].when = -1.671875;
+
+        let mut bytes = Vec::new();
+        write_rec(&mut bytes, &rec).unwrap();
+        let parsed = read_rec(&mut &bytes[..]).unwrap();
+
+        assert_eq!(parsed.header.version, 10);
+        assert_eq!(parsed.subticks[0].when.to_bits(), (-1.671875_f32).to_bits());
+    }
+
+    #[test]
+    fn rec_v9_rejects_backdated_subtick_when() {
+        let mut rec = sample_rec();
+        rec.subticks[0].when = -1.0 / 128.0;
+
+        let mut bytes = Vec::new();
+        write_rec(&mut bytes, &rec).unwrap();
+        bytes[8..12].copy_from_slice(&9_u32.to_le_bytes());
+
+        let err = read_rec(&mut &bytes[..]).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("when must be finite and in [0, 1)"));
     }
 
     #[test]

@@ -10,7 +10,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 pub const DEMOTRACER_ABI: i32 = 17;
-pub const DTR_FORMAT_VERSION: u32 = 9;
+pub const DTR_FORMAT_VERSION: u32 = 10;
 
 pub const COMMAND_FIELD_FORWARD_MOVE: u32 = 1 << 0;
 pub const COMMAND_FIELD_LEFT_MOVE: u32 = 1 << 1;
