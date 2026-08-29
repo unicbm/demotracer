@@ -20,6 +20,7 @@ use ahash::AHashSet;
 use ahash::HashMap;
 use ahash::RandomState;
 use csgoproto::csvc_msg_game_event_list::DescriptorT;
+use csgoproto::{CSubtickMoveStep, CsgoInputHistoryEntryPb};
 use csgoproto::CsvcMsgVoiceData;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -91,6 +92,8 @@ pub struct SecondPassParser<'a> {
     pub order_by_steamid: bool,
     pub last_tick: i32,
     pub parse_usercmd: bool,
+    pub usercmd_input_history_baselines: AHashMap<i32, Vec<CsgoInputHistoryEntryPb>>,
+    pub usercmd_subtick_baselines: AHashMap<i32, Vec<CSubtickMoveStep>>,
     pub list_props: bool,
     pub decode_plan: DecodePlan,
 }
@@ -204,6 +207,8 @@ impl<'a> SecondPassParser<'a> {
             cancelled: first_pass_output.settings.cancelled,
             uniq_prop_names: AHashSet::default(),
             parse_usercmd: contains_usercmd_prop(&first_pass_output.settings.wanted_player_props),
+            usercmd_input_history_baselines: AHashMap::default(),
+            usercmd_subtick_baselines: AHashMap::default(),
             last_tick: 0,
             start_end_offset: start_end_offset,
             order_by_steamid: first_pass_output.order_by_steamid,

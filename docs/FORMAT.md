@@ -272,6 +272,12 @@ This layout is 92 bytes with `Pack=4`.
 | desires_duck | `u8` |
 | actual_move_type | `u8` |
 
+`buttons`, `buttons1`, and `buttons2` store
+`CInButtonStatePB.buttonstate1`, `buttonstate2`, and `buttonstate3` respectively.
+They are three bit planes of one `EInButtonState` code, not interchangeable
+masks. `buttonstate1` is the held-at-command-end plane; the transition planes
+must remain separate so releases and short press-release sequences survive.
+
 ### `SubtickMoveV3`
 
 | Field | Type |
@@ -283,6 +289,11 @@ This layout is 92 bytes with `Pack=4`.
 | analog_left | `f32` |
 | pitch_delta | `f32` |
 | yaw_delta | `f32` |
+
+Source order is preserved for accepted subtick moves. The current DTR playback
+contract only serializes finite `when` values in `[0, 1)` because the matched
+native loader validates that executable range; out-of-range values observed in
+the DEM remain a known source limitation rather than being clamped or reordered.
 
 ### `ProjectileEventV4`
 
@@ -304,7 +315,7 @@ This layout is 92 bytes with `Pack=4`.
 | left_move | `f32` | Present when bit `1` is set |
 | up_move | `f32` | Present when bit `2` is set |
 | view_angles | `f32[3]` | pitch/yaw/roll; present when bit `3` is set |
-| buttons | `u64[3]` | buttonstate0/1/2; present when bit `4` is set |
+| buttons | `u64[3]` | buttonstate1/2/3; present when bit `4` is set |
 | mouse_dx | `i32` | Present with mouse bit `5` |
 | mouse_dy | `i32` | Present with mouse bit `5` |
 | weapon_select | `i32` | Raw demo command value; present when bit `6` is set |

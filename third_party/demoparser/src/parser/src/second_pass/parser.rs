@@ -333,17 +333,40 @@ fn sanitize_codegen_delta_message(mut bytes: &[u8], schema: DeltaMessageSchema) 
     Some(out)
 }
 
-fn decode_codegen_delta_repeated<M>(payloads: &[prost::bytes::Bytes], schema: DeltaMessageSchema) -> Option<Vec<M>>
+struct DecodedRepeatedDelta<M> {
+    state: Vec<M>,
+    updates: Vec<M>,
+}
+
+/// Reconstruct a stateful codegen-delta repeated field while returning only
+/// the elements updated by this command. The leading wire-type 7 key declares
+/// the target list length in its field-number bits. Following length-delimited
+/// fields use their field number as a zero-based element index and may be sparse.
+fn decode_codegen_delta_repeated<M>(
+    payloads: &[prost::bytes::Bytes],
+    schema: DeltaMessageSchema,
+    previous: &[M],
+) -> Option<DecodedRepeatedDelta<M>>
 where
-    M: Message + Default,
+    M: Message + Default + Clone,
 {
-    let mut messages = Vec::new();
+    let mut messages = previous.to_vec();
+    let mut updated_indices = Vec::new();
+    let mut declared_count = None;
     for payload in payloads {
         let mut bytes = payload.as_ref();
-        // The generated delta encoder prefixes a replaced repeated field with
-        // this marker before its zero-based, length-delimited element entries.
-        if bytes.first() == Some(&0x0F) {
-            bytes = &bytes[1..];
+        if !bytes.is_empty() {
+            let mut after_marker = bytes;
+            let marker = read_delta_varint(&mut after_marker)?;
+            if marker & 0x07 == 7 {
+                if declared_count.is_some() {
+                    return None;
+                }
+                let count = usize::try_from(marker >> 3).ok()?;
+                messages.resize(count, M::default());
+                declared_count = Some(count);
+                bytes = after_marker;
+            }
         }
         while !bytes.is_empty() {
             let key = read_delta_varint(&mut bytes)?;
@@ -351,20 +374,27 @@ where
                 return None;
             }
             let index = usize::try_from(key >> 3).ok()?;
-            if index != messages.len() {
-                return None;
-            }
             let length = usize::try_from(read_delta_varint(&mut bytes)?).ok()?;
             if bytes.len() < length {
                 return None;
             }
             let (message, rest) = bytes.split_at(length);
             let message = sanitize_codegen_delta_message(message, schema)?;
-            messages.push(M::decode(message.as_slice()).ok()?);
+            messages.get_mut(index)?.merge(message.as_slice()).ok()?;
+            if !updated_indices.contains(&index) {
+                updated_indices.push(index);
+            }
             bytes = rest;
         }
     }
-    Some(messages)
+    let updates = updated_indices
+        .into_iter()
+        .map(|index| messages[index].clone())
+        .collect();
+    Some(DecodedRepeatedDelta {
+        state: messages,
+        updates,
+    })
 }
 
 #[derive(Debug)]
@@ -609,6 +639,7 @@ impl<'a> SecondPassParser<'a> {
             _ => return Ok(()),
         };
         for cmd in msg.commands {
+            let player_slot = cmd.player_slot();
             if let Some(delta_data) = cmd.delta_data.as_ref().filter(|data| !data.is_empty()) {
                 let sanitized = match sanitize_codegen_delta_message(delta_data.as_ref(), DeltaMessageSchema::CsgoUserCmd) {
                     Some(value) => value,
@@ -618,13 +649,19 @@ impl<'a> SecondPassParser<'a> {
                     Ok(value) => value,
                     Err(_) => continue,
                 };
-                self.apply_delta_user_cmd(user_cmd, cmd.player_slot());
+                self.apply_delta_user_cmd(user_cmd, player_slot);
                 continue;
             }
             let user_cmd = match CsgoUserCmdPb::decode(cmd.data()) {
                 Ok(m) => m,
                 _ => return Ok(()),
             };
+
+            self.usercmd_input_history_baselines.insert(player_slot, user_cmd.input_history.clone());
+            self.usercmd_subtick_baselines.insert(
+                player_slot,
+                user_cmd.base.as_ref().map(|base| base.subtick_moves.clone()).unwrap_or_default(),
+            );
 
             let left_hand_desired = user_cmd.left_hand_desired();
             let attack1_start_history_index =
@@ -691,8 +728,18 @@ impl<'a> SecondPassParser<'a> {
     }
 
     fn apply_delta_user_cmd(&mut self, user_cmd: DeltaCsgoUserCmdPb, player_slot: i32) {
-        let input_history = decode_codegen_delta_repeated::<CsgoInputHistoryEntryPb>(&user_cmd.input_history_delta, DeltaMessageSchema::InputHistory)
-            .unwrap_or_default()
+        let previous_input_history = self.usercmd_input_history_baselines.get(&player_slot).cloned().unwrap_or_default();
+        let decoded_input_history = decode_codegen_delta_repeated::<CsgoInputHistoryEntryPb>(
+            &user_cmd.input_history_delta,
+            DeltaMessageSchema::InputHistory,
+            &previous_input_history,
+        )
+        .unwrap_or(DecodedRepeatedDelta {
+            state: previous_input_history,
+            updates: Vec::new(),
+        });
+        self.usercmd_input_history_baselines.insert(player_slot, decoded_input_history.state.clone());
+        let input_history = decoded_input_history.state
             .into_iter()
             .map(parse_input_history)
             .collect();
@@ -702,8 +749,18 @@ impl<'a> SecondPassParser<'a> {
         let Some(base) = user_cmd.base else {
             return;
         };
-        let subtick_moves = decode_codegen_delta_repeated::<CSubtickMoveStep>(&base.subtick_moves_delta, DeltaMessageSchema::SubtickMove)
-            .unwrap_or_default()
+        let previous_subticks = self.usercmd_subtick_baselines.get(&player_slot).cloned().unwrap_or_default();
+        let decoded_subticks = decode_codegen_delta_repeated::<CSubtickMoveStep>(
+            &base.subtick_moves_delta,
+            DeltaMessageSchema::SubtickMove,
+            &previous_subticks,
+        )
+        .unwrap_or(DecodedRepeatedDelta {
+            state: previous_subticks,
+            updates: Vec::new(),
+        });
+        self.usercmd_subtick_baselines.insert(player_slot, decoded_subticks.state);
+        let subtick_moves = decoded_subticks.updates
             .into_iter()
             .map(|subtick| UserCmdSubtickMove {
                 when: subtick.when(),
@@ -908,7 +965,13 @@ mod delta_usercmd_tests {
         assert_eq!(buttons.buttonstate2, Some(0x400));
         assert_eq!(base.leftmove, Some(-1.0));
 
-        let subticks = decode_codegen_delta_repeated::<CSubtickMoveStep>(&base.subtick_moves_delta, DeltaMessageSchema::SubtickMove).unwrap();
+        let subticks = decode_codegen_delta_repeated::<CSubtickMoveStep>(
+            &base.subtick_moves_delta,
+            DeltaMessageSchema::SubtickMove,
+            &[],
+        )
+        .unwrap()
+        .updates;
         assert_eq!(subticks.len(), 1);
         assert_eq!(subticks[0].button(), 0x400);
         assert!(subticks[0].pressed());
@@ -916,9 +979,67 @@ mod delta_usercmd_tests {
     }
 
     #[test]
-    fn rejects_nonsequential_codegen_delta_repeated_entries() {
-        let payload = prost::bytes::Bytes::from_static(&[0x0A, 0x00]);
-        assert!(decode_codegen_delta_repeated::<CSubtickMoveStep>(&[payload], DeltaMessageSchema::SubtickMove,).is_none());
+    fn repeated_delta_marker_declares_more_than_one_subtick() {
+        let payload = prost::bytes::Bytes::from_static(&[
+            0x17, 0x02, 0x09, 0x08, 0x01, 0x10, 0x01, 0x1d, 0x00, 0x00, 0xb0, 0x3e, 0x0a,
+            0x0a, 0x08, 0x80, 0x10, 0x10, 0x01, 0x1d, 0x00, 0x00, 0xb0, 0x3e,
+        ]);
+        let decoded = decode_codegen_delta_repeated::<CSubtickMoveStep>(
+            &[payload],
+            DeltaMessageSchema::SubtickMove,
+            &[],
+        )
+        .unwrap();
+        assert_eq!(decoded.state.len(), 2);
+        assert_eq!(decoded.updates.len(), 2);
+        assert_eq!(decoded.state[0].button, Some(1));
+        assert_eq!(decoded.state[1].button, Some(2048));
+    }
+
+    #[test]
+    fn repeated_delta_allows_sparse_later_indices_and_keeps_baseline_fields() {
+        let previous = vec![
+            CSubtickMoveStep::default(),
+            CSubtickMoveStep {
+                button: Some(2),
+                pressed: Some(true),
+                ..CSubtickMoveStep::default()
+            },
+        ];
+        let payload = prost::bytes::Bytes::from_static(&[0x1f, 0x12, 0x02, 0x08, 0x04]);
+        let decoded = decode_codegen_delta_repeated::<CSubtickMoveStep>(
+            &[payload],
+            DeltaMessageSchema::SubtickMove,
+            &previous,
+        )
+        .unwrap();
+        assert_eq!(decoded.state.len(), 3);
+        assert_eq!(decoded.updates.len(), 1);
+        assert_eq!(decoded.state[1].button, Some(2));
+        assert_eq!(decoded.state[1].pressed, Some(true));
+        assert_eq!(decoded.state[2].button, Some(4));
+        assert_eq!(decoded.updates[0].button, Some(4));
+    }
+
+    #[test]
+    fn repeated_delta_merges_partial_updates_into_existing_elements() {
+        let previous = vec![CSubtickMoveStep {
+            button: Some(2),
+            pressed: Some(true),
+            when: Some(0.25),
+            ..CSubtickMoveStep::default()
+        }];
+        let payload = prost::bytes::Bytes::from_static(&[0x0f, 0x02, 0x02, 0x08, 0x04]);
+        let decoded = decode_codegen_delta_repeated::<CSubtickMoveStep>(
+            &[payload],
+            DeltaMessageSchema::SubtickMove,
+            &previous,
+        )
+        .unwrap();
+        assert_eq!(decoded.state[0].button, Some(4));
+        assert_eq!(decoded.state[0].pressed, Some(true));
+        assert_eq!(decoded.state[0].when, Some(0.25));
+        assert_eq!(decoded.updates, decoded.state);
     }
 
     #[test]

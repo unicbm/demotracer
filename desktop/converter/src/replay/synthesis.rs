@@ -369,7 +369,6 @@ fn sanitize_subticks(
         }
     }
 
-    valid.sort_by(|a, b| a.when.total_cmp(&b.when));
     if valid.len() > MAX_SUBTICKS_PER_TICK {
         stats.dropped_overflow_subticks += valid.len() - MAX_SUBTICKS_PER_TICK;
         valid.truncate(MAX_SUBTICKS_PER_TICK);
@@ -618,7 +617,7 @@ mod tests {
     }
 
     #[test]
-    fn synthesis_writes_sorted_and_bounded_subticks() {
+    fn synthesis_preserves_wire_order_and_bounds_subticks() {
         let mut r0 = row(10, 7);
         r0.subtick_moves = vec![subtick(0.7, 2), subtick(1.0, 3), subtick(0.1, 1)];
         r0.subtick_button_truncated = 1;
@@ -638,8 +637,8 @@ mod tests {
 
         assert_eq!(rec.ticks[0].num_subtick, 2);
         assert_eq!(rec.ticks[1].num_subtick, MAX_SUBTICKS_PER_TICK as u32);
-        assert_eq!(rec.subticks[0].button, 1);
-        assert_eq!(rec.subticks[1].button, 2);
+        assert_eq!(rec.subticks[0].button, 2);
+        assert_eq!(rec.subticks[1].button, 1);
         assert_eq!(stats.source_subticks, 43);
         assert_eq!(stats.written_subticks, 38);
         assert_eq!(stats.ticks_with_source_subticks, 2);
