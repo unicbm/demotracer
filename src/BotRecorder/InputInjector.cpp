@@ -10,6 +10,7 @@
 #include "sig_scan.h"
 #include "MotionRecorder.h"
 #include "ReplayPawnEquipment.h"
+#include "ReplaySubtickLayout.h"
 #include "projectile_birth_align.h"
 #include "version_targets.h"
 #include "hook.h"
@@ -688,7 +689,8 @@ namespace BotController
                                 const SubtickMove &subtick = frame.subticks[i];
                                 CSubtickMoveStep *m = base->add_subtick_moves();
                                 MotionRecorder::AddReplayPerf(MotionRecorder::ReplayPerfCounter::SubticksAdded);
-                                m->set_when(subtick.when);
+                                m->set_when(
+                                    ReplaySubtickLayout::ProjectSubtickWhenForEngine(subtick.when));
                                 m->set_button(subtick.button);
                                 if (subtick.button != 0) // digital press/release
                                     m->set_pressed(subtick.pressed != 0.0f);
