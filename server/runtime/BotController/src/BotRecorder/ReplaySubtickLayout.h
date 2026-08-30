@@ -11,6 +11,14 @@ namespace BotController
 {
     namespace ReplaySubtickLayout
     {
+        // DTR v10 preserves signed demo-relative phases as evidence, but the
+        // live CS2 CSubtickMoveStepPB domain starts at zero. Keep the recorded
+        // value untouched in staging and project only at the engine boundary.
+        constexpr float ProjectSubtickWhenForEngine(float recordedWhen) noexcept
+        {
+            return recordedWhen <= 0.0f ? 0.0f : recordedWhen;
+        }
+
         struct ReplayLoadStaging
         {
             std::vector<ReplayTick> ticks;

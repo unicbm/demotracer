@@ -292,8 +292,10 @@ must remain separate so releases and short press-release sequences survive.
 
 Source order is preserved for accepted subtick moves. DTR v10 preserves every
 finite `when < 1` value, including negative engine-authored phases for buffered
-input events that predate the current command window. These values are passed
-through unchanged; they are never clamped, wrapped, or moved to another tick.
+input events that predate the current command window. The file reader and
+native staging buffers retain those signed values unchanged. Live playback
+projects negative phases to `0` only when building CS2's `CSubtickMoveStepPB`,
+whose accepted `when` domain is `[0, 1)`; the stored evidence is not rewritten.
 Readers retain the historical `[0, 1)` validation for DTR v3 through v9.
 
 ### `ProjectileEventV4`

@@ -12,6 +12,7 @@ namespace
     using BotController::ReplayMovementExtra;
     using BotController::ReplayInputHistoryEntry;
     using BotController::ReplayInputHistoryTick;
+    using BotController::ReplaySubtickLayout::ProjectSubtickWhenForEngine;
     using BotController::ReplaySubtickLayout::ReplayLoadStaging;
     using BotController::ReplaySubtickLayout::TryBuildReplaySubtickOffsets;
     using BotController::ReplaySubtickLayout::TryGetReplaySubtickRange;
@@ -93,6 +94,18 @@ namespace
                   ticks.data(), ticks.size(), offsets, 37, 1, begin, end),
               "valid range rejected");
         Check(begin == 0 && end == 36, "valid range is wrong");
+    }
+
+    void TestEngineWhenProjection()
+    {
+        Check(ProjectSubtickWhenForEngine(-1.671875f) == 0.0f,
+              "backdated subtick phase reached the engine unchanged");
+        Check(ProjectSubtickWhenForEngine(-0.0f) == 0.0f,
+              "negative zero subtick phase was not normalized");
+        Check(ProjectSubtickWhenForEngine(0.0f) == 0.0f,
+              "zero subtick phase changed");
+        Check(ProjectSubtickWhenForEngine(0.984375f) == 0.984375f,
+              "valid positive subtick phase changed");
     }
 
     void TestZeroTickLayout()
@@ -344,6 +357,7 @@ namespace
 int main()
 {
     TestValidOffsetsAndRanges();
+    TestEngineWhenProjection();
     TestZeroTickLayout();
     TestInvalidBuildPreservesOutput();
     TestInvalidRangesPreserveOutput();
