@@ -87,6 +87,17 @@ if ($econIndexSource -match 'Assembly\.Location') {
     $errors.Add("replay equipment catalog must load only from the explicit module directory")
 }
 
+$startupLeaseFiles = @(
+    "DemoTracerBotHiderPresentation.cs",
+    "DemoTracerBotRandomizerCosmeticLease.cs"
+)
+foreach ($fileName in $startupLeaseFiles) {
+    $leaseSource = [System.IO.File]::ReadAllText((Join-Path $sourceRoot $fileName))
+    if ($leaseSource -match '\bServer\.CurrentTime\b') {
+        $errors.Add("$fileName is reachable from OnAllPluginsLoaded and must not read Server.CurrentTime")
+    }
+}
+
 $apiProject = [System.IO.File]::ReadAllText(
     (Join-Path $RepoRoot "server\plugins\DemoTracerApi\DemoTracerApi.csproj"))
 if ($apiProject -match '<PackageReference' -or $apiProject -match '<ProjectReference') {

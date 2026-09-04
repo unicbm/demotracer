@@ -126,14 +126,16 @@ internal sealed class DemoTracerBotRandomizerPlanSnapshot
 
 public sealed partial class DemoTracerPlugin
 {
-    private const float BotRandomizerLeaseHeartbeatSeconds = 1.0f;
-    private const float BotRandomizerLeaseRetrySeconds = 1.0f;
+    // OnAllPluginsLoaded can run before StartupServer exposes CGlobalVars, so
+    // lease maintenance must use a process-monotonic clock rather than game time.
+    private const long BotRandomizerLeaseHeartbeatMilliseconds = 1_000;
+    private const long BotRandomizerLeaseRetryMilliseconds = 1_000;
     private readonly DemoTracerBotRandomizerBridge _botRandomizerBridge = new();
     private readonly DemoTracerBotRandomizerPlanSnapshot _botRandomizerLease = new();
     private string _botRandomizerLeaseSignature = string.Empty;
     private string _lastBotRandomizerLeaseError = string.Empty;
-    private float _nextBotRandomizerLeaseHeartbeatAt;
-    private float _nextBotRandomizerLeaseRetryAt;
+    private long _nextBotRandomizerLeaseHeartbeatAtMilliseconds;
+    private long _nextBotRandomizerLeaseRetryAtMilliseconds;
     private int _botRandomizerLeaseTransitionDepth;
 
     private void BeginBotRandomizerCosmeticLeaseTransition() => _botRandomizerLeaseTransitionDepth++;
@@ -151,9 +153,10 @@ public sealed partial class DemoTracerPlugin
             return;
 
         if (!string.IsNullOrWhiteSpace(_botRandomizerLease.Token) &&
-            Server.CurrentTime >= _nextBotRandomizerLeaseHeartbeatAt)
+            Environment.TickCount64 >= _nextBotRandomizerLeaseHeartbeatAtMilliseconds)
         {
-            _nextBotRandomizerLeaseHeartbeatAt = Server.CurrentTime + BotRandomizerLeaseHeartbeatSeconds;
+            _nextBotRandomizerLeaseHeartbeatAtMilliseconds =
+                Environment.TickCount64 + BotRandomizerLeaseHeartbeatMilliseconds;
             if (!ProviderEpochMatchesActiveBotRandomizerLease() ||
                 !_botRandomizerBridge.Heartbeat(_botRandomizerLease.Token))
             {
@@ -161,7 +164,7 @@ public sealed partial class DemoTracerPlugin
             }
         }
 
-        if (Server.CurrentTime >= _nextBotRandomizerLeaseRetryAt &&
+        if (Environment.TickCount64 >= _nextBotRandomizerLeaseRetryAtMilliseconds &&
             (string.IsNullOrWhiteSpace(_botRandomizerLease.Token) ||
              !string.IsNullOrWhiteSpace(_lastBotRandomizerLeaseError)))
         {
@@ -180,7 +183,8 @@ public sealed partial class DemoTracerPlugin
             !provider.Ready || provider.Draining)
         {
             InvalidateBotRandomizerCosmeticLease("provider_unavailable");
-            _nextBotRandomizerLeaseRetryAt = Server.CurrentTime + BotRandomizerLeaseRetrySeconds;
+            _nextBotRandomizerLeaseRetryAtMilliseconds =
+                Environment.TickCount64 + BotRandomizerLeaseRetryMilliseconds;
             ReportBotRandomizerLeaseError("provider_unavailable", announce);
             return false;
         }
@@ -202,7 +206,8 @@ public sealed partial class DemoTracerPlugin
             (!provider.WeaponPrebuildAvailable || !provider.ReplayPlanPrebuildAvailable))
         {
             InvalidateBotRandomizerCosmeticLease("replay_prebuild_unavailable");
-            _nextBotRandomizerLeaseRetryAt = Server.CurrentTime + BotRandomizerLeaseRetrySeconds;
+            _nextBotRandomizerLeaseRetryAtMilliseconds =
+                Environment.TickCount64 + BotRandomizerLeaseRetryMilliseconds;
             ReportBotRandomizerLeaseError("replay_prebuild_unavailable", announce);
             return false;
         }
@@ -239,7 +244,8 @@ public sealed partial class DemoTracerPlugin
                 _botRandomizerLease.Invalidate();
                 _botRandomizerLeaseSignature = string.Empty;
             }
-            _nextBotRandomizerLeaseRetryAt = Server.CurrentTime + BotRandomizerLeaseRetrySeconds;
+            _nextBotRandomizerLeaseRetryAtMilliseconds =
+                Environment.TickCount64 + BotRandomizerLeaseRetryMilliseconds;
             ReportBotRandomizerLeaseError(result.Reason, announce);
             return false;
         }
@@ -247,8 +253,9 @@ public sealed partial class DemoTracerPlugin
         _botRandomizerLease.Activate(result.PlanToken, result.ProviderEpoch, requests);
         _botRandomizerLeaseSignature = signature;
         _lastBotRandomizerLeaseError = string.Empty;
-        _nextBotRandomizerLeaseHeartbeatAt = Server.CurrentTime + BotRandomizerLeaseHeartbeatSeconds;
-        _nextBotRandomizerLeaseRetryAt = 0.0f;
+        _nextBotRandomizerLeaseHeartbeatAtMilliseconds =
+            Environment.TickCount64 + BotRandomizerLeaseHeartbeatMilliseconds;
+        _nextBotRandomizerLeaseRetryAtMilliseconds = 0;
         foreach (var slot in result.Slots)
             QueueLoadedReplayCosmeticAlignmentForSlot(slot);
         if (announce)
@@ -463,8 +470,8 @@ public sealed partial class DemoTracerPlugin
         var hadActiveLease = !string.IsNullOrWhiteSpace(_botRandomizerLease.Token);
         _botRandomizerLease.Invalidate();
         _botRandomizerLeaseSignature = string.Empty;
-        _nextBotRandomizerLeaseHeartbeatAt = 0.0f;
-        _nextBotRandomizerLeaseRetryAt = Server.CurrentTime;
+        _nextBotRandomizerLeaseHeartbeatAtMilliseconds = 0;
+        _nextBotRandomizerLeaseRetryAtMilliseconds = Environment.TickCount64;
         if (hadActiveLease)
             Server.PrintToConsole($"dtr: BotRandomizer replay plan invalidated reason={reason}");
     }
@@ -478,8 +485,8 @@ public sealed partial class DemoTracerPlugin
         _botRandomizerLease.Invalidate();
         _botRandomizerLeaseSignature = string.Empty;
         _lastBotRandomizerLeaseError = string.Empty;
-        _nextBotRandomizerLeaseHeartbeatAt = 0.0f;
-        _nextBotRandomizerLeaseRetryAt = 0.0f;
+        _nextBotRandomizerLeaseHeartbeatAtMilliseconds = 0;
+        _nextBotRandomizerLeaseRetryAtMilliseconds = 0;
         if (string.IsNullOrWhiteSpace(token))
             return;
 

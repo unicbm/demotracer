@@ -14,15 +14,17 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
-    private const float BotHiderLeaseHeartbeatSeconds = 1.0f;
-    private const float BotHiderLeaseRetrySeconds = 1.0f;
+    // OnAllPluginsLoaded can run before StartupServer exposes CGlobalVars, so
+    // lease maintenance must use a process-monotonic clock rather than game time.
+    private const long BotHiderLeaseHeartbeatMilliseconds = 1_000;
+    private const long BotHiderLeaseRetryMilliseconds = 1_000;
     private readonly Dictionary<int, BotHiderPresentationEvidence> _retainedBotHiderPresentation = new();
     private readonly Dictionary<int, ulong> _activeBotHiderReplaySteamIds = new();
     private string _botHiderPresentationLeaseToken = string.Empty;
     private string _botHiderPresentationSignature = string.Empty;
     private string _lastBotHiderPresentationError = string.Empty;
-    private float _nextBotHiderLeaseHeartbeatAt;
-    private float _nextBotHiderLeaseRetryAt;
+    private long _nextBotHiderLeaseHeartbeatAtMilliseconds;
+    private long _nextBotHiderLeaseRetryAtMilliseconds;
     private int _botHiderPresentationTransitionDepth;
     private bool _botHiderAvatarIdentityReassertScheduled;
 
@@ -54,19 +56,20 @@ public sealed partial class DemoTracerPlugin
         }
 
         if (!string.IsNullOrWhiteSpace(_botHiderPresentationLeaseToken) &&
-            Server.CurrentTime >= _nextBotHiderLeaseHeartbeatAt)
+            Environment.TickCount64 >= _nextBotHiderLeaseHeartbeatAtMilliseconds)
         {
-            _nextBotHiderLeaseHeartbeatAt = Server.CurrentTime + BotHiderLeaseHeartbeatSeconds;
+            _nextBotHiderLeaseHeartbeatAtMilliseconds =
+                Environment.TickCount64 + BotHiderLeaseHeartbeatMilliseconds;
             if (!_botHiderBridge.Heartbeat(_botHiderPresentationLeaseToken))
             {
                 _botHiderPresentationLeaseToken = string.Empty;
                 _botHiderPresentationSignature = string.Empty;
                 _activeBotHiderReplaySteamIds.Clear();
-                _nextBotHiderLeaseRetryAt = Server.CurrentTime;
+                _nextBotHiderLeaseRetryAtMilliseconds = Environment.TickCount64;
             }
         }
 
-        if (Server.CurrentTime >= _nextBotHiderLeaseRetryAt &&
+        if (Environment.TickCount64 >= _nextBotHiderLeaseRetryAtMilliseconds &&
             (string.IsNullOrWhiteSpace(_botHiderPresentationLeaseToken) ||
              !string.IsNullOrWhiteSpace(_lastBotHiderPresentationError)))
         {
@@ -90,7 +93,8 @@ public sealed partial class DemoTracerPlugin
         if (!_botHiderBridge.IsAvailable())
         {
             ReleaseBotHiderPresentationLease("provider_unavailable");
-            _nextBotHiderLeaseRetryAt = Server.CurrentTime + BotHiderLeaseRetrySeconds;
+            _nextBotHiderLeaseRetryAtMilliseconds =
+                Environment.TickCount64 + BotHiderLeaseRetryMilliseconds;
             ReportBotHiderPresentationError("provider_unavailable", announce);
             return false;
         }
@@ -99,7 +103,8 @@ public sealed partial class DemoTracerPlugin
         if (requests.Length == 0)
         {
             ReleaseBotHiderPresentationLease("no_managed_override_slots");
-            _nextBotHiderLeaseRetryAt = Server.CurrentTime + BotHiderLeaseRetrySeconds;
+            _nextBotHiderLeaseRetryAtMilliseconds =
+                Environment.TickCount64 + BotHiderLeaseRetryMilliseconds;
             ReportBotHiderPresentationError("no_managed_override_slots", announce);
             return false;
         }
@@ -112,8 +117,9 @@ public sealed partial class DemoTracerPlugin
             if (_botHiderBridge.Heartbeat(_botHiderPresentationLeaseToken))
             {
                 _lastBotHiderPresentationError = string.Empty;
-                _nextBotHiderLeaseRetryAt = 0.0f;
-                _nextBotHiderLeaseHeartbeatAt = Server.CurrentTime + BotHiderLeaseHeartbeatSeconds;
+                _nextBotHiderLeaseRetryAtMilliseconds = 0;
+                _nextBotHiderLeaseHeartbeatAtMilliseconds =
+                    Environment.TickCount64 + BotHiderLeaseHeartbeatMilliseconds;
                 return true;
             }
 
@@ -123,7 +129,7 @@ public sealed partial class DemoTracerPlugin
             _botHiderPresentationLeaseToken = string.Empty;
             _botHiderPresentationSignature = string.Empty;
             _activeBotHiderReplaySteamIds.Clear();
-            _nextBotHiderLeaseHeartbeatAt = 0.0f;
+            _nextBotHiderLeaseHeartbeatAtMilliseconds = 0;
         }
 
         BotHiderPresentationLeaseResult result;
@@ -164,7 +170,8 @@ public sealed partial class DemoTracerPlugin
 
         if (!result.Ok)
         {
-            _nextBotHiderLeaseRetryAt = Server.CurrentTime + BotHiderLeaseRetrySeconds;
+            _nextBotHiderLeaseRetryAtMilliseconds =
+                Environment.TickCount64 + BotHiderLeaseRetryMilliseconds;
             ReportBotHiderPresentationError(result.Reason, announce);
             return false;
         }
@@ -178,8 +185,9 @@ public sealed partial class DemoTracerPlugin
                 _activeBotHiderReplaySteamIds[request.Slot] = steamId;
         }
         _lastBotHiderPresentationError = string.Empty;
-        _nextBotHiderLeaseHeartbeatAt = Server.CurrentTime + BotHiderLeaseHeartbeatSeconds;
-        _nextBotHiderLeaseRetryAt = 0.0f;
+        _nextBotHiderLeaseHeartbeatAtMilliseconds =
+            Environment.TickCount64 + BotHiderLeaseHeartbeatMilliseconds;
+        _nextBotHiderLeaseRetryAtMilliseconds = 0;
         if (announce)
         {
             Server.PrintToConsole(
@@ -435,8 +443,8 @@ public sealed partial class DemoTracerPlugin
         _botHiderPresentationLeaseToken = string.Empty;
         _botHiderPresentationSignature = string.Empty;
         _activeBotHiderReplaySteamIds.Clear();
-        _nextBotHiderLeaseHeartbeatAt = 0.0f;
-        _nextBotHiderLeaseRetryAt = 0.0f;
+        _nextBotHiderLeaseHeartbeatAtMilliseconds = 0;
+        _nextBotHiderLeaseRetryAtMilliseconds = 0;
         if (string.IsNullOrWhiteSpace(token))
             return;
 
@@ -486,7 +494,7 @@ public sealed partial class DemoTracerPlugin
             _botHiderPresentationLeaseToken = string.Empty;
             _botHiderPresentationSignature = string.Empty;
             _activeBotHiderReplaySteamIds.Clear();
-            _nextBotHiderLeaseRetryAt = Server.CurrentTime;
+            _nextBotHiderLeaseRetryAtMilliseconds = Environment.TickCount64;
             return false;
         }
         return true;
