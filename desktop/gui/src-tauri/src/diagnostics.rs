@@ -526,7 +526,11 @@ fn inspect_cs2_install_for(requested_path: &str) -> CommandResult<EnvironmentDia
         &mut checks,
         runtime_audit.loaded_plugin_directories.as_ref(),
     );
-    checks.push(bot_improver_behavior_check(game_csgo, &plugins, &receipt_audit));
+    checks.push(bot_improver_behavior_check(
+        game_csgo,
+        &plugins,
+        &receipt_audit,
+    ));
     let conflicts = detect_conflicts(game_csgo, &plugins, &receipt_audit, &runtime_audit);
     let overall = overall_status(&checks, &conflicts);
 
@@ -1518,8 +1522,10 @@ fn contract_errors(receipt: &InstallReceiptWire) -> Vec<String> {
     }
     if actual.bot_controller.public_control_api != expected.bot_controller.public_control_api
         || actual.bot_controller.replay_tick_bytes != expected.bot_controller.replay_tick_bytes
-        || actual.bot_controller.replay_tick_event_tail != expected.bot_controller.replay_tick_event_tail
-        || actual.bot_controller.managed_provider_version != expected.bot_controller.managed_provider_version
+        || actual.bot_controller.replay_tick_event_tail
+            != expected.bot_controller.replay_tick_event_tail
+        || actual.bot_controller.managed_provider_version
+            != expected.bot_controller.managed_provider_version
     {
         errors.push("BotController public provider or replay tick contract differs".to_string());
     }
@@ -1802,7 +1808,11 @@ fn is_verified_provider(
     receipt.summary.verified == Some(true)
         && !receipt.component_mismatches.contains(component)
         && path_key(Path::new(&plugin.directory))
-            == path_key(&game_csgo.join("addons/counterstrikesharp/plugins").join(directory))
+            == path_key(
+                &game_csgo
+                    .join("addons/counterstrikesharp/plugins")
+                    .join(directory),
+            )
 }
 
 fn detect_conflicts(
@@ -1813,7 +1823,13 @@ fn detect_conflicts(
 ) -> Vec<DiagnosticConflictDto> {
     let mut conflicts = Vec::new();
     let is_bundled_bot_randomizer = |plugin: &CssPluginDto| {
-        is_verified_provider(game_csgo, plugin, receipt, "BotRandomizer", "bot_randomizer_managed")
+        is_verified_provider(
+            game_csgo,
+            plugin,
+            receipt,
+            "BotRandomizer",
+            "bot_randomizer_managed",
+        )
     };
     let names = plugins
         .iter()
@@ -1822,12 +1838,18 @@ fn detect_conflicts(
 
     let controller_path = game_csgo.join("addons/BotController/bin/win64/BotController.dll");
     let hider_path = game_csgo.join("addons/BotHider/bin/win64/BotHider.dll");
-    let unverified_controller = plugins
-        .iter()
-        .find(|plugin| plugin_has_identity(plugin, "botcontrollerimpl")
-            && !is_verified_provider(game_csgo, plugin, receipt, "BotControllerImpl", "bot_controller"));
-    let controller_impl_path = unverified_controller
-        .and_then(|plugin| plugin_dll_path(plugin, "botcontrollerimpl"));
+    let unverified_controller = plugins.iter().find(|plugin| {
+        plugin_has_identity(plugin, "botcontrollerimpl")
+            && !is_verified_provider(
+                game_csgo,
+                plugin,
+                receipt,
+                "BotControllerImpl",
+                "bot_controller",
+            )
+    });
+    let controller_impl_path =
+        unverified_controller.and_then(|plugin| plugin_dll_path(plugin, "botcontrollerimpl"));
     let known_improver_controller = matches_file_fingerprint(
         game_csgo,
         &controller_path,
@@ -1921,7 +1943,13 @@ fn detect_conflicts(
         if plugin_has_identity(plugin, "demotracerbothider")
             || plugin_has_identity(plugin, "bothider")
             || (plugin_has_identity(plugin, "bothiderimpl")
-                && !is_verified_provider(game_csgo, plugin, receipt, "BotHiderImpl", "bot_hider_managed"))
+                && !is_verified_provider(
+                    game_csgo,
+                    plugin,
+                    receipt,
+                    "BotHiderImpl",
+                    "bot_hider_managed",
+                ))
         {
             conflicts.push(DiagnosticConflictDto {
                 rule_id: "duplicate_bot_hider_publisher".to_string(),
@@ -2096,9 +2124,21 @@ fn bot_improver_behavior_check(
         plugin_has_identity(plugin, "bothider")
             || plugin_has_identity(plugin, "demotracerbothider")
             || (plugin_has_identity(plugin, "botcontrollerimpl")
-                && !is_verified_provider(game_csgo, plugin, receipt, "BotControllerImpl", "bot_controller"))
+                && !is_verified_provider(
+                    game_csgo,
+                    plugin,
+                    receipt,
+                    "BotControllerImpl",
+                    "bot_controller",
+                ))
             || (plugin_has_identity(plugin, "bothiderimpl")
-                && !is_verified_provider(game_csgo, plugin, receipt, "BotHiderImpl", "bot_hider_managed"))
+                && !is_verified_provider(
+                    game_csgo,
+                    plugin,
+                    receipt,
+                    "BotHiderImpl",
+                    "bot_hider_managed",
+                ))
     });
     let supported_static_shape = !behavior_plugins.is_empty()
         && !legacy_bridge_present
@@ -2530,8 +2570,11 @@ mod tests {
         let game_csgo = tree.game_csgo();
         let plugin = |directory: &str, assembly: &str| CssPluginDto {
             name: directory.to_string(),
-            directory: game_csgo.join("addons/counterstrikesharp/plugins")
-                .join(directory).display().to_string(),
+            directory: game_csgo
+                .join("addons/counterstrikesharp/plugins")
+                .join(directory)
+                .display()
+                .to_string(),
             assembly_files: vec![format!("{assembly}.dll")],
             classification: "unknown".to_string(),
             runtime_state: "unknown".to_string(),
@@ -2543,25 +2586,45 @@ mod tests {
             plugin("BotHiderImpl", "BotHiderImpl"),
             plugin("BotState", "BotState"),
         ];
-        assert!(detect_conflicts(&game_csgo, &matched, &receipt, &RuntimeAudit::default()).is_empty());
-        assert_eq!(bot_improver_behavior_check(&game_csgo, &matched, &receipt).status, DiagnosticStatus::Pass);
+        assert!(
+            detect_conflicts(&game_csgo, &matched, &receipt, &RuntimeAudit::default()).is_empty()
+        );
+        assert_eq!(
+            bot_improver_behavior_check(&game_csgo, &matched, &receipt).status,
+            DiagnosticStatus::Pass
+        );
 
         for (directory, assembly, rule) in [
-            ("OldController", "BotControllerImpl", "cs2_bot_improver_controller_bridge"),
+            (
+                "OldController",
+                "BotControllerImpl",
+                "cs2_bot_improver_controller_bridge",
+            ),
             ("OldHider", "BotHiderImpl", "duplicate_bot_hider_publisher"),
-            ("DemoTracerBotHider", "DemoTracerBotHider", "duplicate_bot_hider_publisher"),
+            (
+                "DemoTracerBotHider",
+                "DemoTracerBotHider",
+                "duplicate_bot_hider_publisher",
+            ),
             ("BotHiderImpl", "BotHider", "duplicate_bot_hider_publisher"),
         ] {
             let mut plugins = matched.clone();
             plugins.push(plugin(directory, assembly));
-            let conflicts = detect_conflicts(&game_csgo, &plugins, &receipt, &RuntimeAudit::default());
-            assert!(conflicts.iter().any(|conflict| conflict.rule_id == rule), "{directory}");
+            let conflicts =
+                detect_conflicts(&game_csgo, &plugins, &receipt, &RuntimeAudit::default());
+            assert!(
+                conflicts.iter().any(|conflict| conflict.rule_id == rule),
+                "{directory}"
+            );
             if directory == "OldController" {
-                assert!(conflicts.iter().any(|conflict|
-                    conflict.rule_id == rule && conflict.evidence_path.contains("OldController")));
+                assert!(conflicts.iter().any(|conflict| conflict.rule_id == rule
+                    && conflict.evidence_path.contains("OldController")));
             }
-            assert_eq!(bot_improver_behavior_check(&game_csgo, &plugins, &receipt).status,
-                DiagnosticStatus::Unverified, "{directory}");
+            assert_eq!(
+                bot_improver_behavior_check(&game_csgo, &plugins, &receipt).status,
+                DiagnosticStatus::Unverified,
+                "{directory}"
+            );
         }
     }
 
@@ -2610,9 +2673,7 @@ mod tests {
             Some("bot_controller")
         );
         assert_eq!(
-            receipt_component(
-                "addons/counterstrikesharp/plugins/bothiderimpl/bothiderimpl.dll"
-            ),
+            receipt_component("addons/counterstrikesharp/plugins/bothiderimpl/bothiderimpl.dll"),
             Some("bot_hider_managed")
         );
         assert_eq!(

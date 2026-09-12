@@ -850,10 +850,17 @@ fn apply_validated_package(
         if directory.is_dir() {
             ensure_no_reparse_below(&paths.game_csgo, &directory)?;
             for file in collect_normal_files(&directory, MAX_ZIP_ENTRIES)? {
-                let name = file.file_name().and_then(|name| name.to_str()).unwrap_or("").to_ascii_lowercase();
+                let name = file
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
                 // Provider migration removes loadable code, preserving recordings
                 // and user configuration in the now-shared installation names.
-                if ![".dll", ".pdb", ".deps.json", ".runtimeconfig.json"].iter().any(|suffix| name.ends_with(suffix)) {
+                if ![".dll", ".pdb", ".deps.json", ".runtimeconfig.json"]
+                    .iter()
+                    .any(|suffix| name.ends_with(suffix))
+                {
                     continue;
                 }
                 let relative = file.strip_prefix(&paths.game_csgo).map_err(|_| {
@@ -955,8 +962,10 @@ fn apply_validated_package(
         if let Err(recovery) = restore_entries(&paths.game_csgo, &backup_root, &state_entries) {
             return Err(CommandErrorDto::at_path(
                 "playback_recovery_failed",
-                format!("Installation failed: {}. Restoring the original files also failed: {}.",
-                    error.message, recovery.message),
+                format!(
+                    "Installation failed: {}. Restoring the original files also failed: {}.",
+                    error.message, recovery.message
+                ),
                 &backup_root,
             ));
         }
@@ -1082,7 +1091,10 @@ fn restore_entries(
         ensure_no_reparse_below(backup_root, &source)?;
         if !source.is_file() {
             return Err(CommandErrorDto::at_path(
-                "playback_rollback_unavailable", "An original backup file is missing.", &source));
+                "playback_rollback_unavailable",
+                "An original backup file is missing.",
+                &source,
+            ));
         }
     }
     for entry in entries {
