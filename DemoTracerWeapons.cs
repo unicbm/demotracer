@@ -94,13 +94,6 @@ public sealed partial class DemoTracerPlugin
         };
     }
 
-    private bool IsSlotReplaceableWeaponDef(int weaponDefIndex)
-    {
-        if (!TryGetWeaponClassByDefIndex(weaponDefIndex, out var className))
-            return false;
-        return GetReplayWeaponSlot(className) is ReplayWeaponSlot.Primary or ReplayWeaponSlot.Secondary;
-    }
-
     private int NormalizeWeaponDefIndex(int weaponDefIndex)
         => _replayEquipment.NormalizeWeaponDefIndex(weaponDefIndex);
 

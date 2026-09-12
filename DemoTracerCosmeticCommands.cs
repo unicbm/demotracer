@@ -268,12 +268,6 @@ public sealed partial class DemoTracerPlugin
     private bool AnyCosmeticFeatureEnabled()
         => AnyBaseCosmeticsEnabled() || _stickerAlignEnabled || _charmAlignEnabled;
 
-    private bool WeaponCosmeticFeatureEnabled()
-        => _cosmeticWeaponsEnabled || _cosmeticNamesEnabled || _stickerAlignEnabled || _charmAlignEnabled;
-
-    private bool GivenItemCosmeticFeatureEnabled()
-        => WeaponCosmeticFeatureEnabled() || _cosmeticKnivesEnabled;
-
     private void RefreshCosmeticAlignEnabled()
     {
         _cosmeticAlignEnabled = AnyCosmeticFeatureEnabled();
