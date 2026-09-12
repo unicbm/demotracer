@@ -102,6 +102,23 @@ Assert(!RandomizerAssets.TryNormalizeAgentModel(
         normalizedAgentModel,
         out _),
     "agent model must match bot team");
+Assert(RandomizerAssets.AgentDefIndexByModel.Values.Where(id => id != 0)
+    .All(id => replayEconIndex.IsAgentDefinition(id)), "intro agent definitions use canonical econ IDs");
+Assert(RandomizerAssets.TryNormalizeAgentModel(RandomizerAssets.CounterTerroristTeam,
+        "AGENTS/MODELS/CTM_SAS/CTM_SAS_VARIANTF.VMDL", out _, 5601),
+    "replay agent normalization accepts its matching econ item");
+Assert(replayEconIndex.IsAgentDefinition(5602)
+    && !RandomizerAssets.TryNormalizeAgentModel(RandomizerAssets.CounterTerroristTeam,
+        normalizedAgentModel, out _, 5602),
+    "another valid same-team agent ID cannot disagree with the live model");
+Assert(!RandomizerAssets.TryNormalizeAgentModel(RandomizerAssets.TerroristTeam,
+        normalizedAgentModel, out _, 5601),
+    "matching agent item cannot bypass the model team restriction");
+Assert(RandomizerAssets.TryNormalizeAgentModel(RandomizerAssets.CounterTerroristTeam,
+        "agents\\models\\ctm_sas\\ctm_sas.vmdl", out _, 5037)
+    && RandomizerAssets.TryNormalizeAgentModel(RandomizerAssets.CounterTerroristTeam,
+        "agents\\models\\ctm_sas\\ctm_sas.vmdl", out _, 0),
+    "zero-mapped default models retain their existing item semantics");
 
 var gloveWeights = catalog.Gloves
     .GroupBy(glove => glove.DefIndex)
@@ -502,6 +519,49 @@ Assert(leaseCounters.ActiveLeases == 0
     && leaseCounters.RejectedRequests == 1,
     "lease diagnostics counters");
 
+var disconnectLeases = new CosmeticWriteLeaseStore("disconnect-test", () => leaseClock);
+Assert(disconnectLeases.TryAcquire("demotracer", new Dictionary<int, LeasedCosmeticWriteClaim>
+    {
+        [1] = new(11, null, demoTracerPolicy),
+        [2] = new(22, null, replacementPolicy)
+    }, out var batchLease, out _), "multi-bot replay plan acquisition");
+Assert(disconnectLeases.RevokeSlot(1)
+    && !disconnectLeases.TryGetPolicy(1, 11, out _, out _)
+    && !disconnectLeases.TryGetPolicy(1, 12, out _, out _)
+    && disconnectLeases.TryGetPolicy(2, 22, out var retainedPolicy, out _)
+    && ReferenceEquals(retainedPolicy, replacementPolicy)
+    && disconnectLeases.Heartbeat(batchLease.Token),
+    "one disconnect preserves the other bot's plan and heartbeat token");
+Assert(batchLease.Claims.Count == 2,
+    "partial disconnect preserves the original acquisition snapshot");
+Assert(!disconnectLeases.RevokeSlot(1) && !disconnectLeases.RevokeSlot(5)
+    && disconnectLeases.TryGetPolicy(2, 22, out _, out _),
+    "duplicate and unrelated disconnects cannot revoke surviving plans");
+var partialCounters = disconnectLeases.GetCounters();
+Assert(partialCounters.ActiveLeases == 1 && partialCounters.LeasedSlots == 1
+    && partialCounters.RevokedLeases == 0,
+    "partial disconnect revokes a slot, not its surviving lease");
+Assert(disconnectLeases.TryAcquire("new-bot", new Dictionary<int, LeasedCosmeticWriteClaim>
+    {
+        [1] = new(12, null, demoTracerPolicy)
+    }, out var reusedSlotLease, out _)
+    && !disconnectLeases.TryGetPolicy(1, 11, out _, out _)
+    && disconnectLeases.TryGetPolicy(1, 12, out _, out _),
+    "reused slot acquires a fresh plan without inheriting the old incarnation");
+Assert(disconnectLeases.TryRelease(batchLease.Token, out var releasedSlots)
+    && releasedSlots.SequenceEqual(new[] { 2 })
+    && !disconnectLeases.TryGetPolicy(2, 22, out _, out _)
+    && disconnectLeases.TryGetPolicy(1, 12, out _, out _)
+    && disconnectLeases.Heartbeat(reusedSlotLease.Token),
+    "releasing the original batch leaves the reused slot's new lease intact");
+Assert(disconnectLeases.RevokeSlot(1)
+    && !disconnectLeases.Heartbeat(reusedSlotLease.Token)
+    && disconnectLeases.GetCounters().ActiveLeases == 0
+    && disconnectLeases.GetCounters().LeasedSlots == 0
+    && disconnectLeases.GetCounters().RevokedLeases == 1,
+    "last participant disconnect revokes the empty lease and its mappings");
+
+RandomizerControlTests.Run();
 Console.WriteLine("BotRandomizer self-test passed.");
 
 static void Assert(bool condition, string label)

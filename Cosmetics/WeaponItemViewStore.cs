@@ -55,6 +55,7 @@ internal sealed class WeaponItemViewStore : IDisposable
             AssignItemId(item);
             item.AccountID = AccountIdFromSteamId(steamId);
             item.EntityQuality = 3;
+            item.CustomName = string.Empty;
 
             networkedAttributes.Attributes.RemoveAll();
             attributeList.Attributes.RemoveAll();
@@ -124,11 +125,7 @@ internal sealed class WeaponItemViewStore : IDisposable
     internal bool TryPrepare(
         SlotCosmeticState state,
         WeaponCatalogEntry weapon,
-        WeaponCosmeticSelection? selection,
-        bool includeRandomPaint,
-        bool includeStickers,
-        bool includeKeychain,
-        int stickerSchemaCount,
+        WeaponCosmeticSelection selection,
         ulong steamId,
         out nint itemViewHandle)
     {
@@ -151,25 +148,25 @@ internal sealed class WeaponItemViewStore : IDisposable
             AssignItemId(item);
             item.AccountID = AccountIdFromSteamId(steamId);
             item.EntityQuality = 4;
+            item.CustomName = string.Empty;
 
+            // A cached view may previously have carried a DTR plan. Clear both
+            // lists so switching back to randomized defaults cannot retain it.
+            item.AttributeList.Attributes.RemoveAll();
             attributes.Attributes.RemoveAll();
-            if (includeRandomPaint && selection is not null)
+            if (selection.PaintKit != 0)
             {
                 SetAttribute(attributes, "set item texture prefab", selection.PaintKit);
                 SetAttribute(attributes, "set item texture seed", selection.Seed);
                 SetAttribute(attributes, "set item texture wear", selection.Wear);
             }
 
-            if (includeStickers && selection is not null)
+            foreach (var sticker in selection.Stickers)
             {
-                foreach (var sticker in selection.Stickers.Where(sticker =>
-                             sticker.Schema < stickerSchemaCount))
-                {
-                    SetStickerAttributes(attributes, sticker);
-                }
+                SetStickerAttributes(attributes, sticker);
             }
 
-            if (includeKeychain && selection?.Keychain is { } keychain)
+            if (selection.Keychain is { } keychain)
                 SetKeychainAttributes(attributes, keychain);
 
             return true;
@@ -365,8 +362,7 @@ internal sealed class WeaponItemViewStore : IDisposable
         item.ItemID = itemId;
         item.ItemIDLow = (uint)(itemId & uint.MaxValue);
         item.ItemIDHigh = (uint)(itemId >> 32);
-        if (!string.IsNullOrWhiteSpace(identity.CustomName))
-            item.CustomName = identity.CustomName;
+        item.CustomName = identity.CustomName ?? string.Empty;
     }
 
     private static uint AccountIdFromSteamId(ulong steamId)

@@ -22,6 +22,8 @@
     <Compile Include="..\..\Cosmetics\CosmeticStateStore.cs" Link="Cosmetics\CosmeticStateStore.cs" />
     <Compile Include="..\..\Cosmetics\CosmeticWriteLeases.cs" Link="Cosmetics\CosmeticWriteLeases.cs" />
     <Compile Include="..\..\Cosmetics\RandomizerAssets.cs" Link="Cosmetics\RandomizerAssets.cs" />
+    <Compile Include="..\..\Cosmetics\RandomizerOptions.cs" Link="Cosmetics\RandomizerOptions.cs" />
+    <Compile Include="..\..\Cosmetics\IntroAgentAssignment.cs" Link="Cosmetics\IntroAgentAssignment.cs" />
     <Compile Include="..\..\Cosmetics\ReplayEconIndex.cs" Link="Cosmetics\ReplayEconIndex.cs" />
     <Compile Include="..\..\Cosmetics\WeaponWearAllocator.cs" Link="Cosmetics\WeaponWearAllocator.cs" />
   </ItemGroup>
