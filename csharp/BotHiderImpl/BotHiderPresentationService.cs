@@ -236,26 +236,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
 
     public void HandleClientDisconnect(int slot)
     {
-        if (slot is < 0 or >= MaxSlots)
-            return;
-
-        var revoked = false;
         lock (_sync)
-        {
-            if (_leaseBySlot.TryGetValue(slot, out var token))
-                revoked = RemoveLease(token, countRevocation: true);
-            _observedManaged[slot] = false;
-            _observedUserIds[slot] = int.MinValue;
-            _slotIncarnations[slot] = 0;
-            _applied[slot] = null;
-            _scoreboardFlairManaged[slot] = false;
-            _scoreboardFlairRepublishPending[slot] = false;
-        }
-
-        // A lease can cover several slots. Restore the remaining slots now
-        // instead of waiting for the periodic publisher after one disconnects.
-        if (revoked)
-            PublishManagedSlots();
+            ObserveUnmanaged(slot);
     }
 
     public void InvalidateAll()
@@ -295,17 +277,15 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         }
 
         var player = Utilities.GetPlayerFromSlot(slot);
-        if (player is not { IsValid: true })
+        if (player is not { IsValid: true, UserId: int userId })
         {
             ObserveUnmanaged(slot);
             return false;
         }
 
-        var userId = player.UserId ?? -1;
         if (!_observedManaged[slot] || _observedUserIds[slot] != userId)
         {
-            if (_leaseBySlot.TryGetValue(slot, out var staleToken))
-                RemoveLease(staleToken, countRevocation: true);
+            RemoveSlotPresentation(slot);
             _observedManaged[slot] = true;
             _observedUserIds[slot] = userId;
             _slotIncarnations[slot] = ++_nextIncarnation;
@@ -331,8 +311,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     {
         if (slot is < 0 or >= MaxSlots)
             return;
-        if (_leaseBySlot.TryGetValue(slot, out var token))
-            RemoveLease(token, countRevocation: true);
+        RemoveSlotPresentation(slot);
         _observedManaged[slot] = false;
         _observedUserIds[slot] = int.MinValue;
         _slotIncarnations[slot] = 0;
@@ -502,16 +481,22 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         return true;
     }
 
+    internal BotHiderPresentationOverride? GetPresentationOverride(int slot, ulong incarnation)
+    {
+        lock (_sync)
+        {
+            return _leaseBySlot.TryGetValue(slot, out var token) &&
+                   _leases.TryGetValue(token, out var lease) &&
+                   lease.Overrides.TryGetValue(slot, out var candidate) &&
+                   candidate.Incarnation == incarnation
+                ? candidate
+                : null;
+        }
+    }
+
     private void PublishSlot(BotHiderManagedSlot state)
     {
-        BotHiderPresentationOverride? presentationOverride = null;
-        if (_leaseBySlot.TryGetValue(state.Slot, out var token) &&
-            _leases.TryGetValue(token, out var lease) &&
-            lease.Overrides.TryGetValue(state.Slot, out var candidate) &&
-            candidate.Incarnation == state.Incarnation)
-        {
-            presentationOverride = candidate;
-        }
+        var presentationOverride = GetPresentationOverride(state.Slot, state.Incarnation);
 
         var effective = new AppliedPresentation(
             state.Incarnation,
@@ -811,7 +796,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         }
     }
 
-    private void AddLease(PresentationLease lease)
+    internal void AddLease(PresentationLease lease)
     {
         _leases.Add(lease.Token, lease);
         AddLeaseMappings(lease);
@@ -833,6 +818,23 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         if (countRevocation)
             _revokedLeases++;
         return true;
+    }
+
+    private void RemoveSlotPresentation(int slot)
+    {
+        if (!_leaseBySlot.Remove(slot, out var token) || !_leases.TryGetValue(token, out var lease))
+            return;
+
+        // Batch acquisition/replacement is atomic, but losing one participant
+        // must not restore the other participants to their base personas.
+        if (lease.Overrides.Count == 1)
+            RemoveLease(token, countRevocation: true);
+        else
+            _leases[token] = lease with
+            {
+                Overrides = lease.Overrides.Where(pair => pair.Key != slot)
+                    .ToDictionary(pair => pair.Key, pair => pair.Value)
+            };
     }
 
     private void RemoveLeaseMappings(PresentationLease lease)
@@ -998,7 +1000,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         }
     }
 
-    private sealed record PresentationLease(
+    internal sealed record PresentationLease(
         string Token,
         string Owner,
         Dictionary<int, BotHiderPresentationOverride> Overrides,

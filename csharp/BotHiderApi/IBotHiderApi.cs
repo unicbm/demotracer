@@ -37,6 +37,8 @@ public interface IBotHiderApi
 
     bool TryGetManagedSlot(int slot, out BotHiderManagedSlot state);
 
+    // Acquisition/replacement is atomic. A disconnected or reused slot leaves
+    // the lease without revoking surviving slots. An empty lease is revoked.
     BotHiderPresentationLeaseResult AcquirePresentationLease(
         string owner,
         BotHiderPresentationOverride[] overrides);

@@ -7,6 +7,8 @@ presentation provider.
 The native layer owns fake-client adoption, synthetic persona state, ping, and
 the shared native/C# transport. The C# layer is the only publisher for visible
 name, SteamID64, ping, scoreboard flair, and server-replicated crosshair state.
+It never assigns teams or respawns bots. Ordinary bots follow the engine's
+round lifecycle; DemoTracer prepares and respawns only its own replay roster.
 
 DemoTracer consumes the versioned `demotracer:bot-hider:v1` capability. It does
 not read shared-memory offsets, invoke `bh_setname`/`bh_setsid`, or write these
@@ -20,7 +22,9 @@ Temporary DTR presentation is applied as an all-or-none batch lease:
 - one lease owns a slot at a time;
 - replacement and release require the exact opaque lease token;
 - leases expire when their heartbeat is absent for four seconds;
-- provider reload, map change, disconnect, or slot reuse revokes stale leases;
+- provider reload and map change revoke leases;
+- disconnect, loss of managed state, and slot reuse remove only the affected
+  slot; surviving slots retain their identity and the existing lease token;
 - release restores the current persona base, not a stale saved copy;
 - an active lease is reconciled against both native client state and controller
   fields after spawn/death and during periodic publication;
@@ -59,9 +63,14 @@ must use the presentation lease API.
 
 ## Co-installation
 
-Do not run a separately installed public `BotHiderImpl` CounterStrikeSharp
-plugin beside `DemoTracerBotHider`. Two presentation publishers can overwrite
+The maintained provider installs as `BotHiderImpl/BotHiderImpl.dll` for Panel
+file detection; its capability remains `demotracer:bot-hider:v1`. Replace the
+previous `DemoTracerBotHider` directory during migration. Do not run an upstream
+protocol-v1 provider beside this protocol-v2 provider. Two publishers can overwrite
 each other even when they share the same native BotHider mapping.
+
+The Panel Profiles toggle is not mapped to `bh_disguise`: this fork's native
+disguise switch may rebuild bots. Keep Profiles enabled during combined testing.
 
 ## Upstream and license
 
