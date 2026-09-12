@@ -380,7 +380,7 @@ public sealed partial class DemoTracerPlugin
             CancelDtrRoundBanner(resetRound: false);
         BotControllerNative.WriteLeftHandDesired = _leftHandDesiredEnabled;
         if (!_leftHandDesiredEnabled)
-            ClearReplayLeftHandDesiredLatches(forceNative: true);
+            ClearReplayLeftHandDesiredLatches();
         if (_viewmodelContinuityMode == ViewmodelContinuityMode.Release)
             RestoreRetainedReplayBotViewmodels();
         BotControllerNative.SetReplayNativeFovOverride(_handoffThreat360Enabled);

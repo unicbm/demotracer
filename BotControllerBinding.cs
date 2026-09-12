@@ -147,9 +147,6 @@ internal static partial class BotControllerNative
         int leftHandDesired);
 
     [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_ClearAllLeftHandDesiredLatches();
-
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
     private static extern int BotController_LoadReplay(
         int slot,
         [In] NativeReplayTick[] ticks,

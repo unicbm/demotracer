@@ -115,18 +115,27 @@ public sealed partial class DemoTracerPlugin
 
         var projectileIndex = projectile.Index;
         var projectileHandle = projectile.Handle;
+        var spawnedAt = Server.CurrentTime;
+        // Thrower is resolved next frame because the spawn hook can precede
+        // its assignment. A registry epoch boundary rejects a new owner or
+        // loop iteration without allocating another per-projectile slot map.
+        var playbackBoundary = _session.ReplaySlots.CapturePlaybackBoundary();
         Server.NextFrame(() => ProcessProjectileAlignCandidate(
             projectileIndex,
             projectileHandle,
             kind,
-            weaponDefIndex));
+            weaponDefIndex,
+            spawnedAt,
+            playbackBoundary));
     }
 
     private void ProcessProjectileAlignCandidate(
         uint projectileIndex,
         IntPtr projectileHandle,
         ReplayProjectileKind kind,
-        int weaponDefIndex)
+        int weaponDefIndex,
+        float spawnedAt,
+        ReplayPlaybackBoundary playbackBoundary)
     {
         if (!_mapActive || _lifecycleResetInProgress || !_projectileAlignEnabled)
             return;
@@ -142,7 +151,7 @@ public sealed partial class DemoTracerPlugin
                 return;
             }
 
-            TryResolveAndApplyProjectileAlign(projectile, kind, weaponDefIndex);
+            TryResolveAndApplyProjectileAlign(projectile, kind, weaponDefIndex, spawnedAt, playbackBoundary);
         }
         catch (Exception ex)
         {
@@ -155,7 +164,9 @@ public sealed partial class DemoTracerPlugin
     private bool TryResolveAndApplyProjectileAlign(
         CBaseCSGrenadeProjectile projectile,
         ReplayProjectileKind kind,
-        int weaponDefIndex)
+        int weaponDefIndex,
+        float spawnedAt,
+        ReplayPlaybackBoundary playbackBoundary)
     {
         if (!_projectileAlignEnabled)
             return false;
@@ -164,6 +175,7 @@ public sealed partial class DemoTracerPlugin
                 projectile,
                 kind,
                 weaponDefIndex,
+                playbackBoundary,
                 out var slot,
                 out var eventIndex,
                 out var align,
@@ -187,11 +199,15 @@ public sealed partial class DemoTracerPlugin
 
         var liveInitialPosition = FormatProjectileVector(projectile.InitialPosition);
         var liveInitialVelocity = FormatProjectileVector(projectile.InitialVelocity);
-        ApplyProjectileBirthAlign(projectile, align);
+        var deadlineShift = ApplyProjectileBirthAlign(
+            projectile,
+            align,
+            spawnedAt,
+            Server.CurrentTime);
 
         RememberProjectileAlignEvent(
             "projectile_align",
-            $"slot={slot} event={eventIndex} tick_index={align.TickIndex} projectile={projectile.Index} kind={align.Kind} mode=engine_birth_once live_init_pos={liveInitialPosition} live_init_vel={liveInitialVelocity} init_pos=({align.InitialPosition.X:F3},{align.InitialPosition.Y:F3},{align.InitialPosition.Z:F3}) init_vel=({align.InitialVelocity.X:F3},{align.InitialVelocity.Y:F3},{align.InitialVelocity.Z:F3})");
+            $"slot={slot} event={eventIndex} tick_index={align.TickIndex} projectile={projectile.Index} kind={align.Kind} mode=engine_birth_once deadline_shift={deadlineShift:F6} live_init_pos={liveInitialPosition} live_init_vel={liveInitialVelocity} init_pos=({align.InitialPosition.X:F3},{align.InitialPosition.Y:F3},{align.InitialPosition.Z:F3}) init_vel=({align.InitialVelocity.X:F3},{align.InitialVelocity.Y:F3},{align.InitialVelocity.Z:F3})");
         return true;
     }
 
@@ -199,6 +215,7 @@ public sealed partial class DemoTracerPlugin
         CBaseCSGrenadeProjectile projectile,
         ReplayProjectileKind kind,
         int weaponDefIndex,
+        ReplayPlaybackBoundary playbackBoundary,
         out int slot,
         out int eventIndex,
         out ReplayProjectileEvent align,
@@ -211,6 +228,12 @@ public sealed partial class DemoTracerPlugin
 
         if (!TryGetProjectileThrowerSlot(projectile, out slot, out failureReason))
             return false;
+        if (!_session.ReplaySlots.IsCurrentPlaybackFromBoundary(slot, playbackBoundary) ||
+            !CanWriteReplaySlot(slot))
+        {
+            failureReason = $"replay_owner_changed_slot={slot}";
+            return false;
+        }
         if (!_session.LoadedReplays.TryGetValue(slot, out var replay) || replay.Projectiles.Length == 0)
         {
             failureReason = $"replay_projectiles_unavailable_slot={slot}";
@@ -252,11 +275,23 @@ public sealed partial class DemoTracerPlugin
         SetVector(projectile.InitialVelocity, align.InitialVelocity);
     }
 
-    private static void ApplyProjectileBirthAlign(
+    private static float ApplyProjectileBirthAlign(
         CBaseCSGrenadeProjectile projectile,
-        ReplayProjectileEvent align)
+        ReplayProjectileEvent align,
+        float spawnedAt,
+        float alignedAt)
     {
+        var liveDetonateTime = projectile.DetonateTime;
         ApplyProjectileAlign(projectile, align);
+        // The deferred birth-state rewind must preserve the engine's remaining
+        // lifetime, otherwise a near-timeout molotov can detonate one frame early.
+        var compensatedDetonateTime = ProjectileAlignmentTiming.TranslateDeadline(
+            liveDetonateTime,
+            spawnedAt,
+            alignedAt);
+        if (compensatedDetonateTime != liveDetonateTime)
+            projectile.DetonateTime = compensatedDetonateTime;
+        return compensatedDetonateTime - liveDetonateTime;
     }
 
     private void RememberProjectileAlignEvent(string kind, string message)

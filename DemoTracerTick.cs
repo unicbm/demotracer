@@ -45,6 +45,8 @@ public sealed partial class DemoTracerPlugin
 
         Span<int> activeSlots = stackalloc int[MaxPlayerSlots];
         Span<ReplayState> activeStates = stackalloc ReplayState[MaxPlayerSlots];
+        Span<int> completedLoopSlots = stackalloc int[MaxPlayerSlots];
+        var completedLoopCount = 0;
         var trackedSlotCount = 0;
         foreach (var slot in _session.ReplaySlots.PlayingSlots)
         {
@@ -52,40 +54,15 @@ public sealed partial class DemoTracerPlugin
                 activeSlots[trackedSlotCount++] = slot;
         }
 
+        var playerSnapshot = BuildTickPlayerSnapshot();
         var activeSlotCount = 0;
         for (var trackedIndex = 0; trackedIndex < trackedSlotCount; trackedIndex++)
         {
             var slot = activeSlots[trackedIndex];
-            var state = BotControllerNative.GetReplayState(slot);
-            if (!state.Playing)
-            {
-                ReleaseReplaySlot(slot, "replay_finished", ReplayReleaseKind.Finished);
-                continue;
-            }
-
-            activeSlots[activeSlotCount] = slot;
-            activeStates[activeSlotCount] = state;
-            activeSlotCount++;
-        }
-
-        if (activeSlotCount == 0)
-        {
-            SetReplayPovMask(0);
-            RestoreNonRetainedReplayBotViewmodels();
-            return;
-        }
-
-        var playerSnapshot = BuildTickPlayerSnapshot();
-        UpdateReplayPovMask(playerSnapshot);
-        UpdateReplayBotViewmodels(playerSnapshot);
-
-        for (var activeIndex = 0; activeIndex < activeSlotCount; activeIndex++)
-        {
-            var slot = activeSlots[activeIndex];
             if (!_session.ReplaySlots.IsPlaying(slot))
                 continue;
-            var state = activeStates[activeIndex];
-
+            // Completed loop slots still own writes while they wait for the
+            // other participants. Death and takeover end that ownership now.
             if (!IsReplaySlotStillSafe(slot, playerSnapshot))
             {
                 BotControllerNative.StopReplay(slot);
@@ -99,17 +76,56 @@ public sealed partial class DemoTracerPlugin
                 ReleaseReplaySlot(slot, "dead_replay_target");
                 continue;
             }
-
-            var hasLoadedReplay = _session.LoadedReplays.TryGetValue(slot, out var replay);
-            if (hasLoadedReplay)
-                ProcessReplayHifiEvents(slot, replay, state.Cursor);
-
             if (HandoffIncludesContact(_handoffMode) &&
                 ReplayBotHasContact(slot, playerSnapshot, out var contactReason, out _))
             {
                 HandoffActiveReplays($"enemy_contact_{contactReason}_slot{slot}", slot);
                 continue;
             }
+            var state = BotControllerNative.GetReplayState(slot);
+            if (!state.Playing)
+            {
+                if (state.Total > 0 && state.Cursor >= state.Total &&
+                    _session.ReplaySlots.TryGet(slot, out var runtime) && runtime.Loop)
+                {
+                    completedLoopSlots[completedLoopCount++] = slot;
+                    continue;
+                }
+                ReleaseReplaySlot(slot, "replay_finished", ReplayReleaseKind.Finished);
+                continue;
+            }
+
+            activeSlots[activeSlotCount] = slot;
+            activeStates[activeSlotCount] = state;
+            activeSlotCount++;
+        }
+
+        if (_session.ReplaySlots.IsCompletedLoop(completedLoopSlots[..completedLoopCount]))
+        {
+            RestartCompletedReplayLoop(completedLoopSlots[..completedLoopCount]);
+            return;
+        }
+
+        if (activeSlotCount == 0)
+        {
+            SetReplayPovMask(0);
+            RestoreNonRetainedReplayBotViewmodels();
+            return;
+        }
+
+        UpdateReplayPovMask(playerSnapshot);
+        UpdateReplayBotViewmodels(playerSnapshot);
+
+        for (var activeIndex = 0; activeIndex < activeSlotCount; activeIndex++)
+        {
+            var slot = activeSlots[activeIndex];
+            if (!_session.ReplaySlots.IsPlaying(slot))
+                continue;
+            var state = activeStates[activeIndex];
+
+            var hasLoadedReplay = _session.LoadedReplays.TryGetValue(slot, out var replay);
+            if (hasLoadedReplay)
+                ProcessReplayHifiEvents(slot, replay, state.Cursor);
 
             if (!_weaponAlignEnabled)
                 continue;

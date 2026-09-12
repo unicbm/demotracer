@@ -454,7 +454,7 @@ public sealed partial class DemoTracerPlugin
         _leftHandDesiredEnabled = enabled;
         BotControllerNative.WriteLeftHandDesired = enabled;
         if (!_leftHandDesiredEnabled)
-            ClearReplayLeftHandDesiredLatches(forceNative: true);
+            ClearReplayLeftHandDesiredLatches();
         reply($"[DTR OK] align left_hand_desired={FormatOnOff(_leftHandDesiredEnabled)}");
         if (!_leftHandDesiredEnabled)
             reply(LeftHandDesiredFidelityNotice);

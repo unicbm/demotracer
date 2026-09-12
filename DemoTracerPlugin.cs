@@ -148,7 +148,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         UnregisterReplayBuySuppressionHooks();
         UnregisterReplayRetentionJoinHook();
         ClearReplayStateForLifecycle(hotReload ? "plugin_reload" : "plugin_unload");
-        BotControllerNative.ClearAllBuyPlans();
         _ = _botRandomizerBridge.ReleaseOwner(BotRandomizerApi.BotRandomizerContract.DemoTracerOwner);
         _botHiderBridge.Refresh();
         _botRandomizerBridge.Refresh();
@@ -171,8 +170,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         if (playerSlot < 0 || playerSlot >= MaxPlayerSlots)
             return;
 
-        var disconnectsReplaySlot = HasReplayLifecycleState(includeNative: true) &&
-                                    IsDisconnectingReplaySlot(playerSlot);
+        var disconnectsReplaySlot = IsDisconnectingReplaySlot(playerSlot);
         ClearHumanTeamAvatarOverrideForSlot(playerSlot, "client_disconnect");
         if (disconnectsReplaySlot)
         {
@@ -198,11 +196,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
             return true;
         }
 
-        if (!BotControllerNative.IsCompatible)
-            return false;
-
-        var state = BotControllerNative.GetReplayState(slot);
-        return state.Playing || state.Total > 0;
+        return false;
     }
 
     private static void ConfigureNativeSafetyOffsets()

@@ -26,6 +26,9 @@ public sealed partial class DemoTracerPlugin
         var players = FindTeamPlayers();
         var targets = players
             .Where(IsReplayTargetBot)
+            .Where(player => _session.ReplaySlots.IsLoaded(player.Slot) ||
+                             _session.WarmReplayBufferSlots.Contains(player.Slot) ||
+                             !IsReplaySlotBusy(player.Slot))
             .OrderBy(player => player.IsBot ? 0 : 1)
             .ThenBy(player => player.Slot)
             .ToList();

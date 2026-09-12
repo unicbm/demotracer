@@ -11,11 +11,11 @@ namespace DemoTracer;
 
 internal static partial class BotControllerNative
 {
-    public const int ExpectedAbiVersion = 18;
+    public const int ExpectedAbiVersion = 20;
     public const uint RecFormatVersion = 10;
     public const uint MinRecFormatVersion = 3;
     public const int MovementSnapshotByteSize = 92;
-    public const int ReplayTickByteSize = 192;
+    public const int ReplayTickByteSize = 228;
     public const int SubtickMoveByteSize = 28;
     public const int ReplayCommandFrameByteSize = 68;
     public const int ReplayMovementExtraByteSize = 48;
@@ -413,6 +413,13 @@ internal struct NativeReplayTick
     public NativeMovementSnapshot Post;
     public int WeaponDefIndex;
     public uint NumSubtick;
+        // Reserved ABI 20 layout tail: every field must be zero.
+        // DTR gameplay events use the managed executor.
+        public uint EventFlags;
+        public int EventWeaponDefIndex;
+        public uint EventDropVectorFlags;
+        public float EventDropTargetX, EventDropTargetY, EventDropTargetZ;
+        public float EventDropVelocityX, EventDropVelocityY, EventDropVelocityZ;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

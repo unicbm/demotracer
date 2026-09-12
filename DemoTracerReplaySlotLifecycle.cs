@@ -72,10 +72,10 @@ public sealed partial class DemoTracerPlugin
         reply("[DTR OK] Issued \"mp_restartgame 1\". Waiting for next round_prestart.");
     }
 
-    private void MarkReplayStarted(int slot)
+    private void MarkReplayStarted(int slot, bool loop = false, bool roundMedia = false)
     {
         _retainedReplayViewmodelSlots.Remove(slot);
-        _session.ReplaySlots.MarkPlaying(slot);
+        _session.ReplaySlots.MarkPlaying(slot, loop, roundMedia);
         _session.ReplayStartedAt[slot] = Server.CurrentTime;
         _session.ReplayPerceptionBaselineSerial[slot] =
             BotControllerNative.TryGetNativePerceptionState(slot, out var perception)
@@ -94,7 +94,15 @@ public sealed partial class DemoTracerPlugin
         ReplayReleaseKind releaseKind = ReplayReleaseKind.Immediate)
     {
         CancelReplaySlotDeferredWork(slot);
-        _session.ReplaySlots.Release(slot);
+        // Buffer retention is independent of execution ownership. Repeating
+        // stop/unload after handoff must not release the next owner's controls.
+        if (!_session.ReplaySlots.Release(slot))
+        {
+            if (releaseKind == ReplayReleaseKind.Immediate &&
+                _retainedReplayViewmodelSlots.Contains(slot))
+                RestoreReplayBotViewmodel(slot);
+            return;
+        }
         CancelSafeC4MutationWithoutTarget();
         ClearPendingWeaponSlotReplacementsForSlot(slot);
         _cosmeticAlignmentTracker.CancelPending(slot);
@@ -154,20 +162,6 @@ public sealed partial class DemoTracerPlugin
         return false;
     }
 
-    private bool HasAnyNativeActiveReplaySlot()
-    {
-        if (HasActiveReplaySlots())
-            return true;
-
-        foreach (var slot in NativeReplaySlots())
-        {
-            var state = BotControllerNative.GetReplayState(slot);
-            if (state.Playing || state.Total > 0)
-                return true;
-        }
-        return false;
-    }
-
     private bool CheckReplayStartGates(
         Action<string> reply,
         bool stopCurrentForOverride,
@@ -179,7 +173,7 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
-        if (!stopCurrentForOverride || !HasAnyNativeActiveReplaySlot())
+        if (!stopCurrentForOverride || !HasReplayLifecycleState())
             return true;
 
         if (deferStopUntilRoundStart)
@@ -213,25 +207,9 @@ public sealed partial class DemoTracerPlugin
     }
 
     private bool IsDemoTracerBot(int slot)
-    {
-        if (slot < 0)
-            return false;
-
-        if (_session.ReplaySlots.IsOwned(slot))
-        {
-            return true;
-        }
-
-        if (_session.Plan.Armed || _session.Plan.ArmedPrepared || _session.Plan.SequenceActive)
-        {
-            var player = Utilities.GetPlayerFromSlot(slot);
-            if (player is { IsValid: true } && IsReplayTargetBot(player))
-                return true;
-        }
-
-        var state = BotControllerNative.GetReplayState(slot);
-        return state.Playing;
-    }
+        // An armed plan and native activity are not slot ownership. Only an
+        // accepted DTR slot claim grants execution and inventory write control.
+        => _session.ReplaySlots.IsOwned(slot);
 
     private bool TryGetBotCosmeticState(int slot, out DemoTracerBotCosmeticState state)
     {

@@ -16,11 +16,15 @@ internal enum ReplaySlotPhase
 internal readonly record struct ReplaySlotRuntimeState(
     int Slot,
     ReplaySlotPhase Phase,
-    long Epoch)
+    long Epoch,
+    bool Loop = false,
+    bool LoopRoundMedia = false)
 {
     public bool OwnsWrites => Phase is ReplaySlotPhase.Claimed or ReplaySlotPhase.Playing;
     public bool IsPlaying => Phase == ReplaySlotPhase.Playing;
 }
+
+internal readonly record struct ReplayPlaybackBoundary(long Epoch, ulong PlayingSlots);
 
 internal sealed class ReplaySlotRegistry
 {
@@ -69,16 +73,18 @@ internal sealed class ReplaySlotRegistry
         return SetPhase(slot, ReplaySlotPhase.Claimed, renewEpoch: true);
     }
 
-    public ReplaySlotRuntimeState MarkPlaying(int slot)
+    public ReplaySlotRuntimeState MarkPlaying(int slot, bool loop = false, bool roundMedia = false)
     {
         var current = GetRequired(slot);
-        if (current.IsPlaying)
+        if (current.IsPlaying && current.Loop == loop && current.LoopRoundMedia == (loop && roundMedia))
             return current;
 
         return SetPhase(
             slot,
             ReplaySlotPhase.Playing,
-            renewEpoch: current.Phase == ReplaySlotPhase.Loaded);
+            renewEpoch: current.Phase == ReplaySlotPhase.Loaded,
+            loop: loop,
+            roundMedia: roundMedia);
     }
 
     public bool Release(int slot)
@@ -98,8 +104,42 @@ internal sealed class ReplaySlotRegistry
         if (!_bySlot.TryGetValue(slot, out var current))
             return false;
 
-        SetPhase(slot, current.Phase, renewEpoch: true);
+        SetPhase(slot, current.Phase, renewEpoch: true, loop: current.Loop, roundMedia: current.LoopRoundMedia);
         return true;
+    }
+
+    public ReplayPlaybackBoundary CapturePlaybackBoundary()
+    {
+        ulong mask = 0;
+        foreach (var slot in _playingSlots)
+        {
+            if (slot is >= 0 and < 64)
+                mask |= 1UL << slot;
+        }
+        return new ReplayPlaybackBoundary(_nextEpoch, mask);
+    }
+
+    public bool IsCurrentPlaybackFromBoundary(int slot, ReplayPlaybackBoundary boundary)
+        => slot is >= 0 and < 64 &&
+           (boundary.PlayingSlots & (1UL << slot)) != 0 &&
+           _bySlot.TryGetValue(slot, out var state) &&
+           state.IsPlaying && state.Epoch <= boundary.Epoch;
+
+    public bool IsCompletedLoop(ReadOnlySpan<int> completedSlots)
+    {
+        if (completedSlots.IsEmpty)
+            return false;
+
+        var loopingCount = 0;
+        foreach (var slot in _playingSlots)
+        {
+            if (!GetRequired(slot).Loop)
+                continue;
+            if (!completedSlots.Contains(slot))
+                return false;
+            loopingCount++;
+        }
+        return loopingCount == completedSlots.Length;
     }
 
     public bool Unload(int slot)
@@ -124,12 +164,14 @@ internal sealed class ReplaySlotRegistry
     private ReplaySlotRuntimeState SetPhase(
         int slot,
         ReplaySlotPhase phase,
-        bool renewEpoch)
+        bool renewEpoch,
+        bool loop = false,
+        bool roundMedia = false)
     {
         var epoch = !renewEpoch && _bySlot.TryGetValue(slot, out var current)
             ? current.Epoch
             : ++_nextEpoch;
-        var next = new ReplaySlotRuntimeState(slot, phase, epoch);
+        var next = new ReplaySlotRuntimeState(slot, phase, epoch, loop, loop && roundMedia);
         _bySlot[slot] = next;
 
         if (next.OwnsWrites)
