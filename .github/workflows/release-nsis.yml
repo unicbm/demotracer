@@ -26,6 +26,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Read professional identity source pin
+        id: pro-steamid-source
+        shell: pwsh
+        run: |
+          $source = Get-Content desktop\gui\pro-steamid-catalog-source.json -Raw | ConvertFrom-Json
+          "commit=$($source.commit)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Checkout professional identity source
+        uses: actions/checkout@v6
+        with:
+          repository: unicbm/CS2-pro-steamid-lib
+          ref: ${{ steps.pro-steamid-source.outputs.commit }}
+          path: .external/CS2-pro-steamid-lib
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -51,6 +65,9 @@ jobs:
       - name: Install desktop dependencies
         working-directory: desktop/gui
         run: pnpm install --frozen-lockfile
+
+      - name: Generate professional identity snapshot
+        run: node desktop\gui\scripts\import-pro-steamid-catalog.mjs .external\CS2-pro-steamid-lib
 
       - name: Build Windows NSIS installer
         working-directory: desktop/gui
