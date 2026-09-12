@@ -9,8 +9,12 @@
     "max": 10
   },
   "bot_controller": {
-    "abi_major": 18,
-    "min_abi_minor": 36,
+    "abi_major": 20,
+    "min_abi_minor": 37,
+    "public_control_api": 20,
+    "replay_tick_bytes": 228,
+    "replay_tick_event_tail": "reserved_zero",
+    "managed_provider_version": "0.6.3-dtr.1",
     "required_capabilities_hex": "0x141ff"
   },
   "bot_hider": {
@@ -18,7 +22,7 @@
   },
   "bot_randomizer": {
     "api": 2,
-    "provider_version": "1.6.2"
+    "provider_version": "1.6.3"
   },
   "demotracer": {
     "companion_api": 7

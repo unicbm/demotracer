@@ -4,7 +4,6 @@ using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Core.Capabilities;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Timers;
-using CounterStrikeSharp.API.Modules.Utils;
 using DemoTracerBotHiderApi;
 using HarmonyLib;
 
@@ -89,10 +88,14 @@ public sealed class BotHiderImplPlugin : BasePlugin
             if (string.IsNullOrWhiteSpace(pluginsDirectory))
                 return;
 
-            foreach (var legacyDirectoryName in new[] { "BotHiderImpl", "BotHider" })
+            foreach (var legacyDirectoryName in new[] { "BotHiderImpl", "BotHider", "DemoTracerBotHider" })
             {
                 var legacyDirectory = Path.Combine(pluginsDirectory, legacyDirectoryName);
-                if (!Directory.Exists(legacyDirectory))
+                if (string.Equals(Path.GetFullPath(legacyDirectory).TrimEnd(Path.DirectorySeparatorChar),
+                    Path.GetFullPath(ModuleDirectory).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (!Directory.Exists(legacyDirectory) ||
+                    !Directory.EnumerateFiles(legacyDirectory, "*.dll").Any())
                     continue;
                 Server.PrintToConsole(
                     "[DemoTracer BotHider] ERROR: another BotHider CSS plugin directory is present: " +
@@ -112,7 +115,6 @@ public sealed class BotHiderImplPlugin : BasePlugin
         _presentation?.InvalidateAll();
         StartFastApplyWindow();
         Server.NextFrame(ApplyManagedSlots);
-        AddTimer(0.3f, RespawnDeadManagedBots, TimerFlags.STOP_ON_MAPCHANGE);
         return HookResult.Continue;
     }
 
@@ -181,62 +183,6 @@ public sealed class BotHiderImplPlugin : BasePlugin
 
     private void ApplyManagedSlots()
         => _presentation?.PublishManagedSlots();
-
-    private void RespawnDeadManagedBots()
-    {
-        if (_presentation == null)
-            return;
-
-        var tCount = 0;
-        var ctCount = 0;
-        foreach (var player in Utilities.GetPlayers())
-        {
-            if (player is not { IsValid: true })
-                continue;
-            if (player.Team == CsTeam.Terrorist)
-                tCount++;
-            else if (player.Team == CsTeam.CounterTerrorist)
-                ctCount++;
-        }
-
-        for (var slot = 0; slot < 64; slot++)
-        {
-            if (!_presentation.IsManagedBot(slot))
-                continue;
-            var player = Utilities.GetPlayerFromSlot(slot);
-            if (player is not { IsValid: true } || player.PawnIsAlive)
-                continue;
-
-            if (player.Team is not CsTeam.Terrorist and not CsTeam.CounterTerrorist)
-            {
-                var target = tCount <= ctCount ? CsTeam.Terrorist : CsTeam.CounterTerrorist;
-                try
-                {
-                    player.SwitchTeam(target);
-                    if (target == CsTeam.Terrorist)
-                        tCount++;
-                    else
-                        ctCount++;
-                }
-                catch (Exception ex)
-                {
-                    Server.PrintToConsole(
-                        $"[DemoTracer BotHider] SwitchTeam failed slot={slot}: {ex.Message}");
-                    continue;
-                }
-            }
-
-            try
-            {
-                player.Respawn();
-            }
-            catch (Exception ex)
-            {
-                Server.PrintToConsole(
-                    $"[DemoTracer BotHider] respawn failed slot={slot}: {ex.Message}");
-            }
-        }
-    }
 
     [ConsoleCommand("bh_status", "Show DemoTracer BotHider provider and managed-slot status")]
     [CommandHelper(0, "", CommandUsage.SERVER_ONLY)]

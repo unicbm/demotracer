@@ -44,6 +44,7 @@ const BACKUP_DIRECTORY: &str = "playback-backups-v1";
 const LEGACY_PROVIDER_DIRECTORIES: &[&str] = &[
     "addons/counterstrikesharp/plugins/BotControllerImpl",
     "addons/counterstrikesharp/plugins/BotHiderImpl",
+    "addons/counterstrikesharp/plugins/DemoTracerBotHider",
 ];
 
 #[derive(Clone, Debug, Serialize)]
@@ -801,7 +802,7 @@ fn apply_validated_package(
 ) -> CommandResult<PlaybackInstallResultDto> {
     let backup_root = local_data.join(BACKUP_DIRECTORY).join(format!(
         "{}-{}",
-        now_ms(),
+        uuid::Uuid::new_v4(),
         safe_version_label(&package.receipt.bundle_version)
     ));
     fs::create_dir_all(&backup_root).map_err(|error| {
@@ -849,6 +850,12 @@ fn apply_validated_package(
         if directory.is_dir() {
             ensure_no_reparse_below(&paths.game_csgo, &directory)?;
             for file in collect_normal_files(&directory, MAX_ZIP_ENTRIES)? {
+                let name = file.file_name().and_then(|name| name.to_str()).unwrap_or("").to_ascii_lowercase();
+                // Provider migration removes loadable code, preserving recordings
+                // and user configuration in the now-shared installation names.
+                if ![".dll", ".pdb", ".deps.json", ".runtimeconfig.json"].iter().any(|suffix| name.ends_with(suffix)) {
+                    continue;
+                }
                 let relative = file.strip_prefix(&paths.game_csgo).map_err(|_| {
                     CommandErrorDto::new("playback_legacy_path_invalid", "Legacy path escaped CS2.")
                 })?;
@@ -887,7 +894,7 @@ fn apply_validated_package(
         });
     }
 
-    let install_result = (|| {
+    let install_result: CommandResult<()> = (|| {
         for file in &package.receipt.files {
             let relative = checked_receipt_relative_path(&file.path)
                 .map_err(|error| CommandErrorDto::new("playback_receipt_invalid", error))?;
@@ -937,13 +944,22 @@ fn apply_validated_package(
         let state_bytes = serde_json::to_vec_pretty(&state)
             .map_err(|error| CommandErrorDto::new("playback_state_failed", error.to_string()))?;
         let state_path = install_state_path(local_data, &paths.game_csgo);
-        write_atomic(&state_path, &state_bytes)?;
         write_atomic(&backup_root.join("install-state.v1.json"), &state_bytes)?;
+        // Publishing the current rollback pointer commits the transaction.
+        // Nothing fallible may follow it and roll back the installed payload.
+        write_atomic(&state_path, &state_bytes)?;
         Ok(())
     })();
 
     if let Err(error) = install_result {
-        let _ = restore_entries(&paths.game_csgo, &backup_root, &state_entries);
+        if let Err(recovery) = restore_entries(&paths.game_csgo, &backup_root, &state_entries) {
+            return Err(CommandErrorDto::at_path(
+                "playback_recovery_failed",
+                format!("Installation failed: {}. Restoring the original files also failed: {}.",
+                    error.message, recovery.message),
+                &backup_root,
+            ));
+        }
         return Err(error);
     }
 
@@ -1057,20 +1073,30 @@ fn restore_entries(
     backup_root: &Path,
     entries: &[InstallStateEntry],
 ) -> CommandResult<()> {
+    // Validate every original before changing any installed file. A missing
+    // backup must not turn a rejected rollback into a partial uninstall.
+    for entry in entries.iter().filter(|entry| entry.had_original) {
+        let relative = checked_receipt_relative_path(&entry.relative_path)
+            .map_err(|error| CommandErrorDto::new("playback_state_invalid", error))?;
+        let source = backup_root.join("files").join(relative);
+        ensure_no_reparse_below(backup_root, &source)?;
+        if !source.is_file() {
+            return Err(CommandErrorDto::at_path(
+                "playback_rollback_unavailable", "An original backup file is missing.", &source));
+        }
+    }
     for entry in entries {
         let relative = checked_receipt_relative_path(&entry.relative_path)
             .map_err(|error| CommandErrorDto::new("playback_state_invalid", error))?;
         let target = game_csgo.join(&relative);
         ensure_no_reparse_below(game_csgo, &target)?;
-        if target.is_file() {
+        if entry.had_original {
+            let source = backup_root.join("files").join(&relative);
+            replace_file(&source, &target)?;
+        } else if target.is_file() {
             fs::remove_file(&target).map_err(|error| {
                 CommandErrorDto::at_path("playback_rollback_failed", error.to_string(), &target)
             })?;
-        }
-        if entry.had_original {
-            let source = backup_root.join("files").join(&relative);
-            ensure_no_reparse_below(backup_root, &source)?;
-            copy_with_parents(&source, &target)?;
         }
     }
     Ok(())
@@ -1109,17 +1135,14 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> CommandResult<()> {
     let temporary = parent.join(format!(
         ".{}.tmp-{}",
         path.file_name().unwrap_or_default().to_string_lossy(),
-        now_ms()
+        uuid::Uuid::new_v4()
     ));
-    fs::write(&temporary, bytes).map_err(|error| {
-        CommandErrorDto::at_path("playback_state_failed", error.to_string(), &temporary)
-    })?;
-    if path.exists() {
-        fs::remove_file(path).map_err(|error| {
-            CommandErrorDto::at_path("playback_state_failed", error.to_string(), path)
-        })?;
+    let result = fs::write(&temporary, bytes)
+        .and_then(|_| crate::server_config::atomic_replace(&temporary, path));
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
     }
-    fs::rename(&temporary, path)
+    result
         .map_err(|error| CommandErrorDto::at_path("playback_state_failed", error.to_string(), path))
 }
 
@@ -1130,16 +1153,13 @@ fn replace_file(source: &Path, destination: &Path) -> CommandResult<()> {
     fs::create_dir_all(parent).map_err(|error| {
         CommandErrorDto::at_path("playback_install_failed", error.to_string(), parent)
     })?;
-    let temporary = parent.join(format!(".demotracer-new-{}", now_ms()));
-    fs::copy(source, &temporary).map_err(|error| {
-        CommandErrorDto::at_path("playback_install_failed", error.to_string(), &temporary)
-    })?;
-    if destination.exists() {
-        fs::remove_file(destination).map_err(|error| {
-            CommandErrorDto::at_path("playback_install_failed", error.to_string(), destination)
-        })?;
+    let temporary = parent.join(format!(".demotracer-new-{}", uuid::Uuid::new_v4()));
+    let result = fs::copy(source, &temporary)
+        .and_then(|_| crate::server_config::atomic_replace(&temporary, destination));
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
     }
-    fs::rename(&temporary, destination).map_err(|error| {
+    result.map_err(|error| {
         CommandErrorDto::at_path("playback_install_failed", error.to_string(), destination)
     })
 }
@@ -1374,6 +1394,10 @@ fn ensure_cs2_is_stopped() -> CommandResult<()> {
         "Playback component management is supported only on Windows.",
     ))
 }
+
+#[cfg(test)]
+#[path = "playback_manager_transaction_tests.rs"]
+mod transaction_tests;
 
 #[cfg(test)]
 mod tests {

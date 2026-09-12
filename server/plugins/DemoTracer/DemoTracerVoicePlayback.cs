@@ -162,8 +162,11 @@ public sealed partial class DemoTracerPlugin
     private string TryStartLoadedAutoVoicePlayback(
         ReplayStartAnchor anchor,
         float? freezeTimeSeconds,
-        int startedSlots)
+        int startedSlots,
+        bool restartLoop = false)
     {
+        if (restartLoop && _voiceTestPlayback is { IsAutomatic: false })
+            return string.Empty;
         if (!_voiceAutoEnabled ||
             startedSlots <= 0 ||
             string.IsNullOrWhiteSpace(_loadedVoiceClipPath))
@@ -196,7 +199,7 @@ public sealed partial class DemoTracerPlugin
         if (recipients.Count == 0)
             return "; voice_auto=no_human_recipients";
 
-        if (anchor == ReplayStartAnchor.Live &&
+        if (!restartLoop && anchor == ReplayStartAnchor.Live &&
             _voiceTestPlayback is { StartedFromFreezePreroll: true } activePlayback &&
             string.Equals(activePlayback.Path, clip.Path, StringComparison.OrdinalIgnoreCase) &&
             activePlayback.NextFrameIndex < activePlayback.Frames.Count)
@@ -220,6 +223,7 @@ public sealed partial class DemoTracerPlugin
             recipients,
             startedFromFreezePreroll: anchor == ReplayStartAnchor.FreezePreroll)
         {
+            IsAutomatic = true,
             NextFrameIndex = initialFrameIndex
         };
 

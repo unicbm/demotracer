@@ -154,6 +154,8 @@ internal sealed record GloveSelection(
     int Seed = 0,
     ReplayEconIdentity? Identity = null);
 
+internal sealed record AgentDefinition(ushort DefIndex, string ModelPath);
+
 internal sealed class BotCosmeticLoadout
 {
     public required byte Team { get; init; }
@@ -162,16 +164,4 @@ internal sealed class BotCosmeticLoadout
     public required KnifeSelection Knife { get; init; }
     public required GloveSelection Glove { get; init; }
     public Dictionary<ushort, WeaponCosmeticSelection> Weapons { get; } = new();
-}
-
-internal sealed class RandomizerOptions
-{
-    public bool Enabled { get; set; } = true;
-    public bool Weapons { get; set; } = true;
-    public bool Knives { get; set; } = true;
-    public bool Gloves { get; set; } = true;
-    public bool Agents { get; set; } = true;
-    public bool Music { get; set; } = true;
-    public bool Stickers { get; set; } = true;
-    public bool Charms { get; set; } = true;
 }

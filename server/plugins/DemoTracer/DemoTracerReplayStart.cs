@@ -35,7 +35,7 @@ public sealed partial class DemoTracerPlugin
         var respawned = RespawnDeadLoadedReplayBots();
         if (respawned > 0)
         {
-            Server.NextFrame(() =>
+            ScheduleReplayRoundNextFrame(ReplayRoundWorkKind.Start, () =>
             {
                 PreloadLoadedReplays();
                 Server.PrintToConsole(
@@ -51,16 +51,27 @@ public sealed partial class DemoTracerPlugin
         bool loop,
         ReplayStartAnchor anchor,
         float? freezeTimeSeconds)
+        => StartReplaySlotsReady(_session.LoadedSlots, loop, anchor, freezeTimeSeconds);
+
+    private string StartReplaySlotsReady(
+        IReadOnlyList<int> slots,
+        bool loop,
+        ReplayStartAnchor anchor,
+        float? freezeTimeSeconds,
+        bool restartLoop = false)
     {
         if (IsWarmupPeriod())
             return "[DTR ERR] 热身阶段无法进行回放";
 
-        if (!TryAssignInitialRoundSpawns(out var spawnReason))
+        if (!restartLoop && !TryAssignInitialRoundSpawns(out var spawnReason))
             return $"[DTR ERR] initial spawn assignment is not ready: {spawnReason}";
 
         var ok = 0;
-        foreach (var slot in _session.LoadedSlots)
+        foreach (var slot in slots)
         {
+            if (restartLoop &&
+                (!_session.ReplaySlots.TryGet(slot, out var owner) || !owner.IsPlaying || !owner.Loop))
+                continue;
             _session.LastEnsuredWeaponDef.Remove(slot);
             _session.LastReplayWeaponDef.Remove(slot);
             _session.LastLockedWeaponTarget.Remove(slot);
@@ -85,12 +96,19 @@ public sealed partial class DemoTracerPlugin
                 // controller mirrors, so an earlier successful write is not
                 // sufficient evidence that armor is visible at playback start.
                 ApplyReplayLoadoutForSlot(slot, replay);
+                if (restartLoop)
+                {
+                    PreloadReplayWeaponsForSlot(slot, replay);
+                    QueueLoadedReplayCosmeticAlignmentForSlot(slot);
+                }
                 ApplyReplayRoundStartBalanceForSlot(slot, replay);
             }
 
-            if (StartReplayForSlot(slot, loop, anchor, freezeTimeSeconds))
+            if (StartReplayForSlot(slot, anchor, freezeTimeSeconds))
             {
-                MarkReplayStarted(slot);
+                var roundMedia = !restartLoop ||
+                                 (_session.ReplaySlots.TryGet(slot, out var current) && current.LoopRoundMedia);
+                MarkReplayStarted(slot, loop, roundMedia);
                 ok++;
             }
             else
@@ -98,9 +116,41 @@ public sealed partial class DemoTracerPlugin
                 ReleaseReplaySlot(slot, "start_failed");
             }
         }
-        var voice = TryStartLoadedAutoVoicePlayback(anchor, freezeTimeSeconds, ok);
-        var chat = TryStartLoadedAutoChatPlayback(anchor, freezeTimeSeconds, ok);
-        return $"dtr: started {ok}/{_session.LoadedSlots.Count} loaded slots, loop={loop}{voice}{chat}";
+        // A partial loop must not restart the round's media for a stopped or
+        // handed-off speaker. An independent voice test also keeps its clock.
+        var restartMedia = !restartLoop ||
+                           (ok == slots.Count && slots.Count == _session.LoadedSlots.Count &&
+                            slots.All(slot => _session.ReplaySlots.TryGet(slot, out var state) && state.LoopRoundMedia));
+        var voice = restartMedia
+            ? TryStartLoadedAutoVoicePlayback(anchor, freezeTimeSeconds, ok, restartLoop)
+            : string.Empty;
+        var chat = restartMedia
+            ? TryStartLoadedAutoChatPlayback(anchor, freezeTimeSeconds, ok)
+            : string.Empty;
+        return $"dtr: started {ok}/{slots.Count} loaded slots, loop={loop}{voice}{chat}";
+    }
+
+    private void RestartCompletedReplayLoop(ReadOnlySpan<int> completedSlots)
+    {
+        // The native buffer plays once. One managed boundary restarts every
+        // surviving loop participant and its consumers together, even when
+        // individual buffers have different lengths.
+        var slots = completedSlots.ToArray();
+        foreach (var slot in slots)
+        {
+            _session.ReplaySlots.InvalidateWrites(slot);
+            CancelReplaySlotDeferredWork(slot);
+            ClearPendingWeaponSlotReplacementsForSlot(slot);
+            _session.WeaponLoadoutSyncedSlots.Remove(slot);
+            _session.PawnEquipmentSync.Invalidate(slot);
+            _session.RebuiltInventorySlots.Remove(slot);
+            _session.BalanceSyncedSlots.Remove(slot);
+            _session.PendingBulletHits.Remove(slot);
+            _session.PendingBulletDamages.Remove(slot);
+            _session.PendingThreat360.Remove(slot);
+        }
+        Server.PrintToConsole(StartReplaySlotsReady(
+            slots, loop: true, ReplayStartAnchor.Live, null, restartLoop: true));
     }
 
     private void ScheduleInitialRoundSpawnAssignment()
@@ -362,12 +412,11 @@ public sealed partial class DemoTracerPlugin
         return dx * dx + dy * dy + dz * dz;
     }
 
-    private bool StartReplayForSlot(int slot, bool loop)
-        => StartReplayForSlot(slot, loop, ReplayStartAnchor.Live, null);
+    private bool StartReplayForSlot(int slot)
+        => StartReplayForSlot(slot, ReplayStartAnchor.Live, null);
 
     private bool StartReplayForSlot(
         int slot,
-        bool loop,
         ReplayStartAnchor anchor,
         float? freezeTimeSeconds)
     {
@@ -395,7 +444,7 @@ public sealed partial class DemoTracerPlugin
                                    RegisterReplayPawnForSlot(slot) &&
                                    BotControllerNative.StartReplayUntil(
                                        slot,
-                                       loop,
+                                       false,
                                        startIndex,
                                        replay.PlayStartTickIndex);
                 if (!startedUntil)
@@ -426,7 +475,7 @@ public sealed partial class DemoTracerPlugin
             return true;
         }
         var started = RegisterReplayPawnForSlot(slot) &&
-                      BotControllerNative.StartReplayAt(slot, loop, startIndex);
+                      BotControllerNative.StartReplayAt(slot, false, startIndex);
         if (started)
             _session.ReplaySlots.Claim(slot);
         return started;
@@ -597,7 +646,7 @@ public sealed partial class DemoTracerPlugin
         _session.FreezePrerollStarted = false;
     }
 
-    private void ResumeFreezePrerollReplays(bool loop)
+    private void ResumeFreezePrerollReplays()
     {
         foreach (var slot in _session.FreezePrerollSlots.ToArray())
         {
@@ -606,7 +655,7 @@ public sealed partial class DemoTracerPlugin
                 BotControllerNative.GetReplayState(slot).Playing &&
                 BotControllerNative.StartReplayAt(
                     slot,
-                    loop,
+                    false,
                     replay.PlayStartTickIndex))
             {
                 _session.ResumedFreezePrerollSlots.Add(slot);

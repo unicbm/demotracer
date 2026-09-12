@@ -10,8 +10,10 @@ public interface IDemoTracerApi
 {
     int ApiVersion { get; }
 
+    // True for any loaded native replay, including other providers.
     bool IsSlotBusy(int slot);
 
+    // DemoTracer session ownership; native replay activity alone is insufficient.
     bool IsDemoTracerBot(int slot);
 
     bool TryGetBotCosmeticState(int slot, out DemoTracerBotCosmeticState state);

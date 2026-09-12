@@ -148,6 +148,7 @@ add_library(BotController SHARED
     src/BuyController/BuyControllerState.cpp
     src/BotController/BotController.cpp
     src/BotController/BotControllerState.cpp
+    src/BotController/PublicBotProfile.cpp
     src/BotRecorder/InputInjector.cpp
     src/BotRecorder/MotionRecorder.cpp
     src/BotRecorder/ReplayPawnEquipment.cpp

@@ -7,6 +7,8 @@
 /server/plugins/obj/
 /server/plugins/**/bin/
 /server/plugins/**/obj/
+/server/runtime/**/bin/
+/server/runtime/**/obj/
 *.user
 *.suo
 

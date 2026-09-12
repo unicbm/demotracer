@@ -36,7 +36,6 @@ public sealed partial class DemoTracerPlugin
         CancelDtrRoundBanner(resetRound: false);
         InvalidateInitialSpawnAssignment();
         ClearLoadedTeamAvatarOverrides("unload_all");
-        var trackedSlots = _session.LoadedSlots.ToHashSet();
         StopVoiceTestPlayback("unload_all", printSummary: false);
         ClearLoadedAutoVoiceClip();
         ClearLoadedAutoChat();
@@ -57,7 +56,6 @@ public sealed partial class DemoTracerPlugin
         }
         if (releaseBuffers)
             ReleaseUnusedWarmReplayBuffers();
-        StopUntrackedNativeReplaySlots(trackedSlots, "unload_all");
         _session.ReplaySlots.Clear();
         _session.LoadedReplays.Clear();
         _session.ReplayIdentityGenerationBySlot.Clear();
@@ -97,7 +95,7 @@ public sealed partial class DemoTracerPlugin
             InvalidateInitialSpawnAssignment();
             ClearLoadedTeamAvatarOverrides(reason);
             ClearFreezePrerollReplayState();
-            ClearReplayLeftHandDesiredLatches(forceNative: true);
+            ClearReplayLeftHandDesiredLatches();
             var hadReplayState = _session.ReplaySlots.HasAnyState ||
                                  _session.LoadedReplays.Count > 0 ||
                                  _retainedReplayViewmodelSlots.Count > 0 ||
@@ -115,9 +113,8 @@ public sealed partial class DemoTracerPlugin
 
             if (BotControllerNative.IsCompatible)
             {
-                foreach (var slot in NativeReplaySlots())
-                    ClearNativeSlotForLifecycle(slot);
-                _ = BotControllerNative.ClearAllBuyPlans();
+                foreach (var slot in ReplayBufferSlots())
+                    ClearNativeSlotForLifecycle(slot, reason);
                 _ = BotControllerNative.SetReplayPovMask(0);
             }
             _session.LastReplayPovMask = 0;
@@ -156,10 +153,11 @@ public sealed partial class DemoTracerPlugin
         }
     }
 
-    private bool HasReplayLifecycleState(bool includeNative = false)
+    private bool HasReplayLifecycleState()
     {
         if (_session.ReplaySlots.HasAnyState ||
             _session.LoadedReplays.Count > 0 ||
+            _session.WarmReplayBufferSlots.Count > 0 ||
             _retainedReplayViewmodelSlots.Count > 0 ||
             _session.Plan.Armed ||
             _session.Plan.SequenceActive ||
@@ -168,17 +166,15 @@ public sealed partial class DemoTracerPlugin
             return true;
         }
 
-        return includeNative && BotControllerNative.IsCompatible && HasAnyNativeActiveReplaySlot();
+        return false;
     }
 
-    private static void ClearNativeSlotForLifecycle(int slot)
+    private void ClearNativeSlotForLifecycle(int slot, string reason)
     {
         try
         {
             BotControllerNative.UnloadReplay(slot);
-            BotControllerNative.ClearBuyPlan(slot);
-            BotControllerNative.UnlockReplayControl(slot);
-            BotControllerNative.UnlockWeaponSlot(slot);
+            ReleaseReplaySlot(slot, reason);
         }
         catch (Exception ex)
         {
@@ -188,6 +184,9 @@ public sealed partial class DemoTracerPlugin
 
     private void StopLoadedReplaySlots(string reason)
     {
+        CancelAllReplayDeferredWork();
+        InvalidateFreezePreroll();
+        InvalidateInitialSpawnAssignment();
         CancelDtrRoundBanner(resetRound: false);
         StopVoiceTestPlayback(reason, printSummary: false);
         StopChatPlayback(reason);
@@ -242,7 +241,7 @@ public sealed partial class DemoTracerPlugin
     {
         if (!_session.ReplaySlots.HasAnyState &&
             _retainedReplayViewmodelSlots.Count == 0 &&
-            !HasAnyNativeActiveReplaySlot())
+            _session.WarmReplayBufferSlots.Count == 0)
             return false;
 
         var keepWarmBuffers = _session.Plan.SequenceActive || _session.Plan.Armed;
@@ -252,30 +251,11 @@ public sealed partial class DemoTracerPlugin
         return true;
     }
 
-    private static IEnumerable<int> NativeReplaySlots()
-    {
-        for (var slot = 0; slot < MaxPlayerSlots; slot++)
-            yield return slot;
-    }
-
-    private void StopUntrackedNativeReplaySlots(IReadOnlySet<int> trackedSlots, string reason)
-    {
-        foreach (var slot in NativeReplaySlots())
-        {
-            if (trackedSlots.Contains(slot) || _session.WarmReplayBufferSlots.Contains(slot))
-                continue;
-
-            var state = BotControllerNative.GetReplayState(slot);
-            if (!state.Playing && state.Total <= 0)
-                continue;
-
-            BotControllerNative.UnloadReplay(slot);
-            BotControllerNative.ClearBuyPlan(slot);
-            BotControllerNative.UnlockReplayControl(slot);
-            BotControllerNative.UnlockWeaponSlot(slot);
-            ClearReplayPovSlot(slot);
-            Server.PrintToConsole($"dtr: stopped native replay slot={slot} reason={reason}");
-        }
-    }
+    private int[] ReplayBufferSlots()
+        => _session.LoadedSlots
+            .Concat(_session.WarmReplayBufferSlots)
+            .Concat(_session.LoadedReplays.Keys)
+            .Distinct()
+            .ToArray();
 
 }

@@ -107,4 +107,93 @@ public sealed class ReplaySlotRegistryTests
         Assert.True(afterClear.Epoch > beforeClear.Epoch);
         Assert.False(slots.IsCurrentEpoch(6, beforeClear.Epoch));
     }
+
+    [Fact]
+    public void LoopWaitsForEveryParticipantAndDoesNotIncludeNonLoopingSlots()
+    {
+        var slots = new ReplaySlotRegistry();
+        foreach (var slot in new[] { 2, 5, 8 })
+            slots.LoadAndClaim(slot);
+        slots.MarkPlaying(2, loop: true);
+        slots.MarkPlaying(5, loop: true);
+        slots.MarkPlaying(8);
+
+        Assert.False(slots.IsCompletedLoop([]));
+        Assert.False(slots.IsCompletedLoop([2]));
+        Assert.True(slots.IsCompletedLoop([2, 5]));
+        Assert.False(slots.IsCompletedLoop([2, 5, 8]));
+    }
+
+    [Fact]
+    public void HandoffAndStopRemoveLoopIntentIncludingFinishedWaiters()
+    {
+        var slots = new ReplaySlotRegistry();
+        slots.MarkPlaying(slots.LoadAndClaim(2).Slot, loop: true);
+        slots.MarkPlaying(slots.LoadAndClaim(5).Slot, loop: true);
+
+        slots.Release(5);
+        Assert.True(slots.IsCompletedLoop([2]));
+        Assert.False(slots.IsCompletedLoop([2, 5]));
+        Assert.True(slots.TryGet(5, out var handedOff));
+        Assert.False(handedOff.Loop);
+
+        slots.Release(2);
+        Assert.False(slots.IsCompletedLoop([2]));
+        Assert.False(slots.IsCompletedLoop([]));
+    }
+
+    [Fact]
+    public void LoopAndOwnerChangesExpireDeferredProjectileAndUtilityWrites()
+    {
+        var slots = new ReplaySlotRegistry();
+        var first = slots.MarkPlaying(slots.LoadAndClaim(2).Slot, loop: true);
+        var projectileBoundary = slots.CapturePlaybackBoundary();
+        Assert.True(slots.IsCurrentPlaybackFromBoundary(2, projectileBoundary));
+
+        // A second iteration keeps its loop intention while invalidating the
+        // old utility callback and the projectile born before the boundary.
+        slots.InvalidateWrites(2);
+        var second = slots.MarkPlaying(2, loop: true);
+        Assert.True(second.Loop);
+        Assert.False(slots.IsCurrentEpoch(2, first.Epoch));
+        Assert.False(slots.IsCurrentPlaybackFromBoundary(2, projectileBoundary));
+        Assert.True(slots.IsCurrentPlaybackFromBoundary(2, slots.CapturePlaybackBoundary()));
+
+        var secondBoundary = slots.CapturePlaybackBoundary();
+        slots.Release(2);
+        Assert.False(slots.IsCurrentPlaybackFromBoundary(2, secondBoundary));
+        slots.Claim(2);
+        slots.MarkPlaying(2);
+        Assert.False(slots.IsCurrentPlaybackFromBoundary(2, secondBoundary));
+        Assert.False(slots.IsCompletedLoop([2]));
+    }
+
+    [Fact]
+    public void ProjectileBornDuringPreparationCannotBindToLaterPlayback()
+    {
+        var slots = new ReplaySlotRegistry();
+        slots.LoadAndClaim(2);
+        var projectileBoundary = slots.CapturePlaybackBoundary();
+        slots.MarkPlaying(2, loop: true);
+
+        Assert.False(slots.IsCurrentPlaybackFromBoundary(2, projectileBoundary));
+        Assert.True(slots.IsCurrentPlaybackFromBoundary(2, slots.CapturePlaybackBoundary()));
+    }
+
+    [Fact]
+    public void ManualSlotLoopsDoNotAcquireRoundMediaPlayback()
+    {
+        var slots = new ReplaySlotRegistry();
+        var manual = slots.MarkPlaying(slots.LoadAndClaim(2).Slot, loop: true);
+        Assert.False(manual.LoopRoundMedia);
+
+        var round = slots.MarkPlaying(2, loop: true, roundMedia: true);
+        Assert.True(round.LoopRoundMedia);
+        slots.InvalidateWrites(2);
+        Assert.True(slots.TryGet(2, out var next));
+        Assert.True(next.LoopRoundMedia);
+
+        slots.Release(2);
+        Assert.False(slots.MarkPlaying(2, loop: true).LoopRoundMedia);
+    }
 }

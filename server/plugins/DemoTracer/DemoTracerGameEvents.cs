@@ -133,11 +133,7 @@ public sealed partial class DemoTracerPlugin
             return HookResult.Continue;
         }
 
-        var resumeLoop = !_session.Plan.SequenceActive &&
-                         !HasPlayoffSchedulingState() &&
-                         _session.Plan.Armed &&
-                         _session.Plan.ArmedLoop;
-        ResumeFreezePrerollReplays(resumeLoop);
+        ResumeFreezePrerollReplays();
         ScheduleAvatarOverrideUserInfoRefresh();
 
         var missingFreezePrerollSlots = MissingFreezePrerollResumeSlots();
@@ -150,13 +146,13 @@ public sealed partial class DemoTracerPlugin
 
         if (_session.Plan.SequenceActive)
         {
-            Server.NextFrame(StartPreparedSequenceRound);
+            ScheduleReplayRoundNextFrame(ReplayRoundWorkKind.Start, StartPreparedSequenceRound);
             return HookResult.Continue;
         }
 
         if (HasPlayoffSchedulingState())
         {
-            Server.NextFrame(StartPreparedPlayoffRound);
+            ScheduleReplayRoundNextFrame(ReplayRoundWorkKind.Start, StartPreparedPlayoffRound);
             return HookResult.Continue;
         }
 
@@ -171,7 +167,7 @@ public sealed partial class DemoTracerPlugin
         var loop = _session.Plan.ArmedLoop;
         var label = _session.Plan.ArmedLabel;
         _session.Plan.ClearArmed();
-        Server.NextFrame(() =>
+        ScheduleReplayRoundNextFrame(ReplayRoundWorkKind.Start, () =>
         {
             var message = StartLoaded(loop, ReplayStartAnchor.Live, null);
             Server.PrintToConsole($"dtr: auto-start {label}: {message}");
@@ -250,8 +246,10 @@ public sealed partial class DemoTracerPlugin
     [GameEventHandler]
     public HookResult OnPlayerDeath(EventPlayerDeath @event, GameEventInfo info)
     {
-        var handoffSlot = HandoffIncludesDeath(_handoffMode) && HasActiveReplaySlots()
-            ? GetDeathHandoffSlot(@event)
+        var victimSlot = @event.Userid is { IsValid: true } deathVictim ? deathVictim.Slot : -1;
+        var attackerSlot = @event.Attacker is { IsValid: true } deathAttacker ? deathAttacker.Slot : -1;
+        var handoffSlot = HandoffIncludesDeath(_handoffMode) && _session.ReplaySlots.PlayingCount > 0
+            ? GetDeathHandoffSlot(victimSlot, attackerSlot)
             : -1;
         if (handoffSlot >= 0)
             HandoffActiveReplays($"player_death_slot{handoffSlot}", handoffSlot);
@@ -259,7 +257,7 @@ public sealed partial class DemoTracerPlugin
         if (@event.Userid is { IsValid: true } victim &&
             handoffSlot != victim.Slot)
         {
-            if (IsReplaySlotPlaying(victim.Slot))
+            if (_session.ReplaySlots.IsPlaying(victim.Slot))
             {
                 BotControllerNative.StopReplay(victim.Slot);
                 ReleaseReplaySlot(victim.Slot, "replay_target_death");
@@ -277,10 +275,10 @@ public sealed partial class DemoTracerPlugin
     [GameEventHandler]
     public HookResult OnBombPlanted(EventBombPlanted @event, GameEventInfo info)
     {
-        if (!HandoffIncludesC4(_handoffMode) || !HasActiveReplaySlots())
+        if (!HandoffIncludesC4(_handoffMode) || _session.ReplaySlots.PlayingCount == 0)
             return HookResult.Continue;
 
-        var triggerSlot = @event.Userid is { IsValid: true } planter && IsReplaySlotPlaying(planter.Slot)
+        var triggerSlot = @event.Userid is { IsValid: true } planter && _session.ReplaySlots.IsPlaying(planter.Slot)
             ? planter.Slot
             : -1;
         HandoffActiveReplays(
@@ -293,7 +291,7 @@ public sealed partial class DemoTracerPlugin
     [GameEventHandler]
     public HookResult OnBulletDamage(EventBulletDamage @event, GameEventInfo info)
     {
-        if (!HandoffIncludesContact(_handoffMode) || !HasActiveReplaySlots())
+        if (!HandoffIncludesContact(_handoffMode) || _session.ReplaySlots.PlayingCount == 0)
             return HookResult.Continue;
 
         if (!TryGetEnemyBulletHandoffPair(@event.Attacker, @event.Victim, out var victimSlot, out var attackerSlot))
@@ -318,7 +316,7 @@ public sealed partial class DemoTracerPlugin
     [GameEventHandler]
     public HookResult OnPlayerHurt(EventPlayerHurt @event, GameEventInfo info)
     {
-        if (!HandoffIncludesContact(_handoffMode) || !HasActiveReplaySlots())
+        if (!HandoffIncludesContact(_handoffMode) || _session.ReplaySlots.PlayingCount == 0)
             return HookResult.Continue;
 
         if (!TryGetEnemyBulletHandoffPair(@event.Attacker, @event.Userid, out var victimSlot, out var attackerSlot))

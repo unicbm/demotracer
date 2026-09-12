@@ -1,6 +1,7 @@
 // Motion recording & replay implementation
 
 #include "MotionRecorder.h"
+#include "ButtonState.h"
 #include "BotController.h"
 #include "InputInjector.h"
 #include "ReplayPawnEquipment.h"
@@ -31,6 +32,8 @@ namespace BotController
             // Subtick moves seen on PlayerRunCommand, awaiting the matching
             // ProcessMovement post that commits them to a tick.
             std::vector<SubtickMove> pendingSubs;
+            std::vector<ReplayCommandFrameData> commands;
+            ReplayCommandFrameData pendingCommand{};
             MovementSnapshot pendingPre{};
             bool havePre{false};
             std::atomic<void *> liveWs{nullptr};
@@ -208,10 +211,25 @@ namespace BotController
         static void FinalizeReplayStopState(int slot, ReplayState &p,
                                             void *services = nullptr)
         {
-            ReplayPawnEquipment::Clear(slot);
+            // The takeover safety hook stops replay after the pawn is already
+            // human-controlled. Retire our requests without rewriting its live
+            // buttons, velocity or movement mode.
+            if (InputInjector::IsSlotControllingBot(slot))
+                return;
             if (!services)
                 services = InputInjector::LiveMovementServices(slot);
             if (!services)
+                return;
+
+            void *pawn = InputInjector::ResolveReplayPawn(slot, services);
+            uint32_t controllerHandle = 0;
+            // The cached flag belongs to the original replay slot. On human
+            // takeover only the new controller's flag may be set, while the
+            // old slot still holds these movement services. Require the pawn's
+            // current controller, never its original-controller fallback,
+            // before touching either the pawn or its service-side buttons.
+            if (!pawn || !SafeRead(pawn, tg::kPawn_Controller, controllerHandle) ||
+                (controllerHandle & 0x7FFFu) != static_cast<uint32_t>(slot + 1))
                 return;
 
             // Buttons and desire flags are replay-owned input state. Do not let
@@ -219,10 +237,6 @@ namespace BotController
             ClearReplayStopButtonResidue(services);
 
             auto *sv = reinterpret_cast<char *>(services);
-            void *pawn = InputInjector::ResolveReplayPawn(slot, services);
-            if (!pawn)
-                return;
-
             auto *pp = reinterpret_cast<char *>(pawn);
             const bool ladderResidue = ReplayStopPointHasLadderResidue(p) ||
                                        LiveMovementHasLadderResidue(slot, services);
@@ -269,6 +283,23 @@ namespace BotController
             *reinterpret_cast<uint8_t *>(sv + tg::kServices_DesiresDuck) = 0;
             *reinterpret_cast<float *>(sv + tg::kServices_DuckAmount) = 0.0f;
             *reinterpret_cast<float *>(sv + tg::kServices_DuckSpeed) = 0.0f;
+        }
+
+        // End the execution once. A stopped replay may retain its buffer while
+        // another provider owns this slot's inputs and equipment.
+        static void EndReplayExecution(int slot, ReplayState &p,
+                                       void *services = nullptr)
+        {
+            if (!p.playing.exchange(false, std::memory_order_acq_rel))
+                return;
+
+            FinalizeReplayStopState(slot, p, services);
+            InputInjector::ClearUsercmdMovementIntent(slot);
+            ReplayPawnEquipment::Clear(slot);
+            p.holdBeforeCursor.store(-1, std::memory_order_relaxed);
+            InvalidateReplayWeaponCache(p);
+            g_lastFinalViewCursor[slot] = -1;
+            g_serverViewChangeIndex[slot] = 0;
         }
 
         static void MarkNetworkStateChanged(void *entity, uint32_t offset,
@@ -738,6 +769,8 @@ namespace BotController
                 r.subs.clear();
                 r.pendingSubs.clear();
                 r.havePre = false;
+                r.commands.clear();
+                r.pendingCommand = {};
                 r.ticks.reserve(4096); // ~64s @ 64 tick
                 r.subs.reserve(4096);
             }
@@ -752,6 +785,23 @@ namespace BotController
             if (!ValidSlot(slot))
                 return false;
             g_rec[slot].recording.store(false, std::memory_order_release);
+            return true;
+        }
+
+        bool ClearRecordedMotion(int slot)
+        {
+            if (!ValidSlot(slot)) return false;
+            auto &record = g_rec[slot];
+            record.recording.store(false, std::memory_order_release);
+            std::lock_guard lock(record.mu);
+            std::vector<ReplayTick>().swap(record.ticks);
+            std::vector<SubtickMove>().swap(record.subs);
+            std::vector<SubtickMove>().swap(record.pendingSubs);
+            std::vector<ReplayCommandFrameData>().swap(record.commands);
+            record.pendingCommand = {};
+            record.havePre = false;
+            record.currentDef.store(-1, std::memory_order_relaxed);
+            record.liveWs.store(nullptr, std::memory_order_relaxed);
             return true;
         }
 
@@ -782,7 +832,9 @@ namespace BotController
         void SetLiveWs(int slot, void *ws)
         {
             if (ValidSlot(slot))
+            {
                 g_rec[slot].liveWs.store(ws, std::memory_order_relaxed);
+            }
         }
 
         void *LiveWs(int slot)
@@ -868,6 +920,8 @@ namespace BotController
                 for (const auto &sm : r.pendingSubs)
                     r.subs.push_back(sm);
                 r.ticks.push_back(t);
+                r.commands.push_back(r.pendingCommand);
+                r.pendingCommand = {};
                 r.pendingSubs.clear();
                 r.havePre = false;
             }
@@ -901,6 +955,32 @@ namespace BotController
             return n;
         }
 
+        void OnCaptureCommand(int slot, const ReplayCommandFrameData &command)
+        {
+            if (!ValidSlot(slot)) return;
+            auto &record = g_rec[slot];
+            std::lock_guard lock(record.mu);
+            if (record.recording.load(std::memory_order_acquire)) record.pendingCommand = command;
+        }
+
+        int RecordedCommandCount(int slot)
+        {
+            if (!ValidSlot(slot)) return -1;
+            auto &record = g_rec[slot];
+            std::lock_guard lock(record.mu);
+            return static_cast<int>(record.commands.size());
+        }
+
+        int CopyCommands(int slot, ReplayCommandFrameData *out, int maxCommands)
+        {
+            if (!ValidSlot(slot) || !out || maxCommands <= 0) return 0;
+            auto &record = g_rec[slot];
+            std::lock_guard lock(record.mu);
+            const int count = std::min(maxCommands, static_cast<int>(record.commands.size()));
+            std::copy_n(record.commands.begin(), count, out);
+            return count;
+        }
+
         // ---- replay ----
 
         static const ReplayTick *CurrentReplayTickPtr(ReplayState &p, int &cur, int &total)
@@ -926,14 +1006,16 @@ namespace BotController
             return tick.pre;
         }
 
-        static uint64_t ReplayPressEdgesForPreStartTick(const ReplayState &p, int index)
+        static uint64_t ReplayPressedButtonsForPreStartTick(const ReplayState &p, int index)
         {
             if (index < 0 || index >= static_cast<int>(p.ticks.size()))
                 return 0;
 
             const MovementSnapshot &pre = p.ticks[static_cast<size_t>(index)].pre;
             if (pre.buttons1 != 0 || pre.buttons2 != 0)
-                return pre.buttons1;
+                return ButtonState::Decode(
+                           pre.buttons, pre.buttons1, pre.buttons2)
+                    .pressed;
 
             // Do not infer a press from the first stored context tick. If it is
             // already held there, the hold may have begun before the bounded
@@ -964,7 +1046,7 @@ namespace BotController
             uint64_t found = 0;
             for (int i = 0; i < start; ++i)
             {
-                found |= ReplayPressEdgesForPreStartTick(p, i) & candidates;
+                found |= ReplayPressedButtonsForPreStartTick(p, i) & candidates;
                 if ((found & candidates) == candidates)
                     break;
             }
@@ -1121,7 +1203,6 @@ namespace BotController
                 InvalidateReplayWeaponCache(p);
                 g_lastFinalViewCursor[slot] = -1;
                 g_serverViewChangeIndex[slot] = 0;
-                InputInjector::ClearUsercmdMovementIntent(slot);
                 InputInjector::ClearReplayPawn(slot);
                 return true;
             }
@@ -1203,19 +1284,8 @@ namespace BotController
             if (!ValidSlot(slot))
                 return false;
             ReplayState &p = g_rep[slot];
-            {
-                std::lock_guard<std::mutex> lk(p.mu);
-                const bool wasPlaying =
-                    p.playing.exchange(false, std::memory_order_acq_rel);
-                if (wasPlaying)
-                    FinalizeReplayStopState(slot, p);
-                p.holdBeforeCursor.store(-1, std::memory_order_relaxed);
-                InvalidateReplayWeaponCache(p);
-                g_lastFinalViewCursor[slot] = -1;
-                g_serverViewChangeIndex[slot] = 0;
-                InputInjector::ClearUsercmdMovementIntent(slot);
-            }
-            ReplayPawnEquipment::Clear(slot);
+            std::lock_guard<std::mutex> lk(p.mu);
+            EndReplayExecution(slot, p);
             return true;
         }
 
@@ -1225,24 +1295,17 @@ namespace BotController
                 return false;
 
             ReplayState &p = g_rep[slot];
-            {
-                std::lock_guard<std::mutex> lk(p.mu);
-                const bool wasPlaying =
-                    p.playing.exchange(false, std::memory_order_acq_rel);
-                if (wasPlaying)
-                    FinalizeReplayStopState(slot, p);
-                p.holdBeforeCursor.store(-1, std::memory_order_relaxed);
-                InvalidateReplayWeaponCache(p);
-                g_lastFinalViewCursor[slot] = -1;
-                g_serverViewChangeIndex[slot] = 0;
-                InputInjector::ClearUsercmdMovementIntent(slot);
-                ReleaseReplayVectors(p);
-                p.cursor.store(0, std::memory_order_relaxed);
-                p.startCursor.store(0, std::memory_order_relaxed);
-                p.loop.store(false, std::memory_order_relaxed);
-                InputInjector::ClearReplayPawn(slot);
-            }
-            ReplayPawnEquipment::Clear(slot);
+            std::lock_guard<std::mutex> lk(p.mu);
+            EndReplayExecution(slot, p);
+            ReleaseReplayVectors(p);
+            p.cursor.store(0, std::memory_order_relaxed);
+            p.startCursor.store(0, std::memory_order_relaxed);
+            p.holdBeforeCursor.store(-1, std::memory_order_relaxed);
+            p.loop.store(false, std::memory_order_relaxed);
+            InvalidateReplayWeaponCache(p);
+            g_lastFinalViewCursor[slot] = -1;
+            g_serverViewChangeIndex[slot] = 0;
+            InputInjector::ClearReplayPawn(slot);
             return true;
         }
 
@@ -1283,6 +1346,10 @@ namespace BotController
             {
                 std::lock_guard<std::mutex> lk(p.mu);
                 out.total = static_cast<int32_t>(p.ticks.size());
+                // The aggregate state retains the terminal cursor so managed
+                // consumers can distinguish natural completion from a stop.
+                // GetReplayCursor keeps its legacy -1-when-idle contract.
+                out.cursor = p.cursor.load(std::memory_order_relaxed);
                 return true;
             }
 
@@ -1381,11 +1448,16 @@ namespace BotController
             else if (b1 == 0 && b2 == 0)
             {
                 uint64_t heldPrev = (cur > 0) ? p.ticks[static_cast<size_t>(cur - 1)].pre.buttons : 0;
-                b1 = b0 & ~heldPrev;
-                b2 = heldPrev & ~b0;
+                const ButtonState::Planes planes =
+                    ButtonState::EncodeAdjacentHeld(b0, heldPrev);
+                b1 = planes.state2;
+                b2 = planes.state3;
             }
             if (!hasCommandButtons)
-                b1 |= ReplayPrimeAttackButtonsForStart(p, cur, b0, b1);
+            {
+                const uint64_t pressed = ButtonState::Decode(b0, b1, b2).pressed;
+                b1 |= ReplayPrimeAttackButtonsForStart(p, cur, b0, pressed);
+            }
 
             const SubtickMove *subticks = nullptr;
             size_t subtickBegin = 0;
@@ -1561,12 +1633,16 @@ namespace BotController
             if (b1 == 0 && b2 == 0)
             {
                 // Older offline records only stored the held mask. Keep them
-                // playable by synthesizing edge masks from adjacent ticks.
+                // playable by synthesizing a canonical three-plane transition
+                // from adjacent ticks.
                 uint64_t heldPrev = (cur > 0) ? p.ticks[static_cast<size_t>(cur - 1)].pre.buttons : 0;
-                b1 = b0 & ~heldPrev;
-                b2 = heldPrev & ~b0;
+                const ButtonState::Planes planes =
+                    ButtonState::EncodeAdjacentHeld(b0, heldPrev);
+                b1 = planes.state2;
+                b2 = planes.state3;
             }
-            b1 |= ReplayPrimeAttackButtonsForStart(p, cur, b0, b1);
+            const uint64_t pressed = ButtonState::Decode(b0, b1, b2).pressed;
+            b1 |= ReplayPrimeAttackButtonsForStart(p, cur, b0, pressed);
             return true;
         }
 
@@ -2032,12 +2108,7 @@ namespace BotController
                         g_serverViewChangeIndex[slot] = 0;
                         return;
                     }
-                    const bool wasPlaying =
-                        p.playing.exchange(false, std::memory_order_acq_rel);
-                    if (wasPlaying)
-                        FinalizeReplayStopState(slot, p, services);
-                    InvalidateReplayWeaponCache(p);
-                    InputInjector::ClearUsercmdMovementIntent(slot);
+                    EndReplayExecution(slot, p, services);
                     return;
                 }
                 return;
@@ -2081,12 +2152,7 @@ namespace BotController
             p.cursor.store(next, std::memory_order_relaxed);
             if (next >= total && !p.loop.load(std::memory_order_relaxed))
             {
-                const bool wasPlaying =
-                    p.playing.exchange(false, std::memory_order_acq_rel);
-                if (wasPlaying)
-                    FinalizeReplayStopState(slot, p, services);
-                InvalidateReplayWeaponCache(p);
-                InputInjector::ClearUsercmdMovementIntent(slot);
+                EndReplayExecution(slot, p, services);
             }
         }
 
@@ -2094,32 +2160,8 @@ namespace BotController
         {
             for (int i = 0; i < kMaxSlots; ++i)
             {
-                g_rec[i].recording.store(false, std::memory_order_release);
-                {
-                    std::lock_guard<std::mutex> lk(g_rep[i].mu);
-                    const bool wasPlaying = g_rep[i].playing.exchange(
-                        false, std::memory_order_acq_rel);
-                    if (wasPlaying)
-                        FinalizeReplayStopState(i, g_rep[i]);
-                    ReleaseReplayVectors(g_rep[i]);
-                }
-                {
-                    std::lock_guard<std::mutex> lk(g_rec[i].mu);
-                    g_rec[i].ticks.clear();
-                    g_rec[i].subs.clear();
-                    g_rec[i].pendingSubs.clear();
-                    g_rec[i].havePre = false;
-                }
-                g_rec[i].currentDef.store(-1, std::memory_order_relaxed);
-                g_rec[i].liveWs.store(nullptr, std::memory_order_relaxed);
-                g_rep[i].cursor.store(0, std::memory_order_relaxed);
-                g_rep[i].startCursor.store(0, std::memory_order_relaxed);
-                g_rep[i].holdBeforeCursor.store(-1, std::memory_order_relaxed);
-                g_rep[i].loop.store(false, std::memory_order_relaxed);
-                InvalidateReplayWeaponCache(g_rep[i]);
-                g_lastFinalViewCursor[i] = -1;
-                g_serverViewChangeIndex[i] = 0;
-                InputInjector::ClearReplayPawn(i);
+                ClearRecordedMotion(i);
+                ReleaseReplayBuffer(i);
             }
             InputInjector::ClearAllUsercmdMovementIntents();
             ReplayPawnEquipment::ClearAll();

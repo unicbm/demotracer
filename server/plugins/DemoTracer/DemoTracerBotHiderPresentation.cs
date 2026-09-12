@@ -283,8 +283,10 @@ public sealed partial class DemoTracerPlugin
         BotHiderPresentationEvidence evidence)
     {
         var slot = evidence.Slot;
-        if (!IsReplaySlotStillSafe(slot) ||
-            !_botHiderBridge.TryGetManagedSlot(slot, out var managed))
+        // Presentation belongs to the managed bot controller, even while a
+        // human owns its pawn. The pawn safety gate only governs replay input;
+        // applying it here revokes this bot's identity on death/takeover.
+        if (!_botHiderBridge.TryGetManagedSlot(slot, out var managed))
         {
             return;
         }

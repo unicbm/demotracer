@@ -6,6 +6,9 @@
 #include "playercommand.h"
 
 #include "InputInjector.h"
+#include "UsercmdRequests.h"
+#include "BotController.h"
+#include "BotControllerState.h"
 #include "ccsbot_slot.h"
 #include "sig_scan.h"
 #include "MotionRecorder.h"
@@ -55,6 +58,7 @@ namespace BotController
         static bool g_physicsActive = false;
         // True once PlayerRunCommand is hooked
         static bool g_subtickActive = false;
+        static UsercmdRequests g_requests;
         static std::string g_status = "not_attempted";
 
         // slot -> live CCSPlayer_MovementServices*
@@ -115,6 +119,73 @@ namespace BotController
             if (!std::isfinite(value))
                 return 0.0f;
             return std::clamp(value, -1.0f, 1.0f);
+        }
+
+        static bool CanUsePublicControl(int slot)
+        {
+            return g_subtickActive && slot >= 0 && slot < kMaxSlots &&
+                BotControllerHooks::BotForSlot(slot) && !IsSlotControllingBot(slot) &&
+                !MotionRecorder::IsReplaying(slot) && !BotControllerState::GetAll(slot);
+        }
+
+        int64_t InjectUsercmd(int slot, uint64_t buttons, int durationMs)
+        {
+            return CanUsePublicControl(slot)
+                ? g_requests.Add(slot, UsercmdRequests::Kind::Injection, buttons, durationMs, NowMs()) : -1;
+        }
+        bool CancelUsercmdInjection(int slot, int64_t id)
+        { return g_requests.Cancel(slot, UsercmdRequests::Kind::Injection, id); }
+        int64_t StartUsercmdMovement(int slot, float forward, float left)
+        {
+            return CanUsePublicControl(slot)
+                ? g_requests.Add(slot, UsercmdRequests::Kind::Movement, 0, 0, NowMs(), forward, left) : -1;
+        }
+        bool UpdateUsercmdMovement(int slot, int64_t id, float forward, float left)
+        { return CanUsePublicControl(slot) && g_requests.UpdateMovement(slot, id, forward, left); }
+        bool CancelUsercmdMovement(int slot, int64_t id)
+        { return g_requests.Cancel(slot, UsercmdRequests::Kind::Movement, id); }
+        bool SuppressUsercmd(int slot, uint64_t buttons, int durationMs)
+        {
+            return durationMs > 0 && CanUsePublicControl(slot) &&
+                g_requests.Add(slot, UsercmdRequests::Kind::Suppression, buttons, durationMs, NowMs()) > 0;
+        }
+        int64_t StartUsercmdSuppression(int slot, uint64_t buttons)
+        {
+            return CanUsePublicControl(slot)
+                ? g_requests.Add(slot, UsercmdRequests::Kind::Suppression, buttons, 0, NowMs()) : -1;
+        }
+        bool CancelUsercmdSuppression(int slot, int64_t id)
+        { return g_requests.Cancel(slot, UsercmdRequests::Kind::Suppression, id); }
+        void ClearUsercmdInjections(int slot) { g_requests.Clear(slot); }
+
+        static void ApplyPublicControl(int slot, PlayerCommand *pc, CBaseUserCmdPB *base)
+        {
+            const auto frame = g_requests.Advance(slot, NowMs(), {
+                pc->buttonstates.m_pButtonStates[0], pc->buttonstates.m_pButtonStates[1],
+                pc->buttonstates.m_pButtonStates[2]});
+            auto *buttons = base->mutable_buttons_pb();
+            buttons->set_buttonstate1(frame.buttons.state1);
+            buttons->set_buttonstate2(frame.buttons.state2);
+            buttons->set_buttonstate3(frame.buttons.state3);
+            pc->buttonstates.m_pButtonStates[0] = frame.buttons.state1;
+            pc->buttonstates.m_pButtonStates[1] = frame.buttons.state2;
+            pc->buttonstates.m_pButtonStates[2] = frame.buttons.state3;
+            if (frame.movement)
+            {
+                base->set_forwardmove(frame.forward * kCommandMoveSpeed);
+                base->set_leftmove(frame.left * kCommandMoveSpeed);
+            }
+            for (int i = 0; i < base->subtick_moves_size(); ++i)
+            {
+                auto *step = base->mutable_subtick_moves(i);
+                step->set_button(step->button() & ~frame.controlledMask);
+                if (step->button() == 0) step->set_pressed(false);
+                if (frame.movement)
+                {
+                    step->set_analog_forward_delta(0);
+                    step->set_analog_left_delta(0);
+                }
+            }
         }
 
         static uint64_t ButtonsForAnalog(float analogForward, float analogLeft)
@@ -298,6 +369,7 @@ namespace BotController
         {
             if (slot < 0 || slot >= kMaxSlots)
                 return false;
+            ClearUsercmdInjections(slot);
             g_intentExpireMs[slot].store(0, std::memory_order_release);
             g_intentButtonsSet[slot].store(0, std::memory_order_relaxed);
             g_intentButtonsClear[slot].store(0, std::memory_order_relaxed);
@@ -386,10 +458,7 @@ namespace BotController
         void ClearReplayPawn(int slot)
         {
             if (ValidSlotIndex(slot))
-            {
-                ReplayPawnEquipment::Clear(slot);
                 g_slotPawns[slot].store(nullptr, std::memory_order_release);
-            }
         }
 
         static void *ServicesToPawnField(void *services)
@@ -598,7 +667,13 @@ namespace BotController
             bool hasLeftHandLatch = slot >= 0 && slot < kMaxSlots &&
                                     g_leftHandLatchEnabled[slot].load(std::memory_order_acquire) != 0;
 
-            if (cmd && (recording || replaying || hasMovementIntent || hasLeftHandLatch))
+            bool hasPublicControl = g_requests.Pending(slot);
+            if (hasPublicControl && !CanUsePublicControl(slot))
+            {
+                ClearUsercmdInjections(slot);
+                hasPublicControl = false;
+            }
+            if (cmd && (recording || replaying || hasMovementIntent || hasLeftHandLatch || hasPublicControl))
             {
                 // Compiler computes the multiple-inheritance adjust here.
                 auto *pc = reinterpret_cast<PlayerCommand *>(cmd);
@@ -624,6 +699,52 @@ namespace BotController
                         moves[i].yawDelta = s.yaw_delta();
                     }
                     MotionRecorder::OnCaptureSubticks(slot, moves, n);
+
+                ReplayCommandFrameData command{};
+                command.buttons = pc->buttonstates.m_pButtonStates[0];
+                command.buttons1 = pc->buttonstates.m_pButtonStates[1];
+                command.buttons2 = pc->buttonstates.m_pButtonStates[2];
+                command.fields |= MotionRecorder::kCommandFieldButtons;
+                if (base->has_forwardmove())
+                {
+                    command.forwardMove = base->forwardmove();
+                    command.fields |= MotionRecorder::kCommandFieldForwardMove;
+                }
+                if (base->has_leftmove())
+                {
+                    command.leftMove = base->leftmove();
+                    command.fields |= MotionRecorder::kCommandFieldLeftMove;
+                }
+                if (base->has_upmove())
+                {
+                    command.upMove = base->upmove();
+                    command.fields |= MotionRecorder::kCommandFieldUpMove;
+                }
+                if (base->has_viewangles())
+                {
+                    const CMsgQAngle& view = base->viewangles();
+                    command.pitch = view.x();
+                    command.yaw = view.y();
+                    command.roll = view.z();
+                    command.fields |= MotionRecorder::kCommandFieldViewAngles;
+                }
+                if (base->has_mousedx() || base->has_mousedy())
+                {
+                    command.mouseDx = base->mousedx();
+                    command.mouseDy = base->mousedy();
+                    command.fields |= MotionRecorder::kCommandFieldMouse;
+                }
+                if (base->has_weaponselect())
+                {
+                    command.weaponSelect = base->weaponselect();
+                    command.fields |= MotionRecorder::kCommandFieldWeaponSelect;
+                }
+                if (pc->has_left_hand_desired())
+                {
+                    command.leftHandDesired = pc->left_hand_desired() ? 1 : 0;
+                    command.fields |= MotionRecorder::kCommandFieldLeftHand;
+                }
+                MotionRecorder::OnCaptureCommand(slot, command);
                 }
 
                 if (replaying)
@@ -719,6 +840,8 @@ namespace BotController
 
                 if (hasMovementIntent)
                     ApplyUsercmdMovementIntentToCommand(pc, base, movementIntent);
+                if (hasPublicControl && !hasMovementIntent)
+                    ApplyPublicControl(slot, pc, base);
             }
 
             g_origPlayerRunCommand(services, cmd);

@@ -99,6 +99,10 @@ Assert-Equal "CSS maximum DTR reader" (Read-RegexValue "server\plugins\DemoTrace
 Assert-Equal "CSS native ABI" (Read-RegexValue "server\plugins\DemoTracer\BotControllerNativeTypes.cs" 'ExpectedAbiVersion\s*=\s*(\d+)' "CSS native ABI") ([string]$contract.bot_controller.abi_major)
 Assert-Equal "runtime native ABI" (Read-RegexValue "server\runtime\BotController\src\common\exports.cpp" 'kBotControllerAbiMajor\s*=\s*(\d+)' "runtime native ABI") ([string]$contract.bot_controller.abi_major)
 Assert-Equal "minimum native ABI minor" (Read-RegexValue "server\plugins\DemoTracer\DemoTracerRuntimeHealth.cs" 'MinimumBotControllerAbiMinor\s*=\s*(\d+)' "minimum native ABI minor") ([string]$contract.bot_controller.min_abi_minor)
+Assert-Equal "BotController public control API" (Read-RegexValue "server\runtime\BotController\src\common\exports.cpp" 'BotController_GetPublicApiVersion\(\)\s*\{\s*return\s+(\d+)' "public control API") ([string]$contract.bot_controller.public_control_api)
+Assert-Equal "BotController managed provider" (Read-RegexValue "server\runtime\BotController\csharp\BotControllerImpl\BotControllerImplPlugin.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "managed provider version") ([string]$contract.bot_controller.managed_provider_version)
+Assert-Equal "BotController replay tick size" (Read-RegexValue "server\runtime\BotController\src\BotRecorder\MotionRecorder.h" 'sizeof\(ReplayTick\)\s*==\s*(\d+)' "native replay tick size") ([string]$contract.bot_controller.replay_tick_bytes)
+Assert-Equal "BotController replay event tail" ([string]$contract.bot_controller.replay_tick_event_tail) "reserved_zero"
 
 $runtimeMinor = [int](Read-RegexValue "server\runtime\BotController\src\common\exports.cpp" 'kBotControllerAbiMinor\s*=\s*(\d+)' "runtime native ABI minor")
 if ($runtimeMinor -lt [int]$contract.bot_controller.min_abi_minor) {

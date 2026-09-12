@@ -68,6 +68,7 @@ public sealed partial class DemoTracerPlugin
         public List<VoiceClipRuntimeFrame> Frames { get; } = frames;
         public List<int> RecipientSlots { get; private set; } = recipientSlots;
         public bool StartedFromFreezePreroll { get; } = startedFromFreezePreroll;
+        public bool IsAutomatic { get; init; }
         public int NextFrameIndex { get; set; }
         public int SentFrames { get; set; }
         public int SkippedSenderFrames { get; set; }

@@ -25,6 +25,7 @@ internal sealed class CosmeticWritePolicy
     internal byte SpawnTeam { get; }
     internal BotRandomizerAgentPlanMode AgentMode { get; }
     internal string? AgentModel { get; }
+    internal ushort AgentItemDefinitionIndex { get; init; }
     internal ReplayItemSelection? Knife { get; }
     internal ReplayItemSelection? Gloves { get; }
     internal int? MusicKit { get; }
@@ -210,19 +211,29 @@ internal sealed class CosmeticWriteLeaseStore
         }
     }
 
-    internal bool RevokeSlot(int slot, out int[] affectedSlots)
+    internal bool RevokeSlot(int slot)
     {
         lock (_sync)
         {
-            if (!_leaseBySlot.TryGetValue(slot, out var token)
-                || !RemoveLease(token, out var lease))
-            {
-                affectedSlots = [];
+            if (!_leaseBySlot.Remove(slot, out var token)
+                || !_leases.TryGetValue(token, out var lease))
                 return false;
-            }
 
-            affectedSlots = lease.Claims.Keys.Order().ToArray();
-            _revokedLeases++;
+            // A disconnected participant leaves the batch without invalidating
+            // the remaining bots' plans or their pending spawn callbacks.
+            if (lease.Claims.Count == 1)
+            {
+                RemoveLease(token, out _);
+                _revokedLeases++;
+            }
+            else
+            {
+                _leases[token] = lease with
+                {
+                    Claims = lease.Claims.Where(pair => pair.Key != slot)
+                        .ToDictionary(pair => pair.Key, pair => pair.Value)
+                };
+            }
             return true;
         }
     }

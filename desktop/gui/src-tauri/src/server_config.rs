@@ -556,12 +556,12 @@ fn atomic_write_config(root: &Path, target: &Path, bytes: &[u8]) -> CommandResul
 }
 
 #[cfg(not(windows))]
-fn atomic_replace(source: &Path, target: &Path) -> io::Result<()> {
+pub(crate) fn atomic_replace(source: &Path, target: &Path) -> io::Result<()> {
     fs::rename(source, target)
 }
 
 #[cfg(windows)]
-fn atomic_replace(source: &Path, target: &Path) -> io::Result<()> {
+pub(crate) fn atomic_replace(source: &Path, target: &Path) -> io::Result<()> {
     if !target.exists() {
         return fs::rename(source, target);
     }

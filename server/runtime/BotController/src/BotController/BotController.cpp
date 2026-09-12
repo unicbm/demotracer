@@ -139,6 +139,13 @@ namespace BotController
             return true;
         }
 
+        void *BotForSlot(int slot)
+        {
+            if (slot < 0 || slot >= static_cast<int>(g_observedBots.size())) return nullptr;
+            void *bot = g_observedBots[slot].load(std::memory_order_acquire);
+            return bot && CCSBotToSlot(bot) == slot ? bot : nullptr;
+        }
+
         static float NormalizeDeg(float a)
         {
             a = std::fmod(a + 180.0f, 360.0f);

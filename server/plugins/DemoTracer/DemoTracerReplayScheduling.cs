@@ -17,6 +17,7 @@ internal enum ReplaySlotWorkKind
 
 internal enum ReplayRoundWorkKind
 {
+    Start,
     PresentationSync,
     C4EarlyReconcile,
     C4LateReconcile,

@@ -236,22 +236,6 @@ internal static partial class BotControllerNative
         }
     }
 
-    public static int ClearAllLeftHandDesiredLatches()
-    {
-        try
-        {
-            return BotController_ClearAllLeftHandDesiredLatches();
-        }
-        catch (EntryPointNotFoundException)
-        {
-            return -7;
-        }
-        catch
-        {
-            return -8;
-        }
-    }
-
     public static int SetProjectileBirthAlignOffsets(int initialPositionOffset, int initialVelocityOffset)
     {
         try
@@ -572,7 +556,6 @@ internal static partial class BotControllerNative
         try
         {
             _ = BotController_SetLeftHandDesiredLatch(-1, 0, 0);
-            _ = BotController_ClearAllLeftHandDesiredLatches();
             return true;
         }
         catch (EntryPointNotFoundException)
@@ -747,7 +730,6 @@ internal static partial class BotControllerNative
         try
         {
             var released = BotController_ReleaseReplayBuffer(slot) == 0;
-            BotController_Unlock(slot, LockKindAll);
             LastLoadError = released ? string.Empty : "BotController_ReleaseReplayBuffer failed";
             return released;
         }
@@ -801,9 +783,7 @@ internal static partial class BotControllerNative
     {
         if (!ValidSlot(slot))
             return false;
-        var ok = BotController_StopReplay(slot) == 0;
-        BotController_Unlock(slot, LockKindAll);
-        return ok;
+        return BotController_StopReplay(slot) == 0;
     }
 
     public static ReplayState GetReplayState(int slot)

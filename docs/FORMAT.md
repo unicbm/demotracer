@@ -186,6 +186,14 @@ server.
 
 ## v8 Columnar Delta-Varint Sections
 
+Native BotController ABI 20 uses 228-byte replay ticks, including a reserved
+36-byte event tail. Every tail field must be zero; native loading rejects nonzero
+payloads because native weapon-drop recording/replay is unsupported. This is an
+in-memory API layout, not the DTR disk layout.
+DTR gameplay events remain in high-fidelity metadata and are executed by the
+managed replay layer; DTR readers initialize the native event tail to zero to
+preserve this contract. Existing DTR files need no conversion.
+
 Section version 2 is bit-exact and lossless. It changes storage only; decoded
 `MovementSnapshotV3` and `CommandFrameV1` values are identical to v7 values.
 
@@ -277,6 +285,12 @@ This layout is 92 bytes with `Pack=4`.
 They are three bit planes of one `EInButtonState` code, not interchangeable
 masks. `buttonstate1` is the held-at-command-end plane; the transition planes
 must remain separate so releases and short press-release sequences survive.
+For raw planes `state1`, `state2`, and `state3`, semantic masks are decoded as
+`held = state1`, `pressed = state3 | (state1 & state2)`, and
+`released = state3 | (~state1 & state2)`. If only adjacent held masks are
+available, the canonical loss-limited reconstruction is `state1 = current`,
+`state2 = current ^ previous`, and `state3 = 0`; a same-command press-release
+cannot be reconstructed from held snapshots alone.
 
 ### `SubtickMoveV3`
 

@@ -213,7 +213,12 @@ public sealed partial class BotRandomizerPlugin
                 knife,
                 gloves,
                 musicKit,
-                weapons);
+                weapons)
+            {
+                AgentItemDefinitionIndex = agentMode == BotRandomizerAgentPlanMode.ReplayModel
+                    ? checked((ushort)requested.Agent!.ItemDefinitionIndex!.Value)
+                    : (ushort)0
+            };
             if (!policy.ClaimsAnything)
                 return Fail($"empty_plan:{requested.Slot}", out reason);
             plansBySlot.Add(
@@ -243,7 +248,7 @@ public sealed partial class BotRandomizerPlugin
 
         if (requested?.ItemDefinitionIndex is not { } itemDefinitionIndex ||
             !_replayEconIndex!.IsAgentDefinition(itemDefinitionIndex) ||
-            !RandomizerAssets.TryNormalizeAgentModel(team, requested.ModelPath, out model))
+            !RandomizerAssets.TryNormalizeAgentModel(team, requested.ModelPath, out model, itemDefinitionIndex))
         {
             return Fail($"unknown_agent_model:{slot}", out reason);
         }

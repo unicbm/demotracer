@@ -134,10 +134,10 @@ public sealed partial class DemoTracerPlugin
             PreloadReplayWeaponsForSlot(slot, replay);
         _session.LastEnsuredWeaponDef.Remove(slot);
 
-        var ok = StartReplayForSlot(slot, loop);
+        var ok = StartReplayForSlot(slot);
         if (ok)
         {
-            MarkReplayStarted(slot);
+            MarkReplayStarted(slot, loop);
         }
         else
         {
@@ -281,12 +281,6 @@ public sealed partial class DemoTracerPlugin
             slots.Add(slot);
         foreach (var slot in _retainedBotHiderPresentation.Keys)
             slots.Add(slot);
-        foreach (var slot in NativeReplaySlots())
-        {
-            var state = BotControllerNative.GetReplayState(slot);
-            if (state.Playing || state.Total > 0)
-                slots.Add(slot);
-        }
 
         var candidates = new List<DtrKickCandidate>();
         foreach (var slot in slots)

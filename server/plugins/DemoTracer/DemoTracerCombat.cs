@@ -27,7 +27,7 @@ public sealed partial class DemoTracerPlugin
             : _session.LoadedSlots.ToArray();
         foreach (var slot in slots)
         {
-            if (!BotControllerNative.GetReplayState(slot).Playing)
+            if (!_session.ReplaySlots.IsPlaying(slot))
                 continue;
 
             BotControllerNative.StopReplay(slot);
@@ -48,12 +48,12 @@ public sealed partial class DemoTracerPlugin
         }
     }
 
-    private int GetDeathHandoffSlot(EventPlayerDeath @event)
+    private int GetDeathHandoffSlot(int victimSlot, int attackerSlot)
     {
-        if (@event.Userid is { IsValid: true } victim && IsReplaySlotPlaying(victim.Slot))
-            return victim.Slot;
-        if (@event.Attacker is { IsValid: true } attacker && IsReplaySlotPlaying(attacker.Slot))
-            return attacker.Slot;
+        if (_session.ReplaySlots.IsPlaying(victimSlot))
+            return victimSlot;
+        if (_session.ReplaySlots.IsPlaying(attackerSlot))
+            return attackerSlot;
         return -1;
     }
 
@@ -74,7 +74,7 @@ public sealed partial class DemoTracerPlugin
             !attacker.PawnIsAlive)
             return false;
 
-        if (!IsReplaySlotPlaying(victim.Slot))
+        if (!_session.ReplaySlots.IsPlaying(victim.Slot))
             return false;
 
         victimSlot = victim.Slot;
@@ -85,7 +85,7 @@ public sealed partial class DemoTracerPlugin
     private bool TryHandoffBulletDamagedReplay(int victimSlot, int attackerSlot, int damage)
     {
         if (damage < BulletHandoffMinDamage ||
-            !IsReplaySlotPlaying(victimSlot))
+            !_session.ReplaySlots.IsPlaying(victimSlot))
             return false;
 
         HandoffActiveReplays(

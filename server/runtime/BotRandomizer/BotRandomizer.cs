@@ -19,6 +19,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         new(BotRandomizerContract.Capability);
 
     private readonly CosmeticStateStore _states = new();
+    private readonly RandomizerOptions _options = new();
     private readonly HashSet<int> _pendingRerolls = [];
     private readonly string _providerEpoch = Guid.NewGuid().ToString("N");
     private readonly CosmeticWriteLeaseStore _writeLeases;
@@ -42,7 +43,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
     }
 
     public override string ModuleName => "BotRandomizer";
-    public override string ModuleVersion => "1.6.2";
+    public override string ModuleVersion => "1.6.3";
     public override string ModuleAuthor => "ed0ard, Misaka17032 & unicbm";
     public override string ModuleDescription =>
         "Stable per-bot knives, gloves, weapon skins, stickers, charms, agents and music kits";
@@ -181,8 +182,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
 
     private void OnClientDisconnect(int playerSlot)
     {
-        if (_writeLeases.RevokeSlot(playerSlot, out var affectedSlots))
-            InvalidateLeasePolicySlots(affectedSlots);
+        _writeLeases.RevokeSlot(playerSlot);
         _states.Remove(playerSlot);
         _pendingRerolls.Remove(playerSlot);
         _weaponItemViews?.ClearSlot(playerSlot);
@@ -203,6 +203,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
     {
         foreach (var player in Utilities.GetPlayers())
             ConsumePendingReroll(player);
+        Server.NextFrame(ApplyIntroAgents);
         return HookResult.Continue;
     }
 
@@ -257,6 +258,9 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
             TryGetWritePolicy(state, out var writePolicy);
             if (designerName is "weapon_knife" or "weapon_knife_t")
             {
+                if (writePolicy?.Knife is null && !_options.Knives)
+                    return HookResult.Continue;
+
                 var prepared = writePolicy?.Knife is { } replayKnife
                     ? _weaponItemViews.TryPrepareReplayKnife(
                         state, replayKnife, player.SteamID, out var knifeItemViewHandle)
@@ -288,18 +292,15 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
                 return HookResult.Continue;
             }
 
-            var selection = _roller.GetOrCreateWeapon(state.Loadout, weapon.DefIndex);
-            var stickerSchemaCount = selection?.Legacy == true
-                ? weapon.LegacyStickerSchemaCount
-                : weapon.StickerSchemaCount;
+            if (!_options.HasWeaponCosmetics)
+                return HookResult.Continue;
+
+            var selection = _options.ResolveWeapon(
+                weapon, _roller.GetOrCreateWeapon(state.Loadout, weapon.DefIndex));
             if (selection is not null && _weaponItemViews.TryPrepare(
                     state,
                     weapon,
                     selection,
-                    includeRandomPaint: true,
-                    includeStickers: true,
-                    includeKeychain: true,
-                    stickerSchemaCount,
                     player.SteamID,
                     out var itemViewHandle))
             {
@@ -339,6 +340,9 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
             return HookResult.Continue;
         }
 
+        if (!_options.Knives)
+            return HookResult.Continue;
+
         ScheduleKnifeSync(state.Slot, state.UserId, state.Generation, nextFrame: true);
         ScheduleKnifeSync(state.Slot, state.UserId, state.Generation, delay: 0.10f);
         ScheduleKnifeSync(state.Slot, state.UserId, state.Generation, delay: 0.25f);
@@ -363,18 +367,24 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
             return HookResult.Continue;
         }
 
-        _states.Reroll(
+        var state = _states.Reroll(
             player.Slot,
             userId,
             (byte)@event.Team,
             preserveMusic: true,
             music => _roller.RollLoadout((byte)@event.Team, music));
+        if (state is null)
+            return HookResult.Continue;
+
         var slot = player.Slot;
+        var generation = state.Generation;
         AddTimer(
             0.10f,
-            () => RestoreBot(
-                slot,
-                CosmeticScope.Agent | CosmeticScope.Knife | CosmeticScope.Gloves),
+            () =>
+            {
+                if (TryResolveCurrentBot(slot, userId, generation, out _, out _, out _))
+                    RestoreBot(slot, CosmeticScope.Agent | CosmeticScope.Knife | CosmeticScope.Gloves);
+            },
             TimerFlags.STOP_ON_MAPCHANGE);
         return HookResult.Continue;
     }
@@ -447,13 +457,12 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
             return HookResult.Continue;
         }
 
-        var musicKit = TryGetWritePolicy(state, out var writePolicy) && writePolicy.MusicKit is { } replayMusicKit
-            ? replayMusicKit
-            : state.Loadout.MusicKit;
+        TryGetWritePolicy(state, out var writePolicy);
+        var musicKit = _options.ResolveMusicKit(writePolicy, state.Loadout);
         ApplyMusicKit(player, musicKit, 0);
         @event.Musickitid = musicKit;
         @event.Musickitmvps = 0;
-        @event.Nomusic = 0;
+        @event.Nomusic = musicKit == 0 ? 1 : 0;
         return HookResult.Continue;
     }
 
@@ -485,22 +494,15 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
             return;
         TryGetWritePolicy(state, out var writePolicy);
 
-        if ((scope & CosmeticScope.Agent) != 0)
+        if ((scope & CosmeticScope.Agent) != 0 &&
+            _options.ResolveAgentModel(writePolicy, state.Loadout) is { } model)
         {
-            if (writePolicy?.AgentMode == BotRandomizerAgentPlanMode.ReplayModel &&
-                writePolicy.AgentModel is { } replayModel)
-            {
-                _applicator.ApplyAgent(pawn, replayModel);
-            }
-            else if (writePolicy?.AgentMode != BotRandomizerAgentPlanMode.PreserveEngineDefault)
-            {
-                _applicator.ApplyAgent(pawn, state.Loadout.AgentModel);
-            }
+            _applicator.ApplyAgent(pawn, model);
         }
 
         if ((scope & CosmeticScope.MusicKit) != 0)
         {
-            ApplyMusicKit(player, writePolicy?.MusicKit ?? state.Loadout.MusicKit, 0);
+            ApplyMusicKit(player, _options.ResolveMusicKit(writePolicy, state.Loadout), 0);
         }
     }
 
@@ -522,7 +524,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         {
             if (writePolicy?.Knife is { } replayKnife)
                 _applicator.ApplyKnife(player, pawn, replayKnife);
-            else
+            else if (_options.Knives)
                 _applicator.ApplyKnife(player, pawn, state.Loadout.Knife);
         }
 
@@ -530,7 +532,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         {
             var applied = writePolicy?.Gloves is { } replayGloves
                 ? _applicator.ApplyGloves(player, pawn, replayGloves)
-                : _applicator.ApplyGloves(player, pawn, state.Loadout.Glove);
+                : _options.Gloves && _applicator.ApplyGloves(player, pawn, state.Loadout.Glove);
             if (applied)
             {
                 var generation = state.Generation;
@@ -576,7 +578,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
     {
         void Callback()
         {
-            if (_applicator is not null
+            if (_options.Knives && _applicator is not null
                 && TryResolveCurrentBot(slot, userId, generation, out _, out var pawn, out var state)
                 && !(TryGetWritePolicy(state, out var writePolicy) && writePolicy.Knife is not null))
             {
@@ -700,6 +702,17 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         }
     }
 
+    [ConsoleCommand("bot_randomizer", "Bot Improver Panel cosmetic controls")]
+    public void OnControlCommand(CCSPlayerController? player, CommandInfo command)
+    {
+        if (player is not null || command.ArgCount < 4)
+            return;
+
+        // Pending spawn callbacks read the current options. Changing defaults
+        // neither cancels DTR plans nor rebuilds an already constructed item.
+        _options.TryApplyControl(command.GetArg(1), command.GetArg(2), command.GetArg(3));
+    }
+
     [ConsoleCommand("br_reroll", "Queue new loadouts for the next safe spawn")]
     public void OnRerollCommand(CCSPlayerController? player, CommandInfo command)
     {
@@ -786,7 +799,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
 
         player.MusicKitID = kitId;
         player.MusicKitMVPs = musicKitMvps;
-        player.MvpNoMusic = false;
+        player.MvpNoMusic = kitId == 0;
     }
 
     private bool TryGetWritePolicy(

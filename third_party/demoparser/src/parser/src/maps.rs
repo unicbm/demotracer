@@ -171,15 +171,17 @@ pub static BUTTONMAP: phf::Map<&'static str, u64> = phf_map! {
     "LEFT" => 1 << 9,
     "FORWARD" => 1 << 3,
     "BACK" => 1 << 4,
+    "JUMP" => 1 << 1,
+    "DUCK" => 1 << 2,
     "RIGHT" => 1 << 10,
     "FIRE" => 1 << 0,
     "RIGHTCLICK" => 1 << 11,
     "RELOAD" => 1 << 13,
     "INSPECT" => 1 << 35,
     "USE" => 1 << 5,
-    "SCOREBOARD" => 1 << 16,
-    "ZOOM" => 1 << 24,
-    "WALK" => 1 << 18,
+    "SCOREBOARD" => 1 << 33,
+    "ZOOM" => 1 << 34,
+    "WALK" => 1 << 16,
 };
 
 pub static CUSTOM_PLAYER_PROP_IDS: phf::Map<&'static str, u32> = phf_map! {
@@ -240,6 +242,8 @@ pub static TYPEHM: phf::Map<&'static str, PropType> = phf_map! {
     "LEFT" => PropType::Button,
     "RIGHT" => PropType::Button,
     "BACK" => PropType::Button,
+    "JUMP" => PropType::Button,
+    "DUCK" => PropType::Button,
     "FIRE" => PropType::Button,
     "RIGHTCLICK" => PropType::Button,
     "RELOAD" => PropType::Button,
@@ -892,6 +896,8 @@ pub static FRIENDLY_NAMES_MAPPING: phf::Map<&'static str, &'static str> = phf_ma
     "LEFT" => "LEFT",
     "RIGHT" => "RIGHT",
     "BACK" => "BACK",
+    "JUMP" => "JUMP",
+    "DUCK" => "DUCK",
     "FIRE" => "FIRE",
     "RIGHTCLICK" => "RIGHTCLICK",
     "RELOAD" => "RELOAD",
@@ -1195,3 +1201,17 @@ pub static NON_MULTITHREADABLE_PROPS: phf::Set<&'static str> = phf_set! {
     "CCSPlayerPawn.CCSPlayer_MovementServices.m_bDucking",
     "CCSPlayerPawn.CCSPlayer_MovementServices.m_nJumpTimeMsecs",
 };
+
+#[cfg(test)]
+mod button_map_tests {
+    use super::BUTTONMAP;
+
+    #[test]
+    fn cs2_button_bits_match_usercmd_contract() {
+        assert_eq!(BUTTONMAP.get("JUMP"), Some(&(1_u64 << 1)));
+        assert_eq!(BUTTONMAP.get("DUCK"), Some(&(1_u64 << 2)));
+        assert_eq!(BUTTONMAP.get("WALK"), Some(&(1_u64 << 16)));
+        assert_eq!(BUTTONMAP.get("SCOREBOARD"), Some(&(1_u64 << 33)));
+        assert_eq!(BUTTONMAP.get("ZOOM"), Some(&(1_u64 << 34)));
+    }
+}

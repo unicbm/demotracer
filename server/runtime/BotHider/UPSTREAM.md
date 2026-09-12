@@ -17,6 +17,12 @@ identity-checked controller removal and safer transient fake-client flag
 restoration. It also keeps the Windows `HandleCommand_JoinTeam` identity scope
 from `31b9bd04de3ea326847a701577e9c50779ffe366`.
 
+The subsequent changes through
+`7fc83ea108c7b29cf014efb73584199565c6418c` (upstream v0.4.3) were reviewed on
+2026-09-05. See the [September review](../../../docs/BOT_HIDER_UPSTREAM_REVIEW_2026_09.md)
+for the behavior comparison, validation limits, and selective-import priorities.
+No additional upstream runtime changes were imported as part of that review.
+
 The gamedata-driven team offset refinement from
 `4e4768adf5bec2970e8d082e6e87475c04e31837` is extended here to the dangerous
 `CServerSideClient::SetName`, entity-system, and entity-identity layout targets.
@@ -30,6 +36,10 @@ native avatar ownership, automatic bot voting, and upstream module-version
 changes remain intentionally unimported because DemoTracer has different
 runtime, packaging, BotController ownership, and presentation-lease
 boundaries.
+
+The managed provider's independent round-start team assignment/respawn timer
+has been removed. Presentation reconciliation cannot revive a stopped replay
+or take over gameplay lifecycle decisions from DemoTracer and the engine.
 
 The upstream `tools/BotHiderFlairGenerator` utility is intentionally excluded
 because it is not part of DemoTracer server runtime or packaging.

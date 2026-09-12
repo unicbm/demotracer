@@ -28,13 +28,15 @@ pub(crate) const REQUIRED_RECEIPT_PATHS: &[&str] = &[
     "addons/botcontroller/bin/win64/botcontroller.dll",
     "addons/botcontroller/gamedata.json",
     "addons/metamod/botcontroller.vdf",
+    "addons/counterstrikesharp/plugins/botcontrollerimpl/botcontrollerimpl.dll",
+    "addons/counterstrikesharp/shared/botcontrollerapi/botcontrollerapi.dll",
     "addons/bothider/bin/win64/bothider.dll",
     "addons/bothider/gamedata.json",
     "addons/metamod/bothider.vdf",
     "addons/counterstrikesharp/plugins/demotracer/demotracer.dll",
     "addons/counterstrikesharp/shared/demotracerapi/demotracerapi.dll",
     "addons/counterstrikesharp/plugins/demotracer/cs2-lib-econ-index.v1.json",
-    "addons/counterstrikesharp/plugins/demotracerbothider/demotracerbothider.dll",
+    "addons/counterstrikesharp/plugins/bothiderimpl/bothiderimpl.dll",
     "addons/counterstrikesharp/shared/demotracerbothiderapi/demotracerbothiderapi.dll",
     "addons/counterstrikesharp/plugins/botrandomizer/botrandomizer.dll",
     "addons/counterstrikesharp/plugins/botrandomizer/cosmetic_catalog.json",
@@ -224,6 +226,14 @@ pub(crate) struct DtrReaderContractWire {
 pub(crate) struct BotControllerContractWire {
     pub(crate) abi_major: i32,
     pub(crate) min_abi_minor: i32,
+    #[serde(default)]
+    pub(crate) public_control_api: i32,
+    #[serde(default)]
+    pub(crate) replay_tick_bytes: u32,
+    #[serde(default)]
+    pub(crate) replay_tick_event_tail: String,
+    #[serde(default)]
+    pub(crate) managed_provider_version: String,
     pub(crate) required_capabilities_hex: String,
 }
 
@@ -501,7 +511,7 @@ fn inspect_cs2_install_for(requested_path: &str) -> CommandResult<EnvironmentDia
         "DemoTracer BotHider managed provider",
         game_csgo,
         &[
-            "addons/counterstrikesharp/plugins/DemoTracerBotHider/DemoTracerBotHider.dll",
+            "addons/counterstrikesharp/plugins/BotHiderImpl/BotHiderImpl.dll",
             "addons/counterstrikesharp/shared/DemoTracerBotHiderApi/DemoTracerBotHiderApi.dll",
             "addons/counterstrikesharp/shared/0Harmony/0Harmony.dll",
         ],
@@ -516,7 +526,7 @@ fn inspect_cs2_install_for(requested_path: &str) -> CommandResult<EnvironmentDia
         &mut checks,
         runtime_audit.loaded_plugin_directories.as_ref(),
     );
-    checks.push(bot_improver_behavior_check(&plugins, &receipt_audit));
+    checks.push(bot_improver_behavior_check(game_csgo, &plugins, &receipt_audit));
     let conflicts = detect_conflicts(game_csgo, &plugins, &receipt_audit, &runtime_audit);
     let overall = overall_status(&checks, &conflicts);
 
@@ -1506,6 +1516,13 @@ fn contract_errors(receipt: &InstallReceiptWire) -> Vec<String> {
     {
         errors.push("BotController required capability contract differs".to_string());
     }
+    if actual.bot_controller.public_control_api != expected.bot_controller.public_control_api
+        || actual.bot_controller.replay_tick_bytes != expected.bot_controller.replay_tick_bytes
+        || actual.bot_controller.replay_tick_event_tail != expected.bot_controller.replay_tick_event_tail
+        || actual.bot_controller.managed_provider_version != expected.bot_controller.managed_provider_version
+    {
+        errors.push("BotController public provider or replay tick contract differs".to_string());
+    }
     if actual.bot_hider.api != expected.bot_hider.api {
         errors.push(format!(
             "BotHider API {} is not {}",
@@ -1597,13 +1614,15 @@ pub(crate) fn normalized_receipt_path(value: &str) -> String {
 pub(crate) fn receipt_component(normalized_path: &str) -> Option<&'static str> {
     if normalized_path.starts_with("addons/botcontroller/")
         || normalized_path == "addons/metamod/botcontroller.vdf"
+        || normalized_path.starts_with("addons/counterstrikesharp/plugins/botcontrollerimpl/")
+        || normalized_path.starts_with("addons/counterstrikesharp/shared/botcontrollerapi/")
     {
         Some("bot_controller")
     } else if normalized_path.starts_with("addons/bothider/")
         || normalized_path == "addons/metamod/bothider.vdf"
     {
         Some("bot_hider_native")
-    } else if normalized_path.starts_with("addons/counterstrikesharp/plugins/demotracerbothider/")
+    } else if normalized_path.starts_with("addons/counterstrikesharp/plugins/bothiderimpl/")
         || normalized_path.starts_with("addons/counterstrikesharp/shared/demotracerbothiderapi/")
     {
         Some("bot_hider_managed")
@@ -1773,6 +1792,19 @@ fn classify_plugin(assembly_files: &[String]) -> &'static str {
     }
 }
 
+fn is_verified_provider(
+    game_csgo: &Path,
+    plugin: &CssPluginDto,
+    receipt: &ReceiptAudit,
+    directory: &str,
+    component: &str,
+) -> bool {
+    receipt.summary.verified == Some(true)
+        && !receipt.component_mismatches.contains(component)
+        && path_key(Path::new(&plugin.directory))
+            == path_key(&game_csgo.join("addons/counterstrikesharp/plugins").join(directory))
+}
+
 fn detect_conflicts(
     game_csgo: &Path,
     plugins: &[CssPluginDto],
@@ -1780,20 +1812,8 @@ fn detect_conflicts(
     runtime: &RuntimeAudit,
 ) -> Vec<DiagnosticConflictDto> {
     let mut conflicts = Vec::new();
-    let bundled_bot_randomizer_verified = receipt.summary.verified == Some(true)
-        && !receipt
-            .component_mismatches
-            .contains("bot_randomizer_managed");
-    let bundled_bot_randomizer_directory = game_csgo
-        .join("addons/counterstrikesharp/plugins/BotRandomizer")
-        .to_string_lossy()
-        .replace('\\', "/");
     let is_bundled_bot_randomizer = |plugin: &CssPluginDto| {
-        bundled_bot_randomizer_verified
-            && plugin
-                .directory
-                .replace('\\', "/")
-                .eq_ignore_ascii_case(&bundled_bot_randomizer_directory)
+        is_verified_provider(game_csgo, plugin, receipt, "BotRandomizer", "bot_randomizer_managed")
     };
     let names = plugins
         .iter()
@@ -1802,9 +1822,12 @@ fn detect_conflicts(
 
     let controller_path = game_csgo.join("addons/BotController/bin/win64/BotController.dll");
     let hider_path = game_csgo.join("addons/BotHider/bin/win64/BotHider.dll");
-    let controller_impl_path = plugins
+    let unverified_controller = plugins
         .iter()
-        .find_map(|plugin| plugin_dll_path(plugin, "botcontrollerimpl"));
+        .find(|plugin| plugin_has_identity(plugin, "botcontrollerimpl")
+            && !is_verified_provider(game_csgo, plugin, receipt, "BotControllerImpl", "bot_controller"));
+    let controller_impl_path = unverified_controller
+        .and_then(|plugin| plugin_dll_path(plugin, "botcontrollerimpl"));
     let known_improver_controller = matches_file_fingerprint(
         game_csgo,
         &controller_path,
@@ -1842,7 +1865,7 @@ fn detect_conflicts(
             confidence: "certain".to_string(),
             title: "CS2-Bot-Improver native vendor files are installed".to_string(),
             summary: format!(
-                "Exact known CS2-Bot-Improver release fingerprints were found: {}. Its native vendor set is not the DemoTracer contract; the v1.4.2 BotController specifically uses ABI 14 instead of DemoTracer's ABI 18/minor 33. Reinstall DemoTracer's complete playback bundle, then keep only compatible post-handoff behavior plugins.",
+                "Exact known CS2-Bot-Improver release fingerprints were found: {}. Its native vendor set is not the DemoTracer contract; the v1.4.2 BotController specifically uses ABI 14 instead of DemoTracer's ABI 20/minor 37. Reinstall DemoTracer's complete playback bundle, then keep only compatible post-handoff behavior plugins.",
                 matched.join(", ")
             ),
             evidence_path: if known_improver_controller {
@@ -1858,7 +1881,7 @@ fn detect_conflicts(
         });
     }
 
-    if names.contains("botcontrollerimpl") {
+    if unverified_controller.is_some() {
         let known_abi14_bridge = controller_impl_path.as_deref().is_some_and(|path| {
             matches_file_fingerprint(
                 game_csgo,
@@ -1878,9 +1901,9 @@ fn detect_conflicts(
             }
             .to_string(),
             summary: if known_abi14_bridge {
-                "This exact BotControllerImpl build expects ABI 14 and disables itself against DemoTracer's ABI 18 runtime, so Improver behavior plugins cannot obtain their botcontroller:api dependency. Remove BotControllerImpl when using DemoTracer's bundled native runtime."
+                "This exact BotControllerImpl build expects ABI 14 and disables itself against DemoTracer's ABI 20 runtime, so Improver behavior plugins cannot obtain their botcontroller:api dependency. Replace BotControllerImpl with the matched DemoTracer provider."
             } else {
-                "BotControllerImpl uses the same managed capability surface as post-handoff behavior plugins. Its ABI contract could not be proven; verify that it explicitly supports DemoTracer BotController ABI 18/minor 33 before use."
+                "BotControllerImpl uses the same managed capability surface as post-handoff behavior plugins. Its ABI contract could not be proven; verify that it explicitly supports DemoTracer BotController ABI 20/minor 37 before use."
             }
             .to_string(),
             evidence_path: controller_impl_path
@@ -1895,16 +1918,17 @@ fn detect_conflicts(
     }
 
     for plugin in plugins {
-        if ["bothider", "bothiderimpl"]
-            .iter()
-            .any(|identity| plugin_has_identity(plugin, identity))
+        if plugin_has_identity(plugin, "demotracerbothider")
+            || plugin_has_identity(plugin, "bothider")
+            || (plugin_has_identity(plugin, "bothiderimpl")
+                && !is_verified_provider(game_csgo, plugin, receipt, "BotHiderImpl", "bot_hider_managed"))
         {
             conflicts.push(DiagnosticConflictDto {
                 rule_id: "duplicate_bot_hider_publisher".to_string(),
                 severity: "error".to_string(),
                 confidence: "high".to_string(),
                 title: "A second BotHider presentation publisher is installed".to_string(),
-                summary: "DemoTracerBotHider must be the sole BotHider CounterStrikeSharp presentation publisher.".to_string(),
+                summary: "The matched BotHiderImpl must be the sole BotHider CounterStrikeSharp presentation publisher. Remove obsolete or duplicate providers.".to_string(),
                 evidence_path: plugin.directory.clone(),
                 affected_features: vec!["identity".to_string(), "crosshair".to_string(), "bot ownership".to_string()],
             });
@@ -2055,6 +2079,7 @@ fn detect_conflicts(
 }
 
 fn bot_improver_behavior_check(
+    game_csgo: &Path,
     plugins: &[CssPluginDto],
     receipt: &ReceiptAudit,
 ) -> DiagnosticCheckDto {
@@ -2067,11 +2092,13 @@ fn bot_improver_behavior_check(
         .filter(|name| BOT_IMPROVER_BEHAVIOR_PLUGIN_NAMES.contains(&name.as_str()))
         .cloned()
         .collect::<Vec<_>>();
-    let legacy_bridge_present = names.iter().any(|name| {
-        matches!(
-            name.as_str(),
-            "botcontrollerimpl" | "bothider" | "bothiderimpl"
-        )
+    let legacy_bridge_present = plugins.iter().any(|plugin| {
+        plugin_has_identity(plugin, "bothider")
+            || plugin_has_identity(plugin, "demotracerbothider")
+            || (plugin_has_identity(plugin, "botcontrollerimpl")
+                && !is_verified_provider(game_csgo, plugin, receipt, "BotControllerImpl", "bot_controller"))
+            || (plugin_has_identity(plugin, "bothiderimpl")
+                && !is_verified_provider(game_csgo, plugin, receipt, "BotHiderImpl", "bot_hider_managed"))
     });
     let supported_static_shape = !behavior_plugins.is_empty()
         && !legacy_bridge_present
@@ -2101,7 +2128,7 @@ fn bot_improver_behavior_check(
             )
         },
         expected: Some(
-            "DemoTracer native receipt intact; no BotControllerImpl/BotHiderImpl; behavior plugins only"
+            "DemoTracer native receipt intact; matched BotControllerImpl/BotHiderImpl; behavior plugins permitted"
                 .to_string(),
         ),
         actual: Some(if behavior_plugins.is_empty() {
@@ -2498,6 +2525,47 @@ mod tests {
     }
 
     #[test]
+    fn verified_bundle_does_not_hide_extra_or_obsolete_providers() {
+        let tree = TempTree::cs2();
+        let game_csgo = tree.game_csgo();
+        let plugin = |directory: &str, assembly: &str| CssPluginDto {
+            name: directory.to_string(),
+            directory: game_csgo.join("addons/counterstrikesharp/plugins")
+                .join(directory).display().to_string(),
+            assembly_files: vec![format!("{assembly}.dll")],
+            classification: "unknown".to_string(),
+            runtime_state: "unknown".to_string(),
+        };
+        let mut receipt = ReceiptAudit::default();
+        receipt.summary.verified = Some(true);
+        let matched = vec![
+            plugin("BotControllerImpl", "BotControllerImpl"),
+            plugin("BotHiderImpl", "BotHiderImpl"),
+            plugin("BotState", "BotState"),
+        ];
+        assert!(detect_conflicts(&game_csgo, &matched, &receipt, &RuntimeAudit::default()).is_empty());
+        assert_eq!(bot_improver_behavior_check(&game_csgo, &matched, &receipt).status, DiagnosticStatus::Pass);
+
+        for (directory, assembly, rule) in [
+            ("OldController", "BotControllerImpl", "cs2_bot_improver_controller_bridge"),
+            ("OldHider", "BotHiderImpl", "duplicate_bot_hider_publisher"),
+            ("DemoTracerBotHider", "DemoTracerBotHider", "duplicate_bot_hider_publisher"),
+            ("BotHiderImpl", "BotHider", "duplicate_bot_hider_publisher"),
+        ] {
+            let mut plugins = matched.clone();
+            plugins.push(plugin(directory, assembly));
+            let conflicts = detect_conflicts(&game_csgo, &plugins, &receipt, &RuntimeAudit::default());
+            assert!(conflicts.iter().any(|conflict| conflict.rule_id == rule), "{directory}");
+            if directory == "OldController" {
+                assert!(conflicts.iter().any(|conflict|
+                    conflict.rule_id == rule && conflict.evidence_path.contains("OldController")));
+            }
+            assert_eq!(bot_improver_behavior_check(&game_csgo, &plugins, &receipt).status,
+                DiagnosticStatus::Unverified, "{directory}");
+        }
+    }
+
+    #[test]
     fn assembly_identity_detects_renamed_bot_hider_directory() {
         let tree = TempTree::cs2();
         let plugin = tree
@@ -2543,7 +2611,7 @@ mod tests {
         );
         assert_eq!(
             receipt_component(
-                "addons/counterstrikesharp/plugins/demotracerbothider/demotracerbothider.dll"
+                "addons/counterstrikesharp/plugins/bothiderimpl/bothiderimpl.dll"
             ),
             Some("bot_hider_managed")
         );
@@ -2571,8 +2639,8 @@ mod tests {
             "demoTracerApi": 7,
             "counterStrikeSharpVersion": "1.0.371.0",
             "botController": {
-                "abiMajor": 18,
-                "abiMinor": 36,
+                "abiMajor": 20,
+                "abiMinor": 37,
                 "capabilities": "0x1ffff",
                 "buildId": "fixture",
                 "compatible": true,
@@ -2645,8 +2713,8 @@ mod tests {
             "demoTracerApi": 7,
             "counterStrikeSharpVersion": "1.0.371.0",
             "botController": {
-                "abiMajor": 18,
-                "abiMinor": 36,
+                "abiMajor": 20,
+                "abiMinor": 37,
                 "capabilities": "0x1ffff",
                 "buildId": "fixture",
                 "compatible": true,

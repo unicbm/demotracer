@@ -72,10 +72,12 @@ Advanced projectile diagnostics:
 
 Projectile alignment is uniform for every grenade kind: DemoTracer applies the
 recorded initial position and velocity once through CS2's entity teleport path
-when the projectile entity is born, then leaves flight, collision, detonation,
-and effect propagation to CS2. Effect
-positions are diagnostic evidence only; playback never teleports a projectile to
-an effect point or forces detonation.
+when the projectile entity is born. If that birth-state write is deferred to the
+next server frame, DemoTracer translates the projectile's absolute detonation
+deadline by the same elapsed time so the rewind does not shorten its remaining
+lifetime. Flight, collision, detonation, and effect propagation remain owned by
+CS2. Effect positions are diagnostic evidence only; playback never teleports a
+projectile to an effect point or forces detonation.
 
 | Command | Purpose |
 | --- | --- |
@@ -113,6 +115,30 @@ is the sole cosmetic entity writer. Weapons and knives are prepared before
 from BotRandomizer's next-spawn lifecycle. Missing Agent evidence preserves the
 engine-selected model. DemoTracer never rebuilds or hot-repairs cosmetic
 entities. Review the GSLT warning in the root README before enabling cosmetics.
+
+The bundled BotRandomizer also accepts the Bot Improver 1.4.4 Panel command
+from the server console or a server `.cfg`:
+
+```text
+bot_randomizer github.com/ed0ard/CS2-Bot-Randomizer <weapons|knives|gloves|agents|music|stickers|charms> <0|1>
+```
+
+All seven randomization switches default to enabled. They accept `on/off`,
+`yes/no`, and `true/false` as well. Positive DTR evidence takes precedence over
+these randomization defaults; missing Agent evidence retains DTR's existing
+preserve-engine-default policy. Without a DTR claim, a disabled category adds
+no randomized cosmetics. Disabling agents selects the normal team model, and
+disabling music clears the music kit at the next spawn or MVP event.
+The agent option also applies to round-start team intros; an explicit DTR agent
+keeps its recorded item ID, while DTR's preserve-engine-default policy leaves
+the intro agent untouched.
+
+Settings are read at natural spawn, item construction, and the existing
+wearable/pickup callbacks. Commands do not rebuild live inventory, reroll
+cached selections, revoke DTR plans, or unload a plugin. Existing weapons keep
+their applied cosmetics until replaced. Settings survive map changes; after a
+plugin reload, execute the server configuration again to restore its switches.
+Install one `BotRandomizer` provider in the normal plugin directory.
 
 ### Handoff
 
@@ -157,6 +183,13 @@ debugging.
 | `dtr_play slot <slot> [loop:0|1]` | Start one loaded slot. |
 | `dtr_unload <slot>` | Unload one slot and clear its metadata. |
 | `dtr_kick <exact-name>|slot <slot>|sid <steamid64>` | Release and kick a replay bot safely. |
+
+Looping waits for all still-controlled looping slots to finish, then restarts
+them together from the live-play index. Each iteration refreshes event and
+projectile cursors and the replay loadout. Stopped or handed-off slots stay out
+of subsequent iterations. A complete loaded-round loop also restarts automatic
+chat and voice; manual slot loops do not start round media, and an independent
+voice test keeps playing.
 
 ## Configuration
 
@@ -212,6 +245,10 @@ Kept for existing scripts; new tooling should use the commands above.
 
 ## Known Boundaries
 
+- The bundled BotController `!record` / `!replay` commands capture and replay
+  public motion recordings. They do not capture or execute weapon-drop events.
+  Older JSON recordings with a nonzero native event tail are rejected with an
+  unsupported-event message. DTR gameplay events keep their existing executor.
 - Playback targets local Windows x64 servers with the source map and enough safe
   bot slots; it is not intended for matchmaking.
 - `.dtr` preserves its recorded evidence but is not a complete reconstruction

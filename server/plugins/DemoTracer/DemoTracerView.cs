@@ -418,13 +418,10 @@ public sealed partial class DemoTracerPlugin
         _ = BotControllerNative.SetLeftHandDesiredLatch(slot, enabled: false, leftHandDesired: false);
     }
 
-    private void ClearReplayLeftHandDesiredLatches(bool forceNative = false)
+    private void ClearReplayLeftHandDesiredLatches()
     {
-        if (!forceNative && _replayLeftHandDesiredLatches.Count == 0)
-            return;
-
-        _replayLeftHandDesiredLatches.Clear();
-        _ = BotControllerNative.ClearAllLeftHandDesiredLatches();
+        foreach (var slot in _replayLeftHandDesiredLatches.Keys.ToArray())
+            ClearReplayLeftHandDesiredLatch(slot);
     }
 
     private static void TrySetPawnStateChanged(CCSPlayerPawn pawn, string field)
