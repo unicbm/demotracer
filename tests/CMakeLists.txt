@@ -7,6 +7,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(CTest)
 
+add_executable(BotControllerUsercmdRequestTests usercmd_requests_tests.cpp)
+target_include_directories(BotControllerUsercmdRequestTests PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../src/BotRecorder")
+add_test(NAME BotControllerUsercmdRequestTests COMMAND BotControllerUsercmdRequestTests)
+
 set(REPLAY_LAYOUT_SOURCE
     "${CMAKE_CURRENT_LIST_DIR}/../src/BotRecorder/ReplaySubtickLayout.cpp")
 set(REPLAY_INCLUDE_DIR
@@ -24,6 +28,18 @@ else()
 endif()
 add_test(NAME BotControllerReplaySubtickTests
     COMMAND BotControllerReplaySubtickTests)
+
+add_executable(BotControllerButtonStateTests
+    button_state_tests.cpp)
+target_include_directories(BotControllerButtonStateTests PRIVATE ${REPLAY_INCLUDE_DIR})
+if(MSVC)
+    target_compile_options(BotControllerButtonStateTests PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(BotControllerButtonStateTests PRIVATE
+        -Wall -Wextra -Wpedantic)
+endif()
+add_test(NAME BotControllerButtonStateTests
+    COMMAND BotControllerButtonStateTests)
 
 add_executable(BotControllerSafeReadTests
     safe_read_tests.cpp)

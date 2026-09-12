@@ -101,9 +101,9 @@ namespace BotController::targets
     // CPlayerPawnComponent::Pawn pointer helper used by CounterStrikeSharp.
     inline int kServices_Pawn = 0x38;
     // m_nButtons.m_pButtonStates[0..2] — engine button state block (CInButtonState)
-    inline int kServices_Buttons = 0x50 + 0x08;       // states[0] (pressed)
-    inline int kServices_Buttons1 = 0x50 + 0x08 + 8;  // states[1]
-    inline int kServices_Buttons2 = 0x50 + 0x08 + 16; // states[2]
+    inline int kServices_Buttons = 0x50 + 0x08;       // state1 (held at command end)
+    inline int kServices_Buttons1 = 0x50 + 0x08 + 8;  // state2 transition plane
+    inline int kServices_Buttons2 = 0x50 + 0x08 + 16; // state3 transition plane
     // m_vecOldViewAngles (QAngle)
     inline int kServices_OldViewAngles = 0x240;
 

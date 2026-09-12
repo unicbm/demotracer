@@ -142,10 +142,15 @@ Companion plugins for DemoTracer should use the managed `demotracer:api`
 capability from `server/plugins/DemoTracerApi/IDemoTracerApi.cs` instead of depending on
 BotController native exports or replay buffer structs.
 
+ABI 20 keeps the upstream 228-byte replay tick layout. Its 36-byte event tail is
+reserved: every field must be zero, and loads reject unsupported native drop
+payloads. Public motion recording and JSON replay remain available, but do not
+capture or replay weapon drops. DTR gameplay events use their managed executor.
+
 ```csharp
 using BotControllerApi;
 
-if (!BotController.IsCompatible()) return;   // requires ABI 18
+if (!BotController.IsCompatible()) return;   // requires ABI 20
 BotController.TryGetAbiInfo(out var abiInfo);
 var capabilities = BotController.Capabilities();
 var buildId = BotController.BuildId();

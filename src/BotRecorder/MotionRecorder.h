@@ -17,9 +17,9 @@ namespace BotController
         uint32_t entityFlags;            // m_fFlags (bit0 = FL_ONGROUND, bit1 = FL_DUCKING)
         uint8_t moveType;                // m_MoveType (MoveType_t)
         uint8_t _pad[3];                 // keep 4-byte alignment explicit
-        uint64_t buttons;                // services button states[0] (pressed)
-        uint64_t buttons1;               // states[1]
-        uint64_t buttons2;               // states[2]
+        uint64_t buttons;                // services button state1 (held at command end)
+        uint64_t buttons1;               // button state2 transition plane
+        uint64_t buttons2;               // button state3 transition plane
         float duckAmount;                // m_flDuckAmount (0=stand, 1=full crouch)
         float duckSpeed;                 // m_flDuckSpeed
         float ladderNormalX;             // m_vecLadderNormal (ladder anim facing)
@@ -39,6 +39,13 @@ namespace BotController
         MovementSnapshot post;
         int32_t weaponDefIndex; // active weapon item-def index, -1 = none
         uint32_t numSubtick;    // subtick moves for this tick, 0..36
+        // ABI 20 reserves this 36-byte tail for layout compatibility only.
+        // All fields must be zero; native drop capture/replay is unsupported.
+        uint32_t eventFlags;
+        int32_t eventWeaponDefIndex;
+        uint32_t eventDropVectorFlags;
+        float eventDropTargetX, eventDropTargetY, eventDropTargetZ;
+        float eventDropVelocityX, eventDropVelocityY, eventDropVelocityZ;
     };
 
     struct SubtickMove
@@ -119,6 +126,7 @@ namespace BotController
     };
 #pragma pack(pop)
 
+    static_assert(sizeof(ReplayTick) == 228);
     static_assert(sizeof(ReplayCommandFrameData) == 68);
     static_assert(sizeof(ReplayMovementExtra) == 48);
     static_assert(sizeof(ReplayInputHistoryTick) == 16);
@@ -258,6 +266,7 @@ namespace BotController
         // ---- recording ----
         bool StartRecord(int slot); // clears old buffer, begins capture
         bool StopRecord(int slot);  // stops
+        bool ClearRecordedMotion(int slot); // stops and releases recorded buffers
         bool IsRecording(int slot);
         int RecordedTickCount(int slot);    // <0 on bad slot
         int RecordedSubtickCount(int slot); // <0 on bad slot
@@ -278,6 +287,9 @@ namespace BotController
         // Copy recorded data out to caller buffers; returns elements written.
         int CopyTicks(int slot, ReplayTick *out, int maxTicks);
         int CopySubticks(int slot, SubtickMove *out, int maxSubticks);
+        void OnCaptureCommand(int slot, const ReplayCommandFrameData &command);
+        int RecordedCommandCount(int slot);
+        int CopyCommands(int slot, ReplayCommandFrameData *out, int maxCommands);
 
         // ---- replay ----
         // Load parallel arrays into a slot's replay buffer
@@ -299,9 +311,11 @@ namespace BotController
         bool StartReplay(int slot, bool loop); // play from tick 0
         bool StartReplayAt(int slot, bool loop, int startIndex);
         bool StartReplayUntil(int slot, bool loop, int startIndex, int holdBeforeIndex);
-        bool StopReplay(int slot);             // stop + clear injection
-        // Stop replay, clear injection, and return all replay-buffer capacity
-        // to the allocator. Use StopReplay when a warm restart is expected.
+        // End active execution once; an already stopped slot's newer inputs
+        // and equipment belong to its next owner and must remain untouched.
+        bool StopReplay(int slot);
+        // Stop active execution if needed, then return buffer capacity to the
+        // allocator. Disposing an already stopped buffer only changes storage.
         bool ReleaseReplayBuffer(int slot);
         bool IsReplaying(int slot);
         int ReplayCursor(int slot); // current tick index, <0 if idle

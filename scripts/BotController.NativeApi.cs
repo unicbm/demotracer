@@ -1,4 +1,4 @@
-// P/Invoke wrapper for BotController.dll (ABI 18). Check IsCompatible() before use.
+// P/Invoke wrapper for BotController.dll (ABI 20). Check IsCompatible() before use.
 // Main-thread only.
 
 using System;
@@ -60,6 +60,13 @@ namespace BotControllerApi
         public MovementSnapshot Post;
         public int WeaponDefIndex;
         public uint NumSubtick;
+        // Reserved ABI 20 layout tail: every field must be zero.
+        // Native weapon-drop capture/replay is unsupported.
+        public uint EventFlags;
+        public int EventWeaponDefIndex;
+        public uint EventDropVectorFlags;
+        public float EventDropTargetX, EventDropTargetY, EventDropTargetZ;
+        public float EventDropVelocityX, EventDropVelocityY, EventDropVelocityZ;
     }
 
     /** One subtick input step. Must match C++ SubtickMove byte layout exactly */
@@ -186,7 +193,7 @@ namespace BotControllerApi
     // Thin static binding over the native exports. No orchestration here.
     public static class BotController
     {
-        public const int ExpectedAbiVersion = 18;
+        public const int ExpectedAbiVersion = 20;
         public const ulong CapabilityReplaySlotState = 1UL << 0;
         public const ulong CapabilityStartReplayAt = 1UL << 1;
         public const ulong CapabilityStartReplayUntil = 1UL << 2;

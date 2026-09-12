@@ -55,7 +55,18 @@ namespace
         {
             if (!FiniteSnapshot(ticks[i].pre) ||
                 !FiniteSnapshot(ticks[i].post) ||
-                ticks[i].weaponDefIndex < -1)
+                ticks[i].weaponDefIndex < -1 ||
+                // ABI layout compatibility does not imply event support.
+                // Reject unsupported recordings instead of silently losing drops.
+                ticks[i].eventFlags != 0 ||
+                ticks[i].eventWeaponDefIndex != 0 ||
+                ticks[i].eventDropVectorFlags != 0 ||
+                ticks[i].eventDropTargetX != 0 ||
+                ticks[i].eventDropTargetY != 0 ||
+                ticks[i].eventDropTargetZ != 0 ||
+                ticks[i].eventDropVelocityX != 0 ||
+                ticks[i].eventDropVelocityY != 0 ||
+                ticks[i].eventDropVelocityZ != 0)
             {
                 return false;
             }

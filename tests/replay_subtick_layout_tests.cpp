@@ -1,6 +1,8 @@
 #include "ReplaySubtickLayout.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
@@ -354,8 +356,33 @@ namespace
     }
 } // namespace
 
+static void TestReservedEventTailIsRejectedTransactionally()
+{
+    std::vector<ReplayTick> ticks{Tick(0, 7), Tick(0, 7)};
+    ReplayLoadStaging staged;
+    auto load = [&] { return TryStageReplayLoad(ticks.data(), 2, nullptr, 0, nullptr, 0, nullptr, 0, staged); };
+    Check(load(), "zero reserved event tail rejected");
+    // Each 4-byte field of the ABI's reserved tail must independently reject
+    // nonzero data; flags=0 cannot conceal a partial/legacy drop payload.
+    for (std::size_t offset = offsetof(ReplayTick, eventFlags); offset < sizeof(ReplayTick); offset += 4)
+    {
+        ticks[0] = Tick(0, 42);
+        const std::uint32_t nonzero = 1;
+        std::memcpy(reinterpret_cast<unsigned char *>(&ticks[0]) + offset, &nonzero, sizeof(nonzero));
+        Check(!load(), "unsupported native event payload accepted");
+        Check(staged.ticks.size() == 2 && staged.ticks[0].weaponDefIndex == 7 && staged.ticks[0].eventFlags == 0,
+              "rejected native event replaced previous staging");
+    }
+    ticks[0] = Tick(0, 42);
+    ticks[0].eventDropVelocityZ = std::numeric_limits<float>::quiet_NaN();
+    Check(!load(), "NaN accepted as an empty reserved event tail");
+    ticks[0] = Tick(0, 7);
+    Check(load(), "valid replay rejected after an unsupported event load");
+}
+
 int main()
 {
+    TestReservedEventTailIsRejectedTransactionally();
     TestValidOffsetsAndRanges();
     TestEngineWhenProjection();
     TestZeroTickLayout();

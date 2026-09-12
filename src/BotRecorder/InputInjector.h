@@ -45,6 +45,16 @@ namespace BotController
         bool ClearUsercmdMovementIntent(int slot);
         void ClearAllUsercmdMovementIntents();
 
+        int64_t InjectUsercmd(int slot, uint64_t buttons, int durationMs);
+        bool CancelUsercmdInjection(int slot, int64_t id);
+        int64_t StartUsercmdMovement(int slot, float forward, float left);
+        bool UpdateUsercmdMovement(int slot, int64_t id, float forward, float left);
+        bool CancelUsercmdMovement(int slot, int64_t id);
+        bool SuppressUsercmd(int slot, uint64_t buttons, int durationMs);
+        int64_t StartUsercmdSuppression(int slot, uint64_t buttons);
+        bool CancelUsercmdSuppression(int slot, int64_t id);
+        void ClearUsercmdInjections(int slot);
+
         // Persistent per-slot hand-state latch. This is intentionally separate
         // from movement intent: left hand in CS2 behaves like a held usercmd
         // desire, so callers set policy once and the native command hook keeps
@@ -69,6 +79,8 @@ namespace BotController
         // This is a fallback for builds where CPlayerPawnComponent's helper
         // pointer is missing or stale inside movement services.
         bool SetReplayPawn(int slot, void *pawn);
+        // Clear only the buffer's pawn association. Execution/input/equipment
+        // release is a separate ownership boundary, not a mapping side effect.
         void ClearReplayPawn(int slot);
         void *ResolveReplayPawn(int slot, void *services);
 

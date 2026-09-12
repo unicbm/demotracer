@@ -41,6 +41,7 @@ namespace BotController
         void Remove();
 
         const char *Status();
+        void *BotForSlot(int slot);
 
         // Apply replay-owned eye angles through the native engine path so
         // derived third-person/body orientation state stays synchronized.
