@@ -32,6 +32,10 @@ plugins, native runtimes, contracts, and release tooling aligned.
 - Cosmetic and scoreboard behavior must remain demo-backed, defensive, and
   default-off where documented.
 - Preserve user configuration and unrelated worktree changes.
+- Publish only maintained product, contributor, contract, and provenance
+  documentation. Keep research notes, binary investigations, compatibility
+  audits, and temporary validation reports local and ignored; do not force-add
+  them. `docs/` has an explicit public-document allowlist in `.gitignore`.
 
 ## Validation
 

@@ -3,6 +3,11 @@
 The root [README](../README.md) is the product and installation entry point.
 This directory intentionally keeps only maintained reference material:
 
+Local research notes, binary investigations, compatibility audits, and temporary
+validation reports are not published. `.gitignore` explicitly lists the public
+documents; add a new entry only for a maintained user or contributor reference.
+`media/` contains product screenshots and replay demonstrations.
+
 Contributor workflow and repository boundaries are documented in the root
 [CONTRIBUTING.md](../CONTRIBUTING.md).
 

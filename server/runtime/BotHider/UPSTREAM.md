@@ -19,8 +19,7 @@ from `31b9bd04de3ea326847a701577e9c50779ffe366`.
 
 The subsequent changes through
 `7fc83ea108c7b29cf014efb73584199565c6418c` (upstream v0.4.3) were reviewed on
-2026-09-05. See the [September review](../../../docs/BOT_HIDER_UPSTREAM_REVIEW_2026_09.md)
-for the behavior comparison, validation limits, and selective-import priorities.
+2026-09-05.
 No additional upstream runtime changes were imported as part of that review.
 
 The gamedata-driven team offset refinement from
