@@ -93,6 +93,7 @@ pub static BASETYPE_DECODERS: phf::Map<&'static str, Decoder> = phf_map! {
     "uint8" =>   UnsignedDecoder,
     "color32" => UnsignedDecoder,
     "GameTime_t" => NoscaleDecoder,
+    "GameTick_t" => SignedDecoder,
     "CBodyComponent" =>       ComponentDecoder,
     "CGameSceneNodeHandle" => UnsignedDecoder,
     "Color" =>                UnsignedDecoder,
@@ -185,6 +186,7 @@ pub static BUTTONMAP: phf::Map<&'static str, u64> = phf_map! {
 };
 
 pub static CUSTOM_PLAYER_PROP_IDS: phf::Map<&'static str, u32> = phf_map! {
+    "server_tick" => SERVER_TICK_ID,
     "entity_id" => ENTITY_ID_ID,
     "user_id"=> USERID_ID,
     "X"=> PLAYER_X_ID,

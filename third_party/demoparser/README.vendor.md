@@ -11,6 +11,12 @@ Signon parsing retains `svc_ServerInfo.host_name` as `server_info_host_name`
 alongside the unchanged demo file header. Platform detection can use the
 recorded host when the file header contains a generic server name.
 
+ServerInfo also supplies `server_tick_interval`; `game_time` uses that interval
+and `server_tick` exposes the integer network clock. Missing timing remains
+missing rather than being reconstructed from a fixed 64 Hz assumption.
+`GameTick_t` uses the signed-varint decoder, including negative sentinels, so
+movement, aim-punch and weapon deadlines retain their original tick values.
+
 The vendored build scripts use the generated `protobuf.rs` and `maps.rs` files already present in this tree, so normal converter builds do not clone GameTracking-CS2 or rewrite vendored source files.
 
 Local button-map maintenance adds JUMP/DUCK properties and aligns WALK,

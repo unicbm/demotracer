@@ -937,6 +937,9 @@ impl<'a> SecondPassParser<'a> {
         };
         let class_count = server_info.max_classes();
         self.cls_bits = Some((class_count as f32 + 1.).log2().ceil() as u32);
+        if let Some(interval) = server_info.tick_interval.filter(|v| v.is_finite() && *v > 0.0) {
+            self.tick_interval = Some(interval);
+        }
         Ok(())
     }
     pub fn parse_user_command_cmd(&mut self, _data: &[u8]) -> Result<(), DemoParserError> {

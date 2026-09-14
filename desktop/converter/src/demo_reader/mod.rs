@@ -1430,7 +1430,7 @@ mod demoparser_impl {
         drop(single_threaded_overlay);
         drop(parsed_inventory_cache);
         repair_short_global_tick_gaps(&mut rows);
-        let tick_rate = estimate_tick_rate(&rows).unwrap_or(64.0);
+        let tick_rate = read_server_tick_rate(&header)?;
         derive_observed_horizontal_velocities(&mut rows, tick_rate);
         let mut round_freeze_end_ticks = output
             .game_events
@@ -2571,28 +2571,14 @@ mod demoparser_impl {
             .collect()
     }
 
-    fn estimate_tick_rate(rows: &[ParsedPlayerTick]) -> Option<f32> {
-        let mut first = None;
-        let mut last = None;
-        for row in rows {
-            if let Some(time) = row.game_time {
-                if time.is_finite() {
-                    first.get_or_insert((row.tick, time));
-                    last = Some((row.tick, time));
-                }
-            }
-        }
-        let (first_tick, first_time) = first?;
-        let (last_tick, last_time) = last?;
-        let dt = last_time - first_time;
-        let ticks = (last_tick - first_tick) as f32;
-        if dt > 0.0 && ticks > 0.0 {
-            let rate = ticks / dt;
-            if (16.0..=256.0).contains(&rate) {
-                return Some(rate.round());
-            }
-        }
-        None
+    fn read_server_tick_rate(header: &AHashMap<String, String>) -> Result<f32> {
+        let rate = header.get("server_tick_interval")
+            .and_then(|value| value.parse::<f32>().ok())
+            .filter(|interval| interval.is_finite() && *interval > 0.0)
+            .map(f32::recip)
+            .filter(|rate| rate.is_finite() && (16.0..=256.0).contains(rate));
+        rate.ok_or_else(|| Error::InvalidDemo(
+            "missing or invalid ServerInfo tick interval; cannot establish replay time base".into()))
     }
 
     fn get_f32(column: Option<&PropColumn>, idx: usize) -> Option<f32> {
@@ -3051,6 +3037,18 @@ mod demoparser_impl {
 
     #[cfg(test)]
     mod tests {
+        #[test]
+        fn replay_time_base_requires_server_info_instead_of_assuming_64() {
+            let mut header = AHashMap::default();
+            assert!(read_server_tick_rate(&header).is_err());
+            header.insert("server_tick_interval".into(), "0.0078125".into());
+            assert_eq!(read_server_tick_rate(&header).unwrap(), 128.0);
+            for invalid in ["0", "-1", "NaN", "inf", "garbage"] {
+                header.insert("server_tick_interval".into(), invalid.into());
+                assert!(read_server_tick_rate(&header).is_err());
+            }
+        }
+
         use super::*;
         use std::sync::atomic::AtomicBool;
 

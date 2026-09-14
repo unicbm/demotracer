@@ -360,7 +360,9 @@ impl<'a> SecondPassParser<'a> {
             PropType::Button => return self.get_button_prop(&prop_info, &entity_id),
             PropType::Controller => return self.get_controller_prop(&prop_info.id, player),
             PropType::Rules => return self.get_rules_prop(prop_info),
-            PropType::GameTime => return Ok(Variant::F32(self.net_tick as f32 / 64.0)),
+            PropType::GameTime => self.tick_interval
+                .map(|interval| Variant::F32(self.net_tick as f32 * interval))
+                .ok_or(PropCollectionError::GetPropFromEntPropNotFound),
         }
     }
     pub fn get_prop_from_ent(&self, prop_id: &u32, entity_id: &i32) -> Result<Variant, PropCollectionError> {
@@ -864,6 +866,7 @@ impl<'a> SecondPassParser<'a> {
         player: &PlayerMetaData,
     ) -> Result<Variant, PropCollectionError> {
         match prop_info.id {
+            SERVER_TICK_ID => Ok(Variant::U32(self.net_tick)),
             PLAYER_X_ID => self.collect_cell_coordinate_player(CoordinateAxis::X, entity_id),
             PLAYER_Y_ID => self.collect_cell_coordinate_player(CoordinateAxis::Y, entity_id),
             PLAYER_Z_ID => self.collect_cell_coordinate_player(CoordinateAxis::Z, entity_id),

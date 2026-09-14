@@ -339,6 +339,9 @@ impl<'a> FirstPassParser<'a> {
                     if let Some(host) = info.host_name.as_deref().map(str::trim).filter(|host| !host.is_empty()) {
                         self.header.insert("server_info_host_name".to_string(), host.to_string());
                     }
+                    if let Some(interval) = info.tick_interval.filter(|v| v.is_finite() && *v > 0.0) {
+                        self.header.insert("server_tick_interval".to_string(), interval.to_string());
+                    }
                     Ok(())
                 }
                 GE_Source1LegacyGameEventList => self.parse_game_event_list(&msg_bytes),

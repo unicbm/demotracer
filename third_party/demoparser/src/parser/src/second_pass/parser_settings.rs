@@ -39,6 +39,7 @@ pub struct SecondPassParser<'a> {
     pub cls_by_id: &'a Vec<Class>,
     pub stringtable_players: BTreeMap<i32, UserInfo>,
     pub net_tick: u32,
+    pub tick_interval: Option<f32>,
     pub parse_inventory: bool,
     pub paths: Vec<FieldPath>,
     pub ptr: usize,
@@ -221,6 +222,9 @@ impl<'a> SecondPassParser<'a> {
             ],
             parse_inventory: first_pass_output.prop_controller.wanted_player_props.contains(&"inventory".to_string()),
             net_tick: 0,
+            tick_interval: first_pass_output.header.get("server_tick_interval")
+                .and_then(|value| value.parse::<f32>().ok())
+                .filter(|value| value.is_finite() && *value > 0.0),
             c4_entity_id: None,
             stringtable_players: first_pass_output.stringtable_players,
             is_debug_mode: debug,
