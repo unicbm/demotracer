@@ -28,6 +28,8 @@ namespace BotController::targets
 
     // entity -> CEntityIdentity*
     inline int kEnt_Identity = 0x10;
+    // Required live schema field; used to expire hand preference on death.
+    inline int kEnt_LifeState = 0;
     // CEntityIdentity -> m_EHandle (low 15 bits = entity index)
     inline int kEntIdentity_EHandle = 0x10;
     // m_MoveType (MoveType_t, 1 byte) — restored each replay tick.
@@ -125,6 +127,7 @@ namespace BotController::targets
     // ---- vtable indices (CCSPlayer_MovementServices) ----
 
     inline int kVtIdx_PlayerRunCommand = 25;
+    inline int kVtIdx_SetupMove = 34;
     inline int kVtIdx_FinishMove = 38;
 
     // Load only private/non-schema offsets from platform-specific gamedata.

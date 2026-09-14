@@ -26,6 +26,7 @@ namespace BotController::targets
         kMove_Velocity           = Sig::FindPlatformOffset(gd, "CMoveData::Velocity", kMove_Velocity);
         kMove_AbsOrigin          = Sig::FindPlatformOffset(gd, "CMoveData::AbsOrigin", kMove_AbsOrigin);
         kVtIdx_PlayerRunCommand  = Sig::FindPlatformOffset(gd, "vtidx::PlayerRunCommand", kVtIdx_PlayerRunCommand);
+        kVtIdx_SetupMove         = Sig::FindPlatformOffset(gd, "vtidx::SetupMove", kVtIdx_SetupMove);
         kVtIdx_FinishMove        = Sig::FindPlatformOffset(gd, "vtidx::FinishMove", kVtIdx_FinishMove);
     }
 
@@ -50,6 +51,7 @@ namespace BotController::targets
             {"CCSBot", "m_nearbyEnemyCount", &kBot_NearbyEnemyCount},
 
             {"CEntityInstance", "m_pEntity", &kEnt_Identity},
+            {"CBaseEntity", "m_lifeState", &kEnt_LifeState},
             {"CBaseEntity", "m_MoveType", &kEnt_MoveType},
             {"CBaseEntity", "m_nActualMoveType", &kEnt_ActualMoveType},
             {"CBaseEntity", "m_fFlags", &kEnt_Flags},

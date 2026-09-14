@@ -57,6 +57,8 @@ namespace BotController
             std::atomic<int> cursor{0};
             std::atomic<int> startCursor{0};
             std::atomic<int> holdBeforeCursor{-1};
+            // Published with playing; consumed only by the simulation thread.
+            bool initializeMovement = false;
             // Replay weapon-select cache. cachedWeaponDef is the publication
             // marker and is stored only after the remaining fields are ready.
             std::atomic<int> cachedWeaponDef{-1};
@@ -96,7 +98,6 @@ namespace BotController
 
         constexpr uint64_t kPrimeAttackButtons = (1ull << 0) | (1ull << 11);
 
-        static std::atomic<int> g_replaySnapMode{static_cast<int>(ReplaySnapMode::Hard)};
         static std::array<int, kMaxSlots> g_lastFinalViewCursor = [] {
             std::array<int, kMaxSlots> values{};
             values.fill(-1);
@@ -117,14 +118,12 @@ namespace BotController
             std::atomic<uint64_t> replayCommandFrameReads{0};
             std::atomic<uint64_t> subtickClears{0};
             std::atomic<uint64_t> subtickNoopSkips{0};
+            std::atomic<uint64_t> movementInputs{0};
+            std::atomic<uint64_t> movementInitializations{0};
         };
 
         static ReplayPerfState g_perf;
 
-        static constexpr float kSoftSnapDistance = 64.0f;
-        static constexpr float kSoftSnapVerticalDistance = 48.0f;
-        static constexpr float kFinishMoveResyncNudgeZ = 0.03125f;
-        static constexpr float kReplayMinEngineVelZ = -500.0f;
         static constexpr uint8_t kMoveTypeWalk = 2;
         static constexpr uint8_t kMoveTypeLadder = 9;
         static constexpr float kLadderNormalResidueSq = 0.0001f;
@@ -288,6 +287,7 @@ namespace BotController
             InputInjector::ClearUsercmdMovementIntent(slot);
             ReplayPawnEquipment::Clear(slot);
             p.holdBeforeCursor.store(-1, std::memory_order_relaxed);
+            p.initializeMovement = false;
             InvalidateReplayWeaponCache(p);
             g_lastFinalViewCursor[slot] = -1;
         }
@@ -298,19 +298,6 @@ namespace BotController
             if (a < 0.0f)
                 a += 360.0f;
             return a - 180.0f;
-        }
-
-        static ReplaySnapMode ActiveReplaySnapMode()
-        {
-            switch (g_replaySnapMode.load(std::memory_order_relaxed))
-            {
-            case static_cast<int>(ReplaySnapMode::Soft):
-                return ReplaySnapMode::Soft;
-            case static_cast<int>(ReplaySnapMode::Off):
-                return ReplaySnapMode::Off;
-            default:
-                return ReplaySnapMode::Hard;
-            }
         }
 
         void AddReplayPerf(ReplayPerfCounter counter, uint64_t amount)
@@ -356,6 +343,12 @@ namespace BotController
             case ReplayPerfCounter::SubtickNoopSkip:
                 g_perf.subtickNoopSkips.fetch_add(amount, std::memory_order_relaxed);
                 break;
+            case ReplayPerfCounter::ReplayMovementInput:
+                g_perf.movementInputs.fetch_add(amount, std::memory_order_relaxed);
+                break;
+            case ReplayPerfCounter::ReplayMovementInitialization:
+                g_perf.movementInitializations.fetch_add(amount, std::memory_order_relaxed);
+                break;
             }
         }
 
@@ -383,6 +376,8 @@ namespace BotController
             g_perf.replayCommandFrameReads.store(0, std::memory_order_relaxed);
             g_perf.subtickClears.store(0, std::memory_order_relaxed);
             g_perf.subtickNoopSkips.store(0, std::memory_order_relaxed);
+            g_perf.movementInputs.store(0, std::memory_order_relaxed);
+            g_perf.movementInitializations.store(0, std::memory_order_relaxed);
         }
 
         ReplayPerfCounters GetReplayPerfCounters()
@@ -400,31 +395,9 @@ namespace BotController
                 g_perf.replayCommandFrameReads.load(std::memory_order_relaxed),
                 g_perf.subtickClears.load(std::memory_order_relaxed),
                 g_perf.subtickNoopSkips.load(std::memory_order_relaxed),
+                g_perf.movementInputs.load(std::memory_order_relaxed),
+                g_perf.movementInitializations.load(std::memory_order_relaxed),
             };
-        }
-
-        const char *ReplaySnapModeName(ReplaySnapMode mode)
-        {
-            switch (mode)
-            {
-            case ReplaySnapMode::Hard:
-                return "hard";
-            case ReplaySnapMode::Soft:
-                return "soft";
-            case ReplaySnapMode::Off:
-                return "off";
-            }
-            return "hard";
-        }
-
-        void SetReplaySnapMode(ReplaySnapMode mode)
-        {
-            g_replaySnapMode.store(static_cast<int>(mode), std::memory_order_relaxed);
-        }
-
-        ReplaySnapMode GetReplaySnapMode()
-        {
-            return ActiveReplaySnapMode();
         }
 
         static void *ResolveSceneNode(char *entity)
@@ -473,24 +446,6 @@ namespace BotController
             }
 #endif
             return nullptr;
-        }
-
-        static void WriteSceneNodeOrigin(char *entity, float x, float y, float z)
-        {
-            void *node = ResolveSceneNode(entity);
-            if (!node)
-                return;
-#if defined(_WIN32)
-            const float origin[3] = {x, y, z};
-            TryWriteMemory(node, tg::kNode_AbsOrigin, origin, sizeof(origin));
-#else
-            auto *n = reinterpret_cast<char *>(node);
-            if (!CanWriteMemory(n + tg::kNode_AbsOrigin, sizeof(float) * 3))
-                return;
-            *reinterpret_cast<float *>(n + tg::kNode_AbsOrigin + 0) = x;
-            *reinterpret_cast<float *>(n + tg::kNode_AbsOrigin + 4) = y;
-            *reinterpret_cast<float *>(n + tg::kNode_AbsOrigin + 8) = z;
-#endif
         }
 
         // Read a MovementSnapshot from live engine state (services -> pawn).
@@ -544,37 +499,6 @@ namespace BotController
             }
             out = value;
             return true;
-        }
-
-        static bool SnapshotPositionIsFinite(const MovementSnapshot &s)
-        {
-            return std::isfinite(s.originX) && std::isfinite(s.originY) &&
-                   std::isfinite(s.originZ);
-        }
-
-        static bool ShouldApplyMovementSnap(ReplaySnapMode mode, int slot, int cursor,
-                                            void *services, const MovementSnapshot &target)
-        {
-            if (mode == ReplaySnapMode::Hard)
-                return true;
-            if (mode == ReplaySnapMode::Off)
-                return false;
-
-            if (cursor <= 0)
-                return true;
-            if (!SnapshotPositionIsFinite(target))
-                return false;
-
-            MovementSnapshot live{};
-            if (!ReadSnapshot(slot, services, live) || !SnapshotPositionIsFinite(live))
-                return true;
-
-            const float dx = live.originX - target.originX;
-            const float dy = live.originY - target.originY;
-            const float dz = live.originZ - target.originZ;
-            const float dist2 = dx * dx + dy * dy;
-            return dist2 > (kSoftSnapDistance * kSoftSnapDistance) ||
-                   std::fabs(dz) > kSoftSnapVerticalDistance;
         }
 
         // ---- recording ----
@@ -1050,7 +974,10 @@ namespace BotController
             // start cursor when releasing the hold so start-only input
             // synthesis cannot replay an old attack edge at live start.
             if (!resumesHeldReplay)
+            {
                 p.startCursor.store(startIndex, std::memory_order_relaxed);
+                p.initializeMovement = true;
+            }
             p.holdBeforeCursor.store(-1, std::memory_order_relaxed);
             InvalidateReplayWeaponCache(p);
             g_lastFinalViewCursor[slot] = -1;
@@ -1076,6 +1003,7 @@ namespace BotController
             p.cursor.store(startIndex, std::memory_order_relaxed);
             p.startCursor.store(startIndex, std::memory_order_relaxed);
             p.holdBeforeCursor.store(holdBeforeIndex, std::memory_order_relaxed);
+            p.initializeMovement = true;
             InvalidateReplayWeaponCache(p);
             g_lastFinalViewCursor[slot] = -1;
             p.loop.store(loop, std::memory_order_relaxed);
@@ -1548,26 +1476,6 @@ namespace BotController
             return true;
         }
 
-        // Write velocity onto the pawn independently of local view state.
-        static float ReplayEngineVelZ(float velZ)
-        {
-            if (!std::isfinite(velZ))
-                return 0.0f;
-            return velZ < kReplayMinEngineVelZ ? kReplayMinEngineVelZ : velZ;
-        }
-
-        static void WriteVelocityToPawn(int slot, void *services, const MovementSnapshot &s)
-        {
-            void *pawn = InputInjector::ResolveReplayPawn(slot, services);
-            if (!pawn)
-                return;
-            auto *p = reinterpret_cast<char *>(pawn);
-
-            *reinterpret_cast<float *>(p + tg::kEnt_AbsVelocity + 0) = s.velX;
-            *reinterpret_cast<float *>(p + tg::kEnt_AbsVelocity + 4) = s.velY;
-            *reinterpret_cast<float *>(p + tg::kEnt_AbsVelocity + 8) = ReplayEngineVelZ(s.velZ);
-        }
-
         // Write origin + velocity into CMoveData.
         static void WriteMoveData(void *moveData, const MovementSnapshot &s)
         {
@@ -1577,7 +1485,7 @@ namespace BotController
             *reinterpret_cast<float *>(m + tg::kMove_AbsOrigin + 8) = s.originZ;
             *reinterpret_cast<float *>(m + tg::kMove_Velocity + 0) = s.velX;
             *reinterpret_cast<float *>(m + tg::kMove_Velocity + 4) = s.velY;
-            *reinterpret_cast<float *>(m + tg::kMove_Velocity + 8) = ReplayEngineVelZ(s.velZ);
+            *reinterpret_cast<float *>(m + tg::kMove_Velocity + 8) = s.velZ;
         }
 
         static void WriteMovementServiceState(void *services,
@@ -1594,48 +1502,38 @@ namespace BotController
             *reinterpret_cast<uint8_t *>(sv + tg::kServices_DesiresDuck) = s.desiresDuck;
         }
 
-        // PlayerRunCommand (pre): weapon firing and grenade throws can consume
-        // pawn state before ProcessMovement runs, so seed the live pawn here too.
-        void OnReplayCommandPre(int slot, void *services)
-        {
-            if (!ValidSlot(slot) || !services)
-                return;
-            ReplayState &p = g_rep[slot];
-            if (!p.playing.load(std::memory_order_acquire))
-                return;
-
-            int cur = -1;
-            int total = 0;
-            const ReplayTick *t = CurrentReplayTickPtr(p, cur, total);
-            if (!t)
-                return;
-            const MovementSnapshot commandView =
-                t->pre;
-
-            OnReplayCommandPre(slot, services, *t, commandView);
-        }
-
-        void OnReplayCommandPre(int slot, void *services, const ReplayTick &t,
+        bool OnReplayCommandPre(int slot, void *services, const ReplayTick &t,
                                 const MovementSnapshot &commandView)
         {
-            if (!ValidSlot(slot) || !services)
-                return;
-            auto *sv = reinterpret_cast<char *>(services);
-            WriteVelocityToPawn(slot, services, t.pre);
-            WriteMovementServiceState(services, t.pre);
-
+            if (!ValidSlot(slot) || !services || !IsReplaying(slot))
+                return false;
             void *pawn = InputInjector::ResolveReplayPawn(slot, services);
-            if (pawn)
+            if (!pawn)
+                return false;
+
+            ReplayState &p = g_rep[slot];
+            auto *pp = reinterpret_cast<char *>(pawn);
+            if (p.initializeMovement)
             {
-                auto *pp = reinterpret_cast<char *>(pawn);
+                const float origin[] = {t.pre.originX, t.pre.originY, t.pre.originZ};
+                const float velocity[] = {t.pre.velX, t.pre.velY, t.pre.velZ};
+                if (!InputInjector::InitializeReplayPose(pawn, origin, velocity))
+                    return false;
+                // Boundary state only. Duck/ladder/ground processing owns all
+                // subsequent transitions, including the state kept at handoff.
+                WriteMovementServiceState(services, t.pre);
                 *reinterpret_cast<uint8_t *>(pp + tg::kEnt_MoveType) = t.pre.moveType;
                 *reinterpret_cast<uint8_t *>(pp + tg::kEnt_ActualMoveType) = t.pre.actualMoveType;
-                WriteSceneNodeOrigin(pp, t.pre.originX, t.pre.originY, t.pre.originZ);
-
-                WriteLocalViewAnglesToPawn(pp, commandView.pitch, commandView.yaw);
-                WriteReplayViewHistory(
-                    services, pp, commandView.pitch, commandView.yaw);
+                const uint32_t mask = tg::kFL_OnGround | tg::kFL_Ducking;
+                auto *flags = reinterpret_cast<uint32_t *>(pp + tg::kEnt_Flags);
+                *flags = (*flags & ~mask) | (t.pre.entityFlags & mask);
+                p.initializeMovement = false;
+                AddReplayPerf(ReplayPerfCounter::ReplayMovementInitialization);
             }
+
+            WriteLocalViewAnglesToPawn(pp, commandView.pitch, commandView.yaw);
+            WriteReplayViewHistory(services, pp, commandView.pitch, commandView.yaw);
+            return true;
         }
 
         void OnReplayCommandPost(int slot, void *services, bool wasReplaying)
@@ -1652,79 +1550,23 @@ namespace BotController
                 FinalizeReplayStopState(slot, p, services);
         }
 
-        // ProcessMovement (pre): seed CMoveData + pawn + moveType with pre state.
-        void OnReplayPre(int slot, void *services, void *moveData)
+        // The demo pre snapshot is the kinematic input for this command.
+        // Supply it once after SetupMove; do not reset every subtick mover or
+        // write pawn origins ahead of the engine's change detection.
+        void OnReplaySetupMove(int slot, void *moveData)
         {
-            if (!ValidSlot(slot) || !services || !moveData)
+            if (!ValidSlot(slot) || !moveData || !IsReplaying(slot))
                 return;
             ReplayState &p = g_rep[slot];
-            if (!p.playing.load(std::memory_order_acquire))
-                return;
+            if (p.initializeMovement)
+                return; // wait for the first prepared PlayerRunCommand
             int cursor = -1;
             int total = 0;
             const ReplayTick *t = CurrentReplayTickPtr(p, cursor, total);
-            if (!t)
-                return; // commit handler will stop/loop
-            const ReplaySnapMode snapMode = ActiveReplaySnapMode();
-            const bool snapMovement =
-                ShouldApplyMovementSnap(snapMode, slot, cursor, services, t->pre);
-
-            if (snapMovement)
+            if (t)
             {
                 WriteMoveData(moveData, t->pre);
-                WriteVelocityToPawn(slot, services, t->pre);
-                WriteMovementServiceState(services, t->pre);
-            }
-            auto *sv = reinterpret_cast<char *>(services);
-            // Feed recorded buttons so the engine's Duck()/ladder logic runs
-            *reinterpret_cast<uint64_t *>(sv + tg::kServices_Buttons) = t->pre.buttons;
-            *reinterpret_cast<uint64_t *>(sv + tg::kServices_Buttons1) = t->pre.buttons1;
-            *reinterpret_cast<uint64_t *>(sv + tg::kServices_Buttons2) = t->pre.buttons2;
-            if (snapMovement)
-            {
-                void *pawn = InputInjector::ResolveReplayPawn(slot, services);
-                if (pawn)
-                {
-                    auto *pp = reinterpret_cast<char *>(pawn);
-                    *reinterpret_cast<uint8_t *>(pp + tg::kEnt_MoveType) = t->pre.moveType;
-                    WriteSceneNodeOrigin(pp, t->pre.originX, t->pre.originY, t->pre.originZ);
-                }
-            }
-        }
-
-        // FinishMove (pre): write post snapshot into CMoveData and force a
-        // small scene-node origin mismatch so FinishMove resyncs from MoveData.
-        void OnReplayFinishMove(int slot, void *services, void *moveData)
-        {
-            if (!ValidSlot(slot) || !services || !moveData)
-                return;
-            ReplayState &p = g_rep[slot];
-            if (!p.playing.load(std::memory_order_acquire))
-                return;
-            if (ActiveReplaySnapMode() != ReplaySnapMode::Hard)
-                return;
-            int cur = -1;
-            int total = 0;
-            const ReplayTick *t = CurrentReplayTickPtr(p, cur, total);
-            if (!t)
-                return;
-            auto *m = reinterpret_cast<char *>(moveData);
-            *reinterpret_cast<float *>(m + tg::kMove_AbsOrigin + 0) = t->post.originX;
-            *reinterpret_cast<float *>(m + tg::kMove_AbsOrigin + 4) = t->post.originY;
-            *reinterpret_cast<float *>(m + tg::kMove_AbsOrigin + 8) = t->post.originZ;
-            *reinterpret_cast<float *>(m + tg::kMove_Velocity + 0) = t->post.velX;
-            *reinterpret_cast<float *>(m + tg::kMove_Velocity + 4) = t->post.velY;
-            *reinterpret_cast<float *>(m + tg::kMove_Velocity + 8) = ReplayEngineVelZ(t->post.velZ);
-
-            // Force engine to resync the entity origin from MoveData
-            auto *sv = reinterpret_cast<char *>(services);
-            void *pawn = InputInjector::ResolveReplayPawn(slot, services);
-            if (pawn)
-            {
-                WriteSceneNodeOrigin(reinterpret_cast<char *>(pawn),
-                                     t->post.originX,
-                                     t->post.originY,
-                                     t->post.originZ + kFinishMoveResyncNudgeZ);
+                AddReplayPerf(ReplayPerfCounter::ReplayMovementInput);
             }
         }
 
@@ -1736,7 +1578,7 @@ namespace BotController
             if (!ValidSlot(slot) || !services)
                 return;
             ReplayState &p = g_rep[slot];
-            if (!p.playing.load(std::memory_order_acquire))
+            if (!p.playing.load(std::memory_order_acquire) || p.initializeMovement)
                 return;
             int cur = -1;
             int total = 0;
@@ -1748,68 +1590,27 @@ namespace BotController
             g_lastFinalViewCursor[slot] = cur;
         }
 
-        // PhysicsSimulate-post (or PlayerRunCommand-post fallback): commit
-        // post moveType/flags and advance the cursor after view publication.
+        // PhysicsSimulate-post (or PlayerRunCommand-post fallback): advance
+        // the cursor after view publication; movement is engine-owned.
         void OnReplayCommit(int slot, void *services)
         {
             if (!ValidSlot(slot) || !services)
                 return;
             ReplayState &p = g_rep[slot];
-            if (!p.playing.load(std::memory_order_acquire))
+            if (!p.playing.load(std::memory_order_acquire) || p.initializeMovement)
                 return;
             int cur = p.cursor.load(std::memory_order_relaxed);
             int total = static_cast<int>(p.ticks.size());
-            const ReplayTick *t = nullptr;
-            if (cur >= 0 && cur < total)
+            if (cur < 0 || cur >= total)
             {
-                AddReplayPerf(ReplayPerfCounter::ReplayTickRead);
-                t = &p.ticks[static_cast<size_t>(cur)];
-            }
-            else
-            {
-                if (cur >= total)
-                {
-                    if (p.loop.load(std::memory_order_relaxed) && total > 0)
-                    {
-                        p.cursor.store(
-                            p.startCursor.load(std::memory_order_relaxed),
-                            std::memory_order_relaxed);
-                        InvalidateReplayWeaponCache(p);
-                        g_lastFinalViewCursor[slot] = -1;
-                        return;
-                    }
-                    EndReplayExecution(slot, p, services);
-                    return;
-                }
+                EndReplayExecution(slot, p, services);
                 return;
             }
 
-            auto *sv = reinterpret_cast<char *>(services);
-            const ReplaySnapMode snapMode = ActiveReplaySnapMode();
-            const bool hardSnap = snapMode == ReplaySnapMode::Hard;
-            if (hardSnap)
-            {
-                void *pawn = InputInjector::ResolveReplayPawn(slot, services);
-                if (pawn)
-                {
-                    auto *pp = reinterpret_cast<char *>(pawn);
-                    *reinterpret_cast<uint8_t *>(pp + tg::kEnt_MoveType) = t->post.moveType;
-                    *reinterpret_cast<uint8_t *>(pp + tg::kEnt_ActualMoveType) = t->post.actualMoveType;
-                    // Merge ground + ducking bits from the recording, keep the rest live.
-                    uint32_t live = 0;
-                    if (!SafeRead(pawn, tg::kEnt_Flags, live))
-                        return;
-                    uint32_t mask = tg::kFL_OnGround | tg::kFL_Ducking;
-                    live = (live & ~mask) | (t->post.entityFlags & mask);
-                    *reinterpret_cast<uint32_t *>(pp + tg::kEnt_Flags) = live;
-                }
-            }
             if (g_lastFinalViewCursor[slot] != cur)
-                SyncReplayLocalView(slot, services, t->post);
-
-            if (hardSnap)
             {
-                WriteMovementServiceState(services, t->post);
+                AddReplayPerf(ReplayPerfCounter::ReplayTickRead);
+                SyncReplayLocalView(slot, services, p.ticks[static_cast<size_t>(cur)].post);
             }
 
             const int holdBefore = p.holdBeforeCursor.load(std::memory_order_relaxed);
@@ -1819,8 +1620,19 @@ namespace BotController
                 return;
             }
             const int next = cur + 1;
+            if (next >= total && p.loop.load(std::memory_order_relaxed))
+            {
+                // The next command must already have a valid input frame.
+                // Do not run an unowned engine command between loop passes.
+                p.cursor.store(p.startCursor.load(std::memory_order_relaxed),
+                               std::memory_order_relaxed);
+                p.initializeMovement = true;
+                InvalidateReplayWeaponCache(p);
+                g_lastFinalViewCursor[slot] = -1;
+                return;
+            }
             p.cursor.store(next, std::memory_order_relaxed);
-            if (next >= total && !p.loop.load(std::memory_order_relaxed))
+            if (next >= total)
             {
                 EndReplayExecution(slot, p, services);
             }

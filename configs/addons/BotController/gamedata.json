@@ -200,6 +200,22 @@
     },
     "comment": "Eye-angle getter used by server-side camera/spectator paths."
   },
+  "CBaseEntity::SetAbsOrigin": {
+    "signatures": {
+      "library": "server",
+      "windows": "48 89 5C 24 ? 57 48 83 EC 60 48 8B 01 48 8B FA 48 8B D9 FF 90 ? ? ? ? 84 C0",
+      "linux": ""
+    },
+    "comment": "Native origin setter used by FinishMove; replay calls it only at start/seek/loop initialization."
+  },
+  "CBaseEntity::SetAbsVelocity": {
+    "signatures": {
+      "library": "server",
+      "windows": "48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 48 81 EC 80 00 00 00 80 B9 ? ? ? ? 05 48 8B FA 48 8B D9",
+      "linux": ""
+    },
+    "comment": "Native absolute-velocity setter used by FinishMove; replay initialization preserves normal invalidation."
+  },
   "CCSPlayer_MovementServices::ProcessMovement": {
     "signatures": {
       "library": "server",
@@ -271,6 +287,13 @@
       "linux": 0
     },
     "comment": "CCSPlayer_MovementServices vtable index. linux: TODO"
+  },
+  "vtidx::SetupMove": {
+    "offsets": {
+      "windows": 34,
+      "linux": 0
+    },
+    "comment": "CCSPlayer_MovementServices::SetupMove; one replay kinematic input boundary before movement. linux: TODO"
   },
   "vtidx::FinishMove": {
     "offsets": {
