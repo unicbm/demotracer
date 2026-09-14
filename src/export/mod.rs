@@ -5924,6 +5924,7 @@ mod tests {
 
     fn sample_row(tick: i32) -> ParsedPlayerTick {
         ParsedPlayerTick {
+            source_state: Default::default(),
             tick,
             steam_id: 76561198000000001,
             name: "alpha".to_string(),
