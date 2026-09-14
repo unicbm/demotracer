@@ -147,13 +147,6 @@ namespace BotController
         constexpr int kMaxInputHistoryPerTick = 64;
         constexpr uint32_t kInputHistoryFieldsAll = (1u << 21) - 1;
 
-        enum class ReplaySnapMode : int
-        {
-            Hard = 0, // current behavior: write pre/post movement snapshots every tick
-            Soft = 1, // seed/correct movement only when starting or badly drifting
-            Off = 2,  // replay usercmd/subtick/view only; no movement snapshot correction
-        };
-
         enum class ReplayPerfCounter : int
         {
             ProcessMovementHook = 0,
@@ -168,6 +161,8 @@ namespace BotController
             ReplayCommandFrameRead = 10,
             SubtickClear = 11,
             SubtickNoopSkip = 12,
+            ReplayMovementInput = 13,
+            ReplayMovementInitialization = 14,
         };
 
         struct ReplayPerfCounters
@@ -184,6 +179,8 @@ namespace BotController
             uint64_t replayCommandFrameReads;
             uint64_t subtickClears;
             uint64_t subtickNoopSkips;
+            uint64_t movementInputs;
+            uint64_t movementInitializations;
         };
 
         struct ReplaySlotState
@@ -220,9 +217,6 @@ namespace BotController
             uint8_t leftHandDesired;
         };
 
-        void SetReplaySnapMode(ReplaySnapMode mode);
-        ReplaySnapMode GetReplaySnapMode();
-        const char *ReplaySnapModeName(ReplaySnapMode mode);
         void SetReplayPerfEnabled(bool enabled);
         bool ReplayPerfEnabled();
         void ResetReplayPerfCounters();
@@ -305,10 +299,9 @@ namespace BotController
         bool CurrentReplayInputButtons(int slot, uint64_t &b0, uint64_t &b1,
                                        uint64_t &b2);
 
-        // PlayerRunCommand (pre): seed pawn/service state before weapon input
-        // consumes view/origin/velocity for shots and grenade throws.
-        void OnReplayCommandPre(int slot, void *services);
-        void OnReplayCommandPre(int slot, void *services, const ReplayTick &tick,
+        // Initialize movement once at a start/seek/loop boundary, then prepare
+        // the command view. Returns false without injecting a command on failure.
+        bool OnReplayCommandPre(int slot, void *services, const ReplayTick &tick,
                                 const MovementSnapshot &commandView);
         // PlayerRunCommand (post): if FinishMove naturally stopped replay inside
         // the command, scrub any replay state restored by the remaining tail.
@@ -326,14 +319,13 @@ namespace BotController
         int CurrentReplayWeaponSelect(int slot);
 
         // ---- replay write hooks ----
-        // ProcessMovement (pre): write pre snapshot into CMoveData + pawn angles + entity moveType
-        void OnReplayPre(int slot, void *services, void *moveData);
-        // FinishMove (pre): write post snapshot into CMoveData + force a
-        // small scene-node mismatch so FinishMove resyncs from MoveData.
-        void OnReplayFinishMove(int slot, void *services, void *moveData);
+        // SetupMove (post): supply the demo's pre kinematics once, before
+        // engine movement/subticks. FinishMove owns the resulting pawn state.
+        void OnReplaySetupMove(int slot, void *moveData);
         // FinishMove (post): prepare the getter for the engine network publication.
         void OnReplayFinalView(int slot, void *services);
-        // After command publication: commit post moveType/flags, advance cursor.
+        // After command publication: advance the cursor without replacing
+        // engine-computed movement, ground, duck or ladder state.
         void OnReplayCommit(int slot, void *services);
 
         void ClearAll(); // wipe all record + replay buffers (on unload)

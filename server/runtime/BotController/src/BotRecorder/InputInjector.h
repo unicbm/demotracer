@@ -55,10 +55,11 @@ namespace BotController
         bool CancelUsercmdSuppression(int slot, int64_t id);
         void ClearUsercmdInjections(int slot);
 
-        // Persistent per-slot hand-state latch. This is intentionally separate
+        // Persistent per-pawn hand-state latch. This is intentionally separate
         // from movement intent: left hand in CS2 behaves like a held usercmd
         // desire, so callers set policy once and the native command hook keeps
-        // it continuous without a C# timer gap.
+        // it continuous without a C# timer gap. Replay commands replace the
+        // initial desire; death, pawn replacement or human takeover expires it.
         bool SetLeftHandDesiredLatch(int slot, bool enabled, bool leftHandDesired);
         bool ClearLeftHandDesiredLatch(int slot);
         void ClearAllLeftHandDesiredLatches();
@@ -83,6 +84,10 @@ namespace BotController
         // release is a separate ownership boundary, not a mapping side effect.
         void ClearReplayPawn(int slot);
         void *ResolveReplayPawn(int slot, void *services);
+
+        // Start/seek/loop initialization only. These are the engine's own
+        // origin/velocity setters, also used by FinishMove for normal output.
+        bool InitializeReplayPose(void *pawn, const float *origin, const float *velocity);
 
         // Resolved address of the hooked function.
         void *ProcessUsercmdAddress();

@@ -1,11 +1,13 @@
 // CS2 movement hooks
-// ProcessMovement (record + apply pre)
-// FinishMove (replay post into MoveData + commit)
+// SetupMove (single replay kinematic input boundary)
+// ProcessMovement (engine simulation + recording)
+// FinishMove (engine output + final replay view)
 // PlayerRunCommand(subtick record + re-inject)
 
 #include "playercommand.h"
 
 #include "InputInjector.h"
+#include "LeftHandDesiredLatch.h"
 #include "UsercmdRequests.h"
 #include "BotController.h"
 #include "BotControllerState.h"
@@ -32,6 +34,8 @@ namespace tg = BotController::targets;
 
 using ProcessMovement_t = void(BC_FASTCALL *)(void *services, void *moveData);
 using FinishMove_t = void(BC_FASTCALL *)(void *services, void *cmd, void *moveData);
+using SetupMove_t = void(BC_FASTCALL *)(void *services, void *cmd, void *moveData);
+using SetEntityVector_t = void(BC_FASTCALL *)(void *pawn, const float *value);
 using PlayerRunCommand_t = void(BC_FASTCALL *)(void *services, void *cmd);
 using PhysicsSimulate_t = void(BC_FASTCALL *)(void *controller);
 
@@ -41,22 +45,28 @@ namespace BotController
     {
         static ProcessMovement_t g_origProcessMovement = nullptr;
         static FinishMove_t g_origFinishMove = nullptr;
+        static SetupMove_t g_origSetupMove = nullptr;
+        static SetEntityVector_t g_setAbsOrigin = nullptr;
+        static SetEntityVector_t g_setAbsVelocity = nullptr;
         static PlayerRunCommand_t g_origPlayerRunCommand = nullptr;
         static PhysicsSimulate_t g_origPhysicsSimulate = nullptr;
 
         static void *g_addrProcessMovement = nullptr;
         static void *g_addrFinishMove = nullptr;
+        static void *g_addrSetupMove = nullptr;
         static void *g_addrPlayerRunCommand = nullptr;
         static void *g_addrPhysicsSimulate = nullptr;
 
         static Hook g_hookProcessMovement;
         static Hook g_hookFinishMove;
+        static Hook g_hookSetupMove;
         static Hook g_hookPlayerRunCommand;
         static Hook g_hookPhysicsSimulate;
         static bool g_installed = false;
         // True once PhysicsSimulate is hooked
         static bool g_physicsActive = false;
         static bool g_finishMoveActive = false;
+        static bool g_setupMoveActive = false;
         // True once PlayerRunCommand is hooked
         static bool g_subtickActive = false;
         static UsercmdRequests g_requests;
@@ -104,8 +114,7 @@ namespace BotController
         static std::array<std::atomic<float>, kMaxSlots> g_intentAnalogLeft{};
         static std::array<std::atomic<int>, kMaxSlots> g_intentFlags{};
         static std::array<std::atomic<int64_t>, kMaxSlots> g_intentExpireMs{};
-        static std::array<std::atomic<int>, kMaxSlots> g_leftHandLatchEnabled{};
-        static std::array<std::atomic<int>, kMaxSlots> g_leftHandLatchDesired{};
+        static std::array<LeftHandDesiredLatch, kMaxSlots> g_leftHandLatches{};
 
         static int64_t NowMs()
         {
@@ -386,13 +395,33 @@ namespace BotController
                 ClearUsercmdMovementIntent(slot);
         }
 
+        static bool ReadHandLatchOwner(int slot, void *pawn, uint32_t &handle)
+        {
+            void *bot = BotControllerHooks::BotForSlot(slot);
+            void *botPawn = nullptr;
+            void *identity = nullptr;
+            uint8_t lifeState = 1;
+            return pawn && bot && !IsSlotControllingBot(slot) &&
+                SafeRead(bot, tg::kBot_Pawn, botPawn) && botPawn == pawn &&
+                ControllerSlotForPawn(pawn) == slot &&
+                SafeRead(pawn, tg::kEnt_LifeState, lifeState) && lifeState == 0 &&
+                SafeRead(pawn, tg::kEnt_Identity, identity) && identity &&
+                SafeRead(identity, tg::kEntIdentity_EHandle, handle) &&
+                handle != 0 && handle != 0xFFFFFFFFu && handle != 0xFFFFFFFEu;
+        }
+
         bool SetLeftHandDesiredLatch(int slot, bool enabled, bool leftHandDesired)
         {
             if (slot < 0 || slot >= kMaxSlots)
                 return false;
 
-            g_leftHandLatchDesired[slot].store(leftHandDesired ? 1 : 0, std::memory_order_relaxed);
-            g_leftHandLatchEnabled[slot].store(enabled ? 1 : 0, std::memory_order_release);
+            auto &latch = g_leftHandLatches[slot];
+            latch.Clear();
+            if (!enabled) return true;
+            void *pawn = g_slotPawns[slot].load(std::memory_order_acquire);
+            uint32_t handle = 0;
+            if (!ReadHandLatchOwner(slot, pawn, handle)) return false;
+            latch.Set(reinterpret_cast<uintptr_t>(pawn), handle, leftHandDesired);
             return true;
         }
 
@@ -412,10 +441,10 @@ namespace BotController
             if (slot < 0 || slot >= kMaxSlots)
                 return false;
 
-            if (enabled)
-                *enabled = g_leftHandLatchEnabled[slot].load(std::memory_order_acquire) != 0;
-            if (leftHandDesired)
-                *leftHandDesired = g_leftHandLatchDesired[slot].load(std::memory_order_relaxed) != 0;
+            bool desired = false;
+            const bool active = g_leftHandLatches[slot].Get(desired);
+            if (enabled) *enabled = active;
+            if (leftHandDesired) *leftHandDesired = desired;
             return true;
         }
 
@@ -556,10 +585,10 @@ namespace BotController
         {
             if (slot < 0 || slot >= kMaxSlots || !MotionRecorder::IsReplaying(slot))
                 return false;
-            if (!g_finishMoveActive || !g_subtickActive)
+            if (!g_setupMoveActive || !g_finishMoveActive || !g_subtickActive)
             {
                 MotionRecorder::StopReplay(slot);
-                DebugOut("[BotController] stopped replay: required command/view boundary hooks unavailable\n");
+                DebugOut("[BotController] stopped replay: required command/movement/view boundary hooks unavailable\n");
                 return false;
             }
             if (!g_slotControllingBot[slot].load(std::memory_order_acquire))
@@ -574,7 +603,26 @@ namespace BotController
             return false;
         }
 
-        // ---- ProcessMovement: record pre/post + replay pre ----
+        bool InitializeReplayPose(void *pawn, const float *origin, const float *velocity)
+        {
+            if (!pawn || !origin || !velocity || !g_setAbsOrigin || !g_setAbsVelocity)
+                return false;
+            g_setAbsOrigin(pawn, origin);
+            g_setAbsVelocity(pawn, velocity);
+            return true;
+        }
+
+        // ---- SetupMove: supply input before any subtick movement ----
+
+        static void BC_FASTCALL HookedSetupMove(void *services, void *cmd, void *moveData)
+        {
+            g_origSetupMove(services, cmd, moveData);
+            const int slot = ServicesToSlot(services);
+            if (ReplayActiveAndSafe(slot))
+                MotionRecorder::OnReplaySetupMove(slot, moveData);
+        }
+
+        // ---- ProcessMovement: record pre/post; replay simulation is native ----
 
         // Defined after HookedFinishMove
         static void EnsureVtableHooks(void *services);
@@ -614,9 +662,6 @@ namespace BotController
                     MotionRecorder::OnCapturePre(slot, services, moveData);
             }
 
-            // Replay: seed CMoveData + pawn with this tick's pre snapshot
-            if (replaying)
-                MotionRecorder::OnReplayPre(slot, services, moveData);
             if (hasMovementIntent)
                 ApplyUsercmdMovementIntentToMoveData(services, moveData, movementIntent);
 
@@ -636,10 +681,8 @@ namespace BotController
             int slot = ServicesToSlot(services);
             bool replaying = ReplayActiveAndSafe(slot);
 
-            // Before original: write post snapshot into MoveData + force resync.
-            if (replaying)
-                MotionRecorder::OnReplayFinishMove(slot, services, moveData);
-
+            // Publish the engine's output through its normal origin/velocity
+            // setters. Never replace it with post snapshots or fake an origin delta.
             g_origFinishMove(services, cmd, moveData);
 
             // After original: prepare the final getter before the engine publishes
@@ -667,8 +710,17 @@ namespace BotController
             bool hasMovementIntent =
                 !replaying && !IsSlotControllingBot(slot) &&
                 ActiveUsercmdMovementIntent(slot, movementIntent);
+            bool leftHandDesired = false;
             bool hasLeftHandLatch = slot >= 0 && slot < kMaxSlots &&
-                                    g_leftHandLatchEnabled[slot].load(std::memory_order_acquire) != 0;
+                                    g_leftHandLatches[slot].Get(leftHandDesired);
+            if (hasLeftHandLatch)
+            {
+                void *pawn = ResolveReplayPawn(slot, services);
+                uint32_t handle = 0;
+                const bool safeOwner = ReadHandLatchOwner(slot, pawn, handle);
+                hasLeftHandLatch = g_leftHandLatches[slot].Validate(
+                    reinterpret_cast<uintptr_t>(pawn), handle, safeOwner);
+            }
 
             bool hasPublicControl = g_requests.Pending(slot);
             if (hasPublicControl && !CanUsePublicControl(slot))
@@ -753,7 +805,9 @@ namespace BotController
                 if (replaying)
                 {
                     MotionRecorder::ReplayCommandFrame frame{};
-                    if (MotionRecorder::ReplayCommandFrameForSimulation(slot, frame))
+                    if (MotionRecorder::ReplayCommandFrameForSimulation(slot, frame) &&
+                        MotionRecorder::OnReplayCommandPre(
+                            slot, services, *frame.tick, frame.commandView))
                     {
                         CInButtonStatePB *bp = base->mutable_buttons_pb();
                         bp->set_buttonstate1(frame.buttons0);
@@ -771,12 +825,11 @@ namespace BotController
                                 ? frame.commandView.roll
                                 : 0.0f);
 
-                        if ((frame.commandFields & MotionRecorder::kCommandFieldForwardMove) != 0)
-                            base->set_forwardmove(frame.forwardMove);
-                        if ((frame.commandFields & MotionRecorder::kCommandFieldLeftMove) != 0)
-                            base->set_leftmove(frame.leftMove);
-                        if ((frame.commandFields & MotionRecorder::kCommandFieldUpMove) != 0)
-                            base->set_upmove(frame.upMove);
+                        // Missing recorded axes are neutral. Never inherit the
+                        // shadow-running bot AI's movement as replay input.
+                        base->set_forwardmove(frame.forwardMove);
+                        base->set_leftmove(frame.leftMove);
+                        base->set_upmove(frame.upMove);
                         if ((frame.commandFields & MotionRecorder::kCommandFieldMouse) != 0)
                         {
                             base->set_mousedx(frame.mouseDx);
@@ -785,7 +838,13 @@ namespace BotController
                         const bool frameHasLeftHand =
                             (frame.commandFields & MotionRecorder::kCommandFieldLeftHand) != 0;
                         if (frameHasLeftHand)
+                        {
                             pc->set_left_hand_desired(frame.leftHandDesired != 0);
+                            // The command is the truth source. Keep its latest
+                            // desire across the first native command after handoff.
+                            leftHandDesired = frame.leftHandDesired != 0;
+                            g_leftHandLatches[slot].ObserveReplayCommand(leftHandDesired);
+                        }
 
                         if (frame.weaponSelect >= 0)
                             base->set_weaponselect(frame.weaponSelect);
@@ -828,16 +887,16 @@ namespace BotController
                                     m->set_analog_left_delta(subtick.analogLeft);
                             }
                         }
-
-                        MotionRecorder::OnReplayCommandPre(
-                            slot, services, *frame.tick, frame.commandView);
+                    }
+                    else
+                    {
+                        MotionRecorder::StopReplay(slot);
+                        replaying = false;
                     }
                 }
 
                 if (hasLeftHandLatch)
                 {
-                    const bool leftHandDesired =
-                        g_leftHandLatchDesired[slot].load(std::memory_order_relaxed) != 0;
                     pc->set_left_hand_desired(leftHandDesired);
                 }
 
@@ -912,6 +971,25 @@ namespace BotController
                 return;
 
             if (!SafeRead(vt,
+                          tg::kVtIdx_SetupMove * static_cast<int>(sizeof(void *)),
+                          g_addrSetupMove))
+                g_addrSetupMove = nullptr;
+            if (g_addrSetupMove &&
+                g_hookSetupMove.Create(g_addrSetupMove,
+                                       reinterpret_cast<void *>(&HookedSetupMove),
+                                       reinterpret_cast<void **>(&g_origSetupMove)) &&
+                g_hookSetupMove.Enable())
+            {
+                g_setupMoveActive = true;
+            }
+            else
+            {
+                g_hookSetupMove.Remove();
+                g_addrSetupMove = nullptr;
+                g_origSetupMove = nullptr;
+            }
+
+            if (!SafeRead(vt,
                           tg::kVtIdx_FinishMove * static_cast<int>(sizeof(void *)),
                           g_addrFinishMove))
                 g_addrFinishMove = nullptr;
@@ -950,14 +1028,14 @@ namespace BotController
                 g_origPlayerRunCommand = nullptr;
             }
 
-            if (!g_finishMoveActive || !g_subtickActive)
-                g_status = "failed: replay command/view boundary hooks";
+            if (!g_setupMoveActive || !g_finishMoveActive || !g_subtickActive)
+                g_status = "failed: replay command/movement/view boundary hooks";
 
             char dbg[200];
             std::snprintf(dbg, sizeof(dbg),
-                          "[BotController] vtable hooks: FinishMove @ %p, "
+                          "[BotController] vtable hooks: SetupMove @ %p, FinishMove @ %p, "
                           "PlayerRunCommand @ %p (subtick=%d)\n",
-                          g_addrFinishMove, g_addrPlayerRunCommand,
+                          g_addrSetupMove, g_addrFinishMove, g_addrPlayerRunCommand,
                           g_subtickActive ? 1 : 0);
             DebugOut(dbg);
         }
@@ -965,6 +1043,21 @@ namespace BotController
         bool Install(const nlohmann::json &gd, const Sig::ModuleInfo &serverModule,
                      char *errorOut, size_t errorOutLen)
         {
+            g_setAbsOrigin = reinterpret_cast<SetEntityVector_t>(Sig::ResolveSig(
+                gd, serverModule, "CBaseEntity::SetAbsOrigin", errorOut, errorOutLen));
+            if (!g_setAbsOrigin)
+            {
+                g_status = "failed: replay origin initialization sig";
+                return false;
+            }
+            g_setAbsVelocity = reinterpret_cast<SetEntityVector_t>(Sig::ResolveSig(
+                gd, serverModule, "CBaseEntity::SetAbsVelocity", errorOut, errorOutLen));
+            if (!g_setAbsVelocity)
+            {
+                g_setAbsOrigin = nullptr;
+                g_status = "failed: replay velocity initialization sig";
+                return false;
+            }
             g_addrProcessMovement = Sig::ResolveSig(
                 gd, serverModule, "CCSPlayer_MovementServices::ProcessMovement",
                 errorOut, errorOutLen);
@@ -1031,18 +1124,24 @@ namespace BotController
                 return;
             g_hookProcessMovement.Remove();
             g_hookFinishMove.Remove();
+            g_hookSetupMove.Remove();
             g_hookPlayerRunCommand.Remove();
             g_hookPhysicsSimulate.Remove();
             g_origProcessMovement = nullptr;
             g_origFinishMove = nullptr;
+            g_origSetupMove = nullptr;
+            g_setAbsOrigin = nullptr;
+            g_setAbsVelocity = nullptr;
             g_origPlayerRunCommand = nullptr;
             g_origPhysicsSimulate = nullptr;
             g_addrProcessMovement = nullptr;
             g_addrFinishMove = nullptr;
+            g_addrSetupMove = nullptr;
             g_addrPlayerRunCommand = nullptr;
             g_addrPhysicsSimulate = nullptr;
             g_physicsActive = false;
             g_finishMoveActive = false;
+            g_setupMoveActive = false;
             g_subtickActive = false;
             g_vtHooksTried.store(false, std::memory_order_release);
             for (auto &s : g_slotServices)

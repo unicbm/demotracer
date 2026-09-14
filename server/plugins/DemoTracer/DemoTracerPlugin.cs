@@ -74,7 +74,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private const string MaxMoneyConVarName = "mp_maxmoney";
     private static readonly Lazy<string> Cs2PatchVersion = new(DetectCs2PatchVersion);
     private const string CosmeticRiskNotice = "[DTR WARN] cosmetic alignment consumes opt-in manifest cosmetics evidence and may carry Valve GSLT/server-guideline risk outside local/private replay validation.";
-    private const string LeftHandDesiredFidelityNotice = "[DTR WARN] left_hand_desired=off 会降低保真度，但显著增高handoff流畅性。Reload loaded replays or plans for this setting to apply.";
+    private const string LeftHandDesiredFidelityNotice = "[DTR WARN] left_hand_desired=off 会丢失 demo 持枪侧信息。Reload loaded replays or plans for this setting to apply.";
 
     private readonly DemoTracerBotHiderBridge _botHiderBridge = new();
     private readonly RayTraceLosProbe _rayTraceLosProbe = new();

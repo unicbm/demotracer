@@ -448,7 +448,10 @@ public sealed partial class DemoTracerPlugin
                                        startIndex,
                                        replay.PlayStartTickIndex);
                 if (!startedUntil)
+                {
+                    ClearReplayLeftHandDesiredLatch(slot);
                     return false;
+                }
 
                 // Keep native Update/Upkeep alive during pre-roll. Replay
                 // hooks own movement/view/input, while the persistent buy skip
@@ -478,20 +481,33 @@ public sealed partial class DemoTracerPlugin
                       BotControllerNative.StartReplayAt(slot, false, startIndex);
         if (started)
             _session.ReplaySlots.Claim(slot);
+        else
+            ClearReplayLeftHandDesiredLatch(slot);
         return started;
     }
 
-    private static bool RegisterReplayPawnForSlot(int slot)
+    private bool RegisterReplayPawnForSlot(int slot)
     {
         var player = Utilities.GetPlayerFromSlot(slot);
         if (player is not { IsValid: true } ||
             player.PlayerPawn is not { IsValid: true, Value.IsValid: true })
             return false;
 
-        // Best-effort on old native builds; the normal start path still does
-        // the authoritative lock/replay validation.
-        _ = BotControllerNative.SetReplayPawn(slot, player.PlayerPawn.Value.Handle);
-        return true;
+        if (!IsReplayTargetBot(player) ||
+            !BotControllerNative.SetReplayPawn(slot, player.PlayerPawn.Value.Handle))
+            return false;
+
+        // Establish the held preference before the first command, including
+        // command-only recordings without manifest viewmodel metadata. Native
+        // replay commands subsequently advance this latch to their own desire.
+        ClearReplayLeftHandDesiredLatch(slot);
+        if (!_leftHandDesiredEnabled)
+            return true;
+        var initialHand = _session.LoadedReplays.TryGetValue(slot, out var replay)
+            ? replay.View.Viewmodel?.LeftHanded
+            : null;
+        ApplyReplayLeftHandDesiredLatch(slot, initialHand ?? player.PlayerPawn.Value.LeftHanded);
+        return _replayLeftHandDesiredLatches.ContainsKey(slot);
     }
 
     private void ScheduleFreezePrerollStart(string label)

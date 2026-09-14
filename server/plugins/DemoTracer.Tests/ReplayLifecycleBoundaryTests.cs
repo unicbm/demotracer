@@ -142,6 +142,40 @@ public sealed class ReplayLifecycleBoundaryTests
         Assert.False(slots.IsCompletedLoop([2, 5]));
     }
 
+    [Fact]
+    public void CommandOnlyFreezePrerollKeepsHandDesireBeforeManagedPlayingStarts()
+    {
+        var plugin = CreatePlugin();
+        var session = GetField<object>(plugin, "_session");
+        GetProperty<HashSet<int>>(session, "FreezePrerollSlots").Add(4);
+        GetField<Dictionary<int, bool>>(plugin, "_replayLeftHandDesiredLatches").Add(4, true);
+
+        // No manifest viewmodel and no PlayingSlots yet. Running the real
+        // cleanup must not clear the already-running native pre-roll's desire.
+        Invoke<object?>(plugin, "RestoreNonRetainedReplayBotViewmodels");
+
+        Assert.True(GetField<Dictionary<int, bool>>(plugin, "_replayLeftHandDesiredLatches")[4]);
+        Assert.True(Invoke<bool>(plugin, "IsReplayViewmodelSlotTracked", 4));
+    }
+
+    [Fact]
+    public void ReleasingRetainedViewmodelOffsetsPreservesHandoffHandDesire()
+    {
+        var plugin = CreatePlugin();
+        var retained = GetField<HashSet<int>>(plugin, "_retainedReplayViewmodelSlots");
+        var hands = GetField<Dictionary<int, bool>>(plugin, "_replayLeftHandDesiredLatches");
+        retained.Add(4);
+        hands.Add(4, true);
+
+        // This entry point implements viewmodel_continuity=release. Changing
+        // visual offsets must not force a weapon redeploy during native combat.
+        Invoke<object?>(plugin, "RestoreRetainedReplayBotViewmodels");
+        Invoke<object?>(plugin, "RestoreNonRetainedReplayBotViewmodels");
+
+        Assert.Contains(4, retained);
+        Assert.True(hands[4]);
+    }
+
     private static DemoTracerPlugin CreatePlugin()
     {
         // BasePlugin requires a running CSS host. Initialize only the managed

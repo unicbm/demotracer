@@ -45,6 +45,17 @@ Ray-Trace 1.0.16 or newer is optional for stricter handoff line-of-sight checks.
 Do not mix BotController, BotHider, or BotRandomizer binaries from full
 CS2-Bot-Improver packages into a DemoTracer bundle.
 
+Replay has one movement input path: after the engine's `SetupMove`, BotController
+supplies the demo's pre-command position and velocity in `CMoveData`. Native
+movement and `FinishMove` compute and publish the resulting pawn state. Replay
+initializes the pawn's pose and duck/ladder state only at start, seek, or loop
+boundaries; it does not overwrite the engine's movement output or expose
+alternative movement correction modes. Pre snapshots remain necessary input
+because supported demo records can omit original analog command fields.
+Missing command axes are neutral instead of inheriting bot AI input. Optional
+`bc_perf` counters distinguish per-command movement inputs from boundary-only
+movement initializations without writing per-tick logs.
+
 | Contract | Required value |
 | --- | --- |
 | `.dtr` writer / reader | v10 / v3-v10 |

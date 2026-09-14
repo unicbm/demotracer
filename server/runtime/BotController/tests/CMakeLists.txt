@@ -11,6 +11,10 @@ add_executable(BotControllerUsercmdRequestTests usercmd_requests_tests.cpp)
 target_include_directories(BotControllerUsercmdRequestTests PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../src/BotRecorder")
 add_test(NAME BotControllerUsercmdRequestTests COMMAND BotControllerUsercmdRequestTests)
 
+add_executable(BotControllerLeftHandTests left_hand_desired_tests.cpp)
+target_include_directories(BotControllerLeftHandTests PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../src/BotRecorder")
+add_test(NAME BotControllerLeftHandTests COMMAND BotControllerLeftHandTests)
+
 set(REPLAY_LAYOUT_SOURCE
     "${CMAKE_CURRENT_LIST_DIR}/../src/BotRecorder/ReplaySubtickLayout.cpp")
 set(REPLAY_INCLUDE_DIR
@@ -53,6 +57,25 @@ else()
 endif()
 add_test(NAME BotControllerSafeReadTests
     COMMAND BotControllerSafeReadTests)
+
+# Production replay lifecycle against fake engine storage. The supported
+# runtime uses the Windows memory API in its stop/cleanup path.
+if(WIN32)
+    add_executable(BotControllerReplayMovementTests
+        replay_movement_tests.cpp
+        "${CMAKE_CURRENT_LIST_DIR}/../src/BotRecorder/MotionRecorder.cpp"
+        ${REPLAY_LAYOUT_SOURCE})
+    target_include_directories(BotControllerReplayMovementTests PRIVATE
+        ${REPLAY_INCLUDE_DIR}
+        "${CMAKE_CURRENT_LIST_DIR}/../src/common"
+        "${CMAKE_CURRENT_LIST_DIR}/../src/WeaponLocker"
+        "${CMAKE_CURRENT_LIST_DIR}/../../third_party")
+    target_compile_definitions(BotControllerReplayMovementTests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    if(MSVC)
+        target_compile_options(BotControllerReplayMovementTests PRIVATE /EHsc /utf-8 /W4 /permissive-)
+    endif()
+    add_test(NAME BotControllerReplayMovementTests COMMAND BotControllerReplayMovementTests)
+endif()
 
 add_executable(BotControllerBuyPolicyTests
     buy_controller_policy_tests.cpp)

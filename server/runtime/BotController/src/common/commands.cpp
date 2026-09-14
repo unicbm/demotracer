@@ -325,29 +325,6 @@ namespace BotController
             slot = static_cast<int>(parsed);
             return true;
         }
-
-        static bool ParseReplaySnapMode(const char *s, MotionRecorder::ReplaySnapMode &out)
-        {
-            if (!s)
-                return false;
-            if (std::strcmp(s, "hard") == 0 || std::strcmp(s, "1") == 0)
-            {
-                out = MotionRecorder::ReplaySnapMode::Hard;
-                return true;
-            }
-            if (std::strcmp(s, "soft") == 0)
-            {
-                out = MotionRecorder::ReplaySnapMode::Soft;
-                return true;
-            }
-            if (std::strcmp(s, "off") == 0 || std::strcmp(s, "0") == 0)
-            {
-                out = MotionRecorder::ReplaySnapMode::Off;
-                return true;
-            }
-            return false;
-        }
-
     }
 }
 
@@ -669,29 +646,6 @@ CON_COMMAND_F(bc_unlock_all,
                                 "[BC] error: unlock_all failed (rc=%d)\n", rc);
 }
 
-CON_COMMAND_F(bc_replay_snap,
-              "bc_replay_snap [hard|soft|off]  Set replay movement snapshot correction mode.",
-              FCVAR_NONE)
-{
-    using namespace BotController;
-
-    if (args.ArgC() >= 2)
-    {
-        MotionRecorder::ReplaySnapMode mode;
-        if (!Commands::ParseReplaySnapMode(args.Arg(1), mode))
-        {
-            Commands::PrintToCaller(context,
-                                    "usage: bc_replay_snap [hard|soft|off]\n");
-            return;
-        }
-        MotionRecorder::SetReplaySnapMode(mode);
-    }
-
-    Commands::PrintToCaller(context, "[BC] replay_snap=%s\n",
-                            MotionRecorder::ReplaySnapModeName(
-                                MotionRecorder::GetReplaySnapMode()));
-}
-
 CON_COMMAND_F(bc_subtick_view_delta,
               "bc_subtick_view_delta <0|1>  Toggle replay subtick pitch/yaw delta injection.",
               FCVAR_NONE)
@@ -772,6 +726,11 @@ CON_COMMAND_F(bc_perf,
         (unsigned long long)perf.virtualQueryCalls);
     Commands::PrintToCaller(
         context,
+        "[BC] movement: inputs=%llu initializations=%llu\n",
+        (unsigned long long)perf.movementInputs,
+        (unsigned long long)perf.movementInitializations);
+    Commands::PrintToCaller(
+        context,
         "[BC] subtick_pb: rebuilds=%llu clears=%llu noop_skips=%llu subticks_added=%llu\n",
         (unsigned long long)perf.subtickRebuilds,
         (unsigned long long)perf.subtickClears,
@@ -813,10 +772,6 @@ CON_COMMAND_F(bc_status,
                             (unsigned long long)InputInjector::HookCallCount(),
                             InputInjector::LastResolvedSlot());
 
-    Commands::PrintToCaller(context,
-                            "[BC] replay_snap: %s\n",
-                            MotionRecorder::ReplaySnapModeName(
-                                MotionRecorder::GetReplaySnapMode()));
     Commands::PrintToCaller(context,
                             "[BC] subtick_view_delta: %s\n",
                             InputInjector::ReplaySubtickViewDeltas() ? "on" : "off");
