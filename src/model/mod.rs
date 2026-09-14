@@ -603,6 +603,17 @@ pub struct ParsedDemo {
     pub server_convars: Vec<ParsedServerConVar>,
     pub avatar_overrides: Vec<ParsedAvatarOverride>,
     pub econ_items: Vec<ParsedEconItem>,
+    #[serde(default)]
+    pub weapon_purchases: Vec<ParsedWeaponPurchase>,
+}
+
+/// Purchase-time ownership evidence, independent of player tick inventories.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ParsedWeaponPurchase {
+    pub tick: i32,
+    pub steam_id: u64,
+    pub side: Option<u8>,
+    pub cosmetic: ParsedInventoryWeaponCosmetic,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]

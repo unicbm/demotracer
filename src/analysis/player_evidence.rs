@@ -262,7 +262,7 @@ struct EvidenceAccumulator {
     rounds: BTreeSet<u32>,
     crosshair_codes: BTreeSet<String>,
     viewmodels: BTreeSet<ViewmodelKey>,
-    inventory_items: BTreeMap<(u8, i32), ParsedInventoryWeaponCosmetic>,
+    inventory_items: BTreeMap<InventoryItemIdentity, ObservedInventoryItem>,
     knives: BTreeMap<u8, ItemSpec>,
     gloves: BTreeMap<u8, GloveSpec>,
     agents: BTreeMap<u8, ObservedAgent>,
@@ -278,12 +278,34 @@ pub(super) fn summarize_player_details(
     let mut econ_glove_seeds = None;
     let econ_knife_paints = knife_econ_paint_index(parsed);
     let mut accumulators = BTreeMap::<u64, EvidenceAccumulator>::new();
-    for row in parsed.rows.iter().filter(|row| {
-        row.steam_id != 0
-            && matches!(row.team_num, 2 | 3)
-            && match_window
-                .is_none_or(|(start_tick, end_tick)| row.tick >= start_tick && row.tick <= end_tick)
-    }) {
+    // A purchase proves ownership even if the buyer never holds the item in
+    // a sampled tick. Warmup and refunded purchases remain cosmetic evidence.
+    for purchase in &parsed.weapon_purchases {
+        if purchase.steam_id != 0 {
+            observe_inventory_item(
+                accumulators.entry(purchase.steam_id).or_default(),
+                &purchase.cosmetic,
+                purchase.side,
+            );
+        }
+    }
+    for row in parsed
+        .rows
+        .iter()
+        .filter(|row| row.steam_id != 0 && matches!(row.team_num, 2 | 3))
+    {
+        for item in row.inventory_weapon_cosmetics.iter() {
+            if let Some(owner) = inventory_item_owner(item) {
+                observe_inventory_item(
+                    accumulators.entry(owner).or_default(),
+                    item,
+                    (owner == row.steam_id).then_some(row.team_num),
+                );
+            }
+        }
+        if match_window.is_some_and(|(start, end)| row.tick < start || row.tick > end) {
+            continue;
+        }
         let accumulator = accumulators.entry(row.steam_id).or_default();
         accumulator.rounds.insert(row.round);
         update_stats(accumulator, row);
@@ -311,19 +333,6 @@ pub(super) fn summarize_player_details(
         }
 
         let side = row.team_num;
-        for item in row.inventory_weapon_cosmetics.iter() {
-            if !inventory_item_owned_by(item, row.steam_id) {
-                continue;
-            }
-            let slot = (side, item.item_def_index);
-            if accumulator.inventory_items.contains_key(&slot) {
-                continue;
-            }
-            if inventory_item_cosmetic_evidence(item).is_some() {
-                accumulator.inventory_items.insert(slot, item.clone());
-            }
-        }
-
         if is_knife(row.item_def_idx) {
             let active_spec = active_item_owned_by(row)
                 .then(|| active_item_spec(row))
@@ -421,7 +430,7 @@ fn finish_details(
         .unwrap_or_default();
     let mut cosmetics = Vec::new();
 
-    for observed in stable_inventory_items_by_identity(accumulator.inventory_items).into_values() {
+    for observed in accumulator.inventory_items.into_values() {
         let Some(cosmetic) = inventory_item_cosmetic_evidence(&observed.item) else {
             continue;
         };
@@ -623,14 +632,11 @@ fn charm_evidence(charm: ReplayWeaponCharm) -> BrowserCharmEvidence {
     }
 }
 
-fn inventory_item_owned_by(item: &ParsedInventoryWeaponCosmetic, steam_id: u64) -> bool {
-    let account_id = steam_id
-        .checked_sub(STEAM_ID64_BASE)
-        .and_then(|value| u32::try_from(value).ok());
+fn inventory_item_owner(item: &ParsedInventoryWeaponCosmetic) -> Option<u64> {
     item.item_account_id
-        .zip(account_id)
-        .is_some_and(|(actual, expected)| actual == expected)
-        || item.original_owner_xuid == Some(steam_id)
+        .filter(|id| *id > 1)
+        .map(|id| STEAM_ID64_BASE + u64::from(id))
+        .or_else(|| item.original_owner_xuid.filter(|id| *id != 0))
 }
 
 fn active_item_owned_by(row: &ParsedPlayerTick) -> bool {
@@ -687,22 +693,29 @@ fn inventory_item_identity(item: &ParsedInventoryWeaponCosmetic) -> InventoryIte
     InventoryItemIdentity::Spec(key)
 }
 
-fn stable_inventory_items_by_identity(
-    items: BTreeMap<(u8, i32), ParsedInventoryWeaponCosmetic>,
-) -> BTreeMap<InventoryItemIdentity, ObservedInventoryItem> {
-    let mut by_identity = BTreeMap::<InventoryItemIdentity, ObservedInventoryItem>::new();
-    for ((side, _), item) in items {
-        let identity = inventory_item_identity(&item);
-        by_identity
-            .entry(identity)
-            .or_insert_with(|| ObservedInventoryItem {
-                item,
+fn observe_inventory_item(
+    accumulator: &mut EvidenceAccumulator,
+    item: &ParsedInventoryWeaponCosmetic,
+    side: Option<u8>,
+) {
+    let observed = match accumulator
+        .inventory_items
+        .entry(inventory_item_identity(item))
+    {
+        std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+        std::collections::btree_map::Entry::Vacant(entry) => {
+            if inventory_item_cosmetic_evidence(item).is_none() {
+                return;
+            }
+            entry.insert(ObservedInventoryItem {
+                item: item.clone(),
                 sides: BTreeSet::new(),
             })
-            .sides
-            .insert(side);
+        }
+    };
+    if let Some(side) = side.filter(|side| matches!(side, 2 | 3)) {
+        observed.sides.insert(side);
     }
-    by_identity
 }
 
 fn stable_agents_by_spec(
@@ -1045,18 +1058,18 @@ mod tests {
     }
 
     #[test]
-    fn keeps_only_owned_cosmetics_and_merges_identical_side_evidence() {
+    fn keeps_distinct_owned_items_and_merges_identical_side_evidence() {
         let account_id = 123;
         let steam_id = STEAM_ID64_BASE + u64::from(account_id);
         let owned = inventory_item(account_id, 7);
         let picked_up = inventory_item(account_id + 1, 8);
-        let mut ignored_replacement = inventory_item(account_id, 9);
-        ignored_replacement.paint_kit = 309;
+        let mut replacement = inventory_item(account_id, 9);
+        replacement.paint_kit = 309;
         let parsed = ParsedDemo {
             rows: vec![
                 player_row(steam_id, 100, 2, vec![owned.clone(), picked_up]),
                 player_row(steam_id, 200, 3, vec![owned]),
-                player_row(steam_id, 300, 2, vec![ignored_replacement]),
+                player_row(steam_id, 300, 2, vec![replacement]),
             ],
             econ_items: vec![ParsedEconItem {
                 steam_id: Some(steam_id),
@@ -1079,8 +1092,16 @@ mod tests {
         assert_eq!(details.crosshair_codes, ["CSGO-AAAAA", "CSGO-BBBBB"]);
         assert_eq!(details.viewmodels.len(), 1);
         assert_eq!(details.music_kit_ids, [42]);
-        assert_eq!(details.cosmetics.len(), 1);
-        let cosmetic = &details.cosmetics[0];
+        assert_eq!(details.cosmetics.len(), 2);
+        assert!(details
+            .cosmetics
+            .iter()
+            .any(|item| item.paint_kit == Some(309)));
+        let cosmetic = details
+            .cosmetics
+            .iter()
+            .find(|item| item.paint_kit == Some(926))
+            .unwrap();
         assert_eq!(cosmetic.side, None);
         assert_eq!(cosmetic.item_name.as_deref(), Some("M4A4"));
         assert_eq!(cosmetic.finish_name.as_deref(), Some("In Living Color"));
@@ -1091,6 +1112,97 @@ mod tests {
             .remove(&steam_id)
             .expect("player evidence");
         assert_eq!(incomplete_participation.stats_rounds, None);
+    }
+
+    #[test]
+    fn purchases_survive_without_buyer_inventory_ticks_and_dedupe_pickups() {
+        let buyer = STEAM_ID64_BASE + 123;
+        let receiver = STEAM_ID64_BASE + 456;
+        let item = inventory_item(123, 7);
+        let parsed = ParsedDemo {
+            rows: vec![
+                player_row(buyer, 100, 2, Vec::new()),
+                player_row(receiver, 100, 3, vec![item.clone()]),
+            ],
+            weapon_purchases: vec![crate::model::ParsedWeaponPurchase {
+                tick: 10,
+                steam_id: buyer,
+                side: Some(2),
+                cosmetic: item,
+            }],
+            ..ParsedDemo::default()
+        };
+        let details = summarize_player_details(&parsed, Some((50, 200)), Some(1));
+        let cosmetics = &details[&buyer].cosmetics;
+        assert_eq!(cosmetics.len(), 1);
+        assert_eq!(cosmetics[0].side.as_deref(), Some("t"));
+        assert!(details[&receiver].cosmetics.is_empty());
+        assert!(cosmetics[0].inspect_command.is_some());
+    }
+
+    #[test]
+    fn warmup_purchases_keep_p90_m249_and_negev_without_any_player_rows() {
+        let buyer = STEAM_ID64_BASE + 123;
+        let parsed = ParsedDemo {
+            weapon_purchases: [(19, 20), (14, 22), (28, 28)]
+                .into_iter()
+                .map(|(def, paint)| crate::model::ParsedWeaponPurchase {
+                    tick: 10,
+                    steam_id: buyer,
+                    side: Some(2),
+                    // The purchase itself proves ownership when econ IDs are absent.
+                    cosmetic: ParsedInventoryWeaponCosmetic {
+                        item_def_index: def,
+                        paint_kit: paint,
+                        paint_seed: 42,
+                        paint_wear: 0.123,
+                        ..ParsedInventoryWeaponCosmetic::default()
+                    },
+                })
+                .collect(),
+            ..ParsedDemo::default()
+        };
+        let details = summarize_player_details(&parsed, Some((50, 200)), Some(1));
+        let details = &details[&buyer];
+        assert_eq!(details.cosmetics.len(), 3);
+        assert!(details
+            .cosmetics
+            .iter()
+            .all(|item| item.inspect_command.is_some()));
+        assert_eq!(details.total_damage, None);
+        assert_eq!(details.stats_rounds, None);
+    }
+
+    #[test]
+    fn full_demo_inventory_evidence_returns_dropped_items_to_the_owner() {
+        let owner = STEAM_ID64_BASE + 123;
+        let holder = STEAM_ID64_BASE + 456;
+        let mut warmup = player_row(owner, 10, 2, vec![inventory_item(123, 7)]);
+        warmup.scoreboard_damage = Some(99_999);
+        let mut dropped = inventory_item(123, 9);
+        dropped.item_account_id = None;
+        dropped.original_owner_xuid = Some(owner);
+        dropped.paint_kit = 309;
+        let mut unknown = inventory_item(123, 11);
+        unknown.item_account_id = None;
+        let parsed = ParsedDemo {
+            rows: vec![
+                warmup,
+                player_row(owner, 100, 2, Vec::new()),
+                player_row(holder, 100, 3, vec![dropped, unknown]),
+            ],
+            ..ParsedDemo::default()
+        };
+        let details = summarize_player_details(&parsed, Some((50, 200)), Some(1));
+        assert_eq!(details[&owner].cosmetics.len(), 2);
+        assert_eq!(details[&owner].total_damage, Some(800));
+        assert!(details[&holder].cosmetics.is_empty());
+        let dropped = details[&owner]
+            .cosmetics
+            .iter()
+            .find(|item| item.paint_kit == Some(309))
+            .unwrap();
+        assert_eq!(dropped.side, None);
     }
 
     #[test]

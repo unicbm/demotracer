@@ -2597,9 +2597,9 @@ pub(crate) fn inventory_item_cosmetic_evidence(
     item: &ParsedInventoryWeaponCosmetic,
 ) -> Option<ReplayWeaponCosmetic> {
     let weapon_def_index = normalize_weapon_def_index(item.item_def_index);
-    if !is_weapon_cosmetic_def_index(weapon_def_index)
-        || !has_trusted_inventory_weapon_cosmetic_identity(item)
-    {
+    // The evidence collector establishes ownership from a purchase, account
+    // ID, or original owner before calling this appearance-only conversion.
+    if !is_weapon_cosmetic_def_index(weapon_def_index) {
         return None;
     }
     let spec = inventory_cosmetic_paint_spec(item)?;
@@ -5864,6 +5864,7 @@ mod tests {
             server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
+            weapon_purchases: Vec::new(),
         };
         densify_test_demo_rows(&mut parsed);
         parsed
