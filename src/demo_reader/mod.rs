@@ -541,6 +541,7 @@ mod demoparser_impl {
         origin_x => "X",
         origin_y => "Y",
         origin_z => "Z",
+        fall_velocity => "fall_velo",
         pitch => "pitch",
         yaw => "yaw",
         buttons => "buttons",
@@ -993,6 +994,7 @@ mod demoparser_impl {
             "X",
             "Y",
             "Z",
+            "fall_velo",
             "pitch",
             "yaw",
             "buttons",
@@ -1289,9 +1291,15 @@ mod demoparser_impl {
                             get_f32(columns.origin_y, idx).unwrap_or_default(),
                             get_f32(columns.origin_z, idx).unwrap_or_default(),
                         ],
-                        // CS2 Demo serializers do not expose the pawn's actual locomotion
-                        // velocity. This is filled from the ordered position chain below.
-                        velocity: [0.0, 0.0, 0.0],
+                        // FinishMove publishes -CMoveData.velocity.z as
+                        // m_flFallVelocity. Origin deltas also contain duck hull
+                        // shifts, stairs and landing corrections, not just motion.
+                        // Only horizontal velocity is derived below.
+                        velocity: [
+                            0.0,
+                            0.0,
+                            -get_f32(columns.fall_velocity, idx).unwrap_or_default(),
+                        ],
                         pitch: get_f32(columns.pitch, idx).unwrap_or_default(),
                         yaw: get_f32(columns.yaw, idx).unwrap_or_default(),
                         buttons: get_u64(columns.buttons, idx).unwrap_or_default(),
@@ -1423,7 +1431,7 @@ mod demoparser_impl {
         drop(parsed_inventory_cache);
         repair_short_global_tick_gaps(&mut rows);
         let tick_rate = estimate_tick_rate(&rows).unwrap_or(64.0);
-        derive_observed_player_velocities(&mut rows, tick_rate);
+        derive_observed_horizontal_velocities(&mut rows, tick_rate);
         let mut round_freeze_end_ticks = output
             .game_events
             .iter()
@@ -2321,11 +2329,11 @@ mod demoparser_impl {
         repaired
     }
 
-    /// CS2 demos expose player origins but not the pawn's actual locomotion
-    /// velocity (`m_vecVelocity`/`m_vecAbsVelocity`). Derive the observed
-    /// velocity after rows are ordered, using the detected demo tick rate and
-    /// refusing to differentiate across a round or pawn lifecycle edge.
-    fn derive_observed_player_velocities(rows: &mut [ParsedPlayerTick], tick_rate: f32) {
+    /// CS2 demos do not expose the pawn's full velocity vector. Derive only
+    /// horizontal motion from ordered positions, without crossing lifecycle
+    /// edges. Preserve vertical velocity decoded from m_flFallVelocity: treating
+    /// duck/landing origin adjustments as velocity creates false fall damage.
+    fn derive_observed_horizontal_velocities(rows: &mut [ParsedPlayerTick], tick_rate: f32) {
         if !tick_rate.is_finite() || tick_rate <= 0.0 {
             return;
         }
@@ -2353,7 +2361,7 @@ mod demoparser_impl {
                     }
 
                     let scale = tick_rate / tick_delta as f32;
-                    let velocity =
+                    let velocity: [f32; 2] =
                         std::array::from_fn(|axis| (row.origin[axis] - origin[axis]) * scale);
                     velocity
                         .iter()
@@ -2363,9 +2371,9 @@ mod demoparser_impl {
                         })
                         .then_some(velocity)
                 })
-                .unwrap_or([0.0, 0.0, 0.0]);
+                .unwrap_or([0.0, 0.0]);
 
-            row.velocity = velocity;
+            row.velocity[..2].copy_from_slice(&velocity);
             previous.insert(
                 row.steam_id,
                 (
@@ -3705,7 +3713,7 @@ mod demoparser_impl {
         }
 
         #[test]
-        fn rebuilt_velocity_matches_the_current_position_interval() {
+        fn rebuilt_horizontal_velocity_preserves_decoded_vertical_velocity() {
             let mut rows = vec![
                 gap_row(70, 10, 0.0),
                 gap_row(70, 11, 1.0),
@@ -3715,10 +3723,10 @@ mod demoparser_impl {
             rows[1].velocity = [888.0, 888.0, 888.0];
             rows[2].velocity = [64.0, 0.0, 0.0];
 
-            derive_observed_player_velocities(&mut rows, 64.0);
+            derive_observed_horizontal_velocities(&mut rows, 64.0);
 
-            assert_eq!(rows[0].velocity, [0.0, 0.0, 0.0]);
-            assert_eq!(rows[1].velocity, [64.0, 0.0, 0.0]);
+            assert_eq!(rows[0].velocity, [0.0, 0.0, 999.0]);
+            assert_eq!(rows[1].velocity, [64.0, 0.0, 888.0]);
             assert_eq!(rows[2].velocity, [128.0, 0.0, 0.0]);
         }
 
@@ -3735,11 +3743,31 @@ mod demoparser_impl {
             same_pawn.player_entity_id = Some(8);
             let mut rows = vec![before, new_round, same_pawn];
 
-            derive_observed_player_velocities(&mut rows, 64.0);
+            derive_observed_horizontal_velocities(&mut rows, 64.0);
 
-            assert_eq!(rows[0].velocity, [0.0, 0.0, 0.0]);
-            assert_eq!(rows[1].velocity, [0.0, 0.0, 0.0]);
-            assert_eq!(rows[2].velocity, [64.0, 0.0, 0.0]);
+            assert_eq!(rows[0].velocity, [0.0, 0.0, 5.0]);
+            assert_eq!(rows[1].velocity, [0.0, 0.0, 5.0]);
+            assert_eq!(rows[2].velocity, [64.0, 0.0, 5.0]);
+        }
+
+        #[test]
+        fn duck_landing_origin_shift_does_not_become_fall_velocity() {
+            let mut before = gap_row(70, 10, 0.0);
+            before.origin[2] = -158.59375;
+            before.velocity[2] = 77.765625;
+            let mut landed = gap_row(70, 11, 1.0);
+            landed.origin[2] = -167.96875;
+            landed.velocity[2] = 0.0;
+            let mut falling = gap_row(70, 12, 2.0);
+            falling.velocity[2] = -800.0;
+            let mut rows = vec![before, landed, falling];
+
+            derive_observed_horizontal_velocities(&mut rows, 64.0);
+
+            // The 9.375-unit hull/landing shift previously injected -600.
+            assert_eq!(rows[1].velocity, [64.0, 0.0, 0.0]);
+            // A genuinely fast descent remains intact; this is not a clamp.
+            assert_eq!(rows[2].velocity[2], -800.0);
         }
 
         #[test]
