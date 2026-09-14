@@ -12,7 +12,7 @@ namespace DemoTracer;
 internal static partial class BotControllerNative
 {
     public const int ExpectedAbiVersion = 21;
-    public const uint RecFormatVersion = 10;
+    public const uint RecFormatVersion = 11;
     public const uint MinRecFormatVersion = 3;
     public const int MovementSnapshotByteSize = 92;
     public const int ReplayTickByteSize = 228;
@@ -48,9 +48,11 @@ internal static partial class BotControllerNative
     internal const ulong CapabilityHandoffBestWeapon = 1UL << 14;
     internal const ulong CapabilityReplayInputHistory = 1UL << 15;
     internal const ulong CapabilityReplayPawnEquipment = 1UL << 16;
+    internal const ulong CapabilityReplaySourceState = 1UL << 17;
     internal const int MovementIntentPreserveMoveAxes = 1 << 0;
 
     public const ulong RequiredCapabilityMask =
+        CapabilityReplaySourceState |
         CapabilityReplaySlotState |
         CapabilityStartReplayAt |
         CapabilityStartReplayUntil |
@@ -71,6 +73,8 @@ internal static partial class BotControllerNative
 
     internal static void EnsureNativeLayout()
     {
+        if (Marshal.SizeOf<NativeReplaySourceStateChange>() != 16)
+            throw new InvalidOperationException("source state ABI layout mismatch");
         var snapshotSize = Marshal.SizeOf<NativeMovementSnapshot>();
         if (snapshotSize != MovementSnapshotByteSize)
             throw new InvalidOperationException($"MovementSnapshot layout is {snapshotSize}, expected {MovementSnapshotByteSize}");

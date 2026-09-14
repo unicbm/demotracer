@@ -62,6 +62,7 @@ internal static partial class DtrReplayReader
     private const uint SectionCommandFrames = 6;
     private const uint SectionMovementExtras = 7;
     private const uint SectionInputHistory = 8;
+    private const uint SectionSourceState = 9;
     private const uint SectionVersionV1 = 1;
     private const uint SectionVersionV2 = 2;
     private const uint CommandFieldsAll = 0xff;
@@ -284,6 +285,7 @@ internal static partial class DtrReplayReader
         NativeReplayMovementExtra[]? movementExtras = null;
         NativeReplayInputHistoryTick[]? inputHistoryTicks = null;
         NativeReplayInputHistoryEntry[]? inputHistoryEntries = null;
+        NativeReplaySourceStateChange[]? sourceState = null;
         var seenHighFidelity = false;
         var seenKnownSections = new HashSet<uint>();
         long totalCompressedBytes = 0;
@@ -338,12 +340,17 @@ internal static partial class DtrReplayReader
                     "movement extras",
                     tickCount,
                     ExpectedSectionLength(tickCount, BotControllerNative.ReplayMovementExtraByteSize, "movement extras")),
+                SectionSourceState => ("source state", header.ElementCount, ExpectedSectionLength(header.ElementCount, 16, "source state")),
                 SectionInputHistory => (
                     "input history",
                     tickCount,
                     0),
                 _ => throw new InvalidDataException($"unsupported known section {header.SectionId}")
             };
+            if (header.SectionId == SectionSourceState && version < 11)
+                throw new InvalidDataException("source state requires DTR 11");
+            if (header.SectionId == SectionSourceState && header.ElementCount > (long)tickCount * SourceKinds.Length)
+                throw new InvalidDataException("source state count exceeds tick/field capacity");
             RejectDuplicate(!seenKnownSections.Add(header.SectionId), name);
             var usesV2ColumnLayout = version >= 8 &&
                 header.SectionId is SectionSnapshots or SectionCommandFrames;
@@ -401,6 +408,9 @@ internal static partial class DtrReplayReader
                 case SectionMovementExtras:
                     movementExtras = ReadMovementExtrasFromSection(body, tickCount);
                     break;
+                case SectionSourceState:
+                    sourceState = ReadSourceState(body, header.ElementCount, tickCount);
+                    break;
                 case SectionInputHistory:
                     (inputHistoryTicks, inputHistoryEntries) =
                         ReadInputHistoryFromSection(body, tickCount);
@@ -408,6 +418,8 @@ internal static partial class DtrReplayReader
             }
         }
 
+        if (version >= 11 && sourceState is null)
+            throw new InvalidDataException("missing required section source state");
         if (snapshots is null)
             throw new InvalidDataException("missing required section snapshots");
         RepairLaggedPlayerVelocities(snapshots, tickRate);
@@ -450,7 +462,7 @@ internal static partial class DtrReplayReader
             inputHistoryTicks ?? [],
             inputHistoryEntries ?? [],
             tickRate,
-            (uint)playStartTickIndex);
+            (uint)playStartTickIndex) { SourceState = sourceState ?? [] };
     }
 
 }
@@ -476,4 +488,7 @@ internal readonly record struct DtrReplayFile(
     NativeReplayInputHistoryTick[] InputHistoryTicks,
     NativeReplayInputHistoryEntry[] InputHistoryEntries,
     float TickRate,
-    uint PlayStartTickIndex);
+    uint PlayStartTickIndex)
+{
+    public NativeReplaySourceStateChange[] SourceState { get; init; } = [];
+}

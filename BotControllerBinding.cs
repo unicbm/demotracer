@@ -11,6 +11,9 @@ namespace DemoTracer;
 internal static partial class BotControllerNative
 {
     [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int BotController_LoadReplaySourceState(int slot, [In] NativeReplaySourceStateChange[] changes, int count, float tickRate, float liveTickInterval);
+
+    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
     private static extern int BotController_Lock(int slot, int kind, int arg);
 
     [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
