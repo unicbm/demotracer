@@ -9,9 +9,17 @@
 use parser::first_pass::parser_settings::{FirstPassParser, ParserInputs};
 
 fn server_info_packet(host: &str) -> Vec<u8> {
+    server_info_with_interval(host, None)
+}
+
+fn server_info_with_interval(host: &str, interval: Option<f32>) -> Vec<u8> {
     // Protobuf ServerInfo field 17, wrapped in a Source 2 network packet.
     let mut message = vec![0x8a, 0x01, host.len() as u8];
     message.extend_from_slice(host.as_bytes());
+    if let Some(interval) = interval {
+        message.push(0x6d); // ServerInfo.tick_interval, fixed32 field 13.
+        message.extend_from_slice(&interval.to_le_bytes());
+    }
     let mut bits = Vec::new();
     let mut write = |value: u32, count| {
         bits.extend((0..count).map(|bit| ((value >> bit) & 1) as u8));
@@ -72,4 +80,33 @@ fn signon_preserves_platform_host_separately_from_generic_file_header() {
     // A repeated empty ServerInfo must not erase useful metadata.
     parser.parse_packet(&server_info_packet(" ")).unwrap();
     assert_eq!(parser.header["server_info_host_name"], "5EGOTV");
+
+    parser.parse_packet(&server_info_with_interval("", Some(1.0 / 128.0))).unwrap();
+    assert_eq!(parser.header["server_tick_interval"], "0.0078125");
+    for invalid in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+        parser.parse_packet(&server_info_with_interval("", Some(invalid))).unwrap();
+        assert_eq!(parser.header["server_tick_interval"], "0.0078125");
+    }
+}
+
+#[test]
+fn game_tick_wrapper_decodes_signed_wire_values_and_sentinels() {
+    use parser::first_pass::read_bits::Bitreader;
+    use parser::maps::BASETYPE_DECODERS;
+    use parser::second_pass::decoder::QfMapper;
+    use parser::second_pass::variants::Variant;
+    let mapper = QfMapper { idx: 0, map: Default::default() };
+    // Positive GameTick_t values use signed varint encoding too. Treating
+    // 317404 as an unsigned tick doubles a 2479.71875-second attack deadline.
+    for tick in [-1_i32, 0, 158702] {
+        let mut wire = Vec::new();
+        let mut encoded = ((tick as u32) << 1) ^ ((tick >> 31) as u32);
+        loop {
+            let byte = (encoded & 0x7f) as u8;
+            encoded >>= 7;
+            wire.push(byte | if encoded == 0 { 0 } else { 0x80 });
+            if encoded == 0 { break; }
+        }
+        assert_eq!(Bitreader::new(&wire).decode(&BASETYPE_DECODERS["GameTick_t"], &mapper).unwrap(), Variant::I32(tick));
+    }
 }
