@@ -136,13 +136,17 @@ public sealed partial class DemoTracerPlugin
            !_lifecycleResetInProgress;
 
     private void CancelReplaySlotDeferredWork(int slot)
-        => _replaySlotWork.CancelWhere(key => key.Slot == slot);
+    {
+        _replaySlotWork.CancelWhere(key => key.Slot == slot);
+        _session.ProjectileBirths.CancelSlot(slot);
+    }
 
     private void CancelPendingReplaySlotReconciliations()
         => _replaySlotWork.CancelWhere(key => key.Kind == ReplaySlotWorkKind.Reconcile);
 
     private void CancelAllReplayDeferredWork()
     {
+        _session.ProjectileBirths.Clear();
         _replaySlotWork.Clear();
         BeginReplayRoundWorkEpoch();
     }

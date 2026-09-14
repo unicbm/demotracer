@@ -91,9 +91,6 @@ internal static partial class BotControllerNative
     private static extern int BotController_SetControllerControllingBotOffset(int offset);
 
     [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_SetReplayPovMask(ulong mask);
-
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
     private static extern int BotController_SetReplayPawn(int slot, ulong pawnPtr);
 
     [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]

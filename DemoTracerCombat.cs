@@ -126,40 +126,6 @@ public sealed partial class DemoTracerPlugin
                Server.CurrentTime - startedAt >= HandoffGraceSeconds;
     }
 
-    private static bool ReplayBotSeesEnemy(int slot, out string contactReason)
-    {
-        return ReplayBotSeesEnemy(slot, FindTeamPlayers(), out contactReason, out _);
-    }
-
-    private static bool ReplayBotSeesEnemy(
-        int slot,
-        IReadOnlyList<CCSPlayerController> teamPlayers,
-        out string contactReason,
-        out int contactSlot)
-    {
-        contactReason = string.Empty;
-        contactSlot = -1;
-        var bot = Utilities.GetPlayerFromSlot(slot);
-        if (bot == null || !HasLivePawn(bot))
-            return false;
-
-        foreach (var enemy in teamPlayers)
-        {
-            if (enemy.Slot == bot.Slot ||
-                enemy.Team == bot.Team ||
-                !HasLivePawn(enemy))
-                continue;
-
-            if (PlayerSeesTarget(bot, enemy, out contactReason))
-            {
-                contactSlot = enemy.Slot;
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static bool ReplayBotSeesEnemy(
         int slot,
         TickPlayerSnapshot playerSnapshot,
@@ -185,36 +151,6 @@ public sealed partial class DemoTracerPlugin
             }
         }
 
-        return false;
-    }
-
-    private bool ReplayBotHasContact(
-        int slot,
-        IReadOnlyList<CCSPlayerController> teamPlayers,
-        out string contactReason,
-        out int contactSlot)
-    {
-        if (TryEvaluateNativeReplayContact(slot, out var nativeContact, out contactReason))
-        {
-            contactSlot = -1;
-            return nativeContact;
-        }
-
-        if (!ReplayHasPassedHandoffGrace(slot))
-        {
-            contactReason = string.Empty;
-            contactSlot = -1;
-            return false;
-        }
-
-        if (ReplayBotSeesEnemy(slot, teamPlayers, out contactReason, out contactSlot))
-            return true;
-
-        if (_handoffThreat360Enabled &&
-            ReplayBotHasNearby360Threat(slot, teamPlayers, out contactReason, out contactSlot))
-            return true;
-
-        contactSlot = -1;
         return false;
     }
 
@@ -293,14 +229,13 @@ public sealed partial class DemoTracerPlugin
 
     private bool ReplayBotHasNearby360Threat(
         int slot,
-        IReadOnlyList<CCSPlayerController> teamPlayers,
+        TickPlayerSnapshot playerSnapshot,
         out string contactReason,
         out int contactSlot)
     {
         contactReason = string.Empty;
         contactSlot = -1;
-        var bot = Utilities.GetPlayerFromSlot(slot);
-        if (bot == null ||
+        if (!playerSnapshot.TryGetSlot(slot, out var bot) ||
             !HasLivePawn(bot) ||
             !TryGetPawnOrigin(bot, out var botOrigin))
         {
@@ -312,7 +247,7 @@ public sealed partial class DemoTracerPlugin
         var bestEnemySlot = -1;
         var bestDistanceSq = float.MaxValue;
 
-        foreach (var enemy in teamPlayers)
+        foreach (var enemy in playerSnapshot.TeamPlayers)
         {
             if (enemy.Slot == bot.Slot ||
                 enemy.Team == bot.Team ||
@@ -369,98 +304,7 @@ public sealed partial class DemoTracerPlugin
         return true;
     }
 
-    private bool ReplayBotHasNearby360Threat(
-        int slot,
-        TickPlayerSnapshot playerSnapshot,
-        out string contactReason,
-        out int contactSlot)
-    {
-        contactReason = string.Empty;
-        contactSlot = -1;
-        if (!playerSnapshot.TryGetSlot(slot, out var bot) ||
-            !HasLivePawn(bot) ||
-            !TryGetPawnOrigin(bot, out var botOrigin))
-        {
-            _session.PendingThreat360.Remove(slot);
-            return false;
-        }
-
-        var rangeSq = _handoffThreat360Range * _handoffThreat360Range;
-        var bestEnemySlot = -1;
-        var bestDistanceSq = float.MaxValue;
-
-        foreach (var enemy in playerSnapshot.TeamPlayers)
-        {
-            if (enemy.Slot == bot.Slot ||
-                enemy.Team == bot.Team ||
-                !HasLivePawn(enemy) ||
-                !IsHandoff360ThreatActor(enemy, playerSnapshot) ||
-                !TryGetPawnOrigin(enemy, out var enemyOrigin))
-                continue;
-
-            var dz = MathF.Abs(enemyOrigin.Z - botOrigin.Z);
-            if (dz > HandoffThreat360MaxVerticalDelta)
-                continue;
-
-            var dx = enemyOrigin.X - botOrigin.X;
-            var dy = enemyOrigin.Y - botOrigin.Y;
-            var distanceSq = dx * dx + dy * dy;
-            if (distanceSq > rangeSq || distanceSq >= bestDistanceSq)
-                continue;
-            if (_handoffThreat360LosEnabled && !HasHandoff360LineOfSight(bot, enemy))
-                continue;
-
-            bestEnemySlot = enemy.Slot;
-            bestDistanceSq = distanceSq;
-        }
-
-        if (bestEnemySlot < 0)
-        {
-            _session.PendingThreat360.Remove(slot);
-            return false;
-        }
-
-        var distance = MathF.Sqrt(bestDistanceSq);
-        if (distance <= MathF.Min(HandoffThreat360ImmediateRange, _handoffThreat360Range))
-        {
-            _session.PendingThreat360.Remove(slot);
-            contactReason = FormatThreat360Reason(bestEnemySlot, distance, immediate: true);
-            contactSlot = bestEnemySlot;
-            return true;
-        }
-
-        var now = Server.CurrentTime;
-        if (!_session.PendingThreat360.TryGetValue(slot, out var pending) ||
-            pending.EnemySlot != bestEnemySlot)
-        {
-            _session.PendingThreat360[slot] = new PendingThreat360(bestEnemySlot, now);
-            return false;
-        }
-
-        if (now - pending.FirstSeenAt < HandoffThreat360HoldSeconds)
-            return false;
-
-        _session.PendingThreat360.Remove(slot);
-        contactReason = FormatThreat360Reason(bestEnemySlot, distance, immediate: false);
-        contactSlot = bestEnemySlot;
-        return true;
-    }
-
     private bool IsHandoff360ThreatActor(CCSPlayerController enemy)
-    {
-        if (enemy is not { IsValid: true } || enemy.Slot < 0)
-            return false;
-        if (_session.ReplaySlots.IsLoaded(enemy.Slot) || IsReplaySlotPlaying(enemy.Slot))
-            return false;
-        if (_botHiderBridge.IsManagedBot(enemy.Slot))
-            return false;
-        var controllingBot = TryGetControllingBotState(enemy, out var controlsBot) && controlsBot;
-        return !enemy.IsBot || controllingBot;
-    }
-
-    private bool IsHandoff360ThreatActor(
-        CCSPlayerController enemy,
-        TickPlayerSnapshot playerSnapshot)
     {
         if (enemy is not { IsValid: true } || enemy.Slot < 0)
             return false;

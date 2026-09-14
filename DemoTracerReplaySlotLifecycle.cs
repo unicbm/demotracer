@@ -138,7 +138,6 @@ public sealed partial class DemoTracerPlugin
         BotControllerNative.ClearBuyPlan(slot);
         BotControllerNative.UnlockReplayControl(slot);
         BotControllerNative.UnlockWeaponSlot(slot);
-        ClearReplayPovSlot(slot);
         if (releaseKind == ReplayReleaseKind.Handoff &&
             IsReplaySlotStillSafe(slot) &&
             HasLivePawn(Utilities.GetPlayerFromSlot(slot)) &&

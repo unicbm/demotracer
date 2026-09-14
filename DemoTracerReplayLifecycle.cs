@@ -79,7 +79,6 @@ public sealed partial class DemoTracerPlugin
             _session.Plan.ClearArmedPreparation();
         }
         _session.Plan.ClearSequencePreparation();
-        SetReplayPovMask(0);
     }
 
     private void ClearReplayStateForLifecycle(string reason)
@@ -115,9 +114,7 @@ public sealed partial class DemoTracerPlugin
             {
                 foreach (var slot in ReplayBufferSlots())
                     ClearNativeSlotForLifecycle(slot, reason);
-                _ = BotControllerNative.SetReplayPovMask(0);
             }
-            _session.LastReplayPovMask = 0;
             ClearLoadedAutoVoiceClip();
             ClearVoiceClipCache();
             ClearLoadedAutoChat();
@@ -198,7 +195,6 @@ public sealed partial class DemoTracerPlugin
         ClearStoppedReplayExecutionState();
         ClearReplayCrosshairPresentation();
         RestoreAllReplayBotViewmodels();
-        SetReplayPovMask(0);
     }
 
     private void ClearStoppedReplayExecutionState()

@@ -373,18 +373,6 @@ internal static partial class BotControllerNative
         }
     }
 
-    public static bool SetReplayPovMask(ulong mask)
-    {
-        try
-        {
-            return BotController_SetReplayPovMask(mask) == 0;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     public static bool SetReplayPawn(int slot, nint pawnHandle)
     {
         if (!ValidSlot(slot))

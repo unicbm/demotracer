@@ -31,14 +31,12 @@ public sealed partial class DemoTracerPlugin
         ProcessChatPlayback();
         if (_session.LoadedSlots.Count == 0)
         {
-            SetReplayPovMask(0);
             RestoreAllReplayBotViewmodels();
             return;
         }
 
         if (_session.ReplaySlots.PlayingCount == 0)
         {
-            SetReplayPovMask(0);
             RestoreNonRetainedReplayBotViewmodels();
             return;
         }
@@ -108,12 +106,10 @@ public sealed partial class DemoTracerPlugin
 
         if (activeSlotCount == 0)
         {
-            SetReplayPovMask(0);
             RestoreNonRetainedReplayBotViewmodels();
             return;
         }
 
-        UpdateReplayPovMask(playerSnapshot);
         UpdateReplayBotViewmodels(playerSnapshot);
 
         for (var activeIndex = 0; activeIndex < activeSlotCount; activeIndex++)
@@ -300,101 +296,5 @@ public sealed partial class DemoTracerPlugin
             if (ReplayWeaponMatches(weapon, className))
                 yield return weapon;
         }
-    }
-
-    private void UpdateReplayPovMask(TickPlayerSnapshot playerSnapshot)
-    {
-        SetReplayPovMask(BuildReplayPovMask(playerSnapshot));
-    }
-
-    private ulong BuildReplayPovMask(TickPlayerSnapshot playerSnapshot)
-    {
-        if (_session.ReplaySlots.PlayingCount == 0)
-            return 0;
-
-        Span<uint> replayPawnIndices = stackalloc uint[MaxPlayerSlots];
-        Span<int> replaySlots = stackalloc int[MaxPlayerSlots];
-        var replayPawnCount = 0;
-        foreach (var slot in _session.ReplaySlots.PlayingSlots)
-        {
-            if (slot is < 0 or >= MaxPlayerSlots)
-                continue;
-
-            if (!playerSnapshot.TryGetSlot(slot, out var replayController) ||
-                replayController is not { IsValid: true })
-                continue;
-            if (replayController.PlayerPawn is not { IsValid: true, Value.IsValid: true } replayPawn)
-                continue;
-
-            replayPawnIndices[replayPawnCount] = replayPawn.Value.Index;
-            replaySlots[replayPawnCount] = slot;
-            replayPawnCount++;
-        }
-
-        if (replayPawnCount == 0)
-            return 0;
-
-        ulong mask = 0;
-        foreach (var controller in playerSnapshot.Controllers)
-        {
-            if (controller is not { IsValid: true })
-                continue;
-            if (controller.IsBot || _botHiderBridge.IsManagedBot(controller.Slot))
-                continue;
-            if (!TryGetInEyeObserverTargetIndex(controller, out var targetIndex))
-                continue;
-            for (var replayIndex = 0; replayIndex < replayPawnCount; replayIndex++)
-            {
-                if (replayPawnIndices[replayIndex] != targetIndex)
-                    continue;
-                mask |= 1UL << replaySlots[replayIndex];
-                break;
-            }
-        }
-
-        return mask;
-    }
-
-    private static bool TryGetInEyeObserverTargetIndex(CCSPlayerController controller, out uint targetIndex)
-    {
-        targetIndex = 0;
-        try
-        {
-            CPlayer_ObserverServices? observerServices = null;
-            if (controller.ObserverPawn is { IsValid: true, Value.IsValid: true } observerPawn)
-                observerServices = observerPawn.Value.ObserverServices;
-            else if (controller.PlayerPawn is { IsValid: true, Value.IsValid: true } playerPawn)
-                observerServices = playerPawn.Value.ObserverServices;
-
-            if (observerServices == null ||
-                observerServices.ObserverMode != (byte)ObserverMode_t.OBS_MODE_IN_EYE)
-                return false;
-            if (observerServices.ObserverTarget is not { IsValid: true, Value.IsValid: true } target)
-                return false;
-
-            targetIndex = target.Value.Index;
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private void SetReplayPovMask(ulong mask)
-    {
-        if (mask == _session.LastReplayPovMask)
-            return;
-
-        _ = BotControllerNative.SetReplayPovMask(mask);
-        _session.LastReplayPovMask = mask;
-    }
-
-    private void ClearReplayPovSlot(int slot)
-    {
-        if (slot is < 0 or >= MaxPlayerSlots || _session.LastReplayPovMask == ulong.MaxValue)
-            return;
-
-        SetReplayPovMask(_session.LastReplayPovMask & ~(1UL << slot));
     }
 }
