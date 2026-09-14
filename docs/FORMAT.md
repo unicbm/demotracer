@@ -11,10 +11,10 @@ command-frame data, and shooting input-history data retain their original
 ## Version Gates
 
 - Magic: `CSDTRREC`
-- Current writer format: `.dtr` v9
-- Runtime reader support: v3 through v9
+- Current writer format: `.dtr` v10
+- Runtime reader support: v3 through v10
 - Current manifest ABI: 17
-- Current BotController native ABI: 18
+- Current BotController native ABI: 21
 - Current DemoTracer companion API: 7
 
 Compatibility notes:
