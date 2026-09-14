@@ -13,6 +13,7 @@
 #include "BotControllerState.h"
 #include "ccsbot_slot.h"
 #include "sig_scan.h"
+#include "schema_resolver.h"
 #include "MotionRecorder.h"
 #include "ReplayPawnEquipment.h"
 #include "ReplaySubtickLayout.h"
@@ -20,6 +21,7 @@
 #include "version_targets.h"
 #include "hook.h"
 #include "platform.h"
+#include <entity2/entityinstance.h>
 
 #include <algorithm>
 #include <array>
@@ -48,6 +50,10 @@ namespace BotController
         static SetupMove_t g_origSetupMove = nullptr;
         static SetEntityVector_t g_setAbsOrigin = nullptr;
         static SetEntityVector_t g_setAbsVelocity = nullptr;
+        using SetMoveType_t = void(BC_FASTCALL *)(void *, uint8_t, uint8_t);
+        static SetMoveType_t g_setMoveType = nullptr;
+        static int g_moveCollideOffset = -1, g_tickBaseOffset = -1;
+        static std::array<std::atomic<void *>, kMaxSlots> g_slotControllers{};
         static PlayerRunCommand_t g_origPlayerRunCommand = nullptr;
         static PhysicsSimulate_t g_origPhysicsSimulate = nullptr;
 
@@ -603,6 +609,35 @@ namespace BotController
             return false;
         }
 
+        bool ReadReplayClock(int slot, float tickInterval, ReplaySourceState::LiveClock &clock)
+        {
+            if (slot < 0 || slot >= kMaxSlots || !std::isfinite(tickInterval) || tickInterval <= 0) return false;
+            void *controller = g_slotControllers[slot].load(std::memory_order_acquire);
+            if (!controller || ControllerToSlot(controller) != slot ||
+                !SafeRead(controller, g_tickBaseOffset, clock.tick) || clock.tick < 0) return false;
+            // At the command boundary, the player's simulation clock is tickbase
+            // times the live engine interval supplied by CounterStrikeSharp.
+            clock.interval = tickInterval;
+            clock.time = static_cast<float>(clock.tick) * tickInterval;
+            return std::isfinite(clock.time);
+        }
+        bool InitializeReplayMoveType(void *pawn, uint8_t moveType)
+        {
+            uint8_t collide = 0;
+            if (!pawn || !g_setMoveType || !SafeRead(pawn, g_moveCollideOffset, collide)) return false;
+            g_setMoveType(pawn, moveType, collide);
+            return true;
+        }
+
+        void PublishReplayState(void *entity)
+        {
+            if (!entity) return;
+            // One boundary notification covers nested service chains too.
+            // Continuous playback uses the engine's own change tracking.
+            const NetworkStateChangedData changed(true);
+            reinterpret_cast<CEntityInstance *>(entity)->NetworkStateChanged(changed);
+        }
+
         bool InitializeReplayPose(void *pawn, const float *origin, const float *velocity)
         {
             if (!pawn || !origin || !velocity || !g_setAbsOrigin || !g_setAbsVelocity)
@@ -931,6 +966,7 @@ namespace BotController
                              MotionRecorder::IsRecording(slot);
             if (slot >= 0 && slot < kMaxSlots)
             {
+                g_slotControllers[slot].store(controller, std::memory_order_release);
                 g_slotControllingBot[slot].store(ControllerIsControllingBot(controller), std::memory_order_release);
             }
 
@@ -1043,6 +1079,15 @@ namespace BotController
         bool Install(const nlohmann::json &gd, const Sig::ModuleInfo &serverModule,
                      char *errorOut, size_t errorOutLen)
         {
+            g_moveCollideOffset = Schema::GetFieldOffset("CBaseEntity", "m_MoveCollide");
+            g_tickBaseOffset = Schema::GetFieldOffset("CBasePlayerController", "m_nTickBase");
+            if (g_tickBaseOffset < 0) g_tickBaseOffset = Schema::GetFieldOffset("CCSPlayerController", "m_nTickBase");
+            g_setMoveType = reinterpret_cast<SetMoveType_t>(Sig::ResolveSig(gd, serverModule, "CBaseEntity::SetMoveType", errorOut, errorOutLen));
+            if (!g_setMoveType || g_moveCollideOffset < 0 || g_tickBaseOffset < 0 || !ReplaySourceState::InitializeOffsets()) {
+                g_status = "failed: replay source-state schema/setter";
+                std::snprintf(errorOut, errorOutLen, "%s", g_status.c_str());
+                return false;
+            }
             g_setAbsOrigin = reinterpret_cast<SetEntityVector_t>(Sig::ResolveSig(
                 gd, serverModule, "CBaseEntity::SetAbsOrigin", errorOut, errorOutLen));
             if (!g_setAbsOrigin)
@@ -1132,6 +1177,8 @@ namespace BotController
             g_origSetupMove = nullptr;
             g_setAbsOrigin = nullptr;
             g_setAbsVelocity = nullptr;
+            g_setMoveType = nullptr;
+            for (auto &controller : g_slotControllers) controller.store(nullptr, std::memory_order_release);
             g_origPlayerRunCommand = nullptr;
             g_origPhysicsSimulate = nullptr;
             g_addrProcessMovement = nullptr;

@@ -3,6 +3,7 @@
 #pragma once
 
 #include <cstdint>
+#include "ReplaySourceState.h"
 #include <string>
 
 #include <nlohmann/json.hpp>
@@ -87,6 +88,9 @@ namespace BotController
 
         // Start/seek/loop initialization only. These are the engine's own
         // origin/velocity setters, also used by FinishMove for normal output.
+        bool ReadReplayClock(int slot, float tickInterval, ReplaySourceState::LiveClock &clock);
+        bool InitializeReplayMoveType(void *pawn, uint8_t moveType);
+        void PublishReplayState(void *entity);
         bool InitializeReplayPose(void *pawn, const float *origin, const float *velocity);
 
         // Resolved address of the hooked function.

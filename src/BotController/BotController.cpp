@@ -38,6 +38,11 @@ namespace BotController
 {
     namespace BotControllerHooks
     {
+        using LadderUpdate_t = bool(BC_FASTCALL *)(void *ladderState);
+        static LadderUpdate_t g_origLadderUpdate = nullptr;
+        static Update_t g_invalidatePath = nullptr;
+        static Hook g_hookLadderUpdate;
+        static std::array<std::atomic<bool>, 64> g_replayLadderSuppressed{};
         static Update_t g_origUpdate = nullptr;
         static void *g_addrUpdate = nullptr;
         static Upkeep_t g_origUpkeep = nullptr;
@@ -139,6 +144,32 @@ namespace BotController
             if (slot < 0 || slot >= static_cast<int>(g_observedBots.size())) return nullptr;
             void *bot = g_observedBots[slot].load(std::memory_order_acquire);
             return bot && CCSBotToSlot(bot) == slot ? bot : nullptr;
+        }
+
+        static bool BC_FASTCALL HookedLadderUpdate(void *ladderState)
+        {
+            // This navigation state machine owns the bot's mount Teleport.
+            // Its first member is the CCSBot; this is not movement services.
+            void *bot = nullptr;
+            if (SafeRead(ladderState, 0, bot) && bot)
+            {
+                const int slot = CCSBotToSlot(bot);
+                if (slot >= 0 && slot < 64 && MotionRecorder::IsReplaying(slot) &&
+                    !InputInjector::IsSlotControllingBot(slot))
+                {
+                    g_replayLadderSuppressed[slot].store(true, std::memory_order_relaxed);
+                    return true; // path traversal is being handled by replay
+                }
+            }
+            return g_origLadderUpdate(ladderState);
+        }
+
+        void ReleaseReplayNavigation(int slot)
+        {
+            if (slot < 0 || slot >= 64 || !g_replayLadderSuppressed[slot].exchange(false)) return;
+            void *bot = BotForSlot(slot);
+            if (bot && g_invalidatePath && !InputInjector::IsSlotControllingBot(slot))
+                g_invalidatePath(bot); // retire obsolete AI path; never alter Pawn physics
         }
 
         static float NormalizeDeg(float a)
@@ -394,6 +425,18 @@ namespace BotController
                 return false;
             }
 
+            void *ladderUpdate = Sig::ResolveSig(gd, serverModule, "CCSBot::LadderStateUpdate", errorOut, errorOutLen);
+            g_invalidatePath = reinterpret_cast<Update_t>(Sig::ResolveSig(gd, serverModule, "CCSBot::InvalidatePath", errorOut, errorOutLen));
+            if (!ladderUpdate || !g_invalidatePath ||
+                !g_hookLadderUpdate.Create(ladderUpdate, reinterpret_cast<void *>(&HookedLadderUpdate), reinterpret_cast<void **>(&g_origLadderUpdate)) ||
+                !g_hookLadderUpdate.Enable())
+            {
+                g_hookLadderUpdate.Remove();
+                g_origLadderUpdate = nullptr;
+                g_status = "failed: replay ladder navigation hook";
+                return false;
+            }
+
             // required: Update
             if (!g_hookUpdate.Create(g_addrUpdate,
                                      reinterpret_cast<void *>(&HookedUpdate),
@@ -401,8 +444,7 @@ namespace BotController
                 !g_hookUpdate.Enable())
             {
                 std::snprintf(errorOut, errorOutLen, "hook CCSBot::Update failed");
-                g_hookUpdate.Remove();
-                g_origUpdate = nullptr;
+                Remove();
                 g_status = "failed: hook Update";
                 return false;
             }
@@ -414,10 +456,7 @@ namespace BotController
                 !g_hookUpkeep.Enable())
             {
                 std::snprintf(errorOut, errorOutLen, "hook CCSBot::Upkeep failed");
-                g_hookUpkeep.Remove();
-                g_origUpkeep = nullptr;
-                g_hookUpdate.Remove();
-                g_origUpdate = nullptr;
+                Remove();
                 g_status = "failed: hook Upkeep";
                 return false;
             }
@@ -502,6 +541,10 @@ namespace BotController
 
         void Remove()
         {
+            for (int slot = 0; slot < 64; ++slot) ReleaseReplayNavigation(slot);
+            g_hookLadderUpdate.Remove();
+            g_origLadderUpdate = nullptr;
+            g_invalidatePath = nullptr;
             // Also roll back partially installed required view hooks.
             g_hookGetEyeAngles.Remove();
             g_origGetEyeAngles = nullptr;

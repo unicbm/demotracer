@@ -42,6 +42,7 @@ namespace BotController
 
         const char *Status();
         void *BotForSlot(int slot);
+        void ReleaseReplayNavigation(int slot);
 
         // Latest snapshot captured after CCSBot::Update for this player slot.
         bool GetNativePerceptionState(int slot, NativePerceptionState &out);

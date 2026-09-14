@@ -200,6 +200,30 @@
     },
     "comment": "Eye-angle getter used by server-side camera/spectator paths."
   },
+  "CCSBot::LadderStateUpdate": {
+    "signatures": {
+      "library": "server",
+      "windows": "40 53 48 83 EC 20 80 79 14 00 48 8B D9 0F 84 ? ? ? ? 48 8B 01 C6 41 14 00 48 83 B8 ? ? ? ? 00",
+      "linux": ""
+    },
+    "comment": "Boolean ladder traversal wrapper; first member points to CCSBot. Replay suppresses navigation Teleport while retaining native player ladder physics."
+  },
+  "CCSBot::InvalidatePath": {
+    "signatures": {
+      "library": "server",
+      "windows": "40 53 48 83 EC 20 48 8B D9 C6 81 ? ? ? ? 00 48 C7 81 ? ? ? ? 00 00 00 00 48 81 C1 ? ? ? ? 48 8B 01 FF 50 08",
+      "linux": ""
+    },
+    "comment": "Retires obsolete bot path and traversal state after replay; does not change Pawn movement state."
+  },
+  "CBaseEntity::SetMoveType": {
+    "signatures": {
+      "library": "server",
+      "windows": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 20 41 0F B6 F0 0F B6 EA",
+      "linux": ""
+    },
+    "comment": "Native movement type/collision setter; derives actual movement type and performs change callbacks."
+  },
   "CBaseEntity::SetAbsOrigin": {
     "signatures": {
       "library": "server",

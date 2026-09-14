@@ -151,6 +151,7 @@ add_library(BotController SHARED
     src/BotController/PublicBotProfile.cpp
     src/BotRecorder/InputInjector.cpp
     src/BotRecorder/MotionRecorder.cpp
+    src/BotRecorder/ReplaySourceState.cpp
     src/BotRecorder/ReplayPawnEquipment.cpp
     src/BotRecorder/ReplaySubtickLayout.cpp
     src/VoiceSender/VoiceSender.cpp

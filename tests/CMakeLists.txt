@@ -64,6 +64,7 @@ if(WIN32)
     add_executable(BotControllerReplayMovementTests
         replay_movement_tests.cpp
         "${CMAKE_CURRENT_LIST_DIR}/../src/BotRecorder/MotionRecorder.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/../src/BotRecorder/ReplaySourceState.cpp"
         ${REPLAY_LAYOUT_SOURCE})
     target_include_directories(BotControllerReplayMovementTests PRIVATE
         ${REPLAY_INCLUDE_DIR}

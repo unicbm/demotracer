@@ -22,7 +22,7 @@
 namespace
 {
     constexpr int kBotControllerAbiMajor = 21;
-    constexpr int kBotControllerAbiMinor = 38;
+    constexpr int kBotControllerAbiMinor = 39;
     constexpr uint64_t kCapabilityReplaySlotState = 1ULL << 0;
     constexpr uint64_t kCapabilityStartReplayAt = 1ULL << 1;
     constexpr uint64_t kCapabilityStartReplayUntil = 1ULL << 2;
@@ -39,7 +39,9 @@ namespace
     constexpr uint64_t kCapabilityButtonOnlyMovementIntent = 1ULL << 13;
     constexpr uint64_t kCapabilityHandoffBestWeapon = 1ULL << 14;
     constexpr uint64_t kCapabilityReplayPawnEquipment = 1ULL << 16;
+    constexpr uint64_t kCapabilityReplaySourceState = 1ULL << 17;
     constexpr uint64_t kBotControllerCapabilities =
+        kCapabilityReplaySourceState |
         kCapabilityReplaySlotState |
         kCapabilityStartReplayAt |
         kCapabilityStartReplayUntil |
@@ -655,4 +657,11 @@ extern "C" __declspec(dllexport) int BotController_SwitchBotWeapon(int slot, int
 extern "C" __declspec(dllexport) int BotController_GetBotActiveWeaponDef(int slot)
 {
     return BotController::MotionRecorder::BotActiveWeaponDef(slot);
+}
+
+extern "C" __declspec(dllexport) int BotController_LoadReplaySourceState(
+    int slot, const BotController::ReplaySourceState::Change *changes, int count, float tickRate, float liveTickInterval) noexcept
+{
+    try { return BotController::MotionRecorder::LoadReplaySourceState(slot, changes, count, tickRate, liveTickInterval) ? 0 : -1; }
+    catch (...) { return -1; }
 }
