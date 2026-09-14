@@ -24,6 +24,7 @@ use csgoproto::CDemoPacket;
 use csgoproto::CDemoSendTables;
 use csgoproto::CDemoStringTables;
 use csgoproto::CsvcMsgGameEventList;
+use csgoproto::CsvcMsgServerInfo;
 use csgoproto::EDemoCommands;
 use prost::Message;
 use snap::raw::decompress_len;
@@ -333,6 +334,13 @@ impl<'a> FirstPassParser<'a> {
             let msg_bytes = bitreader.read_n_bytes(size as usize)?;
 
             let ok = match NetMessageType::from(msg_type as i32) {
+                svc_ServerInfo => {
+                    let info = CsvcMsgServerInfo::decode(msg_bytes.as_slice()).map_err(|_| DemoParserError::MalformedMessage)?;
+                    if let Some(host) = info.host_name.as_deref().map(str::trim).filter(|host| !host.is_empty()) {
+                        self.header.insert("server_info_host_name".to_string(), host.to_string());
+                    }
+                    Ok(())
+                }
                 GE_Source1LegacyGameEventList => self.parse_game_event_list(&msg_bytes),
                 svc_CreateStringTable => self.parse_create_stringtable(&msg_bytes),
                 svc_UpdateStringTable => self.update_string_table(&msg_bytes),

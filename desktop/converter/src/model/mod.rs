@@ -589,6 +589,9 @@ pub struct ParsedDemo {
     pub demo_version_name: Option<String>,
     #[serde(default)]
     pub server_name: Option<String>,
+    /// Host name from svc_ServerInfo, kept separate from the demo file header.
+    #[serde(default)]
+    pub server_info_host_name: Option<String>,
     #[serde(default)]
     pub playback_time_seconds: Option<f32>,
     pub tick_rate: f32,

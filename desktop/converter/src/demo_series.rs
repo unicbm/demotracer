@@ -336,6 +336,9 @@ fn merge_parsed_demo_parts(
     let demo_patch_version = parts[0].demo_patch_version;
     let demo_version_name = parts[0].demo_version_name.clone();
     let server_name = parts[0].server_name.clone();
+    let server_info_host_name = parts
+        .iter()
+        .find_map(|part| part.server_info_host_name.clone());
     let tick_rate = parts[0].tick_rate;
 
     let mut rows = Vec::new();
@@ -447,6 +450,7 @@ fn merge_parsed_demo_parts(
         demo_patch_version,
         demo_version_name,
         server_name,
+        server_info_host_name,
         playback_time_seconds: None,
         tick_rate,
         round_freeze_end_ticks,
@@ -1334,6 +1338,8 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let mut first = part_one();
         let mut second = part_two();
+        // A later segment can carry metadata omitted by the first segment.
+        second.server_info_host_name = Some("5EGOTV".to_string());
         for part in [&mut first, &mut second] {
             part.weapon_purchases
                 .push(crate::model::ParsedWeaponPurchase {
@@ -1350,6 +1356,7 @@ mod tests {
                 });
         }
         let merged = merge_parsed_demo_parts(&source(temp.path()), vec![first, second]).unwrap();
+        assert_eq!(merged.server_info_host_name.as_deref(), Some("5EGOTV"));
         assert_eq!(merged.weapon_purchases.len(), 2);
         assert_eq!(merged.weapon_purchases[0].tick, 1);
         assert!(merged.weapon_purchases[1].tick > 1);

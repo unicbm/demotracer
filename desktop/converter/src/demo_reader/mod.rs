@@ -1174,6 +1174,7 @@ mod demoparser_impl {
         let demo_patch_version = header_i32(&header, "patch_version");
         let demo_version_name = header_text(&header, "demo_version_name");
         let server_name = header_text(&header, "server_name");
+        let server_info_host_name = header_text(&header, "server_info_host_name");
         let playback_time_seconds =
             header_f32(&header, "playback_time").filter(|value| value.is_finite() && *value >= 0.0);
 
@@ -1506,6 +1507,7 @@ mod demoparser_impl {
             demo_patch_version,
             demo_version_name,
             server_name,
+            server_info_host_name,
             playback_time_seconds,
             tick_rate,
             round_freeze_end_ticks,

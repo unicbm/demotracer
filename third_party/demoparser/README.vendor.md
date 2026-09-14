@@ -7,6 +7,10 @@ This repository vendors the minimal Rust crates used by the converter:
 
 Large upstream test demos, JavaScript packages, and the full GameTracking-CS2 checkout are intentionally excluded.
 
+Signon parsing retains `svc_ServerInfo.host_name` as `server_info_host_name`
+alongside the unchanged demo file header. Platform detection can use the
+recorded host when the file header contains a generic server name.
+
 The vendored build scripts use the generated `protobuf.rs` and `maps.rs` files already present in this tree, so normal converter builds do not clone GameTracking-CS2 or rewrite vendored source files.
 
 Local button-map maintenance adds JUMP/DUCK properties and aligns WALK,
