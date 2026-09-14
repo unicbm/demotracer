@@ -51,7 +51,8 @@ public static class MotionStore
     // Load a JSON recording from disk
     public static MotionRecording LoadFromFile(string path)
     {
-        var recording = JsonSerializer.Deserialize<MotionRecording>(File.ReadAllText(path), JsonOpts)
+        using var stream = File.OpenRead(path);
+        var recording = JsonSerializer.Deserialize<MotionRecording>(stream, JsonOpts)
             ?? throw new InvalidDataException("Recording is empty.");
         if (recording.Ticks is null || recording.Subticks is null)
             throw new InvalidDataException("Recording must contain tick and subtick arrays.");

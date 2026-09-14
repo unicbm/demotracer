@@ -6,7 +6,7 @@ The public API matches the BotControllerApi/Impl shipped in CS2-Bot-Improver 1.4
 See `LICENSE.AGPL3`. The maintained provider preserves the upstream API layout;
 its experimental native weapon-drop recorder/executor is not included.
 
-The maintained provider requires the matched DemoTracer native ABI 20, minor 37,
+The maintained provider requires the matched DemoTracer native ABI 21, minor 38,
 and its public-control marker. Native and managed replay ticks are all 228 bytes;
 the 36-byte event tail is reserved and every field must be zero. Native loads
 reject nonzero event data; JSON replay commands explain this unsupported input.

@@ -71,6 +71,8 @@ public partial class BotControllerPlugin
     // Tracks grenade projectiles when the engine finishes spawning them
     private void OnProjectileEntitySpawned(CEntityInstance entity)
     {
+        if (_recordedProjectiles.Count == 0 && _replayProjectiles.Count == 0)
+            return;
         if (!ReplayProjectileMatcher.TryGetKind(entity.DesignerName, out ReplayProjectileKind kind, out int weaponDefIndex))
             return;
 
@@ -121,7 +123,8 @@ public partial class BotControllerPlugin
         }
         if (IsDemoTracerOwner(slot))
         {
-            ClearProjectileReplay(slot);
+            // Ownership observation clears the slot's replay state. Do not
+            // clear this candidate list from inside its processing loop.
             return true;
         }
         if (BotController.IsReplaying(slot)) return TryAlignProjectile(slot, projectile, candidate);
@@ -150,12 +153,7 @@ public partial class BotControllerPlugin
             return false;
         }
 
-        if (!_recordedProjectiles.TryGetValue(slot, out List<ReplayProjectileEvent>? events))
-        {
-            events = new List<ReplayProjectileEvent>();
-            _recordedProjectiles[slot] = events;
-        }
-        events.Add(new ReplayProjectileEvent
+        _recordedProjectiles[slot].Add(new ReplayProjectileEvent
         {
             TickIndex = candidate.RecordingTickIndex,
             WeaponDefIndex = candidate.WeaponDefIndex,

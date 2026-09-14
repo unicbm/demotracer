@@ -65,8 +65,6 @@ namespace BotController::targets
             {"CCSPlayerPawnBase", "m_hOriginalController", &kPawn_OriginalController},
             {"CBasePlayerPawn", "v_angle", &kPawn_ViewAngle},
             {"CBasePlayerPawn", "v_anglePrevious", &kPawn_ViewAnglePrevious},
-            {"CBasePlayerPawn", "m_ServerViewAngleChanges", &kPawn_ServerViewAngleChanges},
-            {"CCSPlayerPawn", "m_angEyeAngles", &kPawn_EyeAngles},
             {"CCSPlayerPawn", "m_ArmorValue", &kPawn_ArmorValue},
 
             {"CCSPlayer_ItemServices", "m_bHasHelmet", &kItemServices_HasHelmet},

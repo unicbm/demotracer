@@ -154,35 +154,13 @@ namespace BotController
             Off = 2,  // replay usercmd/subtick/view only; no movement snapshot correction
         };
 
-        enum class ReplayViewMode : int
-        {
-            PrePost = 0, // direct-write pre and post view, matching the current stable behavior
-            PostOnly = 1, // direct-write only final post view for this server tick
-            Cmd = 2,      // let injected usercmd/subtick view update pawn eye angles
-        };
-
-        enum class ReplayCommandViewMode : int
-        {
-            Pre = 0,     // base usercmd view = current replay tick pre
-            Post = 1,    // base usercmd view = current replay tick post
-            NextPre = 2, // base usercmd view = next tick pre, falling back to current post
-        };
-
-        enum class ReplayPovMode : int
-        {
-            Off = 0,       // never publish replay-owned first-person server-view changes
-            Spectated = 1, // publish only slots marked by the CSS observer mask
-            Always = 2,    // legacy behavior: publish every replay slot every tick
-        };
-
         enum class ReplayPerfCounter : int
         {
             ProcessMovementHook = 0,
             FinishMoveHook = 1,
             PlayerRunCommandHook = 2,
             PhysicsSimulateHook = 3,
-            SyncReplayView = 4,
-            ServerViewWrite = 5,
+            SyncReplayLocalView = 4,
             VirtualQuery = 6,
             ReplayTickRead = 7,
             SubtickRebuild = 8,
@@ -198,8 +176,7 @@ namespace BotController
             uint64_t finishMoveHooks;
             uint64_t playerRunCommandHooks;
             uint64_t physicsSimulateHooks;
-            uint64_t syncReplayViewCalls;
-            uint64_t serverViewWrites;
+            uint64_t syncReplayLocalViewCalls;
             uint64_t virtualQueryCalls;
             uint64_t replayTickReads;
             uint64_t subtickRebuilds;
@@ -246,17 +223,6 @@ namespace BotController
         void SetReplaySnapMode(ReplaySnapMode mode);
         ReplaySnapMode GetReplaySnapMode();
         const char *ReplaySnapModeName(ReplaySnapMode mode);
-        void SetReplayViewMode(ReplayViewMode mode);
-        ReplayViewMode GetReplayViewMode();
-        const char *ReplayViewModeName(ReplayViewMode mode);
-        void SetReplayCommandViewMode(ReplayCommandViewMode mode);
-        ReplayCommandViewMode GetReplayCommandViewMode();
-        const char *ReplayCommandViewModeName(ReplayCommandViewMode mode);
-        void SetReplayPovMode(ReplayPovMode mode);
-        ReplayPovMode GetReplayPovMode();
-        const char *ReplayPovModeName(ReplayPovMode mode);
-        void SetReplayPovMask(uint64_t mask);
-        bool ReplayViewAllowsEngineSetEyeAngles();
         void SetReplayPerfEnabled(bool enabled);
         bool ReplayPerfEnabled();
         void ResetReplayPerfCounters();
@@ -325,10 +291,8 @@ namespace BotController
         // Current tick being applied this server tick
         bool ReplayTickForSimulation(int slot, ReplayTick &out);
         bool ReplayCommandFrameForSimulation(int slot, ReplayCommandFrame &out);
-        // Snapshot to use as injected CBaseUserCmdPB.viewangles for this tick.
-        bool ReplayCommandViewSnapshot(int slot, MovementSnapshot &out);
         // Snapshot to return from replay-owned eye-angle getters. This uses
-        // the last post view published by FinishMove when available, so camera
+        // the last post view prepared by FinishMove when available, so camera
         // readers do not jump one tick ahead after cursor advance.
         bool ReplaySpectatorView(int slot, MovementSnapshot &out);
         // Last tick already applied; used by external status readers.
@@ -367,9 +331,9 @@ namespace BotController
         // FinishMove (pre): write post snapshot into CMoveData + force a
         // small scene-node mismatch so FinishMove resyncs from MoveData.
         void OnReplayFinishMove(int slot, void *services, void *moveData);
-        // FinishMove (post): publish final post view before replay cursor advance.
+        // FinishMove (post): prepare the getter for the engine network publication.
         void OnReplayFinalView(int slot, void *services);
-        // FinishMove (post): commit post moveType/flags, advance cursor.
+        // After command publication: commit post moveType/flags, advance cursor.
         void OnReplayCommit(int slot, void *services);
 
         void ClearAll(); // wipe all record + replay buffers (on unload)

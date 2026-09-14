@@ -1,4 +1,4 @@
-// Upstream API over the matched DemoTracer ABI 20 runtime.
+// Upstream API over the matched DemoTracer ABI 21 runtime.
 // Main-thread only.
 
 using System.Runtime.InteropServices;
@@ -8,7 +8,7 @@ namespace BotControllerApi
     // Thin static binding over the native exports. No orchestration here.
     public static class BotController
     {
-        private const int ExpectedAbiVersion = 20;
+        private const int ExpectedAbiVersion = 21;
 
         // Sentinel weapon def meaning "any knife"
         public const int KnifeDef = 9001;

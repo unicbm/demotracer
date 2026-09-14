@@ -43,10 +43,6 @@ namespace BotController
         const char *Status();
         void *BotForSlot(int slot);
 
-        // Apply replay-owned eye angles through the native engine path so
-        // derived third-person/body orientation state stays synchronized.
-        bool ApplyReplayEyeAngles(void *pawn, float pitch, float yaw);
-
         // Latest snapshot captured after CCSBot::Update for this player slot.
         bool GetNativePerceptionState(int slot, NativePerceptionState &out);
         void SetReplayNativeFovOverride(bool enabled);
