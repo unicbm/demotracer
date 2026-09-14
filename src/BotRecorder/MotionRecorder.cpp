@@ -124,68 +124,8 @@ namespace BotController
 
         static ReplayPerfState g_perf;
 
-        static constexpr uint8_t kMoveTypeWalk = 2;
-        static constexpr uint8_t kMoveTypeLadder = 9;
-        static constexpr float kLadderNormalResidueSq = 0.0001f;
-
         static bool ValidSlot(int s) { return s >= 0 && s < kMaxSlots; }
         static bool CanWriteMemory(void *ptr, size_t len);
-
-        static bool HasLadderNormalResidue(float x, float y, float z)
-        {
-            return x * x + y * y + z * z > kLadderNormalResidueSq;
-        }
-
-        static bool HasLadderResidue(const MovementSnapshot &s)
-        {
-            return s.moveType == kMoveTypeLadder ||
-                   s.actualMoveType == kMoveTypeLadder ||
-                   HasLadderNormalResidue(s.ladderNormalX, s.ladderNormalY,
-                                          s.ladderNormalZ);
-        }
-
-        static bool HasLadderResidue(const ReplayTick &t)
-        {
-            return HasLadderResidue(t.pre) || HasLadderResidue(t.post);
-        }
-
-        static bool ReplayStopPointHasLadderResidue(ReplayState &p)
-        {
-            const int total = static_cast<int>(p.ticks.size());
-            if (total <= 0)
-                return false;
-
-            const int cur = p.cursor.load(std::memory_order_relaxed);
-            if (cur >= 0 && cur < total &&
-                HasLadderResidue(p.ticks[static_cast<size_t>(cur)]))
-                return true;
-
-            const int prev = cur - 1;
-            return prev >= 0 && prev < total &&
-                   HasLadderResidue(p.ticks[static_cast<size_t>(prev)]);
-        }
-
-        static bool LiveMovementHasLadderResidue(int slot, void *services)
-        {
-            if (!services)
-                return false;
-            void *pawn = InputInjector::ResolveReplayPawn(slot, services);
-            if (!pawn)
-                return false;
-
-            uint8_t moveType = 0;
-            uint8_t actualMoveType = 0;
-            std::array<float, 3> ladderNormal{};
-            if (!SafeRead(pawn, tg::kEnt_MoveType, moveType) ||
-                !SafeRead(pawn, tg::kEnt_ActualMoveType, actualMoveType) ||
-                !SafeRead(services, tg::kServices_LadderNormal, ladderNormal))
-                return false;
-
-            return moveType == kMoveTypeLadder ||
-                   actualMoveType == kMoveTypeLadder ||
-                   HasLadderNormalResidue(ladderNormal[0], ladderNormal[1],
-                                          ladderNormal[2]);
-        }
 
         static void ClearReplayStopButtonResidue(void *services)
         {
@@ -198,7 +138,7 @@ namespace BotController
             WriteField(services, tg::kServices_DesiresDuck, uint8_t{0});
         }
 
-        static void FinalizeReplayStopState(int slot, ReplayState &p,
+        static void FinalizeReplayStopState(int slot,
                                             void *services = nullptr)
         {
             // The takeover safety hook stops replay after the pawn is already
@@ -226,53 +166,9 @@ namespace BotController
             // their down/changed edges leak into the first AI-controlled tick.
             ClearReplayStopButtonResidue(services);
 
-            auto *sv = reinterpret_cast<char *>(services);
-            auto *pp = reinterpret_cast<char *>(pawn);
-            const bool ladderResidue = ReplayStopPointHasLadderResidue(p) ||
-                                       LiveMovementHasLadderResidue(slot, services);
-            if (!ladderResidue)
-            {
-                uint32_t flags = 0;
-                if (SafeRead(pawn, tg::kEnt_Flags, flags) &&
-                    (flags & tg::kFL_OnGround) != 0)
-                {
-                    // Preserve horizontal momentum and genuine airborne motion,
-                    // but never hand off an impossible grounded vertical impulse.
-                    WriteField(pawn, tg::kEnt_AbsVelocity + 8, 0.0f);
-                }
-                return;
-            }
-
-            if (!CanWriteMemory(pp + tg::kEnt_MoveType, sizeof(uint8_t)) ||
-                !CanWriteMemory(pp + tg::kEnt_ActualMoveType, sizeof(uint8_t)) ||
-                !CanWriteMemory(pp + tg::kEnt_AbsVelocity, sizeof(float) * 3) ||
-                !CanWriteMemory(pp + tg::kEnt_Flags, sizeof(uint32_t)) ||
-                !CanWriteMemory(sv + tg::kServices_LadderNormal, sizeof(float) * 3) ||
-                !CanWriteMemory(sv + tg::kServices_Ducked, sizeof(uint8_t)) ||
-                !CanWriteMemory(sv + tg::kServices_DesiresDuck, sizeof(uint8_t) * 2) ||
-                !CanWriteMemory(sv + tg::kServices_DuckAmount, sizeof(float) * 2))
-                return;
-
-            uint32_t flags = 0;
-            if (!SafeRead(pawn, tg::kEnt_Flags, flags))
-                return;
-
-            *reinterpret_cast<uint8_t *>(pp + tg::kEnt_MoveType) = kMoveTypeWalk;
-            *reinterpret_cast<uint8_t *>(pp + tg::kEnt_ActualMoveType) = kMoveTypeWalk;
-            *reinterpret_cast<float *>(pp + tg::kEnt_AbsVelocity + 0) = 0.0f;
-            *reinterpret_cast<float *>(pp + tg::kEnt_AbsVelocity + 4) = 0.0f;
-            *reinterpret_cast<float *>(pp + tg::kEnt_AbsVelocity + 8) = 0.0f;
-            flags &= ~tg::kFL_Ducking;
-            *reinterpret_cast<uint32_t *>(pp + tg::kEnt_Flags) = flags;
-
-            *reinterpret_cast<float *>(sv + tg::kServices_LadderNormal + 0) = 0.0f;
-            *reinterpret_cast<float *>(sv + tg::kServices_LadderNormal + 4) = 0.0f;
-            *reinterpret_cast<float *>(sv + tg::kServices_LadderNormal + 8) = 0.0f;
-            *reinterpret_cast<uint8_t *>(sv + tg::kServices_Ducked) = 0;
-            *reinterpret_cast<uint8_t *>(sv + tg::kServices_Ducking) = 0;
-            *reinterpret_cast<uint8_t *>(sv + tg::kServices_DesiresDuck) = 0;
-            *reinterpret_cast<float *>(sv + tg::kServices_DuckAmount) = 0.0f;
-            *reinterpret_cast<float *>(sv + tg::kServices_DuckSpeed) = 0.0f;
+            // Velocity, crouch transitions and ladder contact are engine state.
+            // A retained ladder normal is also valid after leaving a ladder.
+            // Releasing replay input must not manufacture a stand/land transition.
         }
 
         // End the execution once. A stopped replay may retain its buffer while
@@ -283,7 +179,7 @@ namespace BotController
             if (!p.playing.exchange(false, std::memory_order_acq_rel))
                 return;
 
-            FinalizeReplayStopState(slot, p, services);
+            FinalizeReplayStopState(slot, services);
             InputInjector::ClearUsercmdMovementIntent(slot);
             ReplayPawnEquipment::Clear(slot);
             p.holdBeforeCursor.store(-1, std::memory_order_relaxed);
@@ -1547,7 +1443,7 @@ namespace BotController
 
             std::lock_guard<std::mutex> lk(p.mu);
             if (!p.playing.load(std::memory_order_acquire))
-                FinalizeReplayStopState(slot, p, services);
+                FinalizeReplayStopState(slot, services);
         }
 
         // The demo pre snapshot is the kinematic input for this command.

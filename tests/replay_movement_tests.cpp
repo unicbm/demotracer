@@ -237,6 +237,31 @@ namespace
         humanOwnsPawn = false;
     }
 
+    void StopPreservesNativeMovementState()
+    {
+        for (uint8_t moveType : {uint8_t{2}, uint8_t{9}})
+        {
+            Reset();
+            Check(mr::StartReplay(slot, false), "start stop-state test");
+            Prepare();
+            SimulatedOutput();
+            Put(pawn, tg::kEnt_MoveType, moveType);
+            Put(pawn, tg::kEnt_ActualMoveType, moveType);
+            Put(pawn, tg::kEnt_Flags, uint32_t{tg::kFL_OnGround | tg::kFL_Ducking});
+            Put(services, tg::kServices_LadderNormal, std::array<float, 3>{1, 0, 0});
+            const auto beforePawn = pawn;
+            const auto beforeNode = node;
+            auto expectedServices = services;
+            Put(expectedServices, tg::kServices_Buttons, uint64_t{0});
+            Put(expectedServices, tg::kServices_Buttons1, uint64_t{0});
+            Put(expectedServices, tg::kServices_Buttons2, uint64_t{0});
+            Put(expectedServices, tg::kServices_DesiresDuck, uint8_t{0});
+            Check(mr::StopReplay(slot), "stop-state stop failed");
+            Check(pawn == beforePawn && node == beforeNode && services == expectedServices,
+                  "stop altered native velocity, ground, duck or retained ladder state");
+        }
+    }
+
     void InitializationFailureDoesNotConsumeBoundary()
     {
         Reset();
@@ -338,6 +363,7 @@ int main()
     FinishAndHumanTakeover();
     InitializationFailureDoesNotConsumeBoundary();
     CommandAxisPresence();
+    StopPreservesNativeMovementState();
     mr::ClearAll();
     return 0;
 }
