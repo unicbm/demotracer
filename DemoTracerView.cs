@@ -143,8 +143,7 @@ public sealed partial class DemoTracerPlugin
         foreach (var slot in _session.ReplaySlots.PlayingSlots)
         {
             if (slot is < 0 or >= MaxPlayerSlots ||
-                !_session.LoadedReplays.TryGetValue(slot, out var replay) ||
-                !HasViewmodelEvidence(replay.View))
+                !_session.LoadedReplays.TryGetValue(slot, out var replay))
             {
                 ClearReplayLeftHandDesiredLatch(slot);
                 continue;
@@ -159,14 +158,15 @@ public sealed partial class DemoTracerPlugin
             }
 
             activeReplaySlotMask |= 1UL << slot;
-            ApplyReplayBotViewmodel(replayBot, replay.View.Viewmodel!);
-            ApplyReplayLeftHandDesiredLatch(slot, replay.View.Viewmodel!.LeftHanded);
+            if (HasViewmodelEvidence(replay.View))
+                ApplyReplayBotViewmodel(replayBot, replay.View.Viewmodel!);
         }
 
         for (var slot = 0; slot < MaxPlayerSlots; slot++)
         {
             if ((activeReplaySlotMask & (1UL << slot)) == 0 &&
                 IsReplayViewmodelSlotTracked(slot) &&
+                !_session.FreezePrerollSlots.Contains(slot) &&
                 !_retainedReplayViewmodelSlots.Contains(slot))
             {
                 RestoreReplayBotViewmodel(slot);
@@ -190,8 +190,7 @@ public sealed partial class DemoTracerPlugin
 
     private bool RetainReplayBotViewmodelForRound(int slot)
     {
-        if (_viewmodelContinuityMode != ViewmodelContinuityMode.Round ||
-            !IsReplayViewmodelSlotTracked(slot))
+        if (!IsReplayViewmodelSlotTracked(slot))
         {
             return false;
         }
@@ -202,6 +201,14 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
+        // FOV/offset retention is optional; hand desire must stay continuous
+        // when native AI takes over, or CS2 redeploys the active weapon.
+        if (_viewmodelContinuityMode != ViewmodelContinuityMode.Round)
+        {
+            RestoreReplayBotViewmodel(slot, clearLeftHandDesiredLatch: false);
+            if (!_replayLeftHandDesiredLatches.ContainsKey(slot))
+                return false;
+        }
         _retainedReplayViewmodelSlots.Add(slot);
         return true;
     }
@@ -213,7 +220,9 @@ public sealed partial class DemoTracerPlugin
 
         for (var slot = 0; slot < MaxPlayerSlots; slot++)
         {
-            if (IsReplayViewmodelSlotTracked(slot) && !_retainedReplayViewmodelSlots.Contains(slot))
+            if (IsReplayViewmodelSlotTracked(slot) &&
+                !_session.FreezePrerollSlots.Contains(slot) &&
+                !_retainedReplayViewmodelSlots.Contains(slot))
                 RestoreReplayBotViewmodel(slot);
         }
     }
@@ -221,7 +230,11 @@ public sealed partial class DemoTracerPlugin
     private void RestoreRetainedReplayBotViewmodels()
     {
         foreach (var slot in _retainedReplayViewmodelSlots.ToArray())
-            RestoreReplayBotViewmodel(slot);
+        {
+            RestoreReplayBotViewmodel(slot, clearLeftHandDesiredLatch: false);
+            if (_replayLeftHandDesiredLatches.ContainsKey(slot))
+                _retainedReplayViewmodelSlots.Add(slot);
+        }
     }
 
     private void ApplyReplayBotViewmodel(CCSPlayerController bot, ReplayViewmodel viewmodel)
@@ -357,11 +370,8 @@ public sealed partial class DemoTracerPlugin
     {
         try
         {
-            if (viewmodel.LeftHanded.HasValue)
-            {
-                pawn.LeftHanded = viewmodel.LeftHanded.Value;
-                TrySetPawnStateChanged(pawn, "m_bLeftHanded");
-            }
+            // Handedness is an input desire, not an output field to overwrite.
+            // The native command hook owns it and CS2 performs real switches.
             if (viewmodel.Fov.HasValue)
             {
                 pawn.ViewmodelFOV = viewmodel.Fov.Value;
