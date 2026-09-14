@@ -5852,6 +5852,7 @@ mod tests {
             demo_patch_version: None,
             demo_version_name: None,
             server_name: None,
+            server_info_host_name: None,
             playback_time_seconds: None,
             tick_rate: 64.0,
             round_freeze_end_ticks: Vec::new(),

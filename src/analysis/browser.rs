@@ -78,7 +78,8 @@ pub struct BrowserRoundOutcome {
 #[serde(rename_all = "camelCase")]
 pub struct BrowserDemoSource {
     pub name: String,
-    /// `serverName` is header-backed; `fileName` is only a filename inference.
+    /// `serverInfo` comes from svc_ServerInfo; `serverName` from the file header;
+    /// `fileName` is only a filename inference.
     pub evidence: String,
 }
 
@@ -147,7 +148,15 @@ pub fn analyze_browser_demo(parsed: &ParsedDemo, options: AnalysisOptions) -> Br
         demo_patch_version: parsed.demo_patch_version,
         demo_version_name: parsed.demo_version_name.clone(),
         server_name: parsed.server_name.clone(),
-        demo_source: infer_demo_source(&parsed.stem, parsed.server_name.as_deref()),
+        demo_source: parsed
+            .server_info_host_name
+            .as_deref()
+            .and_then(|host| infer_demo_source("", Some(host)))
+            .map(|mut source| {
+                source.evidence = "serverInfo".to_string();
+                source
+            })
+            .or_else(|| infer_demo_source(&parsed.stem, parsed.server_name.as_deref())),
         analysis,
         players: summarize_players_in_window(
             parsed,
@@ -960,6 +969,7 @@ fn infer_demo_source(stem: &str, server_name: Option<&str>) -> Option<BrowserDem
         ("5eplay", "5E"),
         ("5e play", "5E"),
         ("5ewin", "5E"),
+        ("5egotv", "5E"),
         ("完美世界", "Perfect World"),
         ("wanmei", "Perfect World"),
         ("pracc.com", "PRACC"),
@@ -984,7 +994,14 @@ fn infer_demo_source(stem: &str, server_name: Option<&str>) -> Option<BrowserDem
         ("get5", "Get5"),
     ]
     .into_iter()
-    .find_map(|(needle, label)| server_name.contains(needle).then_some(label));
+    .find_map(|(needle, label)| {
+        let matches = if needle == "5egotv" {
+            server_name.trim() == needle
+        } else {
+            server_name.contains(needle)
+        };
+        matches.then_some(label)
+    });
     if let Some(name) = server_source {
         return Some(BrowserDemoSource {
             name: name.to_string(),
@@ -1800,6 +1817,51 @@ mod tests {
     }
 
     #[test]
+    fn platform_uses_server_info_before_header_and_filename() {
+        let mut parsed = scored_demo(1, 0, true);
+        parsed.stem = "faceit-match".to_string();
+        parsed.server_name = Some("Counter-Strike 2".to_string());
+        parsed.server_info_host_name = Some("5EGOTV".to_string());
+        let analysis = analyze_browser_demo(&parsed, AnalysisOptions::default());
+        let source = analysis.demo_source.unwrap();
+        assert_eq!(source.name, "5E");
+        assert_eq!(source.evidence, "serverInfo");
+        assert_eq!(analysis.server_name.as_deref(), Some("Counter-Strike 2"));
+
+        parsed.server_name = Some("FACEIT Server".to_string());
+        let source = analyze_browser_demo(&parsed, AnalysisOptions::default())
+            .demo_source
+            .unwrap();
+        assert_eq!(
+            (source.name.as_str(), source.evidence.as_str()),
+            ("5E", "serverInfo")
+        );
+
+        parsed.server_info_host_name = Some("Counter-Strike 2".to_string());
+        let source = analyze_browser_demo(&parsed, AnalysisOptions::default())
+            .demo_source
+            .unwrap();
+        assert_eq!(
+            (source.name.as_str(), source.evidence.as_str()),
+            ("FACEIT", "serverName")
+        );
+
+        parsed.server_name = None;
+        let source = analyze_browser_demo(&parsed, AnalysisOptions::default())
+            .demo_source
+            .unwrap();
+        assert_eq!(
+            (source.name.as_str(), source.evidence.as_str()),
+            ("FACEIT", "fileName")
+        );
+
+        parsed.stem = "match".to_string();
+        assert!(analyze_browser_demo(&parsed, AnalysisOptions::default())
+            .demo_source
+            .is_none());
+    }
+
+    #[test]
     fn infers_common_community_platforms_without_guessing_from_unrelated_text() {
         let cases = [
             ("FACEIT.com register to play here", "FACEIT"),
@@ -1817,5 +1879,10 @@ mod tests {
             );
         }
         assert!(infer_demo_source("my5example", Some("Counter-Strike 2")).is_none());
+        assert!(infer_demo_source("match", Some("my5egotvbackup")).is_none());
+        assert_eq!(
+            infer_demo_source("match", Some(" 5egotv ")).unwrap().name,
+            "5E"
+        );
     }
 }
