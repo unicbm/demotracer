@@ -1,0 +1,679 @@
+{
+  "schema_version": 1,
+  "section_id": 9,
+  "change_bytes": 16,
+  "fields": [
+    {
+      "id": 0,
+      "name": "ServerTick",
+      "prop": "server_tick",
+      "kind": "U32",
+      "target": "Clock",
+      "field": "server_tick",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 1,
+      "name": "PlayerTick",
+      "prop": "CCSPlayerController.m_nTickBase",
+      "kind": "U32",
+      "target": "Clock",
+      "field": "m_nTickBase",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 2,
+      "name": "DuckRoot",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flDuckRootOffset",
+      "kind": "F32",
+      "target": "Movement",
+      "field": "m_flDuckRootOffset",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 3,
+      "name": "DuckView",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flDuckViewOffset",
+      "kind": "F32",
+      "target": "Movement",
+      "field": "m_flDuckViewOffset",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 4,
+      "name": "LastDuckTime",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flLastDuckTime",
+      "kind": "F32",
+      "target": "Movement",
+      "field": "m_flLastDuckTime",
+      "clock": "Seconds",
+      "component": null
+    },
+    {
+      "id": 5,
+      "name": "DuckOverride",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_bDuckOverride",
+      "kind": "Bool",
+      "target": "Movement",
+      "field": "m_bDuckOverride",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 6,
+      "name": "Stamina",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flStamina",
+      "kind": "F32",
+      "target": "Movement",
+      "field": "m_flStamina",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 7,
+      "name": "DuckAmount",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flDuckAmount",
+      "kind": "F32",
+      "target": "Movement",
+      "field": "m_flDuckAmount",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 8,
+      "name": "DuckSpeed",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flDuckSpeed",
+      "kind": "F32",
+      "target": "Movement",
+      "field": "m_flDuckSpeed",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 9,
+      "name": "Ducked",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_bDucked",
+      "kind": "Bool",
+      "target": "Movement",
+      "field": "m_bDucked",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 10,
+      "name": "Ducking",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_bDucking",
+      "kind": "Bool",
+      "target": "Movement",
+      "field": "m_bDucking",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 11,
+      "name": "DesiresDuck",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_bDesiresDuck",
+      "kind": "Bool",
+      "target": "Movement",
+      "field": "m_bDesiresDuck",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 12,
+      "name": "LastJumpTick",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_nLastJumpTick",
+      "kind": "I32",
+      "target": "Movement",
+      "field": "m_nLastJumpTick",
+      "clock": "Tick",
+      "component": null
+    },
+    {
+      "id": 13,
+      "name": "LastJumpFrac",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flLastJumpFrac",
+      "kind": "F32",
+      "target": "Movement",
+      "field": "m_flLastJumpFrac",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 14,
+      "name": "LastJumpVelocityZ",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flLastJumpVelocityZ",
+      "kind": "F32",
+      "target": "Movement",
+      "field": "m_flLastJumpVelocityZ",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 15,
+      "name": "GroundTopology",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_bUsingGroundTopologyOffset",
+      "kind": "Bool",
+      "target": "Movement",
+      "field": "m_bUsingGroundTopologyOffset",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 16,
+      "name": "GroundTopologySmoothing",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flUsingGroundTopologyOffsetTransitionSmoothing",
+      "kind": "F32",
+      "target": "Movement",
+      "field": "m_flUsingGroundTopologyOffsetTransitionSmoothing",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 17,
+      "name": "FrictionStashedSpeed",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flFrictionStashedSpeed",
+      "kind": "F32",
+      "target": "Movement",
+      "field": "m_flFrictionStashedSpeed",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 18,
+      "name": "UseFrictionStashedSpeed",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_bUseFrictionStashedSpeed",
+      "kind": "Bool",
+      "target": "Movement",
+      "field": "m_bUseFrictionStashedSpeed",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 19,
+      "name": "FrictionStashedUntilFrac",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flUseFrictionStashedSpeedUntilFrac",
+      "kind": "F32",
+      "target": "Movement",
+      "field": "m_flUseFrictionStashedSpeedUntilFrac",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 20,
+      "name": "LadderSurface",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_nLadderSurfacePropIndex",
+      "kind": "I32",
+      "target": "Movement",
+      "field": "m_nLadderSurfacePropIndex",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 21,
+      "name": "FallVelocity",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flFallVelocity",
+      "kind": "F32",
+      "target": "Movement",
+      "field": "m_flFallVelocity",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 22,
+      "name": "LastActualJumpPressTick",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_nLastActualJumpPressTick",
+      "kind": "I32",
+      "target": "ModernJump",
+      "field": "m_nLastActualJumpPressTick",
+      "clock": "Tick",
+      "component": null
+    },
+    {
+      "id": 23,
+      "name": "LastActualJumpPressFrac",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flLastActualJumpPressFrac",
+      "kind": "F32",
+      "target": "ModernJump",
+      "field": "m_flLastActualJumpPressFrac",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 24,
+      "name": "LastUsableJumpPressTick",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_nLastUsableJumpPressTick",
+      "kind": "I32",
+      "target": "ModernJump",
+      "field": "m_nLastUsableJumpPressTick",
+      "clock": "Tick",
+      "component": null
+    },
+    {
+      "id": 25,
+      "name": "LastUsableJumpPressFrac",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flLastUsableJumpPressFrac",
+      "kind": "F32",
+      "target": "ModernJump",
+      "field": "m_flLastUsableJumpPressFrac",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 26,
+      "name": "LastLandedTick",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_nLastLandedTick",
+      "kind": "I32",
+      "target": "ModernJump",
+      "field": "m_nLastLandedTick",
+      "clock": "Tick",
+      "component": null
+    },
+    {
+      "id": 27,
+      "name": "LastLandedFrac",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flLastLandedFrac",
+      "kind": "F32",
+      "target": "ModernJump",
+      "field": "m_flLastLandedFrac",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 28,
+      "name": "LastLandedVelocityX",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flLastLandedVelocityX",
+      "kind": "F32",
+      "target": "ModernJump",
+      "field": "m_flLastLandedVelocityX",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 29,
+      "name": "LastLandedVelocityY",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flLastLandedVelocityY",
+      "kind": "F32",
+      "target": "ModernJump",
+      "field": "m_flLastLandedVelocityY",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 30,
+      "name": "LastLandedVelocityZ",
+      "prop": "CCSPlayerPawn.CCSPlayer_MovementServices.m_flLastLandedVelocityZ",
+      "kind": "F32",
+      "target": "ModernJump",
+      "field": "m_flLastLandedVelocityZ",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 31,
+      "name": "VelocityModifier",
+      "prop": "CCSPlayerPawn.m_flVelocityModifier",
+      "kind": "F32",
+      "target": "Pawn",
+      "field": "m_flVelocityModifier",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 32,
+      "name": "Friction",
+      "prop": "CCSPlayerPawn.m_flFriction",
+      "kind": "F32",
+      "target": "Pawn",
+      "field": "m_flFriction",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 33,
+      "name": "GravityScale",
+      "prop": "CCSPlayerPawn.m_flGravityScale",
+      "kind": "F32",
+      "target": "Pawn",
+      "field": "m_flGravityScale",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 34,
+      "name": "GravityDisabled",
+      "prop": "CCSPlayerPawn.m_bGravityDisabled",
+      "kind": "Bool",
+      "target": "Pawn",
+      "field": "m_bGravityDisabled",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 35,
+      "name": "ShotsFired",
+      "prop": "CCSPlayerPawn.m_iShotsFired",
+      "kind": "I32",
+      "target": "Pawn",
+      "field": "m_iShotsFired",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 36,
+      "name": "Scoped",
+      "prop": "CCSPlayerPawn.m_bIsScoped",
+      "kind": "Bool",
+      "target": "Pawn",
+      "field": "m_bIsScoped",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 37,
+      "name": "BaseVelocityX",
+      "prop": "CCSPlayerPawn.m_vecBaseVelocity",
+      "kind": "F32",
+      "target": "Pawn",
+      "field": "m_vecBaseVelocity",
+      "clock": "None",
+      "component": 0
+    },
+    {
+      "id": 38,
+      "name": "BaseVelocityY",
+      "prop": "CCSPlayerPawn.m_vecBaseVelocity",
+      "kind": "F32",
+      "target": "Pawn",
+      "field": "m_vecBaseVelocity",
+      "clock": "None",
+      "component": 1
+    },
+    {
+      "id": 39,
+      "name": "BaseVelocityZ",
+      "prop": "CCSPlayerPawn.m_vecBaseVelocity",
+      "kind": "F32",
+      "target": "Pawn",
+      "field": "m_vecBaseVelocity",
+      "clock": "None",
+      "component": 2
+    },
+    {
+      "id": 40,
+      "name": "PredictableAngleX",
+      "prop": "CCSPlayerPawn.CCSPlayer_AimPunchServices.m_predictableBaseAngle",
+      "kind": "F32",
+      "target": "Aim",
+      "field": "m_predictableBaseAngle",
+      "clock": "None",
+      "component": 0
+    },
+    {
+      "id": 41,
+      "name": "PredictableAngleY",
+      "prop": "CCSPlayerPawn.CCSPlayer_AimPunchServices.m_predictableBaseAngle",
+      "kind": "F32",
+      "target": "Aim",
+      "field": "m_predictableBaseAngle",
+      "clock": "None",
+      "component": 1
+    },
+    {
+      "id": 42,
+      "name": "PredictableAngleZ",
+      "prop": "CCSPlayerPawn.CCSPlayer_AimPunchServices.m_predictableBaseAngle",
+      "kind": "F32",
+      "target": "Aim",
+      "field": "m_predictableBaseAngle",
+      "clock": "None",
+      "component": 2
+    },
+    {
+      "id": 43,
+      "name": "PredictableAngleVelX",
+      "prop": "CCSPlayerPawn.CCSPlayer_AimPunchServices.m_predictableBaseAngleVel",
+      "kind": "F32",
+      "target": "Aim",
+      "field": "m_predictableBaseAngleVel",
+      "clock": "None",
+      "component": 0
+    },
+    {
+      "id": 44,
+      "name": "PredictableAngleVelY",
+      "prop": "CCSPlayerPawn.CCSPlayer_AimPunchServices.m_predictableBaseAngleVel",
+      "kind": "F32",
+      "target": "Aim",
+      "field": "m_predictableBaseAngleVel",
+      "clock": "None",
+      "component": 1
+    },
+    {
+      "id": 45,
+      "name": "PredictableAngleVelZ",
+      "prop": "CCSPlayerPawn.CCSPlayer_AimPunchServices.m_predictableBaseAngleVel",
+      "kind": "F32",
+      "target": "Aim",
+      "field": "m_predictableBaseAngleVel",
+      "clock": "None",
+      "component": 2
+    },
+    {
+      "id": 46,
+      "name": "UnpredictableAngleX",
+      "prop": "CCSPlayerPawn.CCSPlayer_AimPunchServices.m_unpredictableBaseAngle",
+      "kind": "F32",
+      "target": "Aim",
+      "field": "m_unpredictableBaseAngle",
+      "clock": "None",
+      "component": 0
+    },
+    {
+      "id": 47,
+      "name": "UnpredictableAngleY",
+      "prop": "CCSPlayerPawn.CCSPlayer_AimPunchServices.m_unpredictableBaseAngle",
+      "kind": "F32",
+      "target": "Aim",
+      "field": "m_unpredictableBaseAngle",
+      "clock": "None",
+      "component": 1
+    },
+    {
+      "id": 48,
+      "name": "UnpredictableAngleZ",
+      "prop": "CCSPlayerPawn.CCSPlayer_AimPunchServices.m_unpredictableBaseAngle",
+      "kind": "F32",
+      "target": "Aim",
+      "field": "m_unpredictableBaseAngle",
+      "clock": "None",
+      "component": 2
+    },
+    {
+      "id": 49,
+      "name": "PredictableTick",
+      "prop": "CCSPlayerPawn.CCSPlayer_AimPunchServices.m_predictableBaseTick",
+      "kind": "I32",
+      "target": "Aim",
+      "field": "m_predictableBaseTick",
+      "clock": "Tick",
+      "component": null
+    },
+    {
+      "id": 50,
+      "name": "PredictableTickFrac",
+      "prop": "CCSPlayerPawn.CCSPlayer_AimPunchServices.m_predictableBaseTickInterpAmount",
+      "kind": "F32",
+      "target": "Aim",
+      "field": "m_predictableBaseTickInterpAmount",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 51,
+      "name": "UnpredictableTick",
+      "prop": "CCSPlayerPawn.CCSPlayer_AimPunchServices.m_unpredictableBaseTick",
+      "kind": "I32",
+      "target": "Aim",
+      "field": "m_unpredictableBaseTick",
+      "clock": "Tick",
+      "component": null
+    },
+    {
+      "id": 52,
+      "name": "Clip1",
+      "prop": "Weapon.m_iClip1",
+      "kind": "I32",
+      "target": "Weapon",
+      "field": "m_iClip1",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 53,
+      "name": "Clip2",
+      "prop": "Weapon.m_iClip2",
+      "kind": "I32",
+      "target": "Weapon",
+      "field": "m_iClip2",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 54,
+      "name": "InReload",
+      "prop": "Weapon.m_bInReload",
+      "kind": "Bool",
+      "target": "Weapon",
+      "field": "m_bInReload",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 55,
+      "name": "NextPrimaryTick",
+      "prop": "Weapon.m_nNextPrimaryAttackTick",
+      "kind": "I32",
+      "target": "Weapon",
+      "field": "m_nNextPrimaryAttackTick",
+      "clock": "Tick",
+      "component": null
+    },
+    {
+      "id": 56,
+      "name": "NextPrimaryFrac",
+      "prop": "Weapon.m_flNextPrimaryAttackTickRatio",
+      "kind": "F32",
+      "target": "Weapon",
+      "field": "m_flNextPrimaryAttackTickRatio",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 57,
+      "name": "NextSecondaryTick",
+      "prop": "Weapon.m_nNextSecondaryAttackTick",
+      "kind": "I32",
+      "target": "Weapon",
+      "field": "m_nNextSecondaryAttackTick",
+      "clock": "Tick",
+      "component": null
+    },
+    {
+      "id": 58,
+      "name": "NextSecondaryFrac",
+      "prop": "Weapon.m_flNextSecondaryAttackTickRatio",
+      "kind": "F32",
+      "target": "Weapon",
+      "field": "m_flNextSecondaryAttackTickRatio",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 59,
+      "name": "RecoilIndex",
+      "prop": "Weapon.m_flRecoilIndex",
+      "kind": "F32",
+      "target": "Weapon",
+      "field": "m_flRecoilIndex",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 60,
+      "name": "AccuracyPenalty",
+      "prop": "Weapon.m_fAccuracyPenalty",
+      "kind": "F32",
+      "target": "Weapon",
+      "field": "m_fAccuracyPenalty",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 61,
+      "name": "LastShotTime",
+      "prop": "Weapon.m_fLastShotTime",
+      "kind": "F32",
+      "target": "Weapon",
+      "field": "m_fLastShotTime",
+      "clock": "Seconds",
+      "component": null
+    },
+    {
+      "id": 62,
+      "name": "BurstShotsRemaining",
+      "prop": "Weapon.m_iBurstShotsRemaining",
+      "kind": "I32",
+      "target": "Weapon",
+      "field": "m_iBurstShotsRemaining",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 63,
+      "name": "NextAttack",
+      "prop": "CCSPlayerPawn.CCSPlayer_WeaponServices.m_flNextAttack",
+      "kind": "F32",
+      "target": "WeaponServices",
+      "field": "m_flNextAttack",
+      "clock": "Seconds",
+      "component": null
+    },
+    {
+      "id": 64,
+      "name": "ActiveWeaponHandle",
+      "prop": "CCSPlayerPawn.CCSPlayer_WeaponServices.m_hActiveWeapon",
+      "kind": "U32",
+      "target": "Identity",
+      "field": "m_hActiveWeapon",
+      "clock": "None",
+      "component": null
+    },
+    {
+      "id": 65,
+      "name": "ReserveAmmoPrimary",
+      "prop": "Weapon.m_pReserveAmmo",
+      "kind": "I32",
+      "target": "Weapon",
+      "field": "m_pReserveAmmo",
+      "clock": "None",
+      "component": null,
+      "native_element": 0
+    },
+    {
+      "id": 66,
+      "name": "ReserveAmmoSecondary",
+      "prop": "weapon_reserve_ammo_secondary",
+      "kind": "I32",
+      "target": "Weapon",
+      "field": "m_pReserveAmmo",
+      "clock": "None",
+      "component": null,
+      "native_element": 1
+    }
+  ]
+}

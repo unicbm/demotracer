@@ -1,6 +1,8 @@
 // Motion recording & replay implementation
 
 #include "MotionRecorder.h"
+#include "platform.h"
+#include "../BotController/BotController.h"
 #include "ButtonState.h"
 #include "InputInjector.h"
 #include "ReplayPawnEquipment.h"
@@ -50,6 +52,13 @@ namespace BotController
             std::vector<SubtickMove> subs;
             std::vector<ReplayCommandFrameData> commands;
             std::vector<ReplayMovementExtra> movementExtras;
+            ReplaySourceState::Timeline sourceState;
+            bool hasSourceState = false;
+            float sourceTickRate = 0;
+            float liveTickInterval = 0;
+            // Remember complete entity handles, including serial numbers. Switching
+            // back to an existing weapon must not reset its native cooldown/reload.
+            std::vector<std::pair<uint32_t, uint32_t>> restoredWeapons;
             std::vector<ReplayInputHistoryTick> inputHistoryTicks;
             std::vector<ReplayInputHistoryEntry> inputHistoryEntries;
             std::vector<size_t> inputHistoryOffset;
@@ -86,6 +95,10 @@ namespace BotController
         // Caller must hold p.mu and must have published playing=false first.
         static void ReleaseReplayVectors(ReplayState &p)
         {
+            p.sourceState = {};
+            p.hasSourceState = false;
+            p.sourceTickRate = 0;
+            p.restoredWeapons.clear();
             std::vector<ReplayTick>().swap(p.ticks);
             std::vector<SubtickMove>().swap(p.subs);
             std::vector<ReplayCommandFrameData>().swap(p.commands);
@@ -180,6 +193,7 @@ namespace BotController
                 return;
 
             FinalizeReplayStopState(slot, services);
+            BotControllerHooks::ReleaseReplayNavigation(slot);
             InputInjector::ClearUsercmdMovementIntent(slot);
             ReplayPawnEquipment::Clear(slot);
             p.holdBeforeCursor.store(-1, std::memory_order_relaxed);
@@ -816,6 +830,10 @@ namespace BotController
                 if (p.playing.load(std::memory_order_acquire))
                     return false; // don't swap frames mid-playback
 
+                p.sourceState = {};
+                p.hasSourceState = false;
+                p.sourceTickRate = 0;
+                p.restoredWeapons.clear();
                 p.ticks.swap(staged.ticks);
                 p.subs.swap(staged.subs);
                 p.commands.swap(staged.commands);
@@ -842,9 +860,39 @@ namespace BotController
             }
         }
 
+        bool LoadReplaySourceState(int slot, const ReplaySourceState::Change *changes, int count, float tickRate, float liveTickInterval)
+        {
+            if (!ValidSlot(slot) || !std::isfinite(tickRate) || tickRate < 16 || tickRate > 256 ||
+                !std::isfinite(liveTickInterval) || liveTickInterval <= 0 || std::fabs(tickRate * liveTickInterval - 1.0f) > 0.0001f) return false;
+            auto &p = g_rep[slot];
+            std::lock_guard<std::mutex> lock(p.mu);
+            if (p.playing.load(std::memory_order_acquire)) return false;
+            ReplaySourceState::Timeline staged;
+            if (!staged.Load(changes, count, static_cast<int>(p.ticks.size()))) return false;
+            p.sourceState = std::move(staged);
+            p.sourceTickRate = tickRate;
+            p.liveTickInterval = liveTickInterval;
+            p.hasSourceState = true;
+            p.restoredWeapons.clear();
+            return true;
+        }
+
         bool StartReplay(int slot, bool loop)
         {
             return StartReplayAt(slot, loop, 0);
+        }
+
+        static bool CanInitializeMovement(const MovementSnapshot &s)
+        {
+            if (s.moveType != 9) return true;
+            const float lengthSquared = s.ladderNormalX * s.ladderNormalX +
+                s.ladderNormalY * s.ladderNormalY + s.ladderNormalZ * s.ladderNormalZ;
+            // A surface index cannot identify the contact plane. Native
+            // LadderMove requires that plane when already in MOVETYPE_LADDER.
+            // Reject an unsupported discontinuity before mutating the pawn.
+            if (std::isfinite(lengthSquared) && std::fabs(lengthSquared - 1.0f) < 0.01f) return true;
+            DebugOut("[BotController] cannot start on ladder: replay has no contact normal; start before mounting the ladder\n");
+            return false;
         }
 
         bool StartReplayAt(int slot, bool loop, int startIndex)
@@ -861,10 +909,11 @@ namespace BotController
             // Equipment initialization is best-effort here. A newly spawned
             // Pawn may not expose ItemServices until its first movement hook;
             // refusing to start would prevent that final one-shot pass.
-            ReplayPawnEquipment::PrepareForReplayStart(slot);
             const bool resumesHeldReplay =
                 p.playing.load(std::memory_order_acquire) &&
                 p.holdBeforeCursor.load(std::memory_order_relaxed) == startIndex;
+            if (!resumesHeldReplay && !CanInitializeMovement(p.ticks[startIndex].pre)) return false;
+            ReplayPawnEquipment::PrepareForReplayStart(slot);
             p.cursor.store(startIndex, std::memory_order_relaxed);
             // Freeze pre-roll is one continuous replay. Keep its original
             // start cursor when releasing the hold so start-only input
@@ -873,6 +922,7 @@ namespace BotController
             {
                 p.startCursor.store(startIndex, std::memory_order_relaxed);
                 p.initializeMovement = true;
+                p.restoredWeapons.clear();
             }
             p.holdBeforeCursor.store(-1, std::memory_order_relaxed);
             InvalidateReplayWeaponCache(p);
@@ -895,11 +945,13 @@ namespace BotController
             {
                 return false;
             }
+            if (!CanInitializeMovement(p.ticks[startIndex].pre)) return false;
             ReplayPawnEquipment::PrepareForReplayStart(slot);
             p.cursor.store(startIndex, std::memory_order_relaxed);
             p.startCursor.store(startIndex, std::memory_order_relaxed);
             p.holdBeforeCursor.store(holdBeforeIndex, std::memory_order_relaxed);
             p.initializeMovement = true;
+            p.restoredWeapons.clear();
             InvalidateReplayWeaponCache(p);
             g_lastFinalViewCursor[slot] = -1;
             p.loop.store(loop, std::memory_order_relaxed);
@@ -1411,20 +1463,60 @@ namespace BotController
             auto *pp = reinterpret_cast<char *>(pawn);
             if (p.initializeMovement)
             {
+                if (!CanInitializeMovement(t.pre)) return false;
                 const float origin[] = {t.pre.originX, t.pre.originY, t.pre.originZ};
                 const float velocity[] = {t.pre.velX, t.pre.velY, t.pre.velZ};
                 if (!InputInjector::InitializeReplayPose(pawn, origin, velocity))
                     return false;
                 // Boundary state only. Duck/ladder/ground processing owns all
                 // subsequent transitions, including the state kept at handoff.
-                WriteMovementServiceState(services, t.pre);
-                *reinterpret_cast<uint8_t *>(pp + tg::kEnt_MoveType) = t.pre.moveType;
-                *reinterpret_cast<uint8_t *>(pp + tg::kEnt_ActualMoveType) = t.pre.actualMoveType;
+                if (!InputInjector::InitializeReplayMoveType(pawn, t.pre.moveType)) return false;
+                if (p.hasSourceState)
+                {
+                    ReplaySourceState::LiveClock clock{};
+                    if (!InputInjector::ReadReplayClock(slot, p.liveTickInterval, clock) ||
+                        !ReplaySourceState::Apply(pawn, services, nullptr, nullptr,
+                            p.sourceState.At(p.cursor.load(std::memory_order_relaxed)), p.sourceTickRate, clock, false)) return false;
+                }
+                else WriteMovementServiceState(services, t.pre);
+                if (t.pre.moveType == 9)
+                {
+                    const float normal[] = {t.pre.ladderNormalX, t.pre.ladderNormalY, t.pre.ladderNormalZ};
+                    if (!TryWriteMemory(services, tg::kServices_LadderNormal, normal, sizeof(normal))) return false;
+                }
                 const uint32_t mask = tg::kFL_OnGround | tg::kFL_Ducking;
                 auto *flags = reinterpret_cast<uint32_t *>(pp + tg::kEnt_Flags);
                 *flags = (*flags & ~mask) | (t.pre.entityFlags & mask);
                 p.initializeMovement = false;
                 AddReplayPerf(ReplayPerfCounter::ReplayMovementInitialization);
+            }
+
+            if (p.hasSourceState)
+            {
+                const auto cursor = p.cursor.load(std::memory_order_relaxed);
+                const auto sourceHandle = p.sourceState.Get(ReplaySourceState::ActiveWeaponHandle, cursor);
+                void *weapon = p.cachedWeapon.load(std::memory_order_relaxed);
+                void *ws = p.cachedWeaponServices.load(std::memory_order_relaxed);
+                void *identity = nullptr;
+                uint32_t liveHandle = 0;
+                if (sourceHandle && *sourceHandle != 0 && *sourceHandle != UINT32_MAX && weapon && ws &&
+                    SafeRead(weapon, tg::kEnt_Identity, identity) && identity &&
+                    SafeRead(identity, tg::kEntIdentity_EHandle, liveHandle) && liveHandle && liveHandle != UINT32_MAX)
+                {
+                    const auto key = std::make_pair(*sourceHandle, liveHandle);
+                    if (std::find(p.restoredWeapons.begin(), p.restoredWeapons.end(), key) == p.restoredWeapons.end())
+                    {
+                        // Deploy establishes native weapon ownership first;
+                        // then restore source deadlines so Deploy cannot replace
+                        // them with a fresh draw delay at a playback boundary.
+                        if (WeaponLockerHooks::ActiveWeaponEntIndex(ws) != WeaponLockerHooks::WeaponEntIndex(weapon) &&
+                            !WeaponLockerHooks::SelectWeaponRaw(ws, weapon)) return false;
+                        ReplaySourceState::LiveClock clock{};
+                        if (!InputInjector::ReadReplayClock(slot, p.liveTickInterval, clock) ||
+                            !ReplaySourceState::Apply(pawn, services, ws, weapon, p.sourceState.At(cursor), p.sourceTickRate, clock, true)) return false;
+                        p.restoredWeapons.push_back(key);
+                    }
+                }
             }
 
             WriteLocalViewAnglesToPawn(pp, commandView.pitch, commandView.yaw);
@@ -1523,6 +1615,7 @@ namespace BotController
                 p.cursor.store(p.startCursor.load(std::memory_order_relaxed),
                                std::memory_order_relaxed);
                 p.initializeMovement = true;
+                p.restoredWeapons.clear();
                 InvalidateReplayWeaponCache(p);
                 g_lastFinalViewCursor[slot] = -1;
                 return;

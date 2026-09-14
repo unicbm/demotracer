@@ -111,7 +111,8 @@ internal static partial class DtrReplayReader
             or SectionSubticks
             or SectionCommandFrames
             or SectionMovementExtras
-            or SectionInputHistory;
+            or SectionInputHistory
+            or SectionSourceState;
 
     private static void RequireInputHistorySectionShape(DtrSectionHeader header, int tickCount)
     {

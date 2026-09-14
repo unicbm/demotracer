@@ -4,6 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+use crate::model::source_state::SourceStateChange;
 use crate::model::{
     Cs2Rec, Cs2RecHeader, HighFidelityMetadata, MovementSnapshot, ProjectileKind,
     ReplayCommandFrame, ReplayInputHistoryEntry, ReplayInputHistoryTick, ReplayMovementExtra,
@@ -41,6 +42,7 @@ const SECTION_SUBTICKS: u32 = 5;
 const SECTION_COMMAND_FRAMES: u32 = 6;
 const SECTION_MOVEMENT_EXTRAS: u32 = 7;
 const SECTION_INPUT_HISTORY: u32 = 8;
+const SECTION_SOURCE_STATE: u32 = 9;
 const SECTION_VERSION_V1: u32 = 1;
 const SECTION_VERSION_V2: u32 = 2;
 
@@ -291,6 +293,7 @@ fn read_rec_bounded<R: Read>(reader: &mut ReadBudget<R>, limits: DtrReadLimits) 
             movement_extras,
             input_history_ticks,
             input_history_entries,
+            source_state_changes,
         ) = read_sectioned_body(
             reader,
             version,
@@ -321,6 +324,7 @@ fn read_rec_bounded<R: Read>(reader: &mut ReadBudget<R>, limits: DtrReadLimits) 
             movement_extras,
             input_history_ticks,
             input_history_entries,
+            source_state_changes,
         };
         return finish_read_rec(reader, rec);
     }
@@ -397,6 +401,7 @@ fn read_rec_bounded<R: Read>(reader: &mut ReadBudget<R>, limits: DtrReadLimits) 
         movement_extras: Vec::new(),
         input_history_ticks: Vec::new(),
         input_history_entries: Vec::new(),
+        source_state_changes: Vec::new(),
     };
     finish_read_rec(reader, rec)
 }
@@ -408,6 +413,7 @@ fn finish_read_rec<R: Read>(reader: &mut ReadBudget<R>, rec: Cs2Rec) -> Result<C
 }
 
 fn validate_rec_semantics(rec: &Cs2Rec, format_version: u32) -> Result<()> {
+    validate_source_changes(&rec.source_state_changes, rec.ticks.len())?;
     if !rec.header.tick_rate.is_finite() || rec.header.tick_rate <= 0.0 {
         return Err(Error::InvalidRec(
             "tick_rate must be finite and positive".to_string(),
@@ -773,6 +779,24 @@ fn write_sectioned_body<W: Write>(
         SECTION_VERSION_V1,
         rec.ticks.len(),
         build_input_history_section(rec)?,
+    ));
+
+    let mut source_body = Vec::with_capacity(rec.source_state_changes.len() * 16);
+    for change in &rec.source_state_changes {
+        for value in [
+            change.tick_index,
+            change.field_id,
+            change.value_bits,
+            change.present,
+        ] {
+            write_u32(&mut source_body, value)?;
+        }
+    }
+    sections.push((
+        SECTION_SOURCE_STATE,
+        SECTION_VERSION_V1,
+        rec.source_state_changes.len(),
+        source_body,
     ));
 
     write_u32(writer, checked_u32_count("section count", sections.len())?)?;
@@ -1316,6 +1340,7 @@ type V7Sections = (
     Vec<ReplayMovementExtra>,
     Vec<ReplayInputHistoryTick>,
     Vec<ReplayInputHistoryEntry>,
+    Vec<SourceStateChange>,
 );
 
 fn read_sectioned_body<R: Read>(
@@ -1342,6 +1367,7 @@ fn read_sectioned_body<R: Read>(
     let mut saw_movement_extras = false;
     let mut command_frames = Vec::new();
     let mut movement_extras = Vec::new();
+    let mut source_state_changes = None;
     let mut saw_input_history = false;
     let mut input_history_ticks = Vec::new();
     let mut input_history_entries = Vec::new();
@@ -1472,6 +1498,27 @@ fn read_sectioned_body<R: Read>(
                     )?,
                 )?;
             }
+            SECTION_SOURCE_STATE => {
+                reject_duplicate(source_state_changes.is_some(), "source state")?;
+                if format_version < 11 {
+                    return Err(Error::InvalidRec("source state requires DTR 11".into()));
+                }
+                if header.element_count as u64
+                    > tick_count as u64 * crate::model::source_state::SOURCE_FIELDS.len() as u64
+                {
+                    return Err(Error::InvalidRec(
+                        "source state count exceeds tick/field capacity".into(),
+                    ));
+                }
+                require_section_header_shape(
+                    "source state",
+                    header.section_version,
+                    header.element_count,
+                    header.element_count as usize,
+                    header.uncompressed_len,
+                    checked_product(header.element_count as usize, 16, "source state section")?,
+                )?;
+            }
             SECTION_INPUT_HISTORY => {
                 reject_duplicate(saw_input_history, "input history")?;
                 require_input_history_section_header_shape(
@@ -1533,6 +1580,21 @@ fn read_sectioned_body<R: Read>(
                 movement_extras = read_movement_extras_from_section(&body, tick_count)?;
                 saw_movement_extras = true;
             }
+            SECTION_SOURCE_STATE => {
+                let mut values =
+                    reserved_vec(header.element_count as usize, "source state changes")?;
+                let mut reader = Cursor::new(&body);
+                for _ in 0..header.element_count {
+                    values.push(SourceStateChange {
+                        tick_index: read_u32(&mut reader)?,
+                        field_id: read_u32(&mut reader)?,
+                        value_bits: read_u32(&mut reader)?,
+                        present: read_u32(&mut reader)?,
+                    });
+                }
+                validate_source_changes(&values, tick_count)?;
+                source_state_changes = Some(values);
+            }
             SECTION_INPUT_HISTORY => {
                 (input_history_ticks, input_history_entries) =
                     read_input_history_from_section(&body, tick_count)?;
@@ -1558,6 +1620,11 @@ fn read_sectioned_body<R: Read>(
     if metadata_json_len > 0 && !saw_high_fidelity {
         return Err(Error::InvalidRec(
             "missing high fidelity metadata section".to_string(),
+        ));
+    }
+    if format_version >= 11 && source_state_changes.is_none() {
+        return Err(Error::InvalidRec(
+            "missing required section source state".into(),
         ));
     }
     if format_version >= 9 && !saw_input_history {
@@ -1601,7 +1668,22 @@ fn read_sectioned_body<R: Read>(
         movement_extras,
         input_history_ticks,
         input_history_entries,
+        source_state_changes.unwrap_or_default(),
     ))
+}
+
+fn validate_source_changes(changes: &[SourceStateChange], tick_count: usize) -> Result<()> {
+    let mut previous = None;
+    for value in changes {
+        let key = (value.tick_index, value.field_id);
+        if !value.valid(tick_count) || previous.is_some_and(|prev| prev >= key) {
+            return Err(Error::InvalidRec(
+                "invalid or unordered source state change".into(),
+            ));
+        }
+        previous = Some(key);
+    }
+    Ok(())
 }
 
 struct SectionHeader {
@@ -1656,6 +1738,7 @@ fn is_known_section(section_id: u32) -> bool {
             | SECTION_COMMAND_FRAMES
             | SECTION_MOVEMENT_EXTRAS
             | SECTION_INPUT_HISTORY
+            | SECTION_SOURCE_STATE
     )
 }
 
@@ -1725,7 +1808,7 @@ fn require_versioned_section_header_shape(
                 )));
             }
         }
-        (8 | 9 | 10, SECTION_VERSION_V2) => {
+        (8 | 9 | 10 | 11, SECTION_VERSION_V2) => {
             if expected_elements == 0 && byte_len != 0 {
                 return Err(Error::InvalidRec(format!(
                     "empty {name} section has non-zero byte length {byte_len}"
@@ -2984,7 +3067,7 @@ mod tests {
         write_rec(&mut bytes, &rec).unwrap();
         let parsed = read_rec(&mut &bytes[..]).unwrap();
 
-        assert_eq!(parsed.header.version, 10);
+        assert_eq!(parsed.header.version, DTR_FORMAT_VERSION);
         assert_eq!(parsed.subticks[0].when.to_bits(), (-1.671875_f32).to_bits());
     }
 
@@ -2995,12 +3078,46 @@ mod tests {
 
         let mut bytes = Vec::new();
         write_rec(&mut bytes, &rec).unwrap();
+        // The old file has no source-state section. Mark this additive section
+        // unknown when exercising the v9 subtick validator.
+        let mut offset = v7_section_count_offset(&bytes) + 4;
+        while offset < bytes.len() {
+            let id = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+            let size =
+                u64::from_le_bytes(bytes[offset + 28..offset + 36].try_into().unwrap()) as usize;
+            if id == SECTION_SOURCE_STATE {
+                bytes[offset..offset + 4].copy_from_slice(&99_u32.to_le_bytes());
+            }
+            offset += 36 + size;
+        }
         bytes[8..12].copy_from_slice(&9_u32.to_le_bytes());
 
         let err = read_rec(&mut &bytes[..]).unwrap_err();
         assert!(err
             .to_string()
             .contains("when must be finite and in [0, 1)"));
+    }
+
+    #[test]
+    fn source_state_rejects_duplicate_and_invalid_values() {
+        let mut rec = sample_rec();
+        rec.source_state_changes.push(rec.source_state_changes[0]);
+        assert!(write_rec(&mut Vec::new(), &rec)
+            .unwrap_err()
+            .to_string()
+            .contains("source state"));
+        rec.source_state_changes.truncate(1);
+        rec.source_state_changes[0].value_bits = f32::NAN.to_bits();
+        assert!(write_rec(&mut Vec::new(), &rec)
+            .unwrap_err()
+            .to_string()
+            .contains("source state"));
+        rec.source_state_changes[0].value_bits = 0;
+        rec.source_state_changes[0].tick_index = rec.ticks.len() as u32;
+        assert!(write_rec(&mut Vec::new(), &rec)
+            .unwrap_err()
+            .to_string()
+            .contains("source state"));
     }
 
     #[test]
@@ -3613,6 +3730,12 @@ mod tests {
             ..s1.clone()
         };
         Cs2Rec {
+            source_state_changes: vec![SourceStateChange {
+                tick_index: 0,
+                field_id: 2,
+                value_bits: (-0.0f32).to_bits(),
+                present: 1,
+            }],
             header: Cs2RecHeader {
                 version: DTR_FORMAT_VERSION,
                 tick_rate: 64.0,

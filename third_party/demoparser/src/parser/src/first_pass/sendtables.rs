@@ -4,7 +4,7 @@ use crate::first_pass::parser_settings::needs_velocity;
 use crate::first_pass::parser_settings::FirstPassParser;
 use crate::first_pass::prop_controller::FLASHBANG_AMMO_ID;
 use crate::first_pass::prop_controller::GLOVE_ATTRIBUTE_DEF_INDEX_ID;
-use crate::first_pass::prop_controller::GRENADE_AMMO_ID;
+use crate::first_pass::prop_controller::{GRENADE_AMMO_ID, WEAPON_RESERVE_AMMO_BASE};
 use crate::first_pass::prop_controller::PropController;
 use crate::first_pass::prop_controller::FLATTENED_VEC_MAX_LEN;
 use crate::first_pass::prop_controller::GLOVE_PAINT_ID;
@@ -484,6 +484,13 @@ pub fn get_propinfo(field: &Field, path: &FieldPath) -> Option<FieldInfo> {
         },
         _ => return None,
     };
+
+    // m_pReserveAmmo is int32[2]. Preserve each element separately instead
+    // of letting the last array update overwrite the primary reserve count.
+    if fi.prop_id == WEAPON_RESERVE_AMMO_BASE {
+        if path.last != 1 || !(0..2).contains(&path.path[1]) { return None; }
+        fi.prop_id += path.path[1] as u32;
+    }
 
     // Flatten vector props
     if fi.prop_id == MY_WEAPONS_OFFSET {

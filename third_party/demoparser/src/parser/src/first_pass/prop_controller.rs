@@ -18,6 +18,8 @@ pub const WEAPON_SKIN_NAME: u32 = 420420420;
 pub const WEAPON_ORIGINGAL_OWNER_ID: u32 = 6942000;
 pub const MY_WEAPONS_OFFSET: u32 = 500000;
 pub const GRENADE_AMMO_ID: u32 = 1111111;
+pub const WEAPON_RESERVE_AMMO_BASE: u32 = 1111120;
+pub const WEAPON_RESERVE_AMMO_SECONDARY: u32 = 100000021;
 pub const FLASHBANG_AMMO_ID: u32 = 2222222;
 pub const INVENTORY_ID: u32 = 100000000;
 pub const IS_ALIVE_ID: u32 = 100000001;
@@ -464,6 +466,7 @@ impl PropController {
 
         let prop_already_exists = self.name_to_id.contains_key(&(prop_name).to_string());
         self.set_id(&prop_name, f, grenade_or_weapon);
+        if grenade_or_weapon && prop_name == "m_pReserveAmmo" { f.prop_id = WEAPON_RESERVE_AMMO_BASE; }
 
         if !prop_already_exists {
             self.insert_propinfo(&full_name, f);

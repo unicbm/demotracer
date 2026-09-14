@@ -17,6 +17,37 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         Path.GetTempPath(),
         $"demotracer-reader-tests-{Guid.NewGuid():N}");
 
+    [Theory]
+    [InlineData(0U, 2U, 0U, 1U, true)]
+    [InlineData(0U, 2U, 0U, 0U, true)]
+    [InlineData(0U, 2U, 1U, 0U, false)]
+    [InlineData(0U, 2U, 0x7fc00000U, 1U, false)]
+    [InlineData(0U, 5U, 2U, 1U, false)]
+    [InlineData(1U, 2U, 0U, 1U, false)]
+    [InlineData(0U, 999U, 0U, 1U, false)]
+    public void SourceStateValidatesPresenceTypeAndTick(uint tick, uint field, uint bits, uint present, bool valid)
+    {
+        var path = WriteFile(writer =>
+        {
+            var snapshots = BuildV2SnapshotPayload([new NativeMovementSnapshot(), new NativeMovementSnapshot()]);
+            WriteCompleteHeader(writer, 11, 1, 0);
+            writer.Write(5U);
+            WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
+            WriteSection(writer, 2, CodecNone, 1, new byte[8]);
+            WriteSection(writer, 5, CodecNone, 0, []);
+            var history = new byte[16];
+            BitConverter.GetBytes(-1).CopyTo(history, 4); BitConverter.GetBytes(-1).CopyTo(history, 8);
+            WriteSection(writer, 8, CodecNone, 1, history);
+            using var body = new MemoryStream();
+            using var payload = new BinaryWriter(body, Encoding.UTF8, leaveOpen: true);
+            payload.Write(tick); payload.Write(field); payload.Write(bits); payload.Write(present); payload.Flush();
+            WriteSection(writer, 9, CodecNone, 1, body.ToArray());
+        });
+        if (!valid) { Assert.Contains("source state", Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path)).Message); return; }
+        var change = Assert.Single(DtrReplayReader.Read(path).SourceState);
+        Assert.Equal(bits, change.ValueBits); Assert.Equal(present, change.Present);
+    }
+
     [Fact]
     public void DefaultLimitsAreGenerousButFinite()
     {

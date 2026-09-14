@@ -867,6 +867,7 @@ impl<'a> SecondPassParser<'a> {
     ) -> Result<Variant, PropCollectionError> {
         match prop_info.id {
             SERVER_TICK_ID => Ok(Variant::U32(self.net_tick)),
+            WEAPON_RESERVE_AMMO_SECONDARY => self.find_weapon_prop(&(WEAPON_RESERVE_AMMO_BASE + 1), entity_id),
             PLAYER_X_ID => self.collect_cell_coordinate_player(CoordinateAxis::X, entity_id),
             PLAYER_Y_ID => self.collect_cell_coordinate_player(CoordinateAxis::Y, entity_id),
             PLAYER_Z_ID => self.collect_cell_coordinate_player(CoordinateAxis::Z, entity_id),

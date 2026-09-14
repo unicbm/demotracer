@@ -655,6 +655,17 @@ internal static partial class BotControllerNative
                     replay.CommandFrames.Length,
                     movementExtras,
                     replay.MovementExtras.Length) == 0;
+                if (extendedOk && replay.Version >= 11)
+                {
+                    if ((Capabilities & CapabilityReplaySourceState) == 0 ||
+                        BotController_LoadReplaySourceState(slot, replay.SourceState.Length == 0 ? [new NativeReplaySourceStateChange()] : replay.SourceState,
+                            replay.SourceState.Length, replay.TickRate, CounterStrikeSharp.API.Server.TickInterval) != 0)
+                    {
+                        BotController_ReleaseReplayBuffer(slot);
+                        LastLoadError = "BotController source state load failed";
+                        return false;
+                    }
+                }
                 LastLoadError = extendedOk ? string.Empty : "BotController_LoadReplayExtended failed";
                 return extendedOk;
             }

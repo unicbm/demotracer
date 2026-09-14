@@ -11,9 +11,9 @@ command-frame data, and shooting input-history data retain their original
 ## Version Gates
 
 - Magic: `CSDTRREC`
-- Current writer format: `.dtr` v10
-- Runtime reader support: v3 through v10
-- Current manifest ABI: 17
+- Current writer format: `.dtr` v11
+- Runtime reader support: v3 through v11
+- Current manifest ABI: 18
 - Current BotController native ABI: 21
 - Current DemoTracer companion API: 7
 
@@ -94,7 +94,7 @@ attributes. No inspect payload is generated for partial glove evidence.
 | Field | Type | Notes |
 | --- | --- | --- |
 | magic | 8 bytes | `CSDTRREC` |
-| version | `u32` | Current writer emits `10` |
+| version | `u32` | Current writer emits `11` |
 | tick_rate | `f32` | Demo tickrate estimate |
 | round | `u32` | `total_rounds_played` window |
 | side | `u8` | `2=T`, `3=CT`, `0=unknown` |
@@ -280,6 +280,11 @@ This layout is 92 bytes with `Pack=4`.
 | desires_duck | `u8` |
 | actual_move_type | `u8` |
 
+The v11 converter writes `0xff` for unknown `actual_move_type`. Playback derives
+it through native `SetMoveType`; it never copies this compatibility byte into the
+pawn. Optional source-state presence, rather than legacy snapshot defaults, governs
+duck-state restoration in v11.
+
 `buttons`, `buttons1`, and `buttons2` store
 `CInButtonStatePB.buttonstate1`, `buttonstate2`, and `buttonstate3` respectively.
 They are three bit planes of one `EInButtonState` code, not interchangeable
@@ -398,8 +403,8 @@ Projectile metadata entries contain:
 ## Parser Checklist
 
 1. Read and validate magic `CSDTRREC`.
-2. Require `version == 10` for current writer output, or accept `version == 3`
-   through `9` for backward compatibility.
+2. Require `version == 11` for current writer output, or accept `version == 3`
+   through `10` for backward compatibility.
 3. Read `tick_count`, `subtick_count`, `projectile_count`,
    `play_start_tick_index`, `metadata_json_len`, `map`, and `player_name`. For
    v3, treat `projectile_count` as `0`; for v3/v4, treat
@@ -411,9 +416,43 @@ Projectile metadata entries contain:
    Require snapshot/command section version 1 for v7 and version 2 for v8+.
    For v9+, also require the input-history section and validate its per-tick
    counts and attack indexes.
+   For v11+, require and validate source-state section 9.
 6. For v3-v6, require legacy `codec == 1`, verify legacy body length, then
    Brotli-decompress exactly `body_compressed_len` bytes.
 7. Rebuild ticks from the snapshot chain and metadata.
 8. Sum all tick `num_subtick` values and verify it equals `subtick_count`.
 9. If `metadata_json_len > 0`, parse exactly that many bytes as UTF-8 JSON.
 10. For non-empty replays, require `play_start_tick_index < tick_count`.
+
+## Source state changes (v11)
+
+Section 9, version 1, stores ordered 16-byte records: `tick_index`, `field_id`,
+`value_bits`, `present` (four little-endian u32 values). IDs and scalar types are
+specified in `shared/contracts/replay-source-fields.v1.json`. Records sort by
+(tick_index, field_id), with no duplicate keys. The section is required even
+when empty. `present=0` removes a previously known value and requires zero bits;
+`present=1` preserves exact float/integer bits, including a real zero. Floats must
+be finite and booleans must be zero or one. All changes refer to a replay pre tick.
+
+Native playback indexes these changes for start/seek/loop initialization and the
+first use of a newly created or acquired weapon. It does not write them on every
+tick or reset an existing weapon when switching back to it. Player tickbase and
+ServerInfo tick interval establish source time; positive event/deadline clocks
+are rebased to live simulation time, while inactive sentinel values are preserved.
+Aim-punch base states belong to AimPunchServices and are not added to command view
+angles. Stop and handoff preserve native motion and weapon state.
+
+Boundary writes notify native entity replication once, including nested services.
+Weapons are selected through the native deploy path before restoring their attack
+deadlines. Reserve ammo elements retain the engine's units without converting them
+to bullet counts. Source and live tick intervals must match; playback does not
+resample state clocks.
+
+A discontinuous start already on a ladder requires a valid recorded contact
+normal. When the demo omits it, start before mounting the ladder so native movement
+can establish contact. Playback rejects that unsupported start instead of using a
+zero or stale plane. The ladder surface index is not a substitute for its normal.
+
+Manifest ABI 18 requires the matching v11 reader and BotController ABI 21.39
+source-state capability (bit 17). Older archives remain readable but do not gain
+source evidence retroactively; reconvert the original demo to populate this section.

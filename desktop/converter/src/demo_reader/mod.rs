@@ -526,7 +526,6 @@ mod demoparser_impl {
         tick => "tick",
         round => "total_rounds_played",
         team_num => "team_num",
-        is_airborne => "is_airborne",
         entity_flags => "CCSPlayerPawn.m_fFlags",
         input_history => "usercmd_input_history",
         usercmd_client_tick => "usercmd_client_tick",
@@ -990,7 +989,7 @@ mod demoparser_impl {
         options: ReadDemoOptions,
         cancelled: Option<&AtomicBool>,
     ) -> Result<ParsedDemo> {
-        let wanted_props = vec![
+        let mut wanted_props = vec![
             "X",
             "Y",
             "Z",
@@ -1061,7 +1060,6 @@ mod demoparser_impl {
             "balance",
             "team_num",
             "is_alive",
-            "is_airborne",
             "move_type",
             "CCSPlayerPawn.m_fFlags",
             "duck_amount",
@@ -1081,8 +1079,20 @@ mod demoparser_impl {
         .map(str::to_string)
         .collect::<Vec<_>>();
 
-        let real_props =
+        let source_props: Vec<_> = crate::model::source_state::SOURCE_FIELDS
+            .iter()
+            .map(|field| field.prop.to_string())
+            .collect();
+        let source_real_props =
+            rm_user_friendly_names(&source_props).map_err(|e| Error::Parser(format!("{e:?}")))?;
+        let mut real_props =
             rm_user_friendly_names(&wanted_props).map_err(|e| Error::Parser(format!("{e:?}")))?;
+        for (prop, real) in source_props.iter().zip(&source_real_props) {
+            if !real_props.contains(real) {
+                wanted_props.push(prop.clone());
+                real_props.push(real.clone());
+            }
+        }
         let wanted_other_props = vec!["team_rounds_total", "team_name", "team_clan_name"]
             .into_iter()
             .map(str::to_string)
@@ -1181,6 +1191,18 @@ mod demoparser_impl {
             header_f32(&header, "playback_time").filter(|value| value.is_finite() && *value >= 0.0);
 
         let columns = ResolvedColumns::new(&output.prop_controller.prop_infos, &output.df);
+        let source_columns: Vec<_> = source_real_props
+            .iter()
+            .map(|real| {
+                output
+                    .prop_controller
+                    .prop_infos
+                    .iter()
+                    .find(|p| &p.prop_name == real)
+                    .and_then(|p| output.df.get(&p.id))
+            })
+            .collect();
+
         macro_rules! overlay_column {
             ($friendly_name:literal, $primary:expr) => {
                 single_threaded_overlay
@@ -1268,7 +1290,6 @@ mod demoparser_impl {
                     active_weapon_stickers,
                 )| {
                     let team_num = get_u32(columns.team_num, idx).unwrap_or_default() as u8;
-                    let is_airborne = get_bool(columns.is_airborne, idx).unwrap_or(false);
                     let explicit_flags = get_u32(columns.entity_flags, idx);
                     let (subtick_moves, subtick_button_truncated) =
                         get_subtick_moves(subtick_moves_column, idx).unwrap_or_default();
@@ -1276,6 +1297,7 @@ mod demoparser_impl {
                     let buttonstate2 = get_u64(buttonstate2_column, idx);
                     let buttonstate3 = get_u64(buttonstate3_column, idx);
                     ParsedPlayerTick {
+                        source_state: read_source_state(&source_columns, idx),
                         tick,
                         steam_id,
                         name: get_string(columns.name, idx).unwrap_or_default(),
@@ -1298,7 +1320,7 @@ mod demoparser_impl {
                         velocity: [
                             0.0,
                             0.0,
-                            -get_f32(columns.fall_velocity, idx).unwrap_or_default(),
+                            -get_f32(columns.fall_velocity, idx).unwrap_or(f32::NAN),
                         ],
                         pitch: get_f32(columns.pitch, idx).unwrap_or_default(),
                         yaw: get_f32(columns.yaw, idx).unwrap_or_default(),
@@ -1403,8 +1425,8 @@ mod demoparser_impl {
                         cash_spent_this_round: get_u32(columns.cash_spent_this_round, idx)
                             .unwrap_or_default(),
                         account_balance: get_u32(columns.account_balance, idx),
-                        entity_flags: explicit_flags.unwrap_or(if is_airborne { 0 } else { 1 }),
-                        move_type: get_u32(columns.move_type, idx).unwrap_or(2) as u8,
+                        entity_flags: explicit_flags.unwrap_or(u32::MAX),
+                        move_type: get_u32(columns.move_type, idx).unwrap_or(255) as u8,
                         duck_amount: get_f32(columns.duck_amount, idx),
                         duck_speed: get_f32(columns.duck_speed, idx),
                         ladder_normal: get_vec3(columns.ladder_normal, idx),
@@ -1424,6 +1446,18 @@ mod demoparser_impl {
             )
             .collect::<Vec<_>>();
 
+        if let Some(row) = rows.iter().find(|row| {
+            row.is_alive
+                && (!row.velocity[2].is_finite()
+                    || row.entity_flags == u32::MAX
+                    || row.move_type == 255)
+        }) {
+            return Err(Error::InvalidDemo(format!(
+                "missing authoritative movement state for player {} at tick {}",
+                row.steam_id, row.tick
+            )));
+        }
+        drop(source_columns);
         // Row materialization has consumed the columns. Release the duplicate
         // per-tick storage before gap repair and event/projectile processing.
         drop(output.df);
@@ -2407,6 +2441,7 @@ mod demoparser_impl {
         tick: i32,
     ) -> ParsedPlayerTick {
         let mut row = before.clone();
+        row.source_state = Default::default();
         row.tick = tick;
         let tick_fraction = (tick - before.tick) as f32 / (after.tick - before.tick) as f32;
         row.origin = lerp_vec3(before.origin, after.origin, tick_fraction);
@@ -2572,13 +2607,48 @@ mod demoparser_impl {
     }
 
     fn read_server_tick_rate(header: &AHashMap<String, String>) -> Result<f32> {
-        let rate = header.get("server_tick_interval")
+        let rate = header
+            .get("server_tick_interval")
             .and_then(|value| value.parse::<f32>().ok())
             .filter(|interval| interval.is_finite() && *interval > 0.0)
             .map(f32::recip)
             .filter(|rate| rate.is_finite() && (16.0..=256.0).contains(rate));
-        rate.ok_or_else(|| Error::InvalidDemo(
-            "missing or invalid ServerInfo tick interval; cannot establish replay time base".into()))
+        rate.ok_or_else(|| {
+            Error::InvalidDemo(
+                "missing or invalid ServerInfo tick interval; cannot establish replay time base"
+                    .into(),
+            )
+        })
+    }
+
+    fn read_source_state(
+        columns: &[Option<&PropColumn>],
+        idx: usize,
+    ) -> crate::model::source_state::SourceState {
+        use crate::model::source_state::{SourceKind, SourceState, SOURCE_FIELDS};
+        let mut state = SourceState::default();
+        for (id, field) in SOURCE_FIELDS.iter().enumerate() {
+            let column = columns[id];
+            let value = if let Some(component) = field.component {
+                get_vec3(column, idx)
+                    .map(|v| v[component])
+                    .filter(|v| v.is_finite())
+                    .map(f32::to_bits)
+            } else {
+                match field.kind {
+                    SourceKind::F32 => get_f32(column, idx)
+                        .filter(|v| v.is_finite())
+                        .map(f32::to_bits),
+                    SourceKind::I32 => get_i32(column, idx).map(|v| v as u32),
+                    SourceKind::U32 => get_u32(column, idx),
+                    SourceKind::Bool => get_bool(column, idx).map(u32::from),
+                }
+            };
+            if let Some(bits) = value {
+                state.set(id, bits);
+            }
+        }
+        state
     }
 
     fn get_f32(column: Option<&PropColumn>, idx: usize) -> Option<f32> {

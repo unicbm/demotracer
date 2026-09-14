@@ -112,11 +112,9 @@ impl<'a> Bitreader<'a> {
         Ok(v)
     }
     pub fn decode_ammo(&mut self) -> Result<u32, DemoParserError> {
-        let ammo = self.read_varint()?;
-        if ammo > 0 {
-            return Ok(ammo - 1);
-        }
-        return Ok(ammo);
+        // Wire zero encodes the native -1/no-clip sentinel. Do not confuse it
+        // with an empty clip (wire one).
+        Ok(self.read_varint()?.wrapping_sub(1))
     }
     pub fn decode_vector_noscale(&mut self) -> Result<[f32; 3], DemoParserError> {
         let mut v = [0.0; 3];

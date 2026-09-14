@@ -59,6 +59,28 @@ function Read-CargoPackageVersion([string]$RelativePath, [string]$PackageName) {
 }
 
 $contract = (Read-Text "shared\contracts\playback-contract.v1.json") | ConvertFrom-Json
+$sourceRegistry = (Read-Text "shared\contracts\replay-source-fields.v1.json") | ConvertFrom-Json
+$nativeSource = Read-Text "server\runtime\BotController\src\BotRecorder\ReplaySourceState.h"
+$managedSource = Read-Text "server\plugins\DemoTracer\DtrReplayReaderSourceState.cs"
+$managedFields = [regex]::Matches($managedSource, 'SourceKind\.(\w+), // (\w+)')
+$nativeFields = [regex]::Matches($nativeSource, '\{Target::(\w+), Kind::(\w+), ClockKind::(\w+), "([^"]+)", (\d+)\}')
+Assert-Equal "source-state managed field count" $managedFields.Count $sourceRegistry.fields.Count
+Assert-Equal "source-state native field count" $nativeFields.Count $sourceRegistry.fields.Count
+for ($fieldIndex = 0; $fieldIndex -lt $sourceRegistry.fields.Count; $fieldIndex++) {
+    $field = $sourceRegistry.fields[$fieldIndex]
+    Assert-Equal "source-state field ID" $field.id $fieldIndex
+    Assert-Equal "source-state managed name $fieldIndex" $managedFields[$fieldIndex].Groups[2].Value $field.name
+    Assert-Equal "source-state managed type $fieldIndex" $managedFields[$fieldIndex].Groups[1].Value $field.kind
+    $nativeField = $nativeFields[$fieldIndex]
+    Assert-Equal "source-state native target $fieldIndex" $nativeField.Groups[1].Value $field.target
+    Assert-Equal "source-state native type $fieldIndex" $nativeField.Groups[2].Value $field.kind
+    Assert-Equal "source-state native clock $fieldIndex" $nativeField.Groups[3].Value $field.clock
+    Assert-Equal "source-state native member $fieldIndex" $nativeField.Groups[4].Value $field.field
+    $element = if ($null -ne $field.component) { [int]$field.component } else { [int]$field.native_element }
+    Assert-Equal "source-state native element $fieldIndex" $nativeField.Groups[5].Value ($element * 4)
+    $enumPattern = '\b' + [regex]::Escape($field.name) + '\s*=\s*' + $fieldIndex + '\s*,'
+    if (-not [regex]::IsMatch($nativeSource, $enumPattern)) { throw "source-state native ID mismatch: $($field.name)" }
+}
 $telemetryContract = (Read-Text "shared\contracts\telemetry-contract.v1.json") | ConvertFrom-Json
 $desktopPackage = (Read-Text "desktop\gui\package.json") | ConvertFrom-Json
 if ([string]::IsNullOrWhiteSpace($Version)) {

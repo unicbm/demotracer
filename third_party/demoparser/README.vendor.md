@@ -39,3 +39,5 @@ without collapsing separate throws with identical initial vectors. The compact
 collector also checks serials when an entity index is replaced and accepts
 variant evidence arriving after its first observation. Record `tick` remains
 the first usable observation, not a proven native creation/subtick timestamp.
+
+The maintained parser also preserves the no-clip sentinel and separates both `m_pReserveAmmo` array elements; the primary count retains its legacy property name.

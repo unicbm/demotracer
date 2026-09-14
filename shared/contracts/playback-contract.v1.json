@@ -2,20 +2,20 @@
   "schema_version": 1,
   "product": "CS2 DemoTracer Playback Bundle",
   "platform": "windows-x64",
-  "manifest_abi": 17,
-  "dtr_writer": 10,
+  "manifest_abi": 18,
+  "dtr_writer": 11,
   "dtr_reader": {
     "min": 3,
-    "max": 10
+    "max": 11
   },
   "bot_controller": {
     "abi_major": 21,
-    "min_abi_minor": 38,
+    "min_abi_minor": 39,
     "public_control_api": 20,
     "replay_tick_bytes": 228,
     "replay_tick_event_tail": "reserved_zero",
     "managed_provider_version": "0.6.3-dtr.2",
-    "required_capabilities_hex": "0x141df"
+    "required_capabilities_hex": "0x341df"
   },
   "bot_hider": {
     "api": 1

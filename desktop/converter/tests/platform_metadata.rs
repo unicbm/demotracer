@@ -81,10 +81,14 @@ fn signon_preserves_platform_host_separately_from_generic_file_header() {
     parser.parse_packet(&server_info_packet(" ")).unwrap();
     assert_eq!(parser.header["server_info_host_name"], "5EGOTV");
 
-    parser.parse_packet(&server_info_with_interval("", Some(1.0 / 128.0))).unwrap();
+    parser
+        .parse_packet(&server_info_with_interval("", Some(1.0 / 128.0)))
+        .unwrap();
     assert_eq!(parser.header["server_tick_interval"], "0.0078125");
     for invalid in [0.0, -1.0, f32::NAN, f32::INFINITY] {
-        parser.parse_packet(&server_info_with_interval("", Some(invalid))).unwrap();
+        parser
+            .parse_packet(&server_info_with_interval("", Some(invalid)))
+            .unwrap();
         assert_eq!(parser.header["server_tick_interval"], "0.0078125");
     }
 }
@@ -95,7 +99,10 @@ fn game_tick_wrapper_decodes_signed_wire_values_and_sentinels() {
     use parser::maps::BASETYPE_DECODERS;
     use parser::second_pass::decoder::QfMapper;
     use parser::second_pass::variants::Variant;
-    let mapper = QfMapper { idx: 0, map: Default::default() };
+    let mapper = QfMapper {
+        idx: 0,
+        map: Default::default(),
+    };
     // Positive GameTick_t values use signed varint encoding too. Treating
     // 317404 as an unsigned tick doubles a 2479.71875-second attack deadline.
     for tick in [-1_i32, 0, 158702] {
@@ -105,8 +112,52 @@ fn game_tick_wrapper_decodes_signed_wire_values_and_sentinels() {
             let byte = (encoded & 0x7f) as u8;
             encoded >>= 7;
             wire.push(byte | if encoded == 0 { 0 } else { 0x80 });
-            if encoded == 0 { break; }
+            if encoded == 0 {
+                break;
+            }
         }
-        assert_eq!(Bitreader::new(&wire).decode(&BASETYPE_DECODERS["GameTick_t"], &mapper).unwrap(), Variant::I32(tick));
+        assert_eq!(
+            Bitreader::new(&wire)
+                .decode(&BASETYPE_DECODERS["GameTick_t"], &mapper)
+                .unwrap(),
+            Variant::I32(tick)
+        );
     }
+}
+
+#[test]
+fn ammo_preserves_no_clip_sentinel_and_distinct_reserve_elements() {
+    use parser::first_pass::prop_controller::WEAPON_RESERVE_AMMO_BASE;
+    use parser::first_pass::read_bits::Bitreader;
+    use parser::first_pass::sendtables::{get_propinfo, Field, ValueField};
+    use parser::second_pass::decoder::Decoder;
+    use parser::second_pass::path_ops::FieldPath;
+    assert_eq!(Bitreader::new(&[0]).decode_ammo().unwrap(), u32::MAX);
+    assert_eq!(Bitreader::new(&[1]).decode_ammo().unwrap(), 0);
+    assert_eq!(Bitreader::new(&[31]).decode_ammo().unwrap(), 30);
+    let field = Field::Value(ValueField {
+        decoder: Decoder::SignedDecoder,
+        name: "m_pReserveAmmo".into(),
+        should_parse: true,
+        prop_id: WEAPON_RESERVE_AMMO_BASE,
+        full_name: "CWeaponAK47.m_pReserveAmmo".into(),
+    });
+    for index in 0..2 {
+        let path = FieldPath {
+            path: [10, index, 0, 0, 0, 0, 0],
+            last: 1,
+        };
+        assert_eq!(
+            get_propinfo(&field, &path).unwrap().prop_id,
+            WEAPON_RESERVE_AMMO_BASE + index as u32
+        );
+    }
+    assert!(get_propinfo(
+        &field,
+        &FieldPath {
+            path: [10, 2, 0, 0, 0, 0, 0],
+            last: 1
+        }
+    )
+    .is_none());
 }

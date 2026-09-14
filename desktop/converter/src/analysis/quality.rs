@@ -551,6 +551,7 @@ mod tests {
 
     fn row(round: u32, tick: i32, team_num: u8, steam_id: u64) -> ParsedPlayerTick {
         ParsedPlayerTick {
+            source_state: Default::default(),
             tick,
             steam_id,
             name: steam_id.to_string(),

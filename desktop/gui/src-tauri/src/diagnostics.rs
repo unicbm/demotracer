@@ -1887,7 +1887,7 @@ fn detect_conflicts(
             confidence: "certain".to_string(),
             title: "CS2-Bot-Improver native vendor files are installed".to_string(),
             summary: format!(
-                "Exact known CS2-Bot-Improver release fingerprints were found: {}. Its native vendor set is not the DemoTracer contract; the v1.4.2 BotController specifically uses ABI 14 instead of DemoTracer's ABI 21/minor 38. Reinstall DemoTracer's complete playback bundle, then keep only compatible post-handoff behavior plugins.",
+                "Exact known CS2-Bot-Improver release fingerprints were found: {}. Its native vendor set is not the DemoTracer contract; the v1.4.2 BotController specifically uses ABI 14 instead of DemoTracer's ABI 21/minor 39. Reinstall DemoTracer's complete playback bundle, then keep only compatible post-handoff behavior plugins.",
                 matched.join(", ")
             ),
             evidence_path: if known_improver_controller {
@@ -1925,7 +1925,7 @@ fn detect_conflicts(
             summary: if known_abi14_bridge {
                 "This exact BotControllerImpl build expects ABI 14 and disables itself against DemoTracer's ABI 21 runtime, so Improver behavior plugins cannot obtain their botcontroller:api dependency. Replace BotControllerImpl with the matched DemoTracer provider."
             } else {
-                "BotControllerImpl uses the same managed capability surface as post-handoff behavior plugins. Its ABI contract could not be proven; verify that it explicitly supports DemoTracer BotController ABI 21/minor 38 before use."
+                "BotControllerImpl uses the same managed capability surface as post-handoff behavior plugins. Its ABI contract could not be proven; verify that it explicitly supports DemoTracer BotController ABI 21/minor 39 before use."
             }
             .to_string(),
             evidence_path: controller_impl_path
@@ -2701,12 +2701,12 @@ mod tests {
             "counterStrikeSharpVersion": "1.0.371.0",
             "botController": {
                 "abiMajor": 21,
-                "abiMinor": 38,
-                "capabilities": "0x1ffff",
+                "abiMinor": 39,
+                "capabilities": "0x3ffff",
                 "buildId": "fixture",
                 "compatible": true,
                 "requiredCapabilities": {
-                    "mask": "0x141df",
+                    "mask": "0x341df",
                     "present": true,
                     "missing": "0x0"
                 }
@@ -2775,11 +2775,11 @@ mod tests {
             "counterStrikeSharpVersion": "1.0.371.0",
             "botController": {
                 "abiMajor": 21,
-                "abiMinor": 38,
-                "capabilities": "0x1ffff",
+                "abiMinor": 39,
+                "capabilities": "0x3ffff",
                 "buildId": "fixture",
                 "compatible": true,
-                "requiredCapabilities": { "mask": "0x141df", "present": true, "missing": "0x0" }
+                "requiredCapabilities": { "mask": "0x341df", "present": true, "missing": "0x0" }
             },
             "botHider": { "providerApi": 1, "connected": true, "draining": false, "available": true },
             "botRandomizer": { "providerApi": 2, "ready": true, "draining": false, "replayPlanPrebuildAvailable": true, "available": true },

@@ -9,8 +9,9 @@ use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
 
-pub const DEMOTRACER_ABI: i32 = 17;
-pub const DTR_FORMAT_VERSION: u32 = 10;
+pub const DEMOTRACER_ABI: i32 = 18;
+pub const DTR_FORMAT_VERSION: u32 = 11;
+pub mod source_state;
 
 pub const COMMAND_FIELD_FORWARD_MOVE: u32 = 1 << 0;
 pub const COMMAND_FIELD_LEFT_MOVE: u32 = 1 << 1;
@@ -566,6 +567,8 @@ impl Default for Cs2RecHeader {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Cs2Rec {
+    #[serde(default)]
+    pub source_state_changes: Vec<source_state::SourceStateChange>,
     pub header: Cs2RecHeader,
     pub ticks: Vec<ReplayTick>,
     pub projectiles: Vec<ReplayProjectile>,
@@ -766,6 +769,8 @@ pub struct ParsedInventoryWeaponAttribute {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ParsedPlayerTick {
+    #[serde(default)]
+    pub source_state: source_state::SourceState,
     pub tick: i32,
     pub steam_id: u64,
     pub name: String,
@@ -899,7 +904,9 @@ impl ParsedPlayerTick {
             ducked: u8::from(ducked),
             ducking: u8::from(ducking),
             desires_duck: u8::from(desires_duck),
-            actual_move_type: self.move_type,
+            // This engine-derived field is absent from the demo sendtable.
+            // Do not label a copy of MoveType as observed ActualMoveType.
+            actual_move_type: u8::MAX,
         }
     }
 

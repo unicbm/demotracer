@@ -3,6 +3,7 @@
 #pragma once
 
 #include <cstdint>
+#include "ReplaySourceState.h"
 
 namespace BotController
 {
@@ -268,6 +269,7 @@ namespace BotController
             const ReplayMovementExtra *movementExtras, int movementExtraCount,
             const ReplayInputHistoryTick *inputHistoryTicks, int inputHistoryTickCount,
             const ReplayInputHistoryEntry *inputHistoryEntries, int inputHistoryEntryCount) noexcept;
+        bool LoadReplaySourceState(int slot, const ReplaySourceState::Change *changes, int count, float tickRate, float liveTickInterval);
         bool StartReplay(int slot, bool loop); // play from tick 0
         bool StartReplayAt(int slot, bool loop, int startIndex);
         bool StartReplayUntil(int slot, bool loop, int startIndex, int holdBeforeIndex);

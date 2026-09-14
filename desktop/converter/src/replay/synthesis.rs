@@ -164,6 +164,8 @@ fn synthesize_player_rec_with_projectile_iter<'a>(
         )));
     }
     let first = rows[0].row();
+    let mut source_state_changes = Vec::new();
+    let mut previous_source_state = crate::model::source_state::SourceState::default();
     let mut ticks = Vec::with_capacity(rows.len().saturating_sub(1));
     let mut subticks = Vec::new();
     let mut command_frames = Vec::with_capacity(rows.len().saturating_sub(1));
@@ -173,6 +175,19 @@ fn synthesize_player_rec_with_projectile_iter<'a>(
     for pair in rows.windows(2) {
         let pre_row = pair[0].row();
         let post_row = pair[1].row();
+        crate::model::source_state::changes_between(
+            &previous_source_state,
+            &pre_row.source_state,
+            ticks.len() as u32,
+            &mut source_state_changes,
+        );
+        previous_source_state = pre_row.source_state.clone();
+        if !pre_row.velocity[2].is_finite() || !post_row.velocity[2].is_finite() {
+            return Err(Error::InvalidDemo(format!(
+                "missing authoritative fall velocity for player {} at tick {}",
+                pre_row.steam_id, pre_row.tick
+            )));
+        }
         let mut pre = pre_row.snapshot();
         let mut post = post_row.snapshot();
         normalize_impossible_player_velocity(&mut pre);
@@ -196,6 +211,7 @@ fn synthesize_player_rec_with_projectile_iter<'a>(
 
     Ok((
         Cs2Rec {
+            source_state_changes,
             header: Cs2RecHeader {
                 version: crate::model::DTR_FORMAT_VERSION,
                 tick_rate,
@@ -421,6 +437,7 @@ mod tests {
 
     fn row(tick: i32, weapon: i32) -> ParsedPlayerTick {
         ParsedPlayerTick {
+            source_state: Default::default(),
             tick,
             steam_id: 42,
             name: "p".to_string(),
