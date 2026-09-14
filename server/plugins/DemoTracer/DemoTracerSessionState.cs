@@ -32,6 +32,8 @@ public sealed partial class DemoTracerPlugin
         public Dictionary<int, int> ReplayHifiEventNextBySlot { get; } = [];
         public Dictionary<int, long> ReplayIdentityGenerationBySlot { get; } = [];
         public Queue<string> ProjectileAlignLog { get; } = [];
+        public bool ProjectileTraceEnabled { get; set; }
+        public PendingProjectileBirths ProjectileBirths { get; } = new();
         public HashSet<int> RebuiltInventorySlots { get; } = [];
         public HashSet<int> WeaponLoadoutSyncedSlots { get; } = [];
         public ReplayPawnEquipmentSyncTracker PawnEquipmentSync { get; } = new();
@@ -52,7 +54,6 @@ public sealed partial class DemoTracerPlugin
         public int InitialSpawnAssignmentToken { get; set; }
         public bool InitialSpawnAssignmentComplete { get; set; }
         public bool InitialSpawnAssignmentScheduled { get; set; }
-        public ulong LastReplayPovMask { get; set; } = ulong.MaxValue;
 
         public int FreezePrerollToken { get; set; }
         public bool FreezePrerollStarted { get; set; }

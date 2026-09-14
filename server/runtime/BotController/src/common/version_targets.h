@@ -65,10 +65,6 @@ namespace BotController::targets
     inline int kPawn_ViewAngle = 0xAB8;
     // v_anglePrevious (QAngle) — keep first-person spectator/camera history aligned
     inline int kPawn_ViewAnglePrevious = 0xAC4;
-    // m_ServerViewAngleChanges — embedded network vector consumed by local/observer camera view.
-    inline int kPawn_ServerViewAngleChanges = 0xA50;
-    // m_angEyeAngles (QAngle) — written each replay tick alongside v_angle
-    inline int kPawn_EyeAngles = 0x13B8;
 
     // ---- CCSPlayer_ItemServices / CCSPlayerController ----
 

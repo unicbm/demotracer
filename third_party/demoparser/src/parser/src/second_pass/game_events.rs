@@ -784,6 +784,20 @@ impl<'a> SecondPassParser<'a> {
                             name: "steamid".to_string(),
                         });
                         fields.push(EventField {
+                            data: player.team_num.map(Variant::U32),
+                            name: "purchase_side".to_string(),
+                        });
+                        // Snapshot the purchased entity itself: buy-and-drop can
+                        // happen before any buyer inventory row is collected.
+                        fields.push(EventField {
+                            data: self.cached_weapon_cosmetic(&purchase.weapon_entid).map(|item| {
+                                Variant::InventoryWeaponCosmetics(
+                                    std::sync::Arc::from([item.as_ref().clone()]),
+                                )
+                            }),
+                            name: "purchased_weapon".to_string(),
+                        });
+                        fields.push(EventField {
                             data: Some(Variant::U32(purchase.inventory_slot)),
                             name: "inventory_slot".to_string(),
                         });

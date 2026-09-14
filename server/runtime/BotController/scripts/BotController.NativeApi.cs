@@ -1,4 +1,4 @@
-// P/Invoke wrapper for BotController.dll (ABI 20). Check IsCompatible() before use.
+// P/Invoke wrapper for BotController.dll (ABI 21). Check IsCompatible() before use.
 // Main-thread only.
 
 using System;
@@ -193,13 +193,12 @@ namespace BotControllerApi
     // Thin static binding over the native exports. No orchestration here.
     public static class BotController
     {
-        public const int ExpectedAbiVersion = 20;
+        public const int ExpectedAbiVersion = 21;
         public const ulong CapabilityReplaySlotState = 1UL << 0;
         public const ulong CapabilityStartReplayAt = 1UL << 1;
         public const ulong CapabilityStartReplayUntil = 1UL << 2;
         public const ulong CapabilityReplayTick = 1UL << 3;
         public const ulong CapabilityWeaponSwitchRead = 1UL << 4;
-        public const ulong CapabilityPovMask = 1UL << 5;
         public const ulong CapabilityBuyPlan = 1UL << 6;
         public const ulong CapabilityControllerBotOffset = 1UL << 7;
         public const ulong CapabilityExtendedReplay = 1UL << 8;
@@ -247,9 +246,6 @@ namespace BotControllerApi
 
         [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
         private static extern int BotController_RequestEquipBestWeapon(int slot);
-
-        [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-        private static extern int BotController_SetReplayPovMask(ulong mask);
 
         [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
         private static extern int BotController_SetUsercmdMovementIntent(
@@ -601,10 +597,6 @@ namespace BotControllerApi
         public static bool RequestEquipBestWeapon(int slot)
             => (Capabilities() & CapabilityHandoffBestWeapon) != 0 &&
                BotController_RequestEquipBestWeapon(slot) == 0;
-
-        // Bit n means replay slot n is currently watched in first-person.
-        public static bool SetReplayPovMask(ulong mask)
-            => BotController_SetReplayPovMask(mask) == 0;
 
         // Low-level usercmd/movedata movement lease. Policy and targeting live
         // in the caller; active DTR replay owns its replay slot.

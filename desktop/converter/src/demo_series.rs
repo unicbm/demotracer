@@ -348,6 +348,7 @@ fn merge_parsed_demo_parts(
     let mut bomb_planted_ticks = Vec::new();
     let mut avatars = BTreeMap::<u64, ParsedAvatarOverride>::new();
     let mut econ_items = BTreeMap::<EconItemKey, ParsedEconItem>::new();
+    let mut weapon_purchases = Vec::new();
     let mut previous_max_tick = None::<i32>;
 
     for (index, mut part) in parts.into_iter().enumerate() {
@@ -410,6 +411,7 @@ fn merge_parsed_demo_parts(
         projectiles.extend(part.projectiles);
         voice_frames.extend(part.voice_frames);
         events.extend(part.events);
+        weapon_purchases.extend(part.weapon_purchases);
         server_convars.extend(part.server_convars);
         round_freeze_end_ticks.extend(part.round_freeze_end_ticks);
         bomb_beginplant_ticks.extend(part.bomb_beginplant_ticks);
@@ -457,6 +459,7 @@ fn merge_parsed_demo_parts(
         server_convars,
         avatar_overrides: avatars.into_values().collect(),
         econ_items: econ_items.into_values().collect(),
+        weapon_purchases,
     })
 }
 
@@ -1025,6 +1028,10 @@ fn retained_tick_range(part: &ParsedDemo) -> Option<(i32, i32)> {
 }
 
 fn shift_part_ticks(part: &mut ParsedDemo, offset: i64, part_number: u32) -> Result<()> {
+    // Cosmetic purchases are retained across warmup/incomplete-round pruning.
+    for purchase in &mut part.weapon_purchases {
+        purchase.tick = checked_shift_tick(purchase.tick, offset, part_number)?;
+    }
     for row in &mut part.rows {
         row.tick = checked_shift_tick(row.tick, offset, part_number)?;
     }
@@ -1325,8 +1332,27 @@ mod tests {
     #[test]
     fn merge_keeps_only_completed_rounds_and_rebases_every_tick_lane() {
         let temp = tempfile::tempdir().unwrap();
-        let merged =
-            merge_parsed_demo_parts(&source(temp.path()), vec![part_one(), part_two()]).unwrap();
+        let mut first = part_one();
+        let mut second = part_two();
+        for part in [&mut first, &mut second] {
+            part.weapon_purchases
+                .push(crate::model::ParsedWeaponPurchase {
+                    tick: 1,
+                    steam_id: 100,
+                    side: Some(2),
+                    cosmetic: crate::model::ParsedInventoryWeaponCosmetic {
+                        item_def_index: 19,
+                        paint_kit: 20,
+                        paint_seed: 42,
+                        paint_wear: 0.123,
+                        ..Default::default()
+                    },
+                });
+        }
+        let merged = merge_parsed_demo_parts(&source(temp.path()), vec![first, second]).unwrap();
+        assert_eq!(merged.weapon_purchases.len(), 2);
+        assert_eq!(merged.weapon_purchases[0].tick, 1);
+        assert!(merged.weapon_purchases[1].tick > 1);
 
         assert_eq!(merged.stem, "match");
         assert_eq!(
@@ -1418,6 +1444,12 @@ mod tests {
         assert_eq!(score.status, "final");
         assert_eq!(score.team_a.score + score.team_b.score, 2);
         assert_eq!(browser.players.len(), 10);
+        let player = browser
+            .players
+            .iter()
+            .find(|player| player.steam_id == "100")
+            .unwrap();
+        assert_eq!(player.details.as_ref().unwrap().cosmetics.len(), 1);
     }
 
     #[test]

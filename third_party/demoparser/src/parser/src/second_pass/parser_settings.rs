@@ -51,8 +51,6 @@ pub struct SecondPassParser<'a> {
         RefCell<AHashMap<i32, ((u32, u64), Option<Arc<InventoryWeaponCosmetic>>)>>,
     pub player_inventory_snapshot_cache: RefCell<AHashMap<i32, PlayerInventorySnapshot>>,
     pub inventory_generation: u64,
-    pub stable_owned_weapon_cosmetic_cache:
-        RefCell<AHashMap<(u64, u32, u32), InventoryWeaponCosmetic>>,
     pub stable_agent_skin_cache: RefCell<AHashMap<(u64, u32), String>>,
     pub glove_attribute_cache: RefCell<AHashMap<i32, ((u32, u64), [Option<Variant>; 3])>>,
     pub tick: i32,
@@ -241,7 +239,6 @@ impl<'a> SecondPassParser<'a> {
             weapon_econ_snapshot_cache: RefCell::new(AHashMap::default()),
             player_inventory_snapshot_cache: RefCell::new(AHashMap::default()),
             inventory_generation: 0,
-            stable_owned_weapon_cosmetic_cache: RefCell::new(AHashMap::default()),
             stable_agent_skin_cache: RefCell::new(AHashMap::default()),
             glove_attribute_cache: RefCell::new(AHashMap::default()),
             cls_bits: None,

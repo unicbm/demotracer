@@ -56,6 +56,7 @@ namespace BotController
         static bool g_installed = false;
         // True once PhysicsSimulate is hooked
         static bool g_physicsActive = false;
+        static bool g_finishMoveActive = false;
         // True once PlayerRunCommand is hooked
         static bool g_subtickActive = false;
         static UsercmdRequests g_requests;
@@ -555,6 +556,12 @@ namespace BotController
         {
             if (slot < 0 || slot >= kMaxSlots || !MotionRecorder::IsReplaying(slot))
                 return false;
+            if (!g_finishMoveActive || !g_subtickActive)
+            {
+                MotionRecorder::StopReplay(slot);
+                DebugOut("[BotController] stopped replay: required command/view boundary hooks unavailable\n");
+                return false;
+            }
             if (!g_slotControllingBot[slot].load(std::memory_order_acquire))
                 return true;
 
@@ -620,7 +627,7 @@ namespace BotController
                 MotionRecorder::OnCapturePost(slot, services, moveData);
         }
 
-        // ---- FinishMove: replay post-write + commit ----
+        // ---- FinishMove: replay post-move and final local view ----
 
         static void BC_FASTCALL HookedFinishMove(void *services, void *cmd,
                                                 void *moveData)
@@ -635,14 +642,10 @@ namespace BotController
 
             g_origFinishMove(services, cmd, moveData);
 
-            // After original: publish post view while the current replay cursor
-            // still points at this simulation tick.
+            // After original: prepare the final getter before the engine publishes
+            // network eye angles in the remaining PlayerRunCommand tail.
             if (replaying)
                 MotionRecorder::OnReplayFinalView(slot, services);
-
-            // After original: commit moveType/flags + advance the replay cursor
-            if (replaying && !g_physicsActive)
-                MotionRecorder::OnReplayCommit(slot, services);
         }
 
         // ---- PlayerRunCommand: subtick record + re-inject ----
@@ -845,6 +848,11 @@ namespace BotController
             }
 
             g_origPlayerRunCommand(services, cmd);
+            // The normal publisher runs inside PlayerRunCommand after FinishMove.
+            // Even without PhysicsSimulate, retain the final getter until that
+            // tail completes; ending replay in FinishMove loses the final view.
+            if (replaying && !g_physicsActive)
+                MotionRecorder::OnReplayCommit(slot, services);
             MotionRecorder::OnReplayCommandPost(slot, services, replaying);
         }
 
@@ -910,8 +918,17 @@ namespace BotController
             if (g_addrFinishMove &&
                 g_hookFinishMove.Create(g_addrFinishMove,
                                         reinterpret_cast<void *>(&HookedFinishMove),
-                                        reinterpret_cast<void **>(&g_origFinishMove)))
-                g_hookFinishMove.Enable();
+                                        reinterpret_cast<void **>(&g_origFinishMove)) &&
+                g_hookFinishMove.Enable())
+            {
+                g_finishMoveActive = true;
+            }
+            else
+            {
+                g_hookFinishMove.Remove();
+                g_addrFinishMove = nullptr;
+                g_origFinishMove = nullptr;
+            }
 
             // PlayerRunCommand (subtick record/re-inject)
             if (!SafeRead(vt,
@@ -932,6 +949,9 @@ namespace BotController
                 g_addrPlayerRunCommand = nullptr;
                 g_origPlayerRunCommand = nullptr;
             }
+
+            if (!g_finishMoveActive || !g_subtickActive)
+                g_status = "failed: replay command/view boundary hooks";
 
             char dbg[200];
             std::snprintf(dbg, sizeof(dbg),
@@ -989,7 +1009,7 @@ namespace BotController
                 char dbg[320];
                 std::snprintf(dbg, sizeof(dbg),
                               "[BotController] WARN: PhysicsSimulate hook unavailable (%s); "
-                              "replay falls back to per-subtick boundary (may stutter)\n",
+                              "replay falls back to PlayerRunCommand-post (may stutter)\n",
                               psErr[0] ? psErr : "funchook failed");
                 DebugOut(dbg);
             }
@@ -1022,6 +1042,7 @@ namespace BotController
             g_addrPlayerRunCommand = nullptr;
             g_addrPhysicsSimulate = nullptr;
             g_physicsActive = false;
+            g_finishMoveActive = false;
             g_subtickActive = false;
             g_vtHooksTried.store(false, std::memory_order_release);
             for (auto &s : g_slotServices)

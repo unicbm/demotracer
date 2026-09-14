@@ -147,6 +147,12 @@ measurements.
 - Preserve stored evidence bit-exactly. Format changes require an explicit
   version decision.
 - Cosmetic/econ export stays explicit opt-in.
+- Player weapon ownership evidence includes purchase-time entity snapshots
+  throughout the demo, including warmup and buy-and-drop/refund cases. It does
+  not require a buyer inventory tick or match participation by that weapon.
+  Inventory observations are attributed by item account/original owner, and
+  distinct items of the same weapon type are retained. Match statistics and
+  replay round selection keep their existing time windows.
 - Output contains `.dtr`, manifests, optional `.dtv` voice sidecars, and local
   GUI metadata—not CSV, Parquet, or raw debug dumps.
 - Output promotion holds a target-scoped cross-process lock. Local archive

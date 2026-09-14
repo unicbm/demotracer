@@ -52,6 +52,10 @@
 /.external/
 /output/
 /tmp/
+# Local research notes and offline investigation tools
+/docs/PROJECTILE_RECONSTRUCTION.md
+/docs/REPLAY_POV_PUBLICATION_RESEARCH_*.md
+/tooling/research/
 /desktop/converter/output/
 *.dem
 *.dtr

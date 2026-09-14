@@ -72,11 +72,11 @@ Advanced projectile diagnostics:
 
 Projectile alignment is uniform for every grenade kind: DemoTracer applies the
 recorded initial position and velocity once through CS2's entity teleport path
-when the projectile entity is born. If that birth-state write is deferred to the
-next server frame, DemoTracer translates the projectile's absolute detonation
-deadline by the same elapsed time so the rewind does not shorten its remaining
-lifetime. Flight, collision, detonation, and effect propagation remain owned by
-CS2. Effect positions are diagnostic evidence only; playback never teleports a
+before the projectile's first native physics step. The spawn listener records
+the entity; the synchronous physics hook applies the birth state without
+waiting another frame or shifting any timer. `dtr_runtime` reports the hook's
+actual availability. Flight, collision, detonation, and effect propagation remain
+owned by CS2. Effect positions are diagnostic evidence only; playback never teleports a
 projectile to an effect point or forces detonation.
 
 | Command | Purpose |
@@ -224,7 +224,6 @@ plugin with `css_plugins reload DemoTracer`.
 | `dtr_status [slot <slot>|<slot>]` | Print replay state. |
 | `bh_status` | Print BotHider provider and managed-slot state. |
 | `bc_status` | Print native hooks and per-slot locks. |
-| `bc_replay_pov [off|spectated|always]` | Control native first-person POV publication. |
 | `bc_perf [0|1|reset]` | Print, toggle, or reset native performance counters. |
 
 ## Compatibility Aliases

@@ -43,7 +43,16 @@ public sealed partial class DemoTracerPlugin
             SetProjectileAlignEnabled(ParseOnOff(command.GetArg(1), _projectileAlignEnabled));
 
         command.ReplyToCommand("[DTR WARN] legacy command: use dtr_align projectiles <on|off>");
-        command.ReplyToCommand($"dtr: projectile_align={_projectileAlignEnabled} mode=engine_birth_once");
+        command.ReplyToCommand($"dtr: projectile_align={_projectileAlignEnabled} mode=first_physics_pre hook={ProjectilePhysicsHookStatus}");
+    }
+
+    [ConsoleCommand("dtr_projectile_trace", "dtr_projectile_trace <0|1>")]
+    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
+    public void ProjectileTraceCommand(CCSPlayerController? player, CommandInfo command)
+    {
+        if (command.ArgCount >= 2)
+            _session.ProjectileTraceEnabled = ParseOnOff(command.GetArg(1), _session.ProjectileTraceEnabled);
+        command.ReplyToCommand($"dtr: projectile_trace={_session.ProjectileTraceEnabled} read_only=true hook={ProjectilePhysicsHookStatus} log=dtr_projectile_align_log");
     }
 
     [ConsoleCommand("dtr_projectile_align_log", "dtr_projectile_align_log [clear|all|molotov|fire]")]
@@ -341,7 +350,7 @@ public sealed partial class DemoTracerPlugin
     private void ReplyAlignStatus(Action<string> reply)
     {
         reply($"[DTR ALIGN] preset={AlignPresetName()}");
-        reply($"[DTR ALIGN] weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_mode=birth_once crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)}");
+        reply($"[DTR ALIGN] weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_mode=first_physics_pre projectile_hook={ProjectilePhysicsHookStatus} crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)}");
         reply("[DTR ALIGN] note: cosmetics moved to dtr_cosmetics; scoreboard moved to dtr_match");
     }
 
@@ -485,6 +494,7 @@ public sealed partial class DemoTracerPlugin
             return;
 
         _session.ProjectileAlignNextBySlot.Clear();
+        _session.ProjectileBirths.Clear();
         BotControllerNative.ClearProjectileBirthAlign();
     }
 

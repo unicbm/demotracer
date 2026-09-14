@@ -5,10 +5,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { getCurrentWebview, type DragDropEvent } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { exit as exitApp } from "@tauri-apps/plugin-process";
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState, type CSSProperties } from "react";
 import {
   DEFAULT_SETTINGS,
   INITIAL_LIBRARY_PREFERENCES,
@@ -137,6 +137,7 @@ import {
 } from "./library";
 import {
   buildArchiveSessionMeta,
+  createManifestCache,
   EMPTY_LIBRARY_WORKSPACE,
   LIBRARY_SESSION_STORAGE_KEY,
   libraryWorkspaceReducer,
@@ -210,11 +211,12 @@ function App() {
   const {
     activeSection,
     archive,
-    archivePath,
     selectedRound: selectedArchiveRound,
     selectedPlayer,
     commandMode,
   } = libraryWorkspace;
+  const archivePath = archive?.manifestPath ?? "";
+  const [openingArchivePath, setOpeningArchivePath] = useState("");
   const [sourcePath, setSourcePath] = useState("");
   const [outputDir, setOutputDir] = useState(INITIAL_LIBRARY_PREFERENCES.exportRoot);
   const [libraryPreferences, setLibraryPreferences] = useState(INITIAL_LIBRARY_PREFERENCES);
@@ -309,10 +311,11 @@ function App() {
 
   const taskTokenRef = useRef(0);
   const manifestReadTokenRef = useRef(0);
+  const [manifestCache] = useState(() => createManifestCache(
+    (path) => invoke<ManifestArchive>("read_manifest", { path }),
+  ));
   const libraryRestoreRef = useRef<StoredLibrarySession | null>(INITIAL_LIBRARY_SESSION);
   const libraryRestoreStartedRef = useRef(false);
-  const manifestCacheRef = useRef(new Map<string, ManifestArchive>());
-  const manifestCacheGenerationRef = useRef(0);
   const libraryScanTokenRef = useRef(0);
   const taskWarningsRef = useRef<string[]>([]);
   const isBusyRef = useRef(false);
@@ -417,12 +420,6 @@ function App() {
     inventoryPanelHostRef: inventorySimulatorHostRef,
     onError: setGlobalError,
   });
-
-  const invalidateManifestCache = useCallback((path?: string) => {
-    manifestCacheGenerationRef.current += 1;
-    if (path) manifestCacheRef.current.delete(normalizedDiagnosticPath(path));
-    else manifestCacheRef.current.clear();
-  }, []);
 
   const words = TEXT[language];
   const chooseWorkspaceBackground = useCallback(async () => {
@@ -1250,9 +1247,16 @@ function App() {
     const returnSection = activeSection;
     const restoringSavedSession = libraryRestoreRef.current?.manifestPath.toLocaleLowerCase() === path.toLocaleLowerCase();
     const token = ++manifestReadTokenRef.current;
-    const cacheKey = normalizedDiagnosticPath(path);
-    const cached = manifestCacheRef.current.get(cacheKey);
-    const showArchive = (next: ManifestArchive) => {
+    setGlobalError(null);
+    try {
+      let next = manifestCache.get(path);
+      if (!next) {
+        setOpeningArchivePath(path);
+        dispatchLibraryWorkspace({ type: "navigate", section: "analysis" });
+        setPhase("openingArchive");
+        next = await manifestCache.read(path);
+      }
+      if (token !== manifestReadTokenRef.current) return;
       const restored = libraryRestoreRef.current?.manifestPath.toLocaleLowerCase() === next.manifestPath.toLocaleLowerCase()
         ? libraryRestoreRef.current
         : null;
@@ -1264,20 +1268,6 @@ function App() {
       setOutputRoot(next.root);
       setSelectedRounds(new Set());
       setPhase("archive");
-    };
-    setGlobalError(null);
-    dispatchLibraryWorkspace({ type: "opening", path });
-    if (cached) {
-      showArchive(cached);
-      return;
-    }
-    setPhase("openingArchive");
-    try {
-      const next = await invoke<ManifestArchive>("read_manifest", { path });
-      if (token !== manifestReadTokenRef.current) return;
-      manifestCacheRef.current.set(cacheKey, next);
-      manifestCacheRef.current.set(normalizedDiagnosticPath(next.manifestPath), next);
-      showArchive(next);
     } catch (reason) {
       if (token !== manifestReadTokenRef.current) return;
       if (restoringSavedSession) {
@@ -1289,17 +1279,11 @@ function App() {
       setPhase(returnPhase === "openingArchive" ? "idle" : returnPhase);
       dispatchLibraryWorkspace({ type: "navigate", section: returnSection });
     }
-  }, [activeSection, phase, words.invalidManifest]);
+  }, [activeSection, manifestCache, phase, words.invalidManifest]);
 
-  const inspectLibraryEntry = useCallback(async (entry: DemoLibraryEntry): Promise<ManifestArchive> => {
-    const cacheKey = normalizedDiagnosticPath(entry.manifestPath);
-    const cached = manifestCacheRef.current.get(cacheKey);
-    if (cached) return cached;
-    const inspected = await invoke<ManifestArchive>("read_manifest", { path: entry.manifestPath });
-    manifestCacheRef.current.set(cacheKey, inspected);
-    manifestCacheRef.current.set(normalizedDiagnosticPath(inspected.manifestPath), inspected);
-    return inspected;
-  }, []);
+  const inspectLibraryEntry = useCallback((entry: DemoLibraryEntry): Promise<ManifestArchive> => {
+    return manifestCache.read(entry.manifestPath);
+  }, [manifestCache]);
 
   async function saveArchiveNote(manifestPath: string, note: string): Promise<boolean> {
     if (!manifestPath || savingArchiveNote) return false;
@@ -1309,14 +1293,10 @@ function App() {
       const saved = await invoke<SaveArchiveNoteResult>("save_archive_note", {
         request: { manifestPath, note },
       });
+      manifestCache.invalidate(manifestPath);
       if (archive && normalizedDiagnosticPath(archive.manifestPath) === normalizedDiagnosticPath(saved.manifestPath)) {
         const updated = { ...archive, note: saved.note };
         dispatchLibraryWorkspace({ type: "replaceArchive", archive: updated });
-        manifestCacheRef.current.set(normalizedDiagnosticPath(updated.manifestPath), updated);
-      } else {
-        const cacheKey = normalizedDiagnosticPath(saved.manifestPath);
-        const cached = manifestCacheRef.current.get(cacheKey);
-        if (cached) manifestCacheRef.current.set(cacheKey, { ...cached, note: saved.note });
       }
       setLibraryScan((current) => current ? {
         ...current,
@@ -1342,34 +1322,10 @@ function App() {
     void runManifest(saved.manifestPath);
   }, [runManifest]);
 
-  const prewarmManifestCache = useCallback(async (
-    entries: DemoLibraryEntry[],
-    generation: number,
-  ) => {
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-    for (const entry of entries) {
-      if (generation !== manifestCacheGenerationRef.current) return;
-      const cacheKey = normalizedDiagnosticPath(entry.manifestPath);
-      if (manifestCacheRef.current.has(cacheKey)) continue;
-      try {
-        const archive = await invoke<ManifestArchive>("read_manifest", { path: entry.manifestPath });
-        if (generation !== manifestCacheGenerationRef.current) return;
-        manifestCacheRef.current.set(cacheKey, archive);
-        manifestCacheRef.current.set(normalizedDiagnosticPath(archive.manifestPath), archive);
-      } catch {
-        // Library summaries remain usable when a full manifest cannot be warmed.
-        // Opening that archive will surface the normal actionable error.
-      }
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-    }
-  }, []);
-
   const scanLibrary = useCallback(async (roots: string[]) => {
     const paths = uniqueLibraryRoots(roots);
     if (paths.length === 0 || !("__TAURI_INTERNALS__" in window)) return;
     const token = ++libraryScanTokenRef.current;
-    const cacheGeneration = ++manifestCacheGenerationRef.current;
-    manifestCacheRef.current.clear();
     setGlobalError(null);
     setLibraryLoading(true);
     try {
@@ -1387,8 +1343,8 @@ function App() {
       }));
       if (token !== libraryScanTokenRef.current) return;
       const merged = mergeLibraryScans(scans, paths[0]);
+      manifestCache.reconcileLibrary(merged.entries);
       setLibraryScan(merged);
-      void prewarmManifestCache(merged.entries, cacheGeneration);
     } catch (reason) {
       if (token !== libraryScanTokenRef.current) return;
       const error = parseCommandError(reason);
@@ -1401,7 +1357,30 @@ function App() {
     } finally {
       if (token === libraryScanTokenRef.current) setLibraryLoading(false);
     }
-  }, [prewarmManifestCache]);
+  }, [language, manifestCache]);
+
+  useEffect(() => {
+    if (!libraryScan || libraryLoading || isBusy || !("__TAURI_INTERNALS__" in window)) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        // Read the active match first, then warm the remaining library one at a time.
+        for (const entry of [...activeArchiveSeries, ...libraryScan.entries]) {
+          if (cancelled) return;
+          if (entry.compatibility === "unsupported" || manifestCache.get(entry.manifestPath)) continue;
+          try {
+            await manifestCache.read(entry.manifestPath);
+          } catch {
+            // Opening the archive surfaces the read error through the normal UI.
+          }
+        }
+      })();
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [activeArchiveSeries, isBusy, libraryLoading, libraryScan, manifestCache]);
 
   function applyBatchLedger(next: BatchLedger, generation: number, allowBatchSwitch = false) {
     if (generation !== batchGenerationRef.current) return;
@@ -1475,8 +1454,8 @@ function App() {
         void refreshBatchLedger(event.batchId, generation);
         break;
       case "itemCompleted":
+        manifestCache.invalidate(event.manifestPath);
         recordActivityLog("info", "batch", `Completed ${fileName(event.manifestPath) || event.itemId}`);
-        invalidateManifestCache(event.manifestPath);
         updateBatchLedgerItem(event.batchId, event.itemId, {
           status: "completed",
           phase: "complete",
@@ -1753,36 +1732,49 @@ function App() {
     return () => { disposed = true; };
   }, [analysis, outputDir, phase]);
 
+  const handleDragDrop = useEffectEvent((payload: DragDropEvent) => {
+    if (payload.type === "enter" || payload.type === "over") {
+      if (!isBusy) setDragActive(true);
+      return;
+    }
+    if (payload.type === "leave") {
+      setDragActive(false);
+      return;
+    }
+    setDragActive(false);
+    if (isBusy) return;
+    const paths = payload.paths;
+    if (paths.length === 1 && paths[0].toLowerCase().endsWith(".json")) {
+      void runManifest(paths[0]);
+      return;
+    }
+    if (paths.length === 0 || paths.length > BATCH_SELECTION_LIMIT || !paths.every(isDemoFilePath)) {
+      setGlobalError({
+        code: "demo_selection_invalid",
+        message: words.demoDropInvalid,
+      });
+      return;
+    }
+    void prepareDemoSelections(paths);
+  });
+
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
+    let disposed = false;
     let unlisten: (() => void) | undefined;
     void getCurrentWebview().onDragDropEvent((event) => {
-      if (event.payload.type === "enter" || event.payload.type === "over") {
-        if (!isBusy) setDragActive(true);
-        return;
-      }
-      if (event.payload.type === "leave") {
-        setDragActive(false);
-        return;
-      }
-      setDragActive(false);
-      if (isBusy) return;
-      const paths = event.payload.paths;
-      if (paths.length === 1 && paths[0].toLowerCase().endsWith(".json")) {
-        void runManifest(paths[0]);
-        return;
-      }
-      if (paths.length === 0 || paths.length > BATCH_SELECTION_LIMIT || !paths.every(isDemoFilePath)) {
-        setGlobalError({
-          code: "demo_selection_invalid",
-          message: words.demoDropInvalid,
-        });
-        return;
-      }
-      void prepareDemoSelections(paths);
-    }).then((stop) => { unlisten = stop; });
-    return () => unlisten?.();
-  }, [isBusy, prepareDemoSelections, runManifest, words]);
+      if (!disposed) handleDragDrop(event.payload);
+    }).then((stop) => {
+      if (disposed) stop();
+      else unlisten = stop;
+    }).catch((reason) => {
+      if (!disposed) setGlobalError(parseCommandError(reason));
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
@@ -1955,7 +1947,7 @@ function App() {
         });
       }
       setDemoSourceIndex((current) => rememberDemoSource(current, entry.demoSha256, result.sourcePath));
-      invalidateManifestCache(entry.manifestPath);
+      manifestCache.invalidate(entry.manifestPath);
       const notice = words.repairArchiveResult.replace("{name}", result.displayName);
       setLibraryNotice(notice);
       setLiveMessage(notice);
@@ -1980,7 +1972,7 @@ function App() {
           libraryRoots,
         },
       });
-      invalidateManifestCache(entry.manifestPath);
+      manifestCache.invalidate(entry.manifestPath);
       setArchiveDeleteTarget(null);
       const notice = words.archiveDeleted.replace("{name}", name);
       setLibraryNotice(notice);
@@ -2038,7 +2030,7 @@ function App() {
       source.demoSha256,
       result.sourcePath,
     ));
-    invalidateManifestCache(source.manifestPath);
+    manifestCache.invalidate(source.manifestPath);
     return result.sourcePath;
   }
 
@@ -2068,7 +2060,6 @@ function App() {
     if (isBusy || roots.length === 0) return;
     let shouldRescan = false;
     try {
-      invalidateManifestCache();
       setGlobalError(null);
       setLibraryNotice("");
       setRepairingLibrary(true);
@@ -2560,7 +2551,7 @@ function App() {
       });
       if (token !== taskTokenRef.current) return;
       setResult(summary);
-      invalidateManifestCache(summary.manifestPath);
+      manifestCache.invalidate(summary.manifestPath);
       setOutputRoot(summary.root);
       setConversionWarnings(taskWarningsRef.current);
       dispatchLibraryWorkspace({
@@ -3097,7 +3088,7 @@ function App() {
           </>
         ) : (
           <>
-        {phase === "openingArchive" ? <OpeningArchiveView words={words} manifestName={fileName(archivePath)} /> : null}
+        {phase === "openingArchive" ? <OpeningArchiveView words={words} manifestName={fileName(openingArchivePath)} /> : null}
         {phase === "archive" && archive ? (
           <ArchiveWorkspace
             words={words}

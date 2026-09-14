@@ -348,71 +348,6 @@ namespace BotController
             return false;
         }
 
-        static bool ParseReplayViewMode(const char *s, MotionRecorder::ReplayViewMode &out)
-        {
-            if (!s)
-                return false;
-            if (std::strcmp(s, "prepost") == 0 || std::strcmp(s, "hard") == 0)
-            {
-                out = MotionRecorder::ReplayViewMode::PrePost;
-                return true;
-            }
-            if (std::strcmp(s, "post") == 0 || std::strcmp(s, "postonly") == 0)
-            {
-                out = MotionRecorder::ReplayViewMode::PostOnly;
-                return true;
-            }
-            if (std::strcmp(s, "cmd") == 0 || std::strcmp(s, "usercmd") == 0)
-            {
-                out = MotionRecorder::ReplayViewMode::Cmd;
-                return true;
-            }
-            return false;
-        }
-
-        static bool ParseReplayCommandViewMode(const char *s, MotionRecorder::ReplayCommandViewMode &out)
-        {
-            if (!s)
-                return false;
-            if (std::strcmp(s, "pre") == 0)
-            {
-                out = MotionRecorder::ReplayCommandViewMode::Pre;
-                return true;
-            }
-            if (std::strcmp(s, "post") == 0)
-            {
-                out = MotionRecorder::ReplayCommandViewMode::Post;
-                return true;
-            }
-            if (std::strcmp(s, "nextpre") == 0 || std::strcmp(s, "next") == 0)
-            {
-                out = MotionRecorder::ReplayCommandViewMode::NextPre;
-                return true;
-            }
-            return false;
-        }
-
-        static bool ParseReplayPovMode(const char *s, MotionRecorder::ReplayPovMode &out)
-        {
-            if (!s)
-                return false;
-            if (std::strcmp(s, "off") == 0 || std::strcmp(s, "0") == 0)
-            {
-                out = MotionRecorder::ReplayPovMode::Off;
-                return true;
-            }
-            if (std::strcmp(s, "spectated") == 0 || std::strcmp(s, "spec") == 0)
-            {
-                out = MotionRecorder::ReplayPovMode::Spectated;
-                return true;
-            }
-            if (std::strcmp(s, "always") == 0 || std::strcmp(s, "1") == 0)
-            {
-                out = MotionRecorder::ReplayPovMode::Always;
-                return true;
-            }
-            return false;
-        }
     }
 }
 
@@ -757,75 +692,6 @@ CON_COMMAND_F(bc_replay_snap,
                                 MotionRecorder::GetReplaySnapMode()));
 }
 
-CON_COMMAND_F(bc_replay_view,
-              "bc_replay_view [prepost|post|cmd]  Set replay eye-angle write mode.",
-              FCVAR_NONE)
-{
-    using namespace BotController;
-
-    if (args.ArgC() >= 2)
-    {
-        MotionRecorder::ReplayViewMode mode;
-        if (!Commands::ParseReplayViewMode(args.Arg(1), mode))
-        {
-            Commands::PrintToCaller(context,
-                                    "usage: bc_replay_view [prepost|post|cmd]\n");
-            return;
-        }
-        MotionRecorder::SetReplayViewMode(mode);
-    }
-
-    Commands::PrintToCaller(context, "[BC] replay_view=%s\n",
-                            MotionRecorder::ReplayViewModeName(
-                                MotionRecorder::GetReplayViewMode()));
-}
-
-CON_COMMAND_F(bc_replay_cmd_view,
-              "bc_replay_cmd_view [pre|post|nextpre]  Set injected usercmd base view source.",
-              FCVAR_NONE)
-{
-    using namespace BotController;
-
-    if (args.ArgC() >= 2)
-    {
-        MotionRecorder::ReplayCommandViewMode mode;
-        if (!Commands::ParseReplayCommandViewMode(args.Arg(1), mode))
-        {
-            Commands::PrintToCaller(context,
-                                    "usage: bc_replay_cmd_view [pre|post|nextpre]\n");
-            return;
-        }
-        MotionRecorder::SetReplayCommandViewMode(mode);
-    }
-
-    Commands::PrintToCaller(context, "[BC] replay_cmd_view=%s\n",
-                            MotionRecorder::ReplayCommandViewModeName(
-                                MotionRecorder::GetReplayCommandViewMode()));
-}
-
-CON_COMMAND_F(bc_replay_pov,
-              "bc_replay_pov [off|spectated|always]  Set first-person replay POV publishing mode.",
-              FCVAR_NONE)
-{
-    using namespace BotController;
-
-    if (args.ArgC() >= 2)
-    {
-        MotionRecorder::ReplayPovMode mode;
-        if (!Commands::ParseReplayPovMode(args.Arg(1), mode))
-        {
-            Commands::PrintToCaller(context,
-                                    "usage: bc_replay_pov [off|spectated|always]\n");
-            return;
-        }
-        MotionRecorder::SetReplayPovMode(mode);
-    }
-
-    Commands::PrintToCaller(context, "[BC] replay_pov=%s\n",
-                            MotionRecorder::ReplayPovModeName(
-                                MotionRecorder::GetReplayPovMode()));
-}
-
 CON_COMMAND_F(bc_subtick_view_delta,
               "bc_subtick_view_delta <0|1>  Toggle replay subtick pitch/yaw delta injection.",
               FCVAR_NONE)
@@ -888,10 +754,8 @@ CON_COMMAND_F(bc_perf,
 
     const MotionRecorder::ReplayPerfCounters perf =
         MotionRecorder::GetReplayPerfCounters();
-    Commands::PrintToCaller(context, "[BC] perf=%s replay_pov=%s\n",
-                            MotionRecorder::ReplayPerfEnabled() ? "on" : "off",
-                            MotionRecorder::ReplayPovModeName(
-                                MotionRecorder::GetReplayPovMode()));
+    Commands::PrintToCaller(context, "[BC] perf=%s\n",
+                            MotionRecorder::ReplayPerfEnabled() ? "on" : "off");
     Commands::PrintToCaller(
         context,
         "[BC] hooks: process=%llu finish=%llu usercmd=%llu physics=%llu\n",
@@ -901,11 +765,10 @@ CON_COMMAND_F(bc_perf,
         (unsigned long long)perf.physicsSimulateHooks);
     Commands::PrintToCaller(
         context,
-        "[BC] replay: tick_reads=%llu command_frames=%llu sync_view=%llu server_view_writes=%llu virtual_query=%llu\n",
+        "[BC] replay: tick_reads=%llu command_frames=%llu sync_local_view=%llu virtual_query=%llu\n",
         (unsigned long long)perf.replayTickReads,
         (unsigned long long)perf.replayCommandFrameReads,
-        (unsigned long long)perf.syncReplayViewCalls,
-        (unsigned long long)perf.serverViewWrites,
+        (unsigned long long)perf.syncReplayLocalViewCalls,
         (unsigned long long)perf.virtualQueryCalls);
     Commands::PrintToCaller(
         context,
@@ -954,18 +817,6 @@ CON_COMMAND_F(bc_status,
                             "[BC] replay_snap: %s\n",
                             MotionRecorder::ReplaySnapModeName(
                                 MotionRecorder::GetReplaySnapMode()));
-    Commands::PrintToCaller(context,
-                            "[BC] replay_view: %s\n",
-                            MotionRecorder::ReplayViewModeName(
-                                MotionRecorder::GetReplayViewMode()));
-    Commands::PrintToCaller(context,
-                            "[BC] replay_cmd_view: %s\n",
-                            MotionRecorder::ReplayCommandViewModeName(
-                                MotionRecorder::GetReplayCommandViewMode()));
-    Commands::PrintToCaller(context,
-                            "[BC] replay_pov: %s\n",
-                            MotionRecorder::ReplayPovModeName(
-                                MotionRecorder::GetReplayPovMode()));
     Commands::PrintToCaller(context,
                             "[BC] subtick_view_delta: %s\n",
                             InputInjector::ReplaySubtickViewDeltas() ? "on" : "off");

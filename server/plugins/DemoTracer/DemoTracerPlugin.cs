@@ -124,9 +124,10 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         RegisterListener<Listeners.OnClientDisconnect>(OnClientDisconnect);
         RegisterListener<Listeners.OnTick>(OnTick);
         RegisterListener<Listeners.OnEntitySpawned>(OnEntitySpawned);
+        RegisterListener<Listeners.OnEntityDeleted>(OnProjectileEntityDeleted);
         Capabilities.RegisterPluginCapability(ApiCapability, () => (IDemoTracerApi)_apiFacade);
         ConfigureNativeSafetyOffsets();
-        ConfigureNativeProjectileBirthAlignOffsets();
+        InstallProjectilePhysicsHook();
         StartRuntimeHealthHeartbeat();
         Server.PrintToConsole("dtr: CSS control plugin loaded");
     }
@@ -144,6 +145,17 @@ public sealed partial class DemoTracerPlugin : BasePlugin
 
     public override void Unload(bool hotReload)
     {
+        _session.ProjectileBirths.Clear();
+        try
+        {
+            _projectilePhysicsHook?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            // The callback is disabled before Unhook. Still release replay
+            // ownership and injected input if native hook cleanup reports an error.
+            Server.PrintToConsole($"dtr: projectile hook cleanup failed: {ex.Message}");
+        }
         StopRuntimeHealthHeartbeat();
         UnregisterReplayBuySuppressionHooks();
         UnregisterReplayRetentionJoinHook();
@@ -212,29 +224,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         catch (Exception ex)
         {
             Server.PrintToConsole($"dtr: native takeover guard unavailable: {ex.Message}");
-        }
-    }
-
-    private static void ConfigureNativeProjectileBirthAlignOffsets()
-    {
-        try
-        {
-            var initialPositionOffset = Schema.GetSchemaOffset(
-                "CBaseCSGrenadeProjectile",
-                "m_vInitialPosition");
-            var initialVelocityOffset = Schema.GetSchemaOffset(
-                "CBaseCSGrenadeProjectile",
-                "m_vInitialVelocity");
-            var rc = BotControllerNative.SetProjectileBirthAlignOffsets(
-                initialPositionOffset,
-                initialVelocityOffset);
-            Server.PrintToConsole(rc == 0
-                ? $"dtr: native projectile birth align enabled, initial_position=0x{initialPositionOffset:X} initial_velocity=0x{initialVelocityOffset:X}"
-                : $"dtr: native projectile birth align unavailable rc={rc}");
-        }
-        catch (Exception ex)
-        {
-            Server.PrintToConsole($"dtr: native projectile birth align unavailable: {ex.Message}");
         }
     }
 

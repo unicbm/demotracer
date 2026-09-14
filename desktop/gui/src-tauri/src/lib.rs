@@ -996,11 +996,9 @@ struct PlayableManifestFile {
     has_charms: bool,
 }
 
-#[derive(Clone)]
 struct CachedDemo {
     analysis_id: String,
-    parsed: Arc<ParsedDemo>,
-    analysis: DemoAnalysis,
+    parsed: ParsedDemo,
     browser: BrowserDemoAnalysis,
     analysis_options: AnalysisOptions,
     archive_id: String,
@@ -1009,7 +1007,7 @@ struct CachedDemo {
 }
 
 struct AppState {
-    cached: Mutex<Option<CachedDemo>>,
+    cached: Mutex<Option<Arc<CachedDemo>>>,
     busy: AtomicBool,
     analysis_cancel_requested: Arc<AtomicBool>,
     next_analysis_id: AtomicU64,
@@ -1039,13 +1037,13 @@ impl AppState {
         Ok(BusyGuard { busy: &self.busy })
     }
 
-    fn cache(&self) -> CommandResult<MutexGuard<'_, Option<CachedDemo>>> {
+    fn cache(&self) -> CommandResult<MutexGuard<'_, Option<Arc<CachedDemo>>>> {
         self.cached
             .lock()
             .map_err(|_| CommandErrorDto::new("state_poisoned", "Demo cache is unavailable."))
     }
 
-    fn cached_demo(&self, analysis_id: &str) -> CommandResult<CachedDemo> {
+    fn cached_demo(&self, analysis_id: &str) -> CommandResult<Arc<CachedDemo>> {
         self.cache()?
             .as_ref()
             .filter(|cached| cached.analysis_id == analysis_id)
@@ -1519,7 +1517,7 @@ async fn analyze_demo(
                 "Demo analysis was stopped.",
             ));
         }
-        Ok::<_, CommandErrorDto>((Arc::new(parsed), analysis))
+        Ok::<_, CommandErrorDto>((parsed, analysis))
     })
     .await
     .map_err(|error| CommandErrorDto::new("analysis_worker_failed", error.to_string()))?;
@@ -1549,16 +1547,15 @@ async fn analyze_demo(
         source_size_bytes,
     );
 
-    *state.cache()? = Some(CachedDemo {
+    *state.cache()? = Some(Arc::new(CachedDemo {
         analysis_id,
         parsed,
-        analysis: browser_analysis.analysis.clone(),
         browser: browser_analysis,
         analysis_options,
         archive_id: output_demo_id,
         source_modified_at_ms,
         source_size_bytes,
-    });
+    }));
     emit_phase(&events, TaskPhase::Complete);
     Ok(dto)
 }
@@ -1594,7 +1591,7 @@ async fn convert_demo(
 
     let worker_events = events.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        run_conversion(cached, prepared, request, worker_events)
+        run_conversion(&cached, prepared, request, worker_events)
     })
     .await
     .map_err(|error| CommandErrorDto::new("conversion_worker_failed", error.to_string()))?;
@@ -4026,7 +4023,7 @@ fn prepare_conversion_with_cosmetics(
         .copied()
         .collect::<BTreeSet<_>>();
     validate_round_selection(
-        &cached.analysis,
+        &cached.browser.analysis,
         &selected_rounds,
         request.include_suspicious,
     )?;
@@ -4493,7 +4490,7 @@ fn validate_cosmetic_options(
 }
 
 fn run_conversion(
-    cached: CachedDemo,
+    cached: &CachedDemo,
     prepared: PreparedConversion,
     request: ConvertDemoRequest,
     events: Channel<TaskEvent>,
@@ -4549,7 +4546,7 @@ fn emit_demo_source_to_sink(sink: &TaskEventSink, source: &DemoSourceSet) {
 }
 
 fn run_conversion_with_sink(
-    cached: CachedDemo,
+    cached: &CachedDemo,
     prepared: PreparedConversion,
     request: ConvertDemoRequest,
     events: TaskEventSink,
@@ -4608,7 +4605,7 @@ fn run_conversion_with_sink(
             let progress_final_root = final_root.clone();
             let report = export_demo_to_root_with_analysis_and_progress(
                 &cached.parsed,
-                &cached.analysis,
+                &cached.browser.analysis,
                 &prepared.options,
                 staging_root,
                 move |progress| {
@@ -4791,8 +4788,7 @@ fn process_batch_demo(
     let archive_id = archive_info::archive_directory_name(&parsed, &browser);
     let cached = CachedDemo {
         analysis_id: format!("{}-{}", request.batch_id, request.item_id),
-        parsed: Arc::new(parsed),
-        analysis: browser.analysis.clone(),
+        parsed,
         browser,
         analysis_options: AnalysisOptions {
             max_round_seconds: request.settings.max_round_seconds,
@@ -4853,7 +4849,7 @@ fn process_batch_demo(
             return Ok(existing);
         }
     }
-    let summary = run_conversion_with_sink(cached, prepared, convert_request, events)?;
+    let summary = run_conversion_with_sink(&cached, prepared, convert_request, events)?;
 
     Ok(batch::BatchProcessResult {
         archive_root: PathBuf::from(&summary.root),
@@ -6420,18 +6416,17 @@ mod tests {
             "cs2-demotracer-preflight-{}-{unique}",
             std::process::id()
         ));
-        let parsed = Arc::new(ParsedDemo {
+        let parsed = ParsedDemo {
             stem: "match".to_string(),
             demo_sha256: "aabbccddeeff".repeat(6),
             map: "de_mirage".to_string(),
             ..ParsedDemo::default()
-        });
+        };
         let browser = analyze_browser_demo(&parsed, AnalysisOptions::default());
         let archive_id = archive_info::archive_directory_name(&parsed, &browser);
         let cached = CachedDemo {
             analysis_id: "analysis-1".to_string(),
             parsed,
-            analysis: analysis(),
             browser,
             analysis_options: AnalysisOptions::default(),
             archive_id: archive_id.clone(),
@@ -6510,18 +6505,17 @@ mod tests {
     fn preflight_extends_hash_when_the_readable_path_is_occupied() {
         let temp = ManifestTestDir::new("hash-collision");
         let output_dir = temp.path.join("library");
-        let parsed = Arc::new(ParsedDemo {
+        let parsed = ParsedDemo {
             stem: "match".to_string(),
             demo_sha256: "abcdef1234567890".repeat(4),
             map: "de_mirage".to_string(),
             ..ParsedDemo::default()
-        });
+        };
         let browser = analyze_browser_demo(&parsed, AnalysisOptions::default());
         let archive_id = archive_info::archive_directory_name(&parsed, &browser);
         let cached = CachedDemo {
             analysis_id: "analysis-collision".to_string(),
             parsed,
-            analysis: analysis(),
             browser,
             analysis_options: AnalysisOptions::default(),
             archive_id: archive_id.clone(),
@@ -6986,18 +6980,17 @@ mod tests {
 
     #[test]
     fn conversion_rejects_analysis_option_drift() {
-        let parsed = Arc::new(ParsedDemo {
+        let parsed = ParsedDemo {
             stem: "match".to_string(),
             demo_sha256: "ab".repeat(32),
             map: "de_mirage".to_string(),
             ..ParsedDemo::default()
-        });
+        };
         let analysis_options = AnalysisOptions::default();
         let browser = analyze_browser_demo(&parsed, analysis_options);
         let cached = CachedDemo {
             analysis_id: "analysis-options".to_string(),
             parsed,
-            analysis: browser.analysis.clone(),
             browser,
             analysis_options,
             archive_id: "match-aabbccddeeff".to_string(),

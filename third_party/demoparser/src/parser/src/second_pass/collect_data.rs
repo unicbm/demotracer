@@ -42,9 +42,8 @@ const IS_AIRBORNE_CONST: u32 = 0xFFFFFF;
 const ECON_ATTR_SET_ITEM_TEXTURE_PREFAB: u32 = 6;
 const ECON_ATTR_SET_ITEM_TEXTURE_SEED: u32 = 7;
 const ECON_ATTR_SET_ITEM_TEXTURE_WEAR: u32 = 8;
-const STEAM_ID64_BASE: u64 = 76_561_197_960_265_728;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ProjectileRecord {
     pub steamid: Option<u64>,
     pub name: Option<String>,
@@ -54,6 +53,8 @@ pub struct ProjectileRecord {
     pub tick: Option<i32>,
     pub grenade_type: Option<String>,
     pub entity_id: Option<i32>,
+    pub entity_serial: Option<u32>,
+    pub is_incendiary: Option<bool>,
     pub initial_position: Option<[f32; 3]>,
     pub initial_velocity: Option<[f32; 3]>,
     pub smoke_detonation_position: Option<[f32; 3]>,
@@ -525,6 +526,8 @@ impl<'a> SecondPassParser<'a> {
                 tick: Some(self.tick),
                 grenade_type: Some(grenade_type.clone()),
                 entity_id: Some(projectile_entid),
+                entity_serial: self.projectile_serial(projectile_entid),
+                is_incendiary: self.projectile_is_incendiary(projectile_entid),
                 initial_position: self.collect_projectile_vec3(
                     self.prop_controller.special_ids.grenade_initial_position,
                     &projectile_entid,
@@ -595,8 +598,14 @@ impl<'a> SecondPassParser<'a> {
             .get(&projectile_entid)
             .copied()
         {
-            self.update_projectile_record_effects(index, projectile_entid);
-            return;
+            // A create/full-packet can replace an index without a preceding delete.
+            // Only reuse the record when it still describes the same instance.
+            if self.projectile_serial(projectile_entid).is_some_and(|serial| {
+                self.projectile_records[index].entity_serial == Some(serial)
+            }) {
+                self.update_projectile_record_effects(index, projectile_entid);
+                return;
+            }
         }
 
         let initial_position = match self.collect_projectile_vec3(
@@ -655,6 +664,8 @@ impl<'a> SecondPassParser<'a> {
             tick: Some(self.tick),
             grenade_type: Some(grenade_type),
             entity_id: Some(projectile_entid),
+            entity_serial: self.projectile_serial(projectile_entid),
+            is_incendiary: self.projectile_is_incendiary(projectile_entid),
             initial_position: Some(initial_position),
             initial_velocity: Some(initial_velocity),
             smoke_detonation_position: self.collect_projectile_vec3(
@@ -674,6 +685,7 @@ impl<'a> SecondPassParser<'a> {
     }
 
     fn update_projectile_record_effects(&mut self, index: usize, projectile_entid: i32) {
+        let is_incendiary = self.projectile_is_incendiary(projectile_entid);
         let smoke_detonation_position = self.collect_projectile_vec3(
             self.prop_controller
                 .special_ids
@@ -686,6 +698,9 @@ impl<'a> SecondPassParser<'a> {
         );
 
         if let Some(record) = self.projectile_records.get_mut(index) {
+            if is_incendiary.is_some() {
+                record.is_incendiary = is_incendiary;
+            }
             if smoke_detonation_position
                 .is_some_and(projectile_vec3_is_meaningful)
             {
@@ -694,6 +709,18 @@ impl<'a> SecondPassParser<'a> {
             if bounces.is_some() {
                 record.bounces = bounces;
             }
+        }
+    }
+
+    fn projectile_serial(&self, entity_id: i32) -> Option<u32> {
+        Some(self.entities.get(entity_id as usize)?.as_ref()?.serial)
+    }
+
+    fn projectile_is_incendiary(&self, entity_id: i32) -> Option<bool> {
+        let prop_id = self.prop_controller.special_ids.is_incendiary_grenade?;
+        match self.get_prop_from_ent(&prop_id, &entity_id).ok()? {
+            Variant::Bool(value) => Some(value),
+            _ => None,
         }
     }
 
@@ -1203,7 +1230,6 @@ impl<'a> SecondPassParser<'a> {
         ) {
             if include_cosmetics && snapshot.cosmetics.is_none() {
                 snapshot.cosmetics = Some(self.collect_inventory_cosmetics(
-                    entity_id,
                     &snapshot.weapon_eids,
                 ));
                 self.player_inventory_snapshot_cache
@@ -1282,7 +1308,7 @@ impl<'a> SecondPassParser<'a> {
             .and_then(|snapshot| snapshot.cosmetics.as_ref().map(Arc::clone));
         let cosmetics = if include_cosmetics {
             reusable_cosmetics.or_else(|| {
-                Some(self.collect_inventory_cosmetics(entity_id, &weapon_eids))
+                Some(self.collect_inventory_cosmetics(&weapon_eids))
             })
         } else {
             reusable_cosmetics
@@ -1321,59 +1347,18 @@ impl<'a> SecondPassParser<'a> {
 
     fn collect_inventory_cosmetics(
         &self,
-        player_entity_id: &i32,
         weapon_eids: &[i32],
     ) -> Arc<[InventoryWeaponCosmetic]> {
+        // Entity/revision caching preserves each item's actual appearance. A
+        // player/side/weapon slot must not overwrite later purchased items.
         weapon_eids
             .iter()
-            .filter_map(|eid| self.cached_inventory_weapon_cosmetic(player_entity_id, eid))
+            .filter_map(|eid| self.cached_weapon_cosmetic(eid))
+            .map(|item| item.as_ref().clone())
             .collect()
     }
 
-    fn cached_inventory_weapon_cosmetic(
-        &self,
-        player_entity_id: &i32,
-        weapon_entity_id: &i32,
-    ) -> Option<InventoryWeaponCosmetic> {
-        let current = self.cached_weapon_cosmetic(weapon_entity_id)?;
-        let slot_key = self.owned_weapon_slot_key(player_entity_id, &current);
-        if let Some(key) = slot_key {
-            if let Some(cached) = self.stable_owned_weapon_cosmetic_cache.borrow().get(&key) {
-                return Some(refresh_owned_weapon_dynamic_fields(cached, &current));
-            }
-        }
-
-        if let Some(key) = slot_key {
-            if current.paint_kit != 0
-                && current.paint_wear.is_finite()
-                && (0.0..=1.0).contains(&current.paint_wear)
-            {
-                self.stable_owned_weapon_cosmetic_cache
-                    .borrow_mut()
-                    .insert(key, current.as_ref().clone());
-            }
-        }
-        Some(current.as_ref().clone())
-    }
-
-    fn owned_weapon_slot_key(
-        &self,
-        player_entity_id: &i32,
-        cosmetic: &InventoryWeaponCosmetic,
-    ) -> Option<(u64, u32, u32)> {
-        let player = self.players.get(player_entity_id)?;
-        let steam_id = player.steamid?;
-        let team_num = player.team_num.filter(|team| matches!(team, 2 | 3))?;
-        stable_owned_weapon_slot_key(
-            steam_id,
-            team_num,
-            cosmetic.item_def_index,
-            cosmetic.item_account_id,
-            cosmetic.original_owner_xuid,
-        )
-    }
-
-    fn cached_weapon_cosmetic(
+    pub(crate) fn cached_weapon_cosmetic(
         &self,
         weapon_entity_id: &i32,
     ) -> Option<Arc<InventoryWeaponCosmetic>> {
@@ -2077,23 +2062,6 @@ fn glove_paint_seed_from_attribute(value: Variant) -> Option<u32> {
     }
 }
 
-fn stable_owned_weapon_slot_key(
-    steam_id: u64,
-    team_num: u32,
-    item_def_index: u32,
-    item_account_id: Option<u32>,
-    original_owner_xuid: Option<u64>,
-) -> Option<(u64, u32, u32)> {
-    let expected_account_id = steam_id
-        .checked_sub(STEAM_ID64_BASE)
-        .and_then(|value| u32::try_from(value).ok());
-    let owned = item_account_id
-        .zip(expected_account_id)
-        .is_some_and(|(actual, expected)| actual == expected)
-        || original_owner_xuid == Some(steam_id);
-    owned.then_some((steam_id, team_num, item_def_index))
-}
-
 fn inventory_cosmetics_are_reusable(
     cached_player_signature: (u32, Option<u64>, Option<u32>),
     cached_weapon_signature: &[(i32, u32, u64)],
@@ -2116,29 +2084,15 @@ fn clone_current_inventory_snapshot(
         .cloned()
 }
 
-fn refresh_owned_weapon_dynamic_fields(
-    stable: &InventoryWeaponCosmetic,
-    current: &InventoryWeaponCosmetic,
-) -> InventoryWeaponCosmetic {
-    let mut cosmetic = stable.clone();
-    cosmetic.item_id_high = current.item_id_high;
-    cosmetic.item_id_low = current.item_id_low;
-    cosmetic.item_account_id = current.item_account_id;
-    cosmetic.original_owner_xuid = current.original_owner_xuid;
-    cosmetic.stattrak_counter = current.stattrak_counter;
-    cosmetic
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         clone_current_inventory_snapshot, inventory_cosmetics_are_reusable,
         glove_paint_seed_from_attribute, is_map_based_default_agent,
-        refresh_owned_weapon_dynamic_fields, stable_owned_weapon_slot_key,
-        stickers_from_attributes, should_collect_player_rows, StickerAttribute, STEAM_ID64_BASE,
+        stickers_from_attributes, should_collect_player_rows, StickerAttribute,
     };
     use crate::second_pass::parser_settings::PlayerInventorySnapshot;
-    use crate::second_pass::variants::{InventoryWeaponCosmetic, Variant};
+    use crate::second_pass::variants::Variant;
     use ahash::AHashMap;
     use std::cell::RefCell;
     use std::sync::Arc;
@@ -2179,25 +2133,6 @@ mod tests {
         );
         assert_eq!(
             glove_paint_seed_from_attribute(Variant::F32(-1.0)),
-            None
-        );
-    }
-
-    #[test]
-    fn stable_weapon_slots_require_matching_ownership_and_keep_sides_separate() {
-        let account_id = 123;
-        let steam_id = STEAM_ID64_BASE + u64::from(account_id);
-
-        assert_eq!(
-            stable_owned_weapon_slot_key(steam_id, 2, 7, Some(account_id), None),
-            Some((steam_id, 2, 7))
-        );
-        assert_eq!(
-            stable_owned_weapon_slot_key(steam_id, 3, 7, None, Some(steam_id)),
-            Some((steam_id, 3, 7))
-        );
-        assert_eq!(
-            stable_owned_weapon_slot_key(steam_id, 2, 7, Some(account_id + 1), None),
             None
         );
     }
@@ -2246,21 +2181,6 @@ mod tests {
         cache.borrow_mut().insert(7, snapshot);
 
         assert!(cache.borrow().get(&7).unwrap().cosmetics.is_some());
-    }
-
-    #[test]
-    fn stable_weapon_snapshot_refreshes_only_dynamic_identity_fields() {
-        let stable = cosmetic(7, 600, 0.01, 1, 10);
-        let current = cosmetic(7, 999, 0.42, 2, 25);
-        let refreshed = refresh_owned_weapon_dynamic_fields(&stable, &current);
-
-        assert_eq!(refreshed.paint_kit, stable.paint_kit);
-        assert_eq!(refreshed.paint_wear.to_bits(), stable.paint_wear.to_bits());
-        assert_eq!(refreshed.custom_name, stable.custom_name);
-        assert_eq!(refreshed.item_id_low, current.item_id_low);
-        assert_eq!(refreshed.item_account_id, current.item_account_id);
-        assert_eq!(refreshed.original_owner_xuid, current.original_owner_xuid);
-        assert_eq!(refreshed.stattrak_counter, current.stattrak_counter);
     }
 
     #[test]
@@ -2331,30 +2251,6 @@ mod tests {
         StickerAttribute {
             definition_index,
             raw_value,
-        }
-    }
-
-    fn cosmetic(
-        item_def_index: u32,
-        paint_kit: u32,
-        paint_wear: f32,
-        identity: u32,
-        stattrak_counter: i32,
-    ) -> InventoryWeaponCosmetic {
-        InventoryWeaponCosmetic {
-            item_def_index,
-            item_id_high: Some(identity + 100),
-            item_id_low: Some(identity),
-            item_account_id: Some(identity + 200),
-            original_owner_xuid: Some(76561198000000000 + u64::from(identity)),
-            paint_kit,
-            paint_seed: 17,
-            paint_wear,
-            entity_quality: Some(3),
-            stattrak_counter: Some(stattrak_counter),
-            attributes: Vec::new(),
-            custom_name: Some("stable".to_string()),
-            stickers: Vec::new(),
         }
     }
 }

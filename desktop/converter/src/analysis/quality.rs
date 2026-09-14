@@ -664,6 +664,7 @@ mod tests {
             server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
+            weapon_purchases: Vec::new(),
         };
         let analysis = analyze_demo(&parsed, AnalysisOptions::default());
         assert_eq!(analysis.rounds[0].status, RoundStatus::Suspicious);
@@ -723,6 +724,7 @@ mod tests {
             server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
+            weapon_purchases: Vec::new(),
         }
     }
 
@@ -781,6 +783,7 @@ mod tests {
             server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
+            weapon_purchases: Vec::new(),
         };
 
         let analysis = analyze_demo(&parsed, AnalysisOptions::default());
@@ -837,6 +840,7 @@ mod tests {
             server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
+            weapon_purchases: Vec::new(),
         };
 
         let analysis = analyze_demo(&parsed, AnalysisOptions::default());
@@ -876,6 +880,7 @@ mod tests {
             server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
+            weapon_purchases: Vec::new(),
         };
 
         let analysis = analyze_demo(&parsed, AnalysisOptions::default());
@@ -922,6 +927,7 @@ mod tests {
             server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
+            weapon_purchases: Vec::new(),
         };
 
         let analysis = analyze_demo(&parsed, AnalysisOptions::default());
@@ -968,6 +974,7 @@ mod tests {
             server_convars: Vec::new(),
             avatar_overrides: Vec::new(),
             econ_items: Vec::new(),
+            weapon_purchases: Vec::new(),
         };
 
         let analysis = analyze_demo(&parsed, AnalysisOptions::default());

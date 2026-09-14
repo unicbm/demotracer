@@ -422,8 +422,8 @@ mod demoparser_impl {
         AvatarImageFormat, ParsedAvatarOverride, ParsedEconItem, ParsedGameEvent,
         ParsedInventoryWeaponAttribute, ParsedInventoryWeaponCosmetic, ParsedPlayerTick,
         ParsedProjectile, ParsedScoreboardFlair, ParsedServerConVar, ParsedVoiceFrame,
-        ParsedWeaponSticker, ProjectileEffectSource, ProjectileKind, ReplayInputHistoryEntry,
-        SubtickMove,
+        ParsedWeaponPurchase, ParsedWeaponSticker, ProjectileEffectSource, ProjectileKind,
+        ReplayInputHistoryEntry, SubtickMove,
     };
     use ahash::AHashMap;
     use parser::first_pass::parser_settings::{
@@ -816,6 +816,7 @@ mod demoparser_impl {
     fn parse_demo_channels<'a>(
         bytes: &[u8],
         settings: ParserInputs<'a>,
+        options: ReadDemoOptions,
     ) -> std::result::Result<(DemoOutput, Option<SingleThreadedOverlay>), DemoParserError> {
         if check_multithreadability(&settings.wanted_player_props)
             || !settings.parse_ents
@@ -828,25 +829,21 @@ mod demoparser_impl {
             || settings.list_props
             || settings.fallback_bytes.is_some()
         {
-            return parse_demo_once(bytes, settings, ParsingMode::Normal)
-                .map(|output| (output, None));
+            return parse_demo_once(bytes, settings, options).map(|output| (output, None));
         }
 
         let Some(entity_id_real) = wanted_real_prop(&settings, ENTITY_ID_PROP) else {
-            return parse_demo_once(bytes, settings, ParsingMode::Normal)
-                .map(|output| (output, None));
+            return parse_demo_once(bytes, settings, options).map(|output| (output, None));
         };
         let Some(round_real) = wanted_real_prop(&settings, ROUND_PROP) else {
-            return parse_demo_once(bytes, settings, ParsingMode::Normal)
-                .map(|output| (output, None));
+            return parse_demo_once(bytes, settings, options).map(|output| (output, None));
         };
         let Some(overlay_real_props) = SINGLE_THREADED_OVERLAY_PROPS
             .iter()
             .map(|friendly_name| wanted_real_prop(&settings, friendly_name))
             .collect::<Option<Vec<_>>>()
         else {
-            return parse_demo_once(bytes, settings, ParsingMode::Normal)
-                .map(|output| (output, None));
+            return parse_demo_once(bytes, settings, options).map(|output| (output, None));
         };
         let mut supplemental_real_props = overlay_real_props.clone();
         supplemental_real_props.push(entity_id_real);
@@ -870,13 +867,11 @@ mod demoparser_impl {
         ) {
             Ok(output) => output,
             Err(_) => {
-                return parse_demo_once(bytes, settings, ParsingMode::Normal)
-                    .map(|output| (output, None));
+                return parse_demo_once(bytes, settings, options).map(|output| (output, None));
             }
         };
         let Some(supplemental) = SupplementalColumns::from_output(supplemental_output) else {
-            return parse_demo_once(bytes, settings, ParsingMode::Normal)
-                .map(|output| (output, None));
+            return parse_demo_once(bytes, settings, options).map(|output| (output, None));
         };
 
         let mut primary_settings = settings.clone();
@@ -884,20 +879,17 @@ mod demoparser_impl {
             .wanted_player_props
             .retain(|prop| !overlay_real_props.contains(prop));
         if !check_multithreadability(&primary_settings.wanted_player_props) {
-            return parse_demo_once(bytes, settings, ParsingMode::Normal)
-                .map(|output| (output, None));
+            return parse_demo_once(bytes, settings, options).map(|output| (output, None));
         }
 
-        let primary = match parse_demo_once(bytes, primary_settings, ParsingMode::Normal) {
+        let primary = match parse_demo_once(bytes, primary_settings, options) {
             Ok(output) => output,
             Err(_) => {
-                return parse_demo_once(bytes, settings, ParsingMode::Normal)
-                    .map(|output| (output, None));
+                return parse_demo_once(bytes, settings, options).map(|output| (output, None));
             }
         };
         let Some(overlay) = supplemental.align(&primary) else {
-            return parse_demo_once(bytes, settings, ParsingMode::Normal)
-                .map(|output| (output, None));
+            return parse_demo_once(bytes, settings, options).map(|output| (output, None));
         };
         Ok((primary, Some(overlay)))
     }
@@ -916,9 +908,18 @@ mod demoparser_impl {
     fn parse_demo_once<'a>(
         bytes: &[u8],
         settings: ParserInputs<'a>,
-        mode: ParsingMode,
+        options: ReadDemoOptions,
     ) -> std::result::Result<DemoOutput, DemoParserError> {
-        parse_demo_once_with_decode_plan(bytes, settings, mode, DecodePlan::FULL_PLAYER_ROWS)
+        // Only end-of-match skins are consumed from the scoreboard message;
+        // item drops are never exported. Honor opt-ins before decoding, rather
+        // than retaining these payloads for the whole demo and discarding them.
+        let decode_plan = DecodePlan {
+            voice_data: options.collect_voice,
+            item_drops: false,
+            end_of_match: options.collect_cosmetics,
+            ..DecodePlan::FULL_PLAYER_ROWS
+        };
+        parse_demo_once_with_decode_plan(bytes, settings, ParsingMode::Normal, decode_plan)
     }
 
     fn parse_demo_once_with_decode_plan<'a>(
@@ -1114,6 +1115,7 @@ mod demoparser_impl {
                 "bomb_dropped".to_string(),
                 "bomb_pickup".to_string(),
                 "item_pickup".to_string(),
+                "item_purchase".to_string(),
                 "weapon_fire".to_string(),
                 "player_hurt".to_string(),
                 "player_death".to_string(),
@@ -1127,7 +1129,10 @@ mod demoparser_impl {
                 "inferno_startburn".to_string(),
                 "decoy_started".to_string(),
                 "decoy_detonate".to_string(),
-            ],
+            ]
+            .into_iter()
+            .filter(|event| options.collect_cosmetics || event != "item_purchase")
+            .collect(),
             parse_ents: true,
             parse_projectiles: false,
             collect_projectile_records: true,
@@ -1140,8 +1145,8 @@ mod demoparser_impl {
             fallback_bytes: None,
             cancelled,
         };
-        let (mut output, single_threaded_overlay) =
-            parse_demo_channels(bytes, settings).map_err(|e| Error::Parser(format!("{e:?}")))?;
+        let (mut output, single_threaded_overlay) = parse_demo_channels(bytes, settings, options)
+            .map_err(|e| Error::Parser(format!("{e:?}")))?;
 
         // These nested columns are already owned by the parser output. Take them out so row
         // materialization can move their vectors and strings instead of deep-cloning every tick.
@@ -1410,6 +1415,11 @@ mod demoparser_impl {
             )
             .collect::<Vec<_>>();
 
+        // Row materialization has consumed the columns. Release the duplicate
+        // per-tick storage before gap repair and event/projectile processing.
+        drop(output.df);
+        drop(single_threaded_overlay);
+        drop(parsed_inventory_cache);
         repair_short_global_tick_gaps(&mut rows);
         let tick_rate = estimate_tick_rate(&rows).unwrap_or(64.0);
         derive_observed_player_velocities(&mut rows, tick_rate);
@@ -1442,11 +1452,11 @@ mod demoparser_impl {
             parse_projectile_records(&output.projectiles, tick_rate, &output.game_events);
         let mut voice_frames = Vec::new();
         if options.collect_voice {
-            for (tick, msg) in &output.voice_data {
-                let Some(audio) = msg.audio.as_ref() else {
+            for (tick, msg) in output.voice_data {
+                let Some(audio) = msg.audio else {
                     continue;
                 };
-                let Some(data) = audio.voice_data.as_ref() else {
+                let Some(data) = audio.voice_data else {
                     continue;
                 };
                 if data.is_empty() {
@@ -1457,7 +1467,7 @@ mod demoparser_impl {
                     continue;
                 }
                 voice_frames.push(ParsedVoiceFrame {
-                    tick: *tick,
+                    tick,
                     xuid,
                     client: msg.client.unwrap_or(-1),
                     format: audio.format.unwrap_or_default(),
@@ -1467,8 +1477,8 @@ mod demoparser_impl {
                     section_number: audio.section_number,
                     uncompressed_sample_offset: audio.uncompressed_sample_offset,
                     num_packets: audio.num_packets,
-                    packet_offsets: audio.packet_offsets.clone(),
-                    audio: data.to_vec(),
+                    packet_offsets: audio.packet_offsets,
+                    audio: data.into(),
                 });
             }
             voice_frames.sort_by_key(|frame| (frame.xuid, frame.tick));
@@ -1479,6 +1489,11 @@ mod demoparser_impl {
         );
         let econ_items = if options.collect_cosmetics {
             parse_econ_items(output.skins)
+        } else {
+            Vec::new()
+        };
+        let weapon_purchases = if options.collect_cosmetics {
+            parse_weapon_purchases(&output.game_events)
         } else {
             Vec::new()
         };
@@ -1503,6 +1518,7 @@ mod demoparser_impl {
             server_convars,
             avatar_overrides,
             econ_items,
+            weapon_purchases,
         })
     }
 
@@ -1580,6 +1596,30 @@ mod demoparser_impl {
         parsed.into_values().collect()
     }
 
+    fn parse_weapon_purchases(events: &[GameEvent]) -> Vec<ParsedWeaponPurchase> {
+        events
+            .iter()
+            .filter(|event| event.name == "item_purchase")
+            .filter_map(|event| {
+                let steam_id = event_steam_id(event).filter(|id| *id != 0)?;
+                let Variant::InventoryWeaponCosmetics(items) =
+                    event_field(event, "purchased_weapon")?
+                else {
+                    return None;
+                };
+                let cosmetic = parse_inventory_weapon_cosmetics(items).first()?.clone();
+                Some(ParsedWeaponPurchase {
+                    tick: event.tick,
+                    steam_id,
+                    side: event_field_i32(event, "purchase_side")
+                        .filter(|side| matches!(side, 2 | 3))
+                        .map(|side| side as u8),
+                    cosmetic,
+                })
+            })
+            .collect()
+    }
+
     fn parse_econ_items(
         items: Vec<parser::second_pass::parser_settings::EconItem>,
     ) -> Vec<ParsedEconItem> {
@@ -1645,7 +1685,7 @@ mod demoparser_impl {
         game_events: &[GameEvent],
     ) -> Vec<ParsedProjectile> {
         let mut grouped: AHashMap<ProjectileKey, ProjectileCandidate> = AHashMap::default();
-        for record in records {
+        for (record_index, record) in records.iter().enumerate() {
             let steam_id = record.steamid.unwrap_or_default();
             if steam_id == 0 {
                 continue;
@@ -1662,18 +1702,38 @@ mod demoparser_impl {
             };
             let detonation_position = record.smoke_detonation_position.unwrap_or_default();
             let entity_id = record.entity_id.unwrap_or_default();
-            let key =
-                ProjectileKey::new(steam_id, &grenade_type, initial_position, initial_velocity);
+            let key = ProjectileKey {
+                // Full-packet workers may observe one instance more than once.
+                // Identical throws by different instances must survive the merge.
+                identity: match (record.entity_id, record.entity_serial) {
+                    (Some(id), Some(serial)) => ProjectileIdentity::Entity(id, serial),
+                    _ => ProjectileIdentity::UnidentifiedRecord(record_index),
+                },
+                steam_id,
+                grenade_type: grenade_type.clone(),
+                initial_position: initial_position.map(f32::to_bits),
+                initial_velocity: initial_velocity.map(f32::to_bits),
+            };
+            let kind = ProjectileKind::from_grenade_type(&grenade_type);
+            let weapon_def_index = if kind == ProjectileKind::Molotov {
+                // Both fire weapons use CMolotovProjectile; its class name is
+                // not weapon ownership/type evidence when the flag is absent.
+                match record.is_incendiary {
+                    Some(true) => 48,
+                    Some(false) => 46,
+                    None => -1,
+                }
+            } else {
+                ProjectileKind::weapon_def_index_from_grenade_type(&grenade_type)
+            };
             let entry = grouped.entry(key).or_insert_with(|| ProjectileCandidate {
                 entity_id,
                 projectile: ParsedProjectile {
                     tick,
                     steam_id,
                     name: record.name.clone().unwrap_or_default(),
-                    kind: ProjectileKind::from_grenade_type(&grenade_type),
-                    weapon_def_index: ProjectileKind::weapon_def_index_from_grenade_type(
-                        &grenade_type,
-                    ),
+                    kind,
+                    weapon_def_index,
                     grenade_type,
                     initial_position,
                     initial_velocity,
@@ -1687,6 +1747,9 @@ mod demoparser_impl {
             if tick < entry.projectile.tick {
                 entry.projectile.tick = tick;
                 entry.entity_id = entity_id;
+            }
+            if entry.projectile.weapon_def_index <= 0 && weapon_def_index > 0 {
+                entry.projectile.weapon_def_index = weapon_def_index;
             }
             if vec3_is_meaningful(detonation_position) {
                 entry.projectile.detonation_position = detonation_position;
@@ -2147,27 +2210,18 @@ mod demoparser_impl {
     }
 
     #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+    enum ProjectileIdentity {
+        Entity(i32, u32),
+        UnidentifiedRecord(usize),
+    }
+
+    #[derive(Clone, Debug, Eq, Hash, PartialEq)]
     struct ProjectileKey {
+        identity: ProjectileIdentity,
         steam_id: u64,
         grenade_type: String,
         initial_position: [u32; 3],
         initial_velocity: [u32; 3],
-    }
-
-    impl ProjectileKey {
-        fn new(
-            steam_id: u64,
-            grenade_type: &str,
-            initial_position: [f32; 3],
-            initial_velocity: [f32; 3],
-        ) -> Self {
-            Self {
-                steam_id,
-                grenade_type: grenade_type.to_string(),
-                initial_position: initial_position.map(f32::to_bits),
-                initial_velocity: initial_velocity.map(f32::to_bits),
-            }
-        }
     }
 
     fn vec3_is_meaningful(value: [f32; 3]) -> bool {
@@ -2215,10 +2269,16 @@ mod demoparser_impl {
             return 0;
         }
 
+        // Only endpoints of repairable gaps can contribute interpolation
+        // evidence. A single missing tick must not index every row in a match.
+        let boundary_ticks = missing_tick_ranges
+            .iter()
+            .flat_map(|&(before, after)| [before, after])
+            .collect::<BTreeSet<_>>();
         let mut row_index = BTreeMap::new();
         let mut ambiguous = BTreeSet::new();
         for (index, row) in rows.iter().enumerate() {
-            if row.steam_id == 0 {
+            if row.steam_id == 0 || !boundary_ticks.contains(&row.tick) {
                 continue;
             }
             let key = (row.tick, row.steam_id);
@@ -2229,19 +2289,15 @@ mod demoparser_impl {
 
         let mut additions = Vec::new();
         for (before_tick, after_tick) in missing_tick_ranges {
-            let steam_ids = row_index
-                .range((before_tick, 0)..=(before_tick, u64::MAX))
-                .map(|((_tick, steam_id), _index)| *steam_id)
-                .collect::<BTreeSet<_>>();
-            for steam_id in steam_ids {
+            for (&(_, steam_id), &before_index) in
+                row_index.range((before_tick, 0)..=(before_tick, u64::MAX))
+            {
                 let before_key = (before_tick, steam_id);
                 let after_key = (after_tick, steam_id);
                 if ambiguous.contains(&before_key) || ambiguous.contains(&after_key) {
                     continue;
                 }
-                let (Some(&before_index), Some(&after_index)) =
-                    (row_index.get(&before_key), row_index.get(&after_key))
-                else {
+                let Some(&after_index) = row_index.get(&after_key) else {
                     continue;
                 };
                 let before = &rows[before_index];
@@ -2256,8 +2312,10 @@ mod demoparser_impl {
         }
 
         let repaired = additions.len();
-        rows.extend(additions);
-        rows.sort_by_key(|row| (row.round, row.tick, row.steam_id));
+        if repaired > 0 {
+            rows.extend(additions);
+            rows.sort_by_key(|row| (row.round, row.tick, row.steam_id));
+        }
         repaired
     }
 
@@ -2843,7 +2901,18 @@ mod demoparser_impl {
             debug_assert!(Arc::ptr_eq(cached_source, &weapons));
             return Some(Arc::clone(cached_parsed));
         }
-        let parsed = weapons
+        let parsed = parse_inventory_weapon_cosmetics(&weapons);
+        if parsed.is_empty() {
+            return None;
+        }
+        cache.insert(cache_key, (weapons, Arc::clone(&parsed)));
+        Some(parsed)
+    }
+
+    fn parse_inventory_weapon_cosmetics(
+        weapons: &[ParserInventoryWeaponCosmetic],
+    ) -> Arc<[ParsedInventoryWeaponCosmetic]> {
+        weapons
             .iter()
             .filter_map(|weapon| {
                 let item_def_index = i32::try_from(weapon.item_def_index).ok()?;
@@ -2898,12 +2967,7 @@ mod demoparser_impl {
                     stickers,
                 })
             })
-            .collect::<Arc<[_]>>();
-        if parsed.is_empty() {
-            return None;
-        }
-        cache.insert(cache_key, (weapons, Arc::clone(&parsed)));
-        Some(parsed)
+            .collect::<Arc<[_]>>()
     }
 
     fn get_scoreboard_flair(
@@ -2979,6 +3043,81 @@ mod demoparser_impl {
     mod tests {
         use super::*;
         use std::sync::atomic::AtomicBool;
+
+        fn projectile_record(tick: i32, entity_id: i32, serial: u32) -> ProjectileRecord {
+            ProjectileRecord {
+                steamid: Some(76561198000000001),
+                tick: Some(tick),
+                grenade_type: Some("CMolotovProjectile".to_string()),
+                entity_id: Some(entity_id),
+                entity_serial: Some(serial),
+                initial_position: Some([100.0, 200.0, 64.0]),
+                initial_velocity: Some([500.0, 100.0, 200.0]),
+                ..Default::default()
+            }
+        }
+
+        #[test]
+        fn projectile_identical_throws_keep_distinct_instances_and_index_reuse() {
+            let records = [
+                projectile_record(100, 20, 1),
+                projectile_record(200, 21, 1),
+                projectile_record(300, 20, 2),
+            ];
+            let parsed = parse_projectile_records(&records, 64.0, &[]);
+            assert_eq!(
+                parsed.iter().map(|p| p.tick).collect::<Vec<_>>(),
+                [100, 200, 300]
+            );
+        }
+
+        #[test]
+        fn projectile_full_packet_duplicates_merge_earliest_observation_and_later_evidence() {
+            let mut late = projectile_record(150, 20, 1);
+            late.grenade_type = Some("CSmokeGrenadeProjectile".to_string());
+            late.smoke_detonation_position = Some([101.0, 202.0, 64.0]);
+            let mut early = projectile_record(100, 20, 1);
+            early.grenade_type = late.grenade_type.clone();
+            for records in [[late.clone(), early.clone()], [early, late]] {
+                let parsed = parse_projectile_records(&records, 64.0, &[]);
+                assert_eq!(parsed.len(), 1);
+                assert_eq!(parsed[0].tick, 100);
+                assert_eq!(parsed[0].weapon_def_index, 45);
+                assert_eq!(parsed[0].detonation_position, [101.0, 202.0, 64.0]);
+            }
+        }
+
+        #[test]
+        fn projectile_later_variant_evidence_survives_either_worker_merge_order() {
+            let early = projectile_record(100, 20, 1);
+            let mut late = projectile_record(150, 20, 1);
+            late.is_incendiary = Some(true);
+            for records in [[late.clone(), early.clone()], [early, late]] {
+                let parsed = parse_projectile_records(&records, 64.0, &[]);
+                assert_eq!(parsed.len(), 1);
+                assert_eq!(parsed[0].tick, 100);
+                assert_eq!(parsed[0].weapon_def_index, 48);
+            }
+        }
+
+        #[test]
+        fn projectile_shared_fire_class_requires_native_variant_evidence() {
+            for (flag, expected) in [(Some(true), 48), (Some(false), 46), (None, -1)] {
+                let mut record = projectile_record(100, 20, 1);
+                record.is_incendiary = flag;
+                let parsed = parse_projectile_records(&[record], 64.0, &[]);
+                assert_eq!(parsed[0].kind, ProjectileKind::Molotov);
+                assert_eq!(parsed[0].weapon_def_index, expected);
+            }
+        }
+
+        #[test]
+        fn projectile_missing_identity_does_not_authorize_deduplication() {
+            let mut record = projectile_record(100, 20, 1);
+            record.entity_serial = None;
+            let parsed = parse_projectile_records(&[record.clone(), record], 64.0, &[]);
+            assert_eq!(parsed.len(), 2);
+        }
 
         #[test]
         fn cancelled_read_stops_before_touching_demo_bytes() {
@@ -3108,6 +3247,201 @@ mod demoparser_impl {
 
             assert_eq!(parsed.attacker_steam_id, Some(76561198000000001));
             assert_eq!(parsed.victim_steam_id, Some(76561198000000002));
+        }
+
+        #[test]
+        fn parser_captures_purchase_before_inventory_and_preserves_later_item_appearance() {
+            use parser::first_pass::parser_settings::FirstPassParser;
+            use parser::first_pass::prop_controller::{
+                ITEM_PURCHASE_COST, ITEM_PURCHASE_DEF_IDX, ITEM_PURCHASE_HANDLE, MY_WEAPONS_OFFSET,
+                WEAPON_FLOAT, WEAPON_PAINT_SEED, WEAPON_SKIN_ID,
+            };
+            use parser::second_pass::entities::{Entity, EntityType, PlayerMetaData};
+            use parser::second_pass::game_events::GameEventInfo;
+            use parser::second_pass::parser_settings::SecondPassParser;
+
+            let huf = Vec::new();
+            let settings = ParserInputs {
+                real_name_to_og_name: AHashMap::default(),
+                wanted_players: vec![],
+                wanted_player_props: vec![],
+                wanted_other_props: vec![],
+                wanted_prop_states: AHashMap::default(),
+                wanted_ticks: vec![],
+                wanted_events: vec!["item_purchase".to_string()],
+                parse_ents: true,
+                parse_projectiles: false,
+                collect_projectile_records: false,
+                parse_grenades: false,
+                only_header: false,
+                only_convars: false,
+                huffman_lookup_table: &huf,
+                order_by_steamid: false,
+                list_props: false,
+                fallback_bytes: None,
+                cancelled: None,
+            };
+            let mut first = FirstPassParser::new(&settings);
+            first.cls_by_id = Some(Arc::new(Vec::new()));
+            first.prop_controller.special_ids.item_def = Some(101);
+            first.prop_controller.special_ids.item_account_id = Some(102);
+            first.prop_controller.special_ids.life_state = Some(103);
+            let mut parser = SecondPassParser::new(
+                first.create_first_pass_output().unwrap(),
+                0,
+                false,
+                None,
+                DecodePlan::FULL_PLAYER_ROWS,
+            )
+            .unwrap();
+            parser.tick = 10;
+            parser.players.insert(
+                7,
+                PlayerMetaData {
+                    player_entity_id: Some(7),
+                    steamid: Some(76_561_197_960_265_851),
+                    controller_entid: None,
+                    name: Some("buyer".to_string()),
+                    team_num: Some(2),
+                },
+            );
+            parser.entities[8] = Some(Entity {
+                cls_id: 0,
+                entity_id: 8,
+                serial: 1,
+                cosmetic_revision: 1,
+                entity_type: EntityType::Normal,
+                props: AHashMap::from_iter([
+                    (101, Variant::U32(16)),
+                    (102, Variant::U32(123)),
+                    (WEAPON_SKIN_ID, Variant::F32(926.0)),
+                    (WEAPON_PAINT_SEED, Variant::F32(42.0)),
+                    (WEAPON_FLOAT, Variant::F32(0.123)),
+                ]),
+            });
+            let purchase_updates = || {
+                vec![
+                    GameEventInfo::WeaponCreateDefIdx((Variant::U32(16), 7, ITEM_PURCHASE_DEF_IDX)),
+                    GameEventInfo::WeaponCreateNCost((Variant::I32(2900), 7, ITEM_PURCHASE_COST)),
+                    GameEventInfo::WeaponCreateHitem((Variant::U64(8), 7, ITEM_PURCHASE_HANDLE)),
+                ]
+            };
+            parser.emit_events(purchase_updates()).unwrap();
+            // No buyer pawn entity or inventory has been sampled at purchase time.
+            assert!(parser.entities[7].is_none());
+            let purchases = parse_weapon_purchases(&parser.game_events);
+            assert_eq!(purchases.len(), 1);
+            assert_eq!(purchases[0].cosmetic.paint_kit, 926);
+            assert_eq!(purchases[0].side, Some(2));
+
+            parser.entities[7] = Some(Entity {
+                cls_id: 0,
+                entity_id: 7,
+                serial: 1,
+                cosmetic_revision: 1,
+                entity_type: EntityType::Normal,
+                props: AHashMap::from_iter([
+                    (103, Variant::U32(0)),
+                    (MY_WEAPONS_OFFSET, Variant::U32(1)),
+                    (MY_WEAPONS_OFFSET + 1, Variant::U32(8)),
+                ]),
+            });
+            let Variant::InventoryWeaponCosmetics(before) =
+                parser.find_my_inventory_weapon_cosmetics(&7).unwrap()
+            else {
+                panic!("expected inventory cosmetics");
+            };
+            assert_eq!(before[0].paint_kit, 926);
+            let weapon = parser.entities[8].as_mut().unwrap();
+            weapon.serial += 1;
+            weapon.cosmetic_revision += 1;
+            weapon.props.insert(WEAPON_SKIN_ID, Variant::F32(309.0));
+            parser.inventory_generation += 1;
+            parser.tick = 20;
+            parser.emit_events(purchase_updates()).unwrap();
+            let Variant::InventoryWeaponCosmetics(after) =
+                parser.find_my_inventory_weapon_cosmetics(&7).unwrap()
+            else {
+                panic!("expected inventory cosmetics");
+            };
+            assert_eq!(before[0].paint_kit, 926);
+            assert_eq!(after[0].paint_kit, 309);
+            let purchases = parse_weapon_purchases(&parser.game_events);
+            assert_eq!(purchases.len(), 2);
+            assert_eq!(purchases[0].cosmetic.paint_kit, 926);
+            assert_eq!(purchases[1].cosmetic.paint_kit, 309);
+        }
+
+        #[test]
+        fn purchase_evidence_keeps_entity_cosmetics_even_when_refunded() {
+            use parser::second_pass::game_events::EventField;
+            use parser::second_pass::variants::{InventoryWeaponAttribute, Sticker};
+
+            let weapon = ParserInventoryWeaponCosmetic {
+                item_def_index: 16,
+                item_id_high: Some(1),
+                item_id_low: Some(7),
+                item_account_id: Some(123),
+                original_owner_xuid: Some(76_561_197_960_265_851),
+                paint_kit: 926,
+                paint_seed: 42,
+                paint_wear: 0.123,
+                entity_quality: Some(9),
+                stattrak_counter: Some(27),
+                attributes: vec![InventoryWeaponAttribute {
+                    definition_index: 299,
+                    raw_value: f32::from_bits(1),
+                    raw_value_bits: 1,
+                }],
+                custom_name: Some("Purchased".to_string()),
+                stickers: vec![Sticker {
+                    slot: 0,
+                    name: "sticker".to_string(),
+                    id: 225,
+                    wear: 0.01,
+                    x: 0.1,
+                    y: -0.2,
+                    scale: Some(0.9),
+                    rotation: Some(12.5),
+                }],
+            };
+            let mut event = GameEvent {
+                name: "item_purchase".to_string(),
+                tick: 10,
+                fields: vec![
+                    EventField {
+                        name: "steamid".to_string(),
+                        data: Some(Variant::U64(76_561_197_960_265_851)),
+                    },
+                    EventField {
+                        name: "purchase_side".to_string(),
+                        data: Some(Variant::U32(2)),
+                    },
+                    EventField {
+                        name: "was_sold".to_string(),
+                        data: Some(Variant::Bool(true)),
+                    },
+                    EventField {
+                        name: "purchased_weapon".to_string(),
+                        data: Some(Variant::InventoryWeaponCosmetics(Arc::from([weapon]))),
+                    },
+                ],
+            };
+            let purchases = parse_weapon_purchases(std::slice::from_ref(&event));
+            assert_eq!(purchases.len(), 1);
+            assert_eq!(purchases[0].tick, 10);
+            assert_eq!(purchases[0].side, Some(2));
+            let item = &purchases[0].cosmetic;
+            assert_eq!(item.paint_wear.to_bits(), 0.123_f32.to_bits());
+            assert_eq!(item.item_id_low, Some(7));
+            assert_eq!(item.stattrak_counter, Some(27));
+            assert_eq!(item.custom_name.as_deref(), Some("Purchased"));
+            assert_eq!(item.attributes[0].raw_value_bits, 1);
+            assert_eq!(item.stickers[0].rotation, Some(12.5));
+            assert!(parsed_game_event(&event).is_none());
+
+            event.fields.retain(|field| field.name != "steamid");
+            assert!(parse_weapon_purchases(&[event]).is_empty());
         }
 
         #[test]
@@ -3342,6 +3676,30 @@ mod demoparser_impl {
             assert_eq!(repair_short_global_tick_gaps(&mut rows), 1);
             assert!(!rows.iter().any(|row| row.steam_id == 70 && row.tick == 11));
             assert!(rows.iter().any(|row| row.steam_id == 90 && row.tick == 11));
+        }
+
+        #[test]
+        fn global_gap_keeps_ambiguous_boundary_players_unrepaired() {
+            let mut rows = vec![
+                gap_row(70, 10, 0.0),
+                gap_row(70, 10, 1.0),
+                gap_row(90, 10, 20.0),
+                gap_row(70, 12, 4.0),
+                gap_row(90, 12, 24.0),
+                gap_row(70, 14, 8.0),
+                gap_row(90, 14, 28.0),
+                gap_row(90, 14, 29.0),
+            ];
+
+            assert_eq!(repair_short_global_tick_gaps(&mut rows), 2);
+            let repairs = rows
+                .iter()
+                .filter(|row| row.tick == 11 || row.tick == 13)
+                .map(|row| (row.tick, row.steam_id, row.origin[0]))
+                .collect::<Vec<_>>();
+            // Both sides of a gap must be unique, including a shared endpoint
+            // between consecutive gaps. Other players can still be repaired.
+            assert_eq!(repairs, vec![(11, 90, 22.0), (13, 70, 6.0)]);
         }
 
         #[test]

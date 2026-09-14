@@ -721,7 +721,7 @@ impl Serialize for ProjectileRecord {
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("ProjectileRecord", 12)?;
+        let mut state = serializer.serialize_struct("ProjectileRecord", 14)?;
         let steamid = match self.steamid {
             Some(u) => Some(u.to_string()),
             None => None,
@@ -734,6 +734,8 @@ impl Serialize for ProjectileRecord {
         state.serialize_field("y", &self.y)?;
         state.serialize_field("z", &self.z)?;
         state.serialize_field("entity_id", &self.entity_id)?;
+        state.serialize_field("entity_serial", &self.entity_serial)?;
+        state.serialize_field("is_incendiary", &self.is_incendiary)?;
         state.serialize_field("initial_position", &self.initial_position)?;
         state.serialize_field("initial_velocity", &self.initial_velocity)?;
         state.serialize_field(

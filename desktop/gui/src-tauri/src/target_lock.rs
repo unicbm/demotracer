@@ -11,96 +11,44 @@ use std::path::{Path, PathBuf};
 #[derive(Debug)]
 pub(crate) struct TargetFileLock {
     path: PathBuf,
-    #[cfg(windows)]
-    handle: *mut std::ffi::c_void,
-    #[cfg(not(windows))]
-    _file: fs::File,
+    file: Option<fs::File>,
 }
 
 impl TargetFileLock {
     pub(crate) fn acquire(path: &Path) -> io::Result<Self> {
+        let mut options = fs::OpenOptions::new();
+        options.read(true).write(true);
         #[cfg(windows)]
         {
-            use std::os::windows::ffi::OsStrExt;
-
-            const GENERIC_READ: u32 = 0x8000_0000;
-            const GENERIC_WRITE: u32 = 0x4000_0000;
-            const OPEN_ALWAYS: u32 = 4;
-            const FILE_ATTRIBUTE_NORMAL: u32 = 0x80;
-
-            #[link(name = "Kernel32")]
-            extern "system" {
-                fn CreateFileW(
-                    file_name: *const u16,
-                    desired_access: u32,
-                    share_mode: u32,
-                    security_attributes: *mut std::ffi::c_void,
-                    creation_disposition: u32,
-                    flags_and_attributes: u32,
-                    template_file: *mut std::ffi::c_void,
-                ) -> *mut std::ffi::c_void;
-            }
-
-            let wide = path
-                .as_os_str()
-                .encode_wide()
-                .chain(std::iter::once(0))
-                .collect::<Vec<_>>();
-            let handle = unsafe {
-                CreateFileW(
-                    wide.as_ptr(),
-                    GENERIC_READ | GENERIC_WRITE,
-                    0,
-                    std::ptr::null_mut(),
-                    OPEN_ALWAYS,
-                    FILE_ATTRIBUTE_NORMAL,
-                    std::ptr::null_mut(),
-                )
-            };
-            if handle as isize == -1 {
-                let error = io::Error::last_os_error();
-                if matches!(error.raw_os_error(), Some(32) | Some(33)) {
-                    return Err(io::Error::new(io::ErrorKind::WouldBlock, error));
-                }
-                return Err(error);
-            }
-            return Ok(Self {
-                path: path.to_path_buf(),
-                handle,
-            });
+            use std::os::windows::fs::OpenOptionsExt;
+            options.create(true).truncate(false).share_mode(0);
         }
 
         #[cfg(not(windows))]
         {
-            let file = fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(path)
-                .map_err(|error| {
-                    if error.kind() == io::ErrorKind::AlreadyExists {
-                        io::Error::new(io::ErrorKind::WouldBlock, error)
-                    } else {
-                        error
-                    }
-                })?;
-            Ok(Self {
-                path: path.to_path_buf(),
-                _file: file,
-            })
+            options.create_new(true);
         }
+        let file = options.open(path).map_err(|error| {
+            #[cfg(windows)]
+            let contended = matches!(error.raw_os_error(), Some(32) | Some(33));
+            #[cfg(not(windows))]
+            let contended = error.kind() == io::ErrorKind::AlreadyExists;
+            if contended {
+                io::Error::new(io::ErrorKind::WouldBlock, error)
+            } else {
+                error
+            }
+        })?;
+        Ok(Self {
+            path: path.to_path_buf(),
+            file: Some(file),
+        })
     }
 }
 
 impl Drop for TargetFileLock {
     fn drop(&mut self) {
-        #[cfg(windows)]
-        unsafe {
-            #[link(name = "Kernel32")]
-            extern "system" {
-                fn CloseHandle(object: *mut std::ffi::c_void) -> i32;
-            }
-            let _ = CloseHandle(self.handle);
-        }
+        drop(self.file.take());
         let _ = fs::remove_file(&self.path);
     }
 }

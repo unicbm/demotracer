@@ -6,9 +6,49 @@
 
 import type { PlayerSelection } from "./components/PlayerRoster";
 import type { CommandMode } from "./components/TaskViews";
-import type { ManifestArchive, WorkspaceSection } from "./types";
+import type { DemoLibraryEntry, ManifestArchive, WorkspaceSection } from "./types";
 
 export const LIBRARY_SESSION_STORAGE_KEY = "demotracer.library-session.v1";
+
+// Parsed archive summaries remain reusable throughout the app session.
+export function createManifestCache(readManifest: (path: string) => Promise<ManifestArchive>) {
+  const entries = new Map<string, { archive?: ManifestArchive; pending: Promise<ManifestArchive> }>();
+  let librarySnapshot = new Map<string, string>();
+  const keyFor = (path: string) => path.trim().replace(/\\/g, "/").toLowerCase();
+  return {
+    get(path: string): ManifestArchive | undefined {
+      return entries.get(keyFor(path))?.archive;
+    },
+    read(path: string): Promise<ManifestArchive> {
+      const key = keyFor(path);
+      const existing = entries.get(key);
+      if (existing) return existing.pending;
+      const entry: { archive?: ManifestArchive; pending: Promise<ManifestArchive> } = {
+        pending: readManifest(path).then((archive) => {
+          // An invalidated entry stays detached when its read finishes.
+          entry.archive = archive;
+          return archive;
+        }, (error: unknown) => {
+          if (entries.get(key) === entry) entries.delete(key);
+          throw error;
+        }),
+      };
+      entries.set(key, entry);
+      return entry.pending;
+    },
+    reconcileLibrary(scan: readonly DemoLibraryEntry[]) {
+      const next = new Map(scan.map((entry) => [keyFor(entry.manifestPath), JSON.stringify(entry)]));
+      for (const [key, previous] of librarySnapshot) {
+        if (next.get(key) !== previous) entries.delete(key);
+      }
+      librarySnapshot = next;
+    },
+    invalidate(path?: string) {
+      if (path === undefined) entries.clear();
+      else entries.delete(keyFor(path));
+    },
+  };
+}
 
 export interface StoredLibrarySession {
   manifestPath: string;
@@ -20,7 +60,6 @@ export interface StoredLibrarySession {
 export interface LibraryWorkspaceState {
   activeSection: WorkspaceSection;
   archive: ManifestArchive | null;
-  archivePath: string;
   selectedRound: number | null;
   selectedPlayer: PlayerSelection | null;
   commandMode: CommandMode;
@@ -29,7 +68,6 @@ export interface LibraryWorkspaceState {
 export type LibraryWorkspaceAction =
   | { type: "navigate"; section: WorkspaceSection }
   | { type: "clear" }
-  | { type: "opening"; path: string }
   | { type: "open"; archive: ManifestArchive; restored?: StoredLibrarySession | null }
   | { type: "replaceArchive"; archive: ManifestArchive }
   | { type: "selectRound"; round: number | null; forceRoundMode?: boolean }
@@ -39,7 +77,6 @@ export type LibraryWorkspaceAction =
 export const EMPTY_LIBRARY_WORKSPACE: LibraryWorkspaceState = {
   activeSection: "library",
   archive: null,
-  archivePath: "",
   selectedRound: null,
   selectedPlayer: null,
   commandMode: "sequence",
@@ -75,13 +112,6 @@ export function libraryWorkspaceReducer(
       return { ...state, activeSection: action.section };
     case "clear":
       return { ...EMPTY_LIBRARY_WORKSPACE };
-    case "opening":
-      return {
-        ...state,
-        activeSection: "analysis",
-        archivePath: action.path,
-        selectedPlayer: null,
-      };
     case "open": {
       const availableRounds = action.archive.rounds.filter((round) => round.available);
       const firstAvailableRound = availableRounds[0];
@@ -99,7 +129,6 @@ export function libraryWorkspaceReducer(
       return {
         activeSection: "analysis",
         archive: action.archive,
-        archivePath: action.archive.manifestPath,
         selectedRound,
         selectedPlayer: restored?.selectedPlayer ?? null,
         commandMode,
@@ -107,7 +136,7 @@ export function libraryWorkspaceReducer(
     }
     case "replaceArchive":
       return state.archive?.manifestPath === action.archive.manifestPath
-        ? { ...state, archive: action.archive, archivePath: action.archive.manifestPath }
+        ? { ...state, archive: action.archive }
         : state;
     case "selectRound":
       return {

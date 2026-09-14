@@ -5,6 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 use super::{AppState, CommandErrorDto, CommandResult, CosmeticConsentDto, TaskEvent, TaskPhase};
+use crate::target_lock::TargetFileLock;
 use cs2_demotracer::browser_analysis::BrowserDemoSource;
 use cs2_demotracer::demo_id::sha256_hex;
 use cs2_demotracer::demo_series::{group_demo_sources, resolve_demo_source, DemoSourceSet};
@@ -110,7 +111,7 @@ impl BatchRuntime {
 
 struct RuntimeRunGuard {
     runtime: Arc<BatchRuntime>,
-    _process_lock: BatchProcessLock,
+    _process_lock: TargetFileLock,
 }
 
 impl RuntimeRunGuard {
@@ -121,7 +122,7 @@ impl RuntimeRunGuard {
             .map_err(|_| {
                 CommandErrorDto::new("batch_already_running", "This batch is already running.")
             })?;
-        let process_lock = match BatchProcessLock::acquire(&runtime.ledger_path) {
+        let process_lock = match acquire_batch_process_lock(&runtime.ledger_path) {
             Ok(lock) => lock,
             Err(error) => {
                 runtime.running.store(false, Ordering::Release);
@@ -141,108 +142,20 @@ impl Drop for RuntimeRunGuard {
     }
 }
 
-struct BatchProcessLock {
-    path: PathBuf,
-    #[cfg(windows)]
-    handle: *mut std::ffi::c_void,
-    #[cfg(not(windows))]
-    _file: fs::File,
-}
-
-impl BatchProcessLock {
-    fn acquire(ledger_path: &Path) -> CommandResult<Self> {
-        let name = ledger_path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "batch.json".to_string());
-        let path = ledger_path.with_file_name(format!("{name}.lock"));
-
-        #[cfg(windows)]
-        {
-            use std::os::windows::ffi::OsStrExt;
-
-            const GENERIC_READ: u32 = 0x8000_0000;
-            const GENERIC_WRITE: u32 = 0x4000_0000;
-            const OPEN_ALWAYS: u32 = 4;
-            const FILE_ATTRIBUTE_NORMAL: u32 = 0x80;
-
-            #[link(name = "Kernel32")]
-            extern "system" {
-                fn CreateFileW(
-                    file_name: *const u16,
-                    desired_access: u32,
-                    share_mode: u32,
-                    security_attributes: *mut std::ffi::c_void,
-                    creation_disposition: u32,
-                    flags_and_attributes: u32,
-                    template_file: *mut std::ffi::c_void,
-                ) -> *mut std::ffi::c_void;
-            }
-
-            let wide = path
-                .as_os_str()
-                .encode_wide()
-                .chain(std::iter::once(0))
-                .collect::<Vec<_>>();
-            let handle = unsafe {
-                CreateFileW(
-                    wide.as_ptr(),
-                    GENERIC_READ | GENERIC_WRITE,
-                    0,
-                    std::ptr::null_mut(),
-                    OPEN_ALWAYS,
-                    FILE_ATTRIBUTE_NORMAL,
-                    std::ptr::null_mut(),
-                )
-            };
-            if handle as isize == -1 {
-                let error = std::io::Error::last_os_error();
-                let code = if matches!(error.raw_os_error(), Some(32) | Some(33)) {
-                    "batch_locked"
-                } else {
-                    "batch_lock_failed"
-                };
-                return Err(CommandErrorDto::at_path(
-                    code,
-                    format!("Another DemoTracer window may already be running this batch: {error}"),
-                    &path,
-                ));
-            }
-            return Ok(Self { path, handle });
-        }
-
-        #[cfg(not(windows))]
-        {
-            let file = fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&path)
-                .map_err(|error| {
-                    CommandErrorDto::at_path(
-                        "batch_locked",
-                        format!(
-                            "Another DemoTracer process may already be running this batch: {error}"
-                        ),
-                        &path,
-                    )
-                })?;
-            Ok(Self { path, _file: file })
-        }
-    }
-}
-
-impl Drop for BatchProcessLock {
-    fn drop(&mut self) {
-        #[cfg(windows)]
-        unsafe {
-            #[link(name = "Kernel32")]
-            extern "system" {
-                fn CloseHandle(object: *mut std::ffi::c_void) -> i32;
-            }
-            let _ = CloseHandle(self.handle);
-        }
-        let _ = fs::remove_file(&self.path);
-    }
+fn acquire_batch_process_lock(ledger_path: &Path) -> CommandResult<TargetFileLock> {
+    let name = ledger_path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "batch.json".to_string());
+    let path = ledger_path.with_file_name(format!("{name}.lock"));
+    TargetFileLock::acquire(&path).map_err(|error| {
+        let code = if error.kind() == std::io::ErrorKind::WouldBlock {
+            "batch_locked"
+        } else {
+            "batch_lock_failed"
+        };
+        CommandErrorDto::at_path(code, format!("Could not lock this batch: {error}"), &path)
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -654,7 +567,7 @@ pub(crate) async fn start_batch_import(
     persist_ledger_atomic(&path, &ledger)?;
     let runtime = Arc::new(BatchRuntime::from_ledger(path, ledger));
     state.insert_runtime(runtime.clone())?;
-    run_runtime_async(runtime, events).await
+    run_runtime_async(runtime, events, None).await
 }
 
 #[tauri::command]
@@ -684,38 +597,7 @@ pub(crate) async fn resume_batch_import(
         ));
     }
     runtime.cancel_requested.store(false, Ordering::Release);
-    runtime.update(|ledger| {
-        if let Some(item_id) = request.item_id.as_deref() {
-            let retryable = ledger
-                .items
-                .iter()
-                .any(|item| item.item_id == item_id && item.status == BatchItemStatusDto::Failed);
-            if !request.retry_failed || !retryable {
-                return Err(CommandErrorDto::new(
-                    "batch_item_not_retryable",
-                    "The selected batch item is not currently failed and retryable.",
-                ));
-            }
-        }
-        ledger.cancel_requested = false;
-        ledger.status = BatchStatusDto::Pending;
-        for item in &mut ledger.items {
-            if item.status == BatchItemStatusDto::Running
-                || (request.retry_failed
-                    && item.status == BatchItemStatusDto::Failed
-                    && request
-                        .item_id
-                        .as_deref()
-                        .map_or(true, |item_id| item.item_id == item_id))
-            {
-                item.status = BatchItemStatusDto::Pending;
-                item.phase = BatchItemPhaseDto::Queued;
-                item.error = None;
-            }
-        }
-        Ok(())
-    })?;
-    run_runtime_async(runtime, events).await
+    run_runtime_async(runtime, events, Some(request)).await
 }
 
 #[tauri::command]
@@ -781,21 +663,20 @@ pub(crate) fn cancel_batch_import(
         )
     })?;
     runtime.cancel_requested.store(true, Ordering::Release);
-    runtime.update(|ledger| {
-        ledger.cancel_requested = true;
-        if ledger.status == BatchStatusDto::Running {
-            ledger.status = BatchStatusDto::Stopping;
-        }
-        Ok(())
-    })?;
-    runtime.snapshot()
+    let mut ledger = runtime.lock_ledger()?;
+    ledger.cancel_requested = true;
+    if ledger.status == BatchStatusDto::Running {
+        ledger.status = BatchStatusDto::Stopping;
+    }
+    Ok(ledger.clone())
 }
 
 async fn run_runtime_async(
     runtime: Arc<BatchRuntime>,
     events: Channel<BatchEvent>,
+    resume: Option<ResumeBatchImportRequest>,
 ) -> CommandResult<BatchLedgerDto> {
-    tauri::async_runtime::spawn_blocking(move || run_batch_runtime(runtime, events))
+    tauri::async_runtime::spawn_blocking(move || run_batch_runtime(runtime, events, resume))
         .await
         .map_err(|error| CommandErrorDto::new("batch_worker_failed", error.to_string()))?
 }
@@ -1097,12 +978,47 @@ fn validate_batch_settings(settings: &BatchConversionSettingsDto) -> CommandResu
 fn run_batch_runtime(
     runtime: Arc<BatchRuntime>,
     events: Channel<BatchEvent>,
+    resume: Option<ResumeBatchImportRequest>,
 ) -> CommandResult<BatchLedgerDto> {
     let _run_guard = RuntimeRunGuard::acquire(runtime.clone())?;
-    runtime.cancel_requested.store(false, Ordering::Release);
+    if let Some(request) = resume {
+        // Another window may have progressed this batch since our last snapshot.
+        let mut ledger = load_ledger_with_recovery(&runtime.ledger_path)?;
+        if let Some(item_id) = request.item_id.as_deref() {
+            let retryable = ledger
+                .items
+                .iter()
+                .any(|item| item.item_id == item_id && item.status == BatchItemStatusDto::Failed);
+            if !request.retry_failed || !retryable {
+                return Err(CommandErrorDto::new(
+                    "batch_item_not_retryable",
+                    "The selected batch item is not currently failed and retryable.",
+                ));
+            }
+        }
+        for item in &mut ledger.items {
+            if item.status == BatchItemStatusDto::Running
+                || (request.retry_failed
+                    && item.status == BatchItemStatusDto::Failed
+                    && request
+                        .item_id
+                        .as_deref()
+                        .map_or(true, |item_id| item.item_id == item_id))
+            {
+                item.status = BatchItemStatusDto::Pending;
+                item.phase = BatchItemPhaseDto::Queued;
+                item.error = None;
+            }
+        }
+        *runtime.lock_ledger()? = ledger;
+    }
     let (batch_id, total, concurrency) = runtime.update(|ledger| {
-        ledger.status = BatchStatusDto::Running;
-        ledger.cancel_requested = false;
+        ledger.cancel_requested = runtime.cancel_requested.load(Ordering::Acquire);
+        ledger.status = if ledger.cancel_requested {
+            BatchStatusDto::Stopping
+        } else {
+            BatchStatusDto::Running
+        };
         Ok((
             ledger.batch_id.clone(),
             ledger.items.len(),
@@ -1820,6 +1736,7 @@ fn persist_ledger_atomic(path: &Path, ledger: &BatchLedgerDto) -> CommandResult<
             CommandErrorDto::at_path("batch_persist_failed", error.to_string(), &temp_path)
         })?;
     if let Err(error) = temp.write_all(&bytes).and_then(|_| temp.sync_all()) {
+        drop(temp);
         let _ = fs::remove_file(&temp_path);
         return Err(CommandErrorDto::at_path(
             "batch_persist_failed",
@@ -1829,31 +1746,7 @@ fn persist_ledger_atomic(path: &Path, ledger: &BatchLedgerDto) -> CommandResult<
     }
     drop(temp);
 
-    let backup_path = backup_ledger_path(path);
-    if backup_path.exists() {
-        fs::remove_file(&backup_path).map_err(|error| {
-            CommandErrorDto::at_path(
-                "batch_persist_failed",
-                format!("Could not remove a previous batch-state backup: {error}"),
-                &backup_path,
-            )
-        })?;
-    }
-    let had_previous = path.exists();
-    if had_previous {
-        if let Err(error) = fs::rename(path, &backup_path) {
-            let _ = fs::remove_file(&temp_path);
-            return Err(CommandErrorDto::at_path(
-                "batch_persist_failed",
-                error.to_string(),
-                path,
-            ));
-        }
-    }
-    if let Err(error) = fs::rename(&temp_path, path) {
-        if had_previous {
-            let _ = fs::rename(&backup_path, path);
-        }
+    if let Err(error) = crate::server_config::atomic_replace(&temp_path, path) {
         let _ = fs::remove_file(&temp_path);
         return Err(CommandErrorDto::at_path(
             "batch_persist_failed",
@@ -1861,9 +1754,9 @@ fn persist_ledger_atomic(path: &Path, ledger: &BatchLedgerDto) -> CommandResult<
             path,
         ));
     }
-    if had_previous {
-        let _ = fs::remove_file(&backup_path);
-    }
+    // Legacy journals may still have a recovery copy. Keep it until the new
+    // primary is safely published; readers never rename or remove either file.
+    let _ = fs::remove_file(backup_ledger_path(path));
     Ok(())
 }
 
@@ -1874,17 +1767,13 @@ fn load_ledger_with_recovery(path: &Path) -> CommandResult<BatchLedgerDto> {
     match (primary, backup) {
         (Ok(primary), Ok(backup)) => {
             if backup.revision > primary.revision {
-                restore_backup_as_primary(path, &backup_path)?;
                 Ok(backup)
             } else {
                 Ok(primary)
             }
         }
         (Ok(primary), Err(_)) => Ok(primary),
-        (Err(_), Ok(backup)) => {
-            restore_backup_as_primary(path, &backup_path)?;
-            Ok(backup)
-        }
+        (Err(_), Ok(backup)) => Ok(backup),
         (Err(primary_error), Err(backup_error)) => {
             if path.exists() {
                 Err(primary_error)
@@ -1899,27 +1788,6 @@ fn load_ledger_with_recovery(path: &Path) -> CommandResult<BatchLedgerDto> {
             }
         }
     }
-}
-
-fn restore_backup_as_primary(path: &Path, backup_path: &Path) -> CommandResult<()> {
-    if path.exists() {
-        fs::remove_file(path).map_err(|error| {
-            CommandErrorDto::at_path(
-                "batch_recovery_failed",
-                format!("Could not remove the unreadable or older batch state: {error}"),
-                path,
-            )
-        })?;
-    }
-    // If the process stops before this atomic rename, the valid backup is still present. After
-    // it succeeds, the same valid bytes are the primary state used by the next journal write.
-    fs::rename(backup_path, path).map_err(|error| {
-        CommandErrorDto::at_path(
-            "batch_recovery_failed",
-            format!("Could not restore the valid batch-state backup: {error}"),
-            backup_path,
-        )
-    })
 }
 
 fn load_ledger_file(path: &Path) -> CommandResult<BatchLedgerDto> {
@@ -2171,7 +2039,7 @@ mod tests {
     }
 
     #[test]
-    fn atomic_ledger_reader_recovers_valid_backup() {
+    fn ledger_reader_uses_backup_without_mutating_files() {
         let root = test_directory("ledger");
         let path = root.join("batch-test-1.json");
         let mut ledger = sample_ledger();
@@ -2184,7 +2052,90 @@ mod tests {
         let recovered = load_ledger_with_recovery(&path).unwrap();
         assert_eq!(recovered.revision, 1);
         assert_eq!(recovered.batch_id, "batch-test-1");
+        assert_eq!(fs::read(&path).unwrap(), b"not json");
+        assert!(backup.is_file());
 
+        persist_ledger_atomic(&path, &ledger).unwrap();
+        assert_eq!(load_ledger_with_recovery(&path).unwrap().revision, 2);
+        assert!(!backup.exists());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn failed_ledger_promotion_preserves_recovery_copy_and_removes_temporary_file() {
+        let root = test_directory("ledger-promotion-failed");
+        let path = root.join("batch-test-1.json");
+        let backup = backup_ledger_path(&path);
+        let ledger = sample_ledger();
+        fs::create_dir(&path).unwrap();
+        fs::write(&backup, serde_json::to_vec(&ledger).unwrap()).unwrap();
+
+        assert_eq!(
+            persist_ledger_atomic(&path, &ledger).unwrap_err().code,
+            "batch_persist_failed"
+        );
+        assert!(path.is_dir());
+        assert_eq!(
+            load_ledger_with_recovery(&path).unwrap().revision,
+            ledger.revision
+        );
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 2);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn batch_cancel_before_worker_dispatch_keeps_pending_items_unstarted() {
+        let root = test_directory("cancel-before-dispatch");
+        let path = root.join("batch-test-1.json");
+        let runtime = Arc::new(BatchRuntime::from_ledger(path.clone(), sample_ledger()));
+        runtime.cancel_requested.store(true, Ordering::Release);
+
+        let result = run_batch_runtime(runtime, Channel::new(|_| Ok(())), None).unwrap();
+        assert_eq!(result.status, BatchStatusDto::Paused);
+        assert!(result.cancel_requested);
+        assert_eq!(result.items[1].status, BatchItemStatusDto::Pending);
+        assert_eq!(result.items[1].attempts, 0);
+        assert_eq!(
+            load_ledger_with_recovery(&path).unwrap().status,
+            BatchStatusDto::Paused
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn batch_resume_cannot_write_until_locked_and_reloads_latest_progress() {
+        let root = test_directory("resume-lock");
+        let path = root.join("batch-test-1.json");
+        let stale = sample_ledger();
+        let runtime = Arc::new(BatchRuntime::from_ledger(path.clone(), stale.clone()));
+        let mut latest = stale;
+        latest.revision += 5;
+        latest.status = BatchStatusDto::Completed;
+        latest.items[1].status = BatchItemStatusDto::Completed;
+        latest.items[1].phase = BatchItemPhaseDto::Complete;
+        latest.items[1].attempts = 1;
+        persist_ledger_atomic(&path, &latest).unwrap();
+        let before = fs::read(&path).unwrap();
+        let resume = || {
+            Some(ResumeBatchImportRequest {
+                batch_id: latest.batch_id.clone(),
+                retry_failed: false,
+                item_id: None,
+            })
+        };
+        let lock = acquire_batch_process_lock(&path).unwrap();
+        let error =
+            run_batch_runtime(runtime.clone(), Channel::new(|_| Ok(())), resume()).unwrap_err();
+        assert_eq!(error.code, "batch_locked");
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert!(!runtime.running.load(Ordering::Acquire));
+        drop(lock);
+
+        let result = run_batch_runtime(runtime, Channel::new(|_| Ok(())), resume()).unwrap();
+        assert_eq!(result.status, BatchStatusDto::Completed);
+        assert_eq!(result.items[1].attempts, 1);
+        assert!(result.revision > latest.revision);
         fs::remove_dir_all(root).unwrap();
     }
 

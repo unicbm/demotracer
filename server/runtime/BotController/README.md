@@ -110,7 +110,6 @@ them into the package tree automatically.
 bc_lock <all|aim|weapon> <slot> [slot1..slot5]
 bc_unlock <all|aim|weapon> <slot>
 bc_unlock_all <all|aim|weapon>
-bc_replay_pov [off|spectated|always]
 bc_perf [0|1|reset]
 bc_status
 ```
@@ -122,12 +121,17 @@ bc_lock aim 1                # freeze bot 1's view, AI still runs
 bc_lock all 1                # explicit full native-AI freeze
 bc_lock weapon 1 slot3       # force bot 1 to knife
 bc_unlock_all weapon         # clear every weapon lock
-bc_replay_pov spectated      # publish replay POV only for watched bots
 bc_perf 1                    # enable and print replay perf counters
 bc_status                    # print hook status + every per-slot lock
 ```
 
 Record / replay is driven through the C-ABI below, not console commands.
+
+Replay provides simulation-local angles and the final post-angle getter. The
+engine updates and networks `m_angEyeAngles` at its normal command boundary.
+There is no spectator mask or per-tick absolute POV correction. The obsolete
+`bc_replay_view`, `bc_replay_cmd_view`, and POV publishing controls are removed;
+command angles use recorded command data, falling back to the tick pre view.
 
 ------------------------------------------------------------------------
 
@@ -142,7 +146,7 @@ Companion plugins for DemoTracer should use the managed `demotracer:api`
 capability from `server/plugins/DemoTracerApi/IDemoTracerApi.cs` instead of depending on
 BotController native exports or replay buffer structs.
 
-ABI 20 keeps the upstream 228-byte replay tick layout. Its 36-byte event tail is
+ABI 21 keeps the upstream 228-byte replay tick layout. Its 36-byte event tail is
 reserved: every field must be zero, and loads reject unsupported native drop
 payloads. Public motion recording and JSON replay remain available, but do not
 capture or replay weapon drops. DTR gameplay events use their managed executor.
@@ -150,7 +154,7 @@ capture or replay weapon drops. DTR gameplay events use their managed executor.
 ```csharp
 using BotControllerApi;
 
-if (!BotController.IsCompatible()) return;   // requires ABI 20
+if (!BotController.IsCompatible()) return;   // requires ABI 21
 BotController.TryGetAbiInfo(out var abiInfo);
 var capabilities = BotController.Capabilities();
 var buildId = BotController.BuildId();
@@ -221,7 +225,6 @@ BotController.StartReplay(botSlot, loop: false);
 // Or pull the buffers out, persist them, and load later
 var (ticks, subs) = BotController.GetRecordedMotion(srcSlot);
 BotController.LoadReplay(botSlot, ticks, subs);
-BotController.SetReplayPovMask(1UL << botSlot); // publish first-person POV for this replay slot
 
 // Drive weapon/fire from the tick being replayed
 if (BotController.TryGetReplayTick(botSlot, out var tick))

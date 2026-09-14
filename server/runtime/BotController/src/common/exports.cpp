@@ -21,14 +21,14 @@
 
 namespace
 {
-    constexpr int kBotControllerAbiMajor = 20;
-    constexpr int kBotControllerAbiMinor = 37;
+    constexpr int kBotControllerAbiMajor = 21;
+    constexpr int kBotControllerAbiMinor = 38;
     constexpr uint64_t kCapabilityReplaySlotState = 1ULL << 0;
     constexpr uint64_t kCapabilityStartReplayAt = 1ULL << 1;
     constexpr uint64_t kCapabilityStartReplayUntil = 1ULL << 2;
     constexpr uint64_t kCapabilityReplayTick = 1ULL << 3;
     constexpr uint64_t kCapabilityWeaponSwitchRead = 1ULL << 4;
-    constexpr uint64_t kCapabilityPovMask = 1ULL << 5;
+    // Bit 5 is retired: network eye angles no longer need a spectator mask.
     constexpr uint64_t kCapabilityBuyPlan = 1ULL << 6;
     constexpr uint64_t kCapabilityControllerBotOffset = 1ULL << 7;
     constexpr uint64_t kCapabilityExtendedReplay = 1ULL << 8;
@@ -45,7 +45,6 @@ namespace
         kCapabilityStartReplayUntil |
         kCapabilityReplayTick |
         kCapabilityWeaponSwitchRead |
-        kCapabilityPovMask |
         kCapabilityBuyPlan |
         kCapabilityControllerBotOffset |
         kCapabilityExtendedReplay |
@@ -274,12 +273,6 @@ extern "C" __declspec(dllexport) int BotController_SendVoiceFrame(
 extern "C" __declspec(dllexport) int BotController_SetControllerControllingBotOffset(int offset)
 {
     return BotController::InputInjector::SetControllerControllingBotOffset(offset) ? 0 : -1;
-}
-
-extern "C" __declspec(dllexport) int BotController_SetReplayPovMask(uint64_t mask)
-{
-    BotController::MotionRecorder::SetReplayPovMask(mask);
-    return 0;
 }
 
 extern "C" __declspec(dllexport) int BotController_SetReplayPawn(int slot, uint64_t pawnPtr)

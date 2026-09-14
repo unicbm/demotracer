@@ -186,7 +186,7 @@ server.
 
 ## v8 Columnar Delta-Varint Sections
 
-Native BotController ABI 20 uses 228-byte replay ticks, including a reserved
+Native BotController ABI 21 uses 228-byte replay ticks, including a reserved
 36-byte event tail. Every tail field must be zero; native loading rejects nonzero
 payloads because native weapon-drop recording/replay is unsupported. This is an
 in-memory API layout, not the DTR disk layout.
