@@ -303,7 +303,11 @@ internal sealed class DtrReplayPrefetch
                 if (!ReplayFileStamp.TryRead(path, out var before))
                     return DtrReplayDecodeResult.Failed;
 
-                var replay = await Task.Run(() => _readReplay(path), cancellationToken)
+                var replay = await Task.Run(() =>
+                    {
+                        var decoded = _readReplay(path);
+                        return decoded with { PreparedMetadata = ReplayNativeMapper.BuildMetadata(decoded) };
+                    }, cancellationToken)
                     .ConfigureAwait(false);
                 if (cancellationToken.IsCancellationRequested ||
                     !ReplayFileStamp.TryRead(path, out var after) ||
@@ -328,7 +332,7 @@ internal sealed class DtrReplayPrefetch
         }
     }
 
-    private static long EstimateReplayBytes(DtrReplayFile replay)
+    internal static long EstimateReplayBytes(DtrReplayFile replay)
     {
         try
         {
@@ -338,11 +342,16 @@ internal sealed class DtrReplayPrefetch
                             replay.Subticks.LongLength * BotControllerNative.SubtickMoveByteSize +
                             replay.CommandFrames.LongLength * BotControllerNative.ReplayCommandFrameByteSize +
                             replay.MovementExtras.LongLength * BotControllerNative.ReplayMovementExtraByteSize +
+                            replay.InputHistoryTicks.LongLength * BotControllerNative.ReplayInputHistoryTickByteSize +
+                            replay.InputHistoryEntries.LongLength * BotControllerNative.ReplayInputHistoryEntryByteSize +
+                            replay.SourceState.LongLength * 16L +
                             replay.Projectiles.LongLength * 128L;
+                bytes += (replay.PreparedMetadata?.WeaponDefIndices.LongLength ?? 0) * sizeof(int);
                 if (replay.HighFidelity != null)
                 {
                     bytes += replay.HighFidelity.Events.LongLength * 128L;
-                    bytes += replay.HighFidelity.InventorySnapshots.LongLength * 256L;
+                    foreach (var snapshot in replay.HighFidelity.InventorySnapshots)
+                        bytes += 64L + snapshot.WeaponDefCounts.LongLength * 32L;
                     bytes += replay.HighFidelity.Projectiles.LongLength * 256L;
                 }
                 return Math.Max(1L, bytes);

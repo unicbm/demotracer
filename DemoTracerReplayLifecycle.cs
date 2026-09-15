@@ -125,6 +125,7 @@ public sealed partial class DemoTracerPlugin
             ClearReplayRetentionPriority(clearPending: true);
             ClearRetainedBotHiderPresentation();
             _session.ReplayHifiEventNextBySlot.Clear();
+            _session.ReplayInventoryBySlot.Clear();
             _session.ReplayIdentityGenerationBySlot.Clear();
             ClearStoppedReplayExecutionState();
             _session.WeaponLoadoutSyncedSlots.Clear();

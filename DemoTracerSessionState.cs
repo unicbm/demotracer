@@ -30,6 +30,7 @@ public sealed partial class DemoTracerPlugin
             PendingWeaponSlotReplacements { get; } = [];
         public Dictionary<int, int> ProjectileAlignNextBySlot { get; } = [];
         public Dictionary<int, int> ReplayHifiEventNextBySlot { get; } = [];
+        public Dictionary<int, ReplayInventoryTimeline> ReplayInventoryBySlot { get; } = [];
         public Dictionary<int, long> ReplayIdentityGenerationBySlot { get; } = [];
         public Queue<string> ProjectileAlignLog { get; } = [];
         public bool ProjectileTraceEnabled { get; set; }

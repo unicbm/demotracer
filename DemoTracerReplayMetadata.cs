@@ -74,6 +74,7 @@ public sealed partial class DemoTracerPlugin
         _session.LastReplayWeaponDef.Remove(slot);
         _session.LastLockedWeaponTarget.Remove(slot);
         _session.ReplayHifiEventNextBySlot.Remove(slot);
+        _session.ReplayInventoryBySlot.Remove(slot);
         _session.RebuiltInventorySlots.Remove(slot);
         _session.BalanceSyncedSlots.Remove(slot);
         InvalidateLoadedReplayCosmeticAlignmentForSlot(slot);
@@ -114,13 +115,9 @@ public sealed partial class DemoTracerPlugin
             scannedPreloadDefs,
             normalizedLoadout,
             hasLoadout);
-        var hifiEvents = (metadata.HighFidelity?.Events ?? [])
-            .OrderBy(replayEvent => replayEvent.TickIndex)
-            .ThenBy(replayEvent => replayEvent.Tick)
-            .ToArray();
+        var hifiEvents = metadata.HighFidelity?.Events ?? [];
         var inventorySnapshots = (metadata.HighFidelity?.InventorySnapshots ?? [])
-            .OrderBy(snapshot => snapshot.TickIndex)
-            .ThenBy(snapshot => snapshot.Tick)
+            .Where(snapshot => snapshot.SteamId == steamId)
             .ToArray();
         var normalizedCosmetics = NormalizeReplayCosmetics(cosmetics);
         var normalizedView = NormalizeReplayView(view);
@@ -156,6 +153,7 @@ public sealed partial class DemoTracerPlugin
         _session.LastLockedWeaponTarget.Remove(slot);
         _session.ProjectileAlignNextBySlot[slot] = 0;
         _session.ReplayHifiEventNextBySlot[slot] = 0;
+        _session.ReplayInventoryBySlot.Remove(slot);
         _session.RebuiltInventorySlots.Remove(slot);
         _session.WeaponLoadoutSyncedSlots.Remove(slot);
         _session.PawnEquipmentSync.Invalidate(slot);

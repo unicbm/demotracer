@@ -54,6 +54,7 @@ public sealed partial class DemoTracerPlugin
         bool steamIdMatch,
         bool switchingTeamsAtRoundReset)
     {
+        using var timing = new ReplayPhaseTimer($"round load T={tRound}/CT={ctRound}");
         var replayStateReplaced = false;
         var companionLeaseTransitionStarted = false;
         var loadSucceeded = false;
@@ -138,7 +139,9 @@ public sealed partial class DemoTracerPlugin
             BeginBotHiderPresentationTransition();
             BeginBotRandomizerCosmeticLeaseTransition();
             companionLeaseTransitionStarted = true;
+            timing.Mark("manifest_targets");
             StopAndUnloadLoaded(clearArmedPlan: true, releaseBuffers: false);
+            timing.Mark("stop");
             replayStateReplaced = true;
             _session.LoadedRoundScoreboard = roundScoreboard;
             var loaded = new List<string>();
@@ -148,6 +151,7 @@ public sealed partial class DemoTracerPlugin
                     avatarOverrides,
                     includeScoreboardEvidence: !steamIdMatch,
                     loaded,
+                    timing,
                     out var loadError))
                 return FailLoadRoundAfterPartialLoad(selectionLabel, loadError);
             if (!LoadSide(
@@ -156,6 +160,7 @@ public sealed partial class DemoTracerPlugin
                     avatarOverrides,
                     includeScoreboardEvidence: !steamIdMatch,
                     loaded,
+                    timing,
                     out loadError))
                 return FailLoadRoundAfterPartialLoad(selectionLabel, loadError);
 
@@ -165,6 +170,7 @@ public sealed partial class DemoTracerPlugin
                 allCtFiles,
                 avatarOverrides);
             ScheduleHumanTeamAvatarOverrideReconciliation();
+            timing.Mark("avatars");
 
             var voice = steamIdMatch
                 ? string.Empty
@@ -188,6 +194,7 @@ public sealed partial class DemoTracerPlugin
             ReleaseUnusedWarmReplayBuffers();
             RetainLoadedBotHiderPresentation();
             loadSucceeded = true;
+            timing.Mark("media_finish");
             return LoadRoundResult.Success($"dtr: loaded {loaded.Count} replays for {selectionLabel}{partial}{voiceStatus}{chatStatus}: {string.Join(", ", loaded)}");
         }
         catch (Exception ex)
@@ -206,6 +213,7 @@ public sealed partial class DemoTracerPlugin
                 EndBotHiderPresentationTransition();
                 EndBotRandomizerCosmeticLeaseTransition();
             }
+            timing.Mark("cleanup_leases");
         }
     }
 
@@ -221,6 +229,7 @@ public sealed partial class DemoTracerPlugin
         IReadOnlyDictionary<ulong, ManifestAvatarOverride> avatarOverrides,
         bool includeScoreboardEvidence,
         List<string> loaded,
+        ReplayPhaseTimer timing,
         out string error)
     {
         error = string.Empty;
@@ -242,6 +251,7 @@ public sealed partial class DemoTracerPlugin
             }
 
             ReplayFileMetadata replayMetadata;
+            timing.Mark("paths_safety");
             var prefetchStatus = TryTakePrefetchedReplay(recPath, out var prefetchedReplay);
             bool loadedReplay;
             switch (prefetchStatus)
@@ -272,6 +282,7 @@ public sealed partial class DemoTracerPlugin
                 error = $"{file.Side}:slot{slot}:{file.PlayerName} {recPath} ({BotControllerNative.LastLoadError})";
                 return false;
             }
+            timing.Mark("native_load");
 
             _session.WarmReplayBufferSlots.Remove(slot);
             RememberLoadedSlot(slot);
@@ -291,12 +302,14 @@ public sealed partial class DemoTracerPlugin
                 manifestTeam: ReplayTeamFromManifestSide(file.Side),
                 replayMetadata: replayMetadata,
                 retentionRank: assignment.RetentionRank);
+            timing.Mark("metadata");
             if (!BotControllerNative.SetBuySkip(slot))
             {
                 error = $"{file.Side}:slot{slot}:{file.PlayerName} failed to suppress native buying";
                 return false;
             }
             TryApplyReplayIdentity(slot, file, manifestDir, avatarOverrides);
+            timing.Mark("identity");
             loaded.Add($"{file.Side}:slot{slot}:{file.PlayerName}");
         }
         return true;

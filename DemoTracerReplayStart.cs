@@ -60,6 +60,7 @@ public sealed partial class DemoTracerPlugin
         float? freezeTimeSeconds,
         bool restartLoop = false)
     {
+        using var timing = new ReplayPhaseTimer("round playback start");
         if (IsWarmupPeriod())
             return "[DTR ERR] 热身阶段无法进行回放";
 
@@ -116,6 +117,7 @@ public sealed partial class DemoTracerPlugin
                 ReleaseReplaySlot(slot, "start_failed");
             }
         }
+        timing.Mark("slots");
         // A partial loop must not restart the round's media for a stopped or
         // handed-off speaker. An independent voice test also keeps its clock.
         var restartMedia = !restartLoop ||
@@ -127,6 +129,7 @@ public sealed partial class DemoTracerPlugin
         var chat = restartMedia
             ? TryStartLoadedAutoChatPlayback(anchor, freezeTimeSeconds, ok)
             : string.Empty;
+        timing.Mark("media");
         return $"dtr: started {ok}/{slots.Count} loaded slots, loop={loop}{voice}{chat}";
     }
 
@@ -440,6 +443,7 @@ public sealed partial class DemoTracerPlugin
                 }
 
                 startIndex = FreezePrerollStartIndex(replay, freezeTimeSeconds ?? 0.0f);
+                StartReplayInventory(slot, startIndex);
                 var startedUntil = startIndex < replay.PlayStartTickIndex &&
                                    RegisterReplayPawnForSlot(slot) &&
                                    BotControllerNative.StartReplayUntil(
@@ -477,6 +481,7 @@ public sealed partial class DemoTracerPlugin
             _session.ReplaySlots.Claim(slot);
             return true;
         }
+        StartReplayInventory(slot, startIndex);
         var started = RegisterReplayPawnForSlot(slot) &&
                       BotControllerNative.StartReplayAt(slot, false, startIndex);
         if (started)

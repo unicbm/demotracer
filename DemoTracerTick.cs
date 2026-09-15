@@ -121,7 +121,10 @@ public sealed partial class DemoTracerPlugin
 
             var hasLoadedReplay = _session.LoadedReplays.TryGetValue(slot, out var replay);
             if (hasLoadedReplay)
+            {
+                ProcessReplayInventory(slot, replay, state.Cursor);
                 ProcessReplayHifiEvents(slot, replay, state.Cursor);
+            }
 
             if (!_weaponAlignEnabled)
                 continue;
@@ -190,7 +193,7 @@ public sealed partial class DemoTracerPlugin
     private bool ShouldQueueReplayUtilityGrant(
         ReplayHifiEvent replayEvent,
         LoadedReplay replay)
-        => ReplayUtilityGrantPolicy.ShouldQueue(
+        => replay.InventorySnapshots.Length == 0 && ReplayUtilityGrantPolicy.ShouldQueue(
             replayEvent,
             replay.SteamId,
             replay.PlayStartTickIndex,

@@ -10,9 +10,15 @@ internal static class ReplayNativeMapper
 {
     public static ReplayFileMetadata BuildMetadata(DtrReplayFile replay)
     {
-        var weaponDefIndices = new int[replay.Ticks.Length];
+        if (replay.PreparedMetadata is { } prepared)
+            return prepared;
+        // Consumers need the first weapon and the inventory set, not a second
+        // per-tick array that they immediately scan and deduplicate again.
+        var seenWeapons = new HashSet<int>();
+        var weaponDefIndices = new List<int>();
         for (var i = 0; i < replay.Ticks.Length; i++)
-            weaponDefIndices[i] = replay.Ticks[i].WeaponDefIndex;
+            if (seenWeapons.Add(replay.Ticks[i].WeaponDefIndex))
+                weaponDefIndices.Add(replay.Ticks[i].WeaponDefIndex);
         ReplayVector3? roundStartOrigin = null;
         if (replay.Ticks.Length > 0)
         {
@@ -28,7 +34,7 @@ internal static class ReplayNativeMapper
             replay.Ticks.Length,
             replay.Projectiles,
             replay.HighFidelity,
-            weaponDefIndices,
+            weaponDefIndices.ToArray(),
             roundStartOrigin);
     }
 }

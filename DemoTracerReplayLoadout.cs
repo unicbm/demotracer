@@ -30,8 +30,15 @@ public sealed partial class DemoTracerPlugin
         int slotRetryFramesRemaining = ReplayLoadoutSlotRetryFrames)
     {
         if (!CanWriteReplaySlot(slot) ||
-            !_weaponAlignEnabled ||
-            !replay.HasLoadout)
+            !_weaponAlignEnabled)
+            return;
+
+        if (replay.InventorySnapshots.Length > 0)
+        {
+            ApplyReplayInventoryPending(slot, slotRetryFramesRemaining);
+            return;
+        }
+        if (!replay.HasLoadout)
             return;
 
         var player = Utilities.GetPlayerFromSlot(slot);
@@ -149,7 +156,8 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        ApplyReplayWeaponPreset(slot, ChooseStartWeaponDef(currentReplay), force: true);
+        var state = BotControllerNative.GetReplayState(slot);
+        ApplyReplayWeaponPreset(slot, state.Playing ? state.WeaponDefIndex : ChooseStartWeaponDef(currentReplay), force: false);
     }
 
     private static bool TryApplyReplayArmorAndKit(

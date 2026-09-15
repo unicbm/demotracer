@@ -228,7 +228,7 @@ internal static partial class DtrReplayReader
             var metadataJson = bodyReader.ReadBytes(metadataJsonLength);
             if (metadataJson.Length != metadataJsonLength)
                 throw new EndOfStreamException("truncated high_fidelity metadata in .dtr");
-            highFidelity = ReadHighFidelityMetadata(metadataJson);
+            highFidelity = ReadHighFidelityMetadata(metadataJson, tickCount);
         }
 
         var subticks = new NativeSubtickMove[subtickCount];
@@ -396,7 +396,7 @@ internal static partial class DtrReplayReader
                 case SectionHighFidelityJson:
                     highFidelity = metadataJsonLength == 0
                         ? ReplayHighFidelityMetadata.Empty
-                        : ReadHighFidelityMetadata(body);
+                        : ReadHighFidelityMetadata(body, tickCount);
                     seenHighFidelity = true;
                     break;
                 case SectionCommandFrames:
@@ -491,4 +491,5 @@ internal readonly record struct DtrReplayFile(
     uint PlayStartTickIndex)
 {
     public NativeReplaySourceStateChange[] SourceState { get; init; } = [];
+    public ReplayFileMetadata? PreparedMetadata { get; init; }
 }
