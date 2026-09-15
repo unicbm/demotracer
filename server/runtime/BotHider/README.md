@@ -52,7 +52,10 @@ the previous complete batch. Explicit slot unload/kick, disconnect, map change,
 slot reuse, plugin unload, or provider loss end the affected presentation.
 
 Crosshair publication writes and verifies
-`CCSPlayerController.m_szCrosshairCodes`, then marks that network field changed.
+`CCSPlayerController.m_szCrosshairCodes`. When live schema metadata exposes
+the field as networked, it also marks the field changed. The lease checks
+the requested value's readback; unavailable notification metadata does not
+roll back native identity or imply that a client acknowledged the crosshair.
 Network metadata is resolved on demand only after a live controller exists;
 querying it during plugin load can cache the not-yet-ready serializer as a
 false non-networked result. Publication occurs once for a new slot incarnation
