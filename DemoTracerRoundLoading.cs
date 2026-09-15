@@ -476,16 +476,15 @@ public sealed partial class DemoTracerPlugin
         var hasAvatarOverride =
             file.SteamId != 0 &&
             avatarOverrides.TryGetValue(file.SteamId, out avatarOverride);
-        var avatarCommandPath = string.Empty;
+        byte[] avatarPng = [];
         var avatarOverrideReady = false;
         if (hasAvatarOverride && avatarOverride != null &&
             _replayIdentityMode == ReplayIdentityMode.Avatar)
         {
             avatarOverrideReady = TryPrepareReplayAvatarOverride(
-                file.SteamId,
                 manifestDir,
                 avatarOverride,
-                out avatarCommandPath,
+                out avatarPng,
                 out var avatarError);
             if (!avatarOverrideReady)
             {
@@ -525,7 +524,7 @@ public sealed partial class DemoTracerPlugin
                     file,
                     file.SteamId,
                     avatarOverride,
-                    avatarCommandPath);
+                    avatarPng);
             }
         }
         if (writeSteamId && _replayIdentityMode == ReplayIdentityMode.Avatar)
@@ -552,7 +551,7 @@ public sealed partial class DemoTracerPlugin
         ManifestFile file,
         ulong avatarSteamId,
         ManifestAvatarOverride avatar,
-        string commandPath)
+        byte[] png)
     {
         if (file.SteamId == 0)
             return;
@@ -567,7 +566,7 @@ public sealed partial class DemoTracerPlugin
                 avatarSteamId,
                 playerName,
                 avatar,
-                commandPath,
+                png,
                 generation));
     }
 
@@ -577,7 +576,7 @@ public sealed partial class DemoTracerPlugin
         ulong avatarSteamId,
         string playerName,
         ManifestAvatarOverride avatar,
-        string commandPath,
+        byte[] png,
         long generation)
     {
         if (steamId == 0 ||
@@ -605,22 +604,22 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        Server.ExecuteCommand(BuildAvatarOverrideCommand(
-            avatarSteamId,
-            commandPath));
-        ScheduleBotHiderAvatarIdentityReassert();
+        if (!BotControllerNative.TryPublishAvatarOverride(avatarSteamId, png, out var error))
+        {
+            Server.PrintToConsole($"dtr: replay avatar publish failed slot={slot} sid={steamId}: {error}");
+            return;
+        }
         Server.PrintToConsole(
-            $"dtr: replay avatar queued slot={slot} player={playerName} sid={steamId} avatar_sid={avatarSteamId} path={avatar.Path} cache={commandPath}");
+            $"dtr: replay avatar published slot={slot} player={playerName} sid={steamId} avatar_sid={avatarSteamId} path={avatar.Path}");
     }
 
-    private bool TryPrepareReplayAvatarOverride(
-        ulong steamId,
+    private static bool TryPrepareReplayAvatarOverride(
         string manifestDir,
         ManifestAvatarOverride avatar,
-        out string commandPath,
+        out byte[] png,
         out string error)
     {
-        commandPath = string.Empty;
+        png = [];
         error = string.Empty;
 
         var format = avatar.Format.Trim();
@@ -643,22 +642,18 @@ public sealed partial class DemoTracerPlugin
 
         try
         {
-            var bytes = File.ReadAllBytes(avatarPath);
-            if (bytes.Length == 0)
-            {
-                error = "avatar PNG is empty";
-                return false;
-            }
-            if (bytes.Length > AvatarOverrideMaxBytes)
+            using var stream = File.OpenRead(avatarPath);
+            if (stream.Length > 16 * 1024)
             {
                 error = "avatar PNG must be 16 KiB or smaller";
                 return false;
             }
-            if (!bytes.AsSpan().StartsWith(AvatarPngSignature))
-            {
-                error = "avatar file is not a PNG";
+            var bytes = new byte[(int)stream.Length];
+            stream.ReadExactly(bytes);
+            if (!ReplayAvatarEvidence.Validate(bytes, avatar.Sha256, out error))
                 return false;
-            }
+            png = bytes;
+            return true;
         }
         catch (Exception ex)
         {
@@ -666,76 +661,6 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
-        return TryPrepareAvatarOverrideCommandPath(
-            steamId,
-            avatarPath,
-            avatar,
-            out commandPath,
-            out error);
-    }
-
-    private bool TryPrepareAvatarOverrideCommandPath(
-        ulong steamId,
-        string sourcePath,
-        ManifestAvatarOverride avatar,
-        out string commandPath,
-        out string error)
-    {
-        commandPath = string.Empty;
-        error = string.Empty;
-
-        try
-        {
-            var pluginDir = ModuleDirectory;
-            if (string.IsNullOrWhiteSpace(pluginDir))
-                pluginDir = Path.GetDirectoryName(ModulePath);
-            if (string.IsNullOrWhiteSpace(pluginDir))
-                pluginDir = ".";
-
-            var cacheDir = Path.Combine(pluginDir, AvatarOverrideCacheDirectoryName);
-            Directory.CreateDirectory(cacheDir);
-
-            var normalizedManifestPath = avatar.Path.Replace('/', Path.DirectorySeparatorChar);
-            var fileName = Path.GetFileName(normalizedManifestPath);
-            if (string.IsNullOrWhiteSpace(fileName))
-                fileName = Path.GetFileName(sourcePath);
-            if (string.IsNullOrWhiteSpace(fileName))
-            {
-                error = "avatar cache filename is empty";
-                return false;
-            }
-
-            var contentHash = AvatarContentHashKey(sourcePath, avatar.Sha256);
-            var pathHash = ShortSha256Hex($"{steamId}\n{avatar.Path}\n{contentHash}");
-            var safeStem = SanitizeAvatarCacheStem(Path.GetFileNameWithoutExtension(fileName));
-            var cachedName = $"{steamId}_{pathHash}_{safeStem}.png";
-            var cachedPath = Path.Combine(cacheDir, cachedName);
-            var sourceInfo = new FileInfo(sourcePath);
-            var shouldCopy =
-                !File.Exists(cachedPath) ||
-                new FileInfo(cachedPath).Length != sourceInfo.Length;
-            if (shouldCopy)
-                File.Copy(sourcePath, cachedPath, overwrite: true);
-
-            commandPath = cachedPath.Replace('\\', '/');
-            return true;
-        }
-        catch (Exception ex)
-        {
-            error = $"avatar cache failed: {ex.Message}";
-            return false;
-        }
-    }
-
-    private static string AvatarContentHashKey(string sourcePath, string manifestSha256)
-    {
-        var normalized = NormalizeSha256(manifestSha256);
-        if (normalized.Length >= 16)
-            return normalized[..16];
-
-        using var stream = File.OpenRead(sourcePath);
-        var hash = SHA256.HashData(stream);
-        return Convert.ToHexString(hash)[..16].ToLowerInvariant();
     }
 
     private static string NormalizeSha256(string value)
@@ -750,28 +675,6 @@ public sealed partial class DemoTracerPlugin
                 builder.Append(char.ToLowerInvariant(c));
         }
         return builder.ToString();
-    }
-
-    private static string ShortSha256Hex(string value)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(value));
-        return Convert.ToHexString(hash)[..16].ToLowerInvariant();
-    }
-
-    private static string SanitizeAvatarCacheStem(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return "avatar";
-
-        var builder = new StringBuilder(Math.Min(value.Length, 48));
-        foreach (var c in value)
-        {
-            if (builder.Length >= 48)
-                break;
-            builder.Append(char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '_');
-        }
-
-        return builder.Length == 0 ? "avatar" : builder.ToString();
     }
 
 }

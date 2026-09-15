@@ -139,7 +139,6 @@ public sealed partial class DemoTracerPlugin
         }
 
         ResumeFreezePrerollReplays();
-        ScheduleAvatarOverrideUserInfoRefresh();
 
         var missingFreezePrerollSlots = MissingFreezePrerollResumeSlots();
         if (missingFreezePrerollSlots.Length > 0)

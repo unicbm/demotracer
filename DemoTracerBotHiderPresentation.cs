@@ -26,7 +26,6 @@ public sealed partial class DemoTracerPlugin
     private long _nextBotHiderLeaseHeartbeatAtMilliseconds;
     private long _nextBotHiderLeaseRetryAtMilliseconds;
     private int _botHiderPresentationTransitionDepth;
-    private bool _botHiderAvatarIdentityReassertScheduled;
 
     private void BeginBotHiderPresentationTransition()
     {
@@ -440,7 +439,6 @@ public sealed partial class DemoTracerPlugin
         if (_botHiderPresentationTransitionDepth > 0)
             return;
 
-        _botHiderAvatarIdentityReassertScheduled = false;
         var token = _botHiderPresentationLeaseToken;
         _botHiderPresentationLeaseToken = string.Empty;
         _botHiderPresentationSignature = string.Empty;
@@ -453,32 +451,6 @@ public sealed partial class DemoTracerPlugin
         if (!_botHiderBridge.Release(token))
             _ = _botHiderBridge.ReleaseOwner(DemoTracerBotHiderContract.DemoTracerOwner);
         Server.PrintToConsole($"dtr: BotHider presentation lease released reason={reason}");
-    }
-
-    private void ScheduleBotHiderAvatarIdentityReassert()
-    {
-        if (_botHiderAvatarIdentityReassertScheduled)
-            return;
-
-        _botHiderAvatarIdentityReassertScheduled = true;
-        Server.NextFrame(() =>
-        {
-            _botHiderAvatarIdentityReassertScheduled = false;
-            if (_replayIdentityMode != ReplayIdentityMode.Avatar ||
-                _session.LoadedSlots.Count == 0)
-            {
-                return;
-            }
-
-            // ServerAvatarOverrides is populated after the replay identity
-            // lease because the native write runs through the server command
-            // buffer. Replacing the unchanged lease invalidates BotHider's
-            // applied cache and republishes userinfo after the PNG is visible.
-            // One scheduled replacement covers every avatar queued together.
-            _ = SyncBotHiderPresentationLease(
-                announce: false,
-                forceReplace: true);
-        });
     }
 
     private bool HasActiveBotHiderReplayIdentity(int slot, ulong replaySteamId)

@@ -51,7 +51,10 @@ internal static partial class BotControllerNative
     internal const ulong CapabilityReplaySourceState = 1UL << 17;
     internal const int MovementIntentPreserveMoveAxes = 1 << 0;
 
+    internal const ulong CapabilityAvatarPublication = 1UL << 18;
+
     public const ulong RequiredCapabilityMask =
+        CapabilityAvatarPublication |
         CapabilityReplaySourceState |
         CapabilityReplaySlotState |
         CapabilityStartReplayAt |

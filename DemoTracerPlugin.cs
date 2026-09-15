@@ -67,9 +67,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private const int ReplayLoadoutSlotRetryFrames = 8;
     private const float PlayerHullWidth = 32.0f;
     private const float PlayerHullHeight = 72.0f;
-    private const string AvatarOverrideCacheDirectoryName = "avatar-cache";
-    private const int AvatarOverrideMaxBytes = 16 * 1024;
-    private static readonly byte[] AvatarPngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
     private const string FreezeTimeConVarName = "mp_freezetime";
     private const string MaxMoneyConVarName = "mp_maxmoney";
     private static readonly Lazy<string> Cs2PatchVersion = new(DetectCs2PatchVersion);
