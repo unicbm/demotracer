@@ -160,9 +160,12 @@ internal static partial class DtrReplayReader
         }
     }
 
-    private static void ValidateKnownSectionCodec(DtrSectionHeader header, string name)
+    private const byte SectionCodecZstd = 2;
+
+    private static void ValidateKnownSectionCodec(DtrSectionHeader header, string name, uint version)
     {
-        if (header.Codec is not SectionCodecNone and not RecCodecBrotli)
+        if (header.Codec is not SectionCodecNone and not RecCodecBrotli and not SectionCodecZstd ||
+            (header.Codec == SectionCodecZstd && version < 12))
             throw new InvalidDataException($"unsupported {name} section codec {header.Codec}");
         if (header.Codec == SectionCodecNone && header.CompressedLength != header.UncompressedLength)
         {
@@ -183,6 +186,7 @@ internal static partial class DtrReplayReader
         {
             SectionCodecNone => RequireExactLength(compressed, expectedLength, "uncompressed section"),
             RecCodecBrotli => DecompressBrotli(compressed, expectedLength),
+            SectionCodecZstd => DecompressZstd(compressed, expectedLength),
             _ => throw new InvalidDataException($"unsupported section codec {codec}")
         };
     }
@@ -314,6 +318,24 @@ internal static partial class DtrReplayReader
 
         if (brotli.ReadByte() != -1)
             throw new InvalidDataException($"decompressed body exceeds expected length {expectedLength}");
+        return output;
+    }
+
+    private static byte[] DecompressZstd(byte[] compressed, int expectedLength)
+    {
+        // Decode into the already budgeted size, never a size from the Zstd frame.
+        var output = GC.AllocateUninitializedArray<byte>(expectedLength);
+        try
+        {
+            using var decompressor = new ZstdSharp.Decompressor();
+            var written = decompressor.Unwrap(compressed, output);
+            if (written != expectedLength)
+                throw new InvalidDataException($"zstd decoded length {written} != expected {expectedLength}");
+        }
+        catch (ZstdSharp.ZstdException ex)
+        {
+            throw new InvalidDataException("invalid zstd section", ex);
+        }
         return output;
     }
 

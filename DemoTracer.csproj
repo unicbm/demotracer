@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="CounterStrikeSharp.API" Version="1.0.371" />
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.8" GeneratePathProperty="true" />
     <ProjectReference Include="..\DemoTracerApi\DemoTracerApi.csproj">
       <Private>false</Private>
     </ProjectReference>
@@ -23,9 +24,15 @@
   <ItemGroup>
     <None Include="..\..\..\shared\econ\cs2-lib-econ-index.v1.json" Link="cs2-lib-econ-index.v1.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="demotracer.config.example.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="DemoTracer.Tests" />
   </ItemGroup>
+
+  <Target Name="CopyZstdDecoder" AfterTargets="Build;Publish">
+    <Copy SourceFiles="$(PkgZstdSharp_Port)\lib\net9.0\ZstdSharp.dll"
+          DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

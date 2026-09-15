@@ -347,15 +347,13 @@ internal static partial class DtrReplayReader
                     0),
                 _ => throw new InvalidDataException($"unsupported known section {header.SectionId}")
             };
-            if (header.SectionId == SectionSourceState && version < 11)
-                throw new InvalidDataException("source state requires DTR 11");
-            if (header.SectionId == SectionSourceState && header.ElementCount > (long)tickCount * SourceKinds.Length)
-                throw new InvalidDataException("source state count exceeds tick/field capacity");
             RejectDuplicate(!seenKnownSections.Add(header.SectionId), name);
             var usesV2ColumnLayout = version >= 8 &&
                 header.SectionId is SectionSnapshots or SectionCommandFrames;
             if (header.SectionId == SectionInputHistory)
                 RequireInputHistorySectionShape(header, tickCount);
+            else if (header.SectionId == SectionSourceState)
+                RequireSourceStateSectionShape(header, version, tickCount, limits, ref totalDecodedBytes);
             else
                 RequireSectionShape(
                     header,
@@ -363,7 +361,7 @@ internal static partial class DtrReplayReader
                     expectedElementCount,
                     usesV2ColumnLayout ? null : expectedUncompressedLength,
                     usesV2ColumnLayout ? SectionVersionV2 : SectionVersionV1);
-            ValidateKnownSectionCodec(header, name);
+            ValidateKnownSectionCodec(header, name, version);
 
             EnsureRemaining(
                 reader,
@@ -409,7 +407,9 @@ internal static partial class DtrReplayReader
                     movementExtras = ReadMovementExtrasFromSection(body, tickCount);
                     break;
                 case SectionSourceState:
-                    sourceState = ReadSourceState(body, header.ElementCount, tickCount);
+                    sourceState = header.SectionVersion == SectionVersionV2
+                        ? ReadCompactSourceState(body, header.ElementCount, tickCount)
+                        : ReadSourceState(body, header.ElementCount, tickCount);
                     break;
                 case SectionInputHistory:
                     (inputHistoryTicks, inputHistoryEntries) =

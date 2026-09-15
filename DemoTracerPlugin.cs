@@ -52,7 +52,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private const int ProjectileAlignLogMaxEntries = 128;
     private const float ProjectileAlignMaxInitialPositionDistance = 128.0f;
     private const int MinManifestAbiVersion = 12;
-    private const int MaxManifestAbiVersion = 18;
+    private const int MaxManifestAbiVersion = 19;
     private const int MaxPlayerSlots = BotControllerNative.MaxSlots;
     private const int ReplayStartHealth = 100;
     private const int StandardTeamSize = 5;
