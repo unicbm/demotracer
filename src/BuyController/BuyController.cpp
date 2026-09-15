@@ -157,6 +157,7 @@ namespace BotController
             ResetAllInitialDelayLatches();
         }
 
+        bool Ready() { return g_installed && g_origOnUpdate; }
         const char *Status() { return g_status.c_str(); }
         void *OnUpdateAddress() { return g_addrOnUpdate; }
     }

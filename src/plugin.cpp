@@ -32,6 +32,7 @@
 #include "platform.h"
 #include "version_targets.h"
 #include "avatar_overrides.h"
+#include "live_entities.h"
 
 class BotControllerPlugin : public ISmmPlugin
 {
@@ -181,6 +182,13 @@ bool BotControllerPlugin::Load(PluginId id, ISmmAPI *ismm,
     // live server layout above.
     BotController::targets::LoadFromGamedata(gd);
 
+    if (!BotController::LiveEntities::Init(
+            ismm->GetEngineFactory()(GAMERESOURCESERVICESERVER_INTERFACE_VERSION, nullptr), gd))
+    {
+        std::snprintf(error, maxlen, "Current controller/pawn entity resolver unavailable");
+        return false;
+    }
+
     if (!BotController::WeaponLockerHooks::Install(gd, serverModule, error, maxlen))
         return false;
 
@@ -243,6 +251,7 @@ bool BotControllerPlugin::Unload(char *error, size_t maxlen)
     BotController::VoiceSender::SetInterfaces(nullptr, nullptr);
     BotController::Commands::g_pEngine = nullptr;
     BotController::Commands::g_pStringTables = nullptr;
+    BotController::LiveEntities::Reset();
     BotController::Schema::Reset();
     ConVar_Unregister();
     g_pCVar = nullptr;

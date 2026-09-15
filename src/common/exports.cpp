@@ -6,6 +6,7 @@
 #include "InputInjector.h"
 #include "ReplayPawnEquipment.h"
 #include "BuyControllerState.h"
+#include "BuyController.h"
 #include "VoiceSender.h"
 #include "projectile_birth_align.h"
 #include "PublicBotProfile.h"
@@ -23,7 +24,7 @@
 namespace
 {
     constexpr int kBotControllerAbiMajor = 21;
-    constexpr int kBotControllerAbiMinor = 41;
+    constexpr int kBotControllerAbiMinor = 42;
     constexpr uint64_t kCapabilityAvatarPublication = 1ULL << 18;
     constexpr uint64_t kCapabilityReplaySlotState = 1ULL << 0;
     constexpr uint64_t kCapabilityStartReplayAt = 1ULL << 1;
@@ -159,13 +160,15 @@ extern "C" __declspec(dllexport) int BotController_GetAbiInfo(BotControllerAbiIn
     info.replaySlotStateSize = static_cast<int32_t>(sizeof(BotController::MotionRecorder::ReplaySlotState));
     info.maxSlots = BotController::MotionRecorder::kMaxSlots;
     info.capabilities = kBotControllerCapabilities;
+    if (!BotController::BuyControllerHooks::Ready()) info.capabilities &= ~kCapabilityBuyPlan;
     std::memcpy(out, &info, sizeof(info));
     return 0;
 }
 
 extern "C" __declspec(dllexport) uint64_t BotController_GetCapabilities()
 {
-    return kBotControllerCapabilities;
+    return BotController::BuyControllerHooks::Ready() ? kBotControllerCapabilities :
+        (kBotControllerCapabilities & ~kCapabilityBuyPlan);
 }
 
 extern "C" __declspec(dllexport) const char *BotController_GetBuildId()
@@ -423,8 +426,14 @@ static std::vector<std::string> SplitAliases(const char *aliases)
     return out;
 }
 
+extern "C" __declspec(dllexport) int BotController_GetBuyStatus()
+{
+    return BotController::BuyControllerHooks::Ready() ? 0 : -1;
+}
+
 extern "C" __declspec(dllexport) int BotController_SetBuyPlan(int slot, const char *aliases)
 {
+    if (!BotController::BuyControllerHooks::Ready()) return -3;
     if (slot < 0 || slot >= BotController::BuyControllerState::kMaxSlots)
         return -2;
     BotController::BuyControllerState::Set(slot, SplitAliases(aliases), false);
@@ -433,6 +442,7 @@ extern "C" __declspec(dllexport) int BotController_SetBuyPlan(int slot, const ch
 
 extern "C" __declspec(dllexport) int BotController_SetBuySkip(int slot)
 {
+    if (!BotController::BuyControllerHooks::Ready()) return -3;
     if (slot < 0 || slot >= BotController::BuyControllerState::kMaxSlots)
         return -2;
     BotController::BuyControllerState::Set(slot, {}, true);

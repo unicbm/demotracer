@@ -7,6 +7,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(CTest)
 
+add_executable(BotControllerWeaponSelectionTests weapon_selection_tests.cpp)
+target_include_directories(BotControllerWeaponSelectionTests PRIVATE ../src/WeaponLocker)
+add_test(NAME BotControllerWeaponSelectionTests COMMAND BotControllerWeaponSelectionTests)
+
+add_executable(BotControllerLiveEntityTests live_entities_tests.cpp ../src/common/live_entities.cpp)
+target_include_directories(BotControllerLiveEntityTests PRIVATE ../src/common ../../third_party)
+add_test(NAME BotControllerLiveEntityTests COMMAND BotControllerLiveEntityTests)
+
+add_executable(BotHiderPresentationTests hider_presentation_tests.cpp ../../BotHider/src/presentation_state.cpp)
+target_include_directories(BotHiderPresentationTests PRIVATE ../../BotHider/src)
+target_compile_definitions(BotHiderPresentationTests PRIVATE _CRT_SECURE_NO_WARNINGS)
+add_test(NAME BotHiderPresentationTests COMMAND BotHiderPresentationTests)
+
 add_executable(BotControllerAvatarPublicationTests avatar_publication_tests.cpp)
 target_include_directories(BotControllerAvatarPublicationTests PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../src/common")
 add_test(NAME BotControllerAvatarPublicationTests COMMAND BotControllerAvatarPublicationTests)

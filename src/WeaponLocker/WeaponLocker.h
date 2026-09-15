@@ -33,7 +33,7 @@ namespace BotController
         bool EquipBestWeaponRaw(void *bot, bool mustEquip);
 
         // Force bot at `slot` to its locked weapon
-        // Returns: 0 ok / 1 no ws / 2 no target / 3 hooks not installed.
+        // Returns: 0 selected / 1 no ws / 2 no target / 3 hooks unavailable / 4 engine rejected.
         int SwitchToLockTarget(int slot);
 
         // ---- helpers for MotionRecorder ----
@@ -48,12 +48,12 @@ namespace BotController
         // For writing cmd.weaponselect on replay (engine-native switch path).
         int WeaponEntIndex(void *weapon);
 
-        // Active weapon's def index for a WeaponServices*, matched by entity
-        // handle against GetSlot(0..4). -1 if none/unresolved (no false match).
+        // Active weapon's def index, resolved by full entity handle including
+        // serial. -1 if none/unresolved (no inventory scan or stale-serial match).
         int ActiveWeaponDef(void *ws);
 
         // Active weapon entity index read directly from m_hActiveWeapon.
-        // Unlike ActiveWeaponDef, this does not enumerate the inventory.
+        // Used to populate the engine's weapon-selection input.
         int ActiveWeaponEntIndex(void *ws);
 
         // Matching weapon in slots 0..4, preferring the active entity when
@@ -69,10 +69,10 @@ namespace BotController
         void *WeaponAtInventoryPosition(void *ws, int engineSlot,
                                         unsigned int position);
 
-        // Switch via the original (un-hooked) SelectItem. Proven reliable path.
+        // Already active is a no-op; otherwise return the original SelectItem result.
         bool SelectWeaponRaw(void *ws, void *weapon);
 
-        // Cached WeaponServices* for a bot slot (populated when its AI ticks).
+        // Current controller -> pawn -> WeaponServices, validated against the bot.
         void *WsForSlot(int slot);
     }
 }

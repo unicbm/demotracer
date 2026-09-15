@@ -11,6 +11,7 @@
 #include "version_targets.h"
 #include "hook.h"
 #include "platform.h"
+#include "live_entities.h"
 
 #include <tier0/dbg.h>
 
@@ -67,7 +68,6 @@ namespace BotController
         static Hook g_hookSetEyeAngles;
         static Hook g_hookGetEyeAngles;
         static std::array<NativePerceptionState, 64> g_nativePerception{};
-        static std::array<std::atomic<void *>, 64> g_observedBots{};
         static std::array<std::atomic<void *>, 64> g_pendingBestWeaponBots{};
         static uint32_t g_nativePerceptionSerial = 0;
         static bool g_replayNativeFovOverride = true;
@@ -121,14 +121,13 @@ namespace BotController
 
         bool RequestEquipBestWeapon(int slot)
         {
-            if (slot < 0 || slot >= static_cast<int>(g_observedBots.size()) ||
+            if (slot < 0 || slot >= static_cast<int>(g_pendingBestWeaponBots.size()) ||
                 !WeaponLockerHooks::EquipBestWeaponAddress())
             {
                 return false;
             }
 
-            void *bot = g_observedBots[static_cast<size_t>(slot)].load(
-                std::memory_order_acquire);
+            void *bot = BotForSlot(slot);
             if (!bot || CCSBotToSlot(bot) != slot)
                 return false;
             if (InputInjector::IsSlotControllingBot(slot))
@@ -141,9 +140,7 @@ namespace BotController
 
         void *BotForSlot(int slot)
         {
-            if (slot < 0 || slot >= static_cast<int>(g_observedBots.size())) return nullptr;
-            void *bot = g_observedBots[slot].load(std::memory_order_acquire);
-            return bot && CCSBotToSlot(bot) == slot ? bot : nullptr;
+            return LiveEntities::BotForSlot(slot);
         }
 
         static bool BC_FASTCALL HookedLadderUpdate(void *ladderState)
@@ -186,11 +183,6 @@ namespace BotController
         static void BC_FASTCALL HookedUpdate(void *bot)
         {
             int slot = CCSBotToSlot(bot);
-            if (slot >= 0 && slot < static_cast<int>(g_observedBots.size()))
-            {
-                g_observedBots[static_cast<size_t>(slot)].store(
-                    bot, std::memory_order_release);
-            }
             if (slot >= 0 && BotControllerState::GetAll(slot))
             {
                 const uint8_t ticked = 1;
@@ -563,9 +555,8 @@ namespace BotController
             g_hookUpdate.Remove();
             g_origUpdate = nullptr;
             g_nativePerception.fill({});
-            for (size_t slot = 0; slot < g_observedBots.size(); ++slot)
+            for (size_t slot = 0; slot < g_pendingBestWeaponBots.size(); ++slot)
             {
-                g_observedBots[slot].store(nullptr, std::memory_order_release);
                 g_pendingBestWeaponBots[slot].store(nullptr, std::memory_order_release);
             }
             g_nativePerceptionSerial = 0;

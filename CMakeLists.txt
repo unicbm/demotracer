@@ -161,6 +161,7 @@ add_library(BotController SHARED
     src/common/version_targets.cpp
     src/common/platform.cpp
     src/common/ccsbot_slot.cpp
+    src/common/live_entities.cpp
     src/common/dispatch.cpp
     src/common/commands.cpp
     src/common/projectile_birth_align.cpp

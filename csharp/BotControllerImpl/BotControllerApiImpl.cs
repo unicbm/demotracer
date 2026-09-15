@@ -33,9 +33,10 @@ namespace BotControllerApi
         }
         public bool UnlockAll(LockKind kind)
         {
+            var success = true;
             foreach (var slot in _owned.Slots)
-                if (_owned.Has(slot, LockResource(kind))) Unlock(slot, kind);
-            return true;
+                if (_owned.Has(slot, LockResource(kind))) success &= Unlock(slot, kind);
+            return success;
         }
         public bool IsLocked(int slot, LockKind kind) => BotController.IsLocked(slot, kind);
         public LockTarget GetWeaponLock(int slot) => BotController.GetWeaponLock(slot);
@@ -113,6 +114,7 @@ namespace BotControllerApi
             => BotController.GetBotProfile(slot, out profile);
 
         // ---- buy plans ----
+        public int GetBuyStatus() => BotController.GetBuyStatus();
         public bool SetBuyPlan(int slot, string aliases) => _owned.Track(slot, SlotResource.BuyPlan, CanControl(slot) && BotController.SetBuyPlan(slot, aliases));
         public bool SetBuySkip(int slot) => _owned.Track(slot, SlotResource.BuyPlan, CanControl(slot) && BotController.SetBuySkip(slot));
         public bool ClearBuyPlan(int slot)
@@ -123,9 +125,10 @@ namespace BotControllerApi
         }
         public bool ClearAllBuyPlans()
         {
+            var success = true;
             foreach (var slot in _owned.Slots)
-                if (_owned.Has(slot, SlotResource.BuyPlan)) ClearBuyPlan(slot);
-            return true;
+                if (_owned.Has(slot, SlotResource.BuyPlan)) success &= ClearBuyPlan(slot);
+            return success;
         }
         public int BuyPlanItemCount(int slot) => BotController.BuyPlanItemCount(slot);
 

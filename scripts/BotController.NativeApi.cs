@@ -359,6 +359,9 @@ namespace BotControllerApi
         private static extern int BotController_ClearBuyPlan(int slot);
 
         [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int BotController_GetBuyStatus();
+
+        [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
         private static extern int BotController_ClearAllBuyPlans();
 
         [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
@@ -648,6 +651,9 @@ namespace BotControllerApi
         // ---- buy plans ----
 
         // Force a bot's per-round buy.
+        // 0 ready; negative when the native buy hook is unavailable.
+        public static int GetBuyStatus() => BotController_GetBuyStatus();
+
         public static bool SetBuyPlan(int slot, string aliases)
             => BotController_SetBuyPlan(slot, aliases ?? "") == 0;
 
