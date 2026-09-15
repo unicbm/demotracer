@@ -2,15 +2,17 @@
   "schema_version": 1,
   "product": "CS2 DemoTracer Playback Bundle",
   "platform": "windows-x64",
-  "manifest_abi": 18,
-  "dtr_writer": 11,
+  "manifest_abi": 19,
+  "dtr_writer": 12,
+  "dtr_section_writer_codec": "zstd",
+  "dtr_section_zstd_level": 9,
   "dtr_reader": {
     "min": 3,
-    "max": 11
+    "max": 12
   },
   "bot_controller": {
     "abi_major": 21,
-    "min_abi_minor": 39,
+    "min_abi_minor": 40,
     "public_control_api": 20,
     "replay_tick_bytes": 228,
     "replay_tick_event_tail": "reserved_zero",

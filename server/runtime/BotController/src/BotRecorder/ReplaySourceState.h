@@ -81,7 +81,7 @@ enum Field : uint32_t {
     ReserveAmmoSecondary = 66,
     FieldCount = 67
 };
-// Retained as demo evidence for readers, never applied to the live weapon.
+// Reserved for legacy demo evidence, never applied to the live weapon.
 // Magazine/reserve capacity and reload rules belong to the current server.
 inline constexpr bool IsRuntimeOwnedAmmo(uint32_t field) {
     return field == Clip1 || field == Clip2 || field == InReload ||
@@ -157,6 +157,8 @@ inline constexpr std::array<Descriptor, FieldCount> fields{{
     {Target::Weapon, Kind::I32, ClockKind::None, "m_pReserveAmmo", 0},
     {Target::Weapon, Kind::I32, ClockKind::None, "m_pReserveAmmo", 4},
 }};
+// ABI 21.40: present bit 0 is presence, bits 1..24 are PlayerTick run length
+// minus one. Other fields retain 0/1. Legacy callers remain valid.
 struct Change { uint32_t tickIndex, fieldId, valueBits, present; };
 static_assert(sizeof(Change) == 16);
 using Snapshot = std::array<std::optional<uint32_t>, FieldCount>;
@@ -170,14 +172,21 @@ public:
         Timeline staged;
         std::array<size_t, FieldCount> counts{};
         uint64_t previous = 0;
+        uint64_t clockEnd = 0;
         for (int i = 0; i < count; ++i) {
             const auto &c = changes[i];
             const uint64_t key = (uint64_t(c.tickIndex) << 32) | c.fieldId;
-            if (c.fieldId >= FieldCount || c.tickIndex >= uint32_t(tickCount) || c.present > 1 ||
-                (i && previous >= key) || (!c.present && c.valueBits) ||
-                (c.present && fields[c.fieldId].kind == Kind::F32 && !std::isfinite(Float(c.valueBits))) ||
-                (c.present && fields[c.fieldId].kind == Kind::Bool && c.valueBits > 1)) return false;
+            const bool present = (c.present & 1) != 0;
+            const uint32_t length = (c.present >> 1) + 1;
+            const uint64_t end = uint64_t(c.tickIndex) + length;
+            if (c.fieldId >= FieldCount || c.tickIndex >= uint32_t(tickCount) || c.present > 0x01ffffff ||
+                (length > 1 && (c.fieldId != PlayerTick || !present)) || end > uint32_t(tickCount) ||
+                (c.fieldId == PlayerTick && c.tickIndex < clockEnd) ||
+                (i && previous >= key) || (!present && c.valueBits) ||
+                (present && fields[c.fieldId].kind == Kind::F32 && !std::isfinite(Float(c.valueBits))) ||
+                (present && fields[c.fieldId].kind == Kind::Bool && c.valueBits > 1)) return false;
             previous = key;
+            if (c.fieldId == PlayerTick) clockEnd = end;
             ++counts[c.fieldId];
         }
         // A round has tens of thousands of sparse changes. Allocate each
@@ -195,7 +204,8 @@ public:
         auto it = std::upper_bound(v.begin(), v.end(), tick, [](uint32_t t, const Change &c) { return t < c.tickIndex; });
         if (it == v.begin()) return std::nullopt;
         --it;
-        return it->present ? std::optional<uint32_t>(it->valueBits) : std::nullopt;
+        if (!(it->present & 1)) return std::nullopt;
+        return it->valueBits + std::min(tick - it->tickIndex, it->present >> 1);
     }
     Snapshot At(uint32_t tick) const {
         Snapshot s;

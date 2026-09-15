@@ -12,7 +12,7 @@ namespace DemoTracer;
 internal static partial class BotControllerNative
 {
     public const int ExpectedAbiVersion = 21;
-    public const uint RecFormatVersion = 11;
+    public const uint RecFormatVersion = 12;
     public const uint MinRecFormatVersion = 3;
     public const int MovementSnapshotByteSize = 92;
     public const int ReplayTickByteSize = 228;

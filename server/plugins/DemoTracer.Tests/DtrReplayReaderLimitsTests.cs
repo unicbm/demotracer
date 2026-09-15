@@ -472,6 +472,140 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         Assert.Contains("trailing bytes after top-level .dtr payload", error.Message);
     }
 
+    private static byte[] CompactSourceFixture() => new uint[] {
+        0, 0, 1, 2, 1, 1, // tick deltas
+        0x281, 0x82, 0x82, 1, 0x181, 2, // descriptors
+    }.SelectMany(BitConverter.GetBytes).Concat(new byte[] {
+        0xfe, 0xfe, 100, 0xff, 0xff, 0, 0xff, 0xff, 0, 0xff, 0xff, 0, // PlayerTick XOR planes
+        0, 0, 0, 0, 0, 0, 0, 0x80, 0x80, 0x80, 0xbf, 0x3f // DuckRoot XOR planes
+    }).ToArray();
+
+    private string WriteSourceStateFile(byte[] body, int count = 9, uint version = 12, int ticks = 8,
+        byte codec = CodecNone, int? uncompressedLength = null)
+        => WriteFile(writer => {
+            WriteCompleteHeader(writer, version, (uint)ticks, 0);
+            writer.Write(5U);
+            WriteSection(writer, 1, CodecNone, ticks + 1,
+                BuildV2SnapshotPayload(new NativeMovementSnapshot[ticks + 1]), sectionVersion: 2);
+            WriteSection(writer, 2, CodecNone, ticks, new byte[ticks * 8]);
+            WriteSection(writer, 5, CodecNone, 0, []);
+            var history = new byte[ticks * 16];
+            for (var i = 0; i < ticks; ++i) {
+                BitConverter.GetBytes(-1).CopyTo(history, i * 16 + 4);
+                BitConverter.GetBytes(-1).CopyTo(history, i * 16 + 8);
+            }
+            WriteSection(writer, 8, CodecNone, ticks, history);
+            WriteSection(writer, 9, codec, count, body, uncompressedLength, sectionVersion: 2);
+        });
+
+    [Fact]
+    public void CompactSourcePreservesClockRunsWithoutExpandingNativeArray()
+    {
+        var replay = DtrReplayReader.Read(WriteSourceStateFile(CompactSourceFixture()));
+        Assert.Equal(6, replay.SourceState.Length);
+        Assert.Equal(5U, replay.SourceState[0].Present); // three ticks, including u32 wrap
+        Assert.Equal(0xfffffffeU, replay.SourceState[0].ValueBits);
+        Assert.Equal(0x80000000U, replay.SourceState[1].ValueBits); // negative zero
+        Assert.Equal(0x3f800000U, replay.SourceState[2].ValueBits);
+        Assert.Equal(0U, replay.SourceState[3].Present);
+        Assert.Equal(100U, replay.SourceState[4].ValueBits);
+        Assert.Equal(3U, replay.SourceState[4].Present);
+        Assert.Equal(0U, replay.SourceState[5].Present);
+        Assert.Equal(0U, replay.SourceState[5].ValueBits);
+    }
+
+    [Theory]
+    [InlineData(0, 0xffffffffU)] // tick overflow/out of range
+    [InlineData(3, 1U)] // next clock starts inside previous run
+    [InlineData(6, 0x282U)] // non-clock run
+    [InlineData(6, 0x201U)] // absent run
+    [InlineData(6, 0x881U)] // run beyond replay
+    [InlineData(7, 0xffU)] // unknown field
+    public void CompactSourceRejectsMalformedEvidence(int word, uint value)
+    {
+        var body = CompactSourceFixture();
+        BitConverter.GetBytes(value).CopyTo(body, word * 4);
+        Assert.Contains("source state", Assert.Throws<InvalidDataException>(() =>
+            DtrReplayReader.Read(WriteSourceStateFile(body))).Message);
+    }
+
+    [Theory]
+    [InlineData(0x82U, 0x7fc00000U)]
+    [InlineData(2U, 1U)]
+    [InlineData(0x85U, 2U)]
+    public void CompactSourceRejectsInvalidTypedValues(uint descriptor, uint bits)
+    {
+        var body = new uint[] { 0, descriptor, bits }.SelectMany(BitConverter.GetBytes).ToArray();
+        Assert.Contains("source state", Assert.Throws<InvalidDataException>(() =>
+            DtrReplayReader.Read(WriteSourceStateFile(body, 1))).Message);
+    }
+
+    [Theory]
+    [InlineData(8, 12U, 0)]
+    [InlineData(10, 12U, 0)]
+    [InlineData(9, 11U, 0)]
+    [InlineData(9, 12U, 1)]
+    public void CompactSourceRejectsCountVersionAndLengthMismatch(int count, uint version, int extraBytes)
+    {
+        var body = CompactSourceFixture().Concat(new byte[extraBytes]).ToArray();
+        Assert.Contains("source state", Assert.Throws<InvalidDataException>(() =>
+            DtrReplayReader.Read(WriteSourceStateFile(body, count, version))).Message);
+    }
+
+    [Fact]
+    public void CompactSourceAcceptsEmptySection()
+    {
+        Assert.Empty(DtrReplayReader.Read(WriteSourceStateFile([], 0)).SourceState);
+    }
+
+    [Fact]
+    public void ZstdSourceMatchesUncompressedSource()
+    {
+        var body = CompactSourceFixture();
+        using var compressor = new ZstdSharp.Compressor(9);
+        var packed = compressor.Wrap(body).ToArray();
+        var raw = DtrReplayReader.Read(WriteSourceStateFile(body));
+        var compressed = DtrReplayReader.Read(WriteSourceStateFile(packed, codec: 2, uncompressedLength: body.Length));
+        Assert.Equal(raw.SourceState, compressed.SourceState);
+    }
+
+    [Fact]
+    public void ZstdCodecRequiresV12EvenForExistingSectionLayouts()
+    {
+        var path = WriteFile(writer => {
+            WriteCompleteHeader(writer, 11, 1, 0);
+            writer.Write(1U);
+            var body = BuildV2SnapshotPayload(new NativeMovementSnapshot[2]);
+            using var compressor = new ZstdSharp.Compressor(9);
+            WriteSection(writer, 1, 2, 2, compressor.Wrap(body).ToArray(), body.Length, sectionVersion: 2);
+        });
+        Assert.Contains("codec", Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path)).Message);
+    }
+
+    [Theory]
+    [InlineData(-1)] // truncated frame
+    [InlineData(1)] // trailing garbage
+    public void ZstdSourceRejectsInvalidFrame(int lengthChange)
+    {
+        using var compressor = new ZstdSharp.Compressor(9);
+        var body = CompactSourceFixture();
+        var packed = compressor.Wrap(body).ToArray();
+        Array.Resize(ref packed, packed.Length + lengthChange);
+        Assert.Contains("zstd", Assert.Throws<InvalidDataException>(() =>
+            DtrReplayReader.Read(WriteSourceStateFile(packed, codec: 2, uncompressedLength: body.Length))).Message);
+    }
+
+    [Theory]
+    [InlineData(60)]
+    [InlineData(84)]
+    public void ZstdSourceCannotExceedOrUnderrunDeclaredOutput(int declaredLength)
+    {
+        using var compressor = new ZstdSharp.Compressor(9);
+        var packed = compressor.Wrap(CompactSourceFixture()).ToArray();
+        Assert.Contains("zstd", Assert.Throws<InvalidDataException>(() =>
+            DtrReplayReader.Read(WriteSourceStateFile(packed, codec: 2, uncompressedLength: declaredLength))).Message);
+    }
+
     [Theory]
     [InlineData("null")]
     [InlineData("{\"tick_index\":0,\"steam_id\":1,\"weapon_def_counts\":null}")]

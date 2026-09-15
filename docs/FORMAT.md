@@ -11,9 +11,9 @@ command-frame data, and shooting input-history data retain their original
 ## Version Gates
 
 - Magic: `CSDTRREC`
-- Current writer format: `.dtr` v11
-- Runtime reader support: v3 through v11
-- Current manifest ABI: 18
+- Current writer format: `.dtr` v12
+- Runtime reader support: v3 through v12
+- Current manifest ABI: 19
 - Current BotController native ABI: 21
 - Current DemoTracer companion API: 7
 
@@ -29,11 +29,15 @@ Compatibility notes:
 - v9 adds per-command `CSGOUserCmdPB.input_history` and attack start indexes.
   Playback rebases stored absolute history ticks to the live command tick;
   demo entity indexes are retained as evidence but are not injected.
+- v11 adds presence-aware source-state changes for native boundary restoration.
+- v12 stores source state in compact clock runs and field-local XOR byte planes;
+  it writes Zstandard sections and requires BotController ABI 21.40 to retain
+  clock runs during native lookup. Existing Brotli sections remain readable.
 
 ## Reader Safety Limits
 
 The maintained Rust/Desktop and C# readers apply the same default resource
-policy before attacker-controlled allocation or Brotli decoding. These are
+policy before attacker-controlled allocation or decompression. These are
 reader safety limits, not a change to the binary layout or ABI:
 
 | Resource | Default ceiling |
@@ -55,8 +59,10 @@ The tick ceiling still permits about 8.5 minutes at 64 tick or 4.25 minutes at
 
 File-backed readers also compare every declared payload length with the bytes
 actually remaining in the opened file. Unknown v7+ sections count against the
-same byte budgets and are skipped through a fixed-size buffer. A Brotli stream
-that produces more than its declared decoded length is rejected immediately.
+same byte budgets and are skipped through a fixed-size buffer. Brotli and Zstd
+output is bounded by the declared decoded length; shorter or larger output is
+rejected. Zstd readers allocate the validated section size, never an allocation
+size supplied by the compressed frame.
 
 ## Manifest Cosmetic Inspect Data
 
@@ -126,7 +132,7 @@ Each v7+ section is:
 | --- | --- | --- |
 | section_id | `u32` | Known IDs listed below |
 | section_version | `u32` | Layout version for this section |
-| codec | `u8` | `0 = none`; readers may also accept `1 = Brotli` |
+| codec | `u8` | `0 = none`; `1 = Brotli`; `2 = Zstandard` (v12+) |
 | pad | 3 bytes | Ignored by readers |
 | flags | `u32` | Reserved |
 | element_count | `u32` | Logical item count |
@@ -142,6 +148,7 @@ Required sections:
 | 2 | tick metadata | `1` | `tick_count` | 8 bytes each |
 | 5 | `SubtickMoveV3` | `1` | `subtick_count` | 28 bytes each |
 | 8 | input history (required in v9) | `1` | `tick_count` | Variable; 16-byte tick descriptor plus 128 bytes per entry |
+| 9 | source state (required in v11+) | `1` in v11; `2` in v12 | Logical change count | v1: 16 bytes each; v2: 12 bytes per compact record |
 
 Optional sections:
 
@@ -156,6 +163,11 @@ Unknown section IDs must be skipped using `compressed_len`. Duplicate known
 sections are invalid. Missing required sections are invalid. Optional
 tick-aligned sections may be omitted; when present, their `element_count` must
 equal `tick_count`.
+
+The v12 writer uses Zstandard level 9 with independent, dictionary-free sections.
+It stores a section uncompressed when compression would not reduce its size,
+including empty sections. The maintained readers accept existing Brotli sections
+alongside Zstd sections. The section codec does not change any replay values.
 
 ### v9 input-history section
 
@@ -430,7 +442,7 @@ Projectile metadata entries contain:
 9. If `metadata_json_len > 0`, parse exactly that many bytes as UTF-8 JSON.
 10. For non-empty replays, require `play_start_tick_index < tick_count`.
 
-## Source state changes (v11)
+## Source state changes (v11+)
 
 Section 9, version 1, stores ordered 16-byte records: `tick_index`, `field_id`,
 `value_bits`, `present` (four little-endian u32 values). IDs and scalar types are
@@ -450,8 +462,9 @@ angles. Stop and handoff preserve native motion and weapon state.
 
 Boundary writes notify native entity replication once, including nested services.
 Weapons are selected through the native deploy path before restoring their attack
-deadlines. Clip counts, reserve ammo and reload flags are record-only evidence;
-playback never restores them, including during initial start or weapon replacement.
+deadlines. Legacy clip counts, reserve ammo and reload flags remain readable;
+v12 writers omit them and the unused ServerTick field. Playback never restores
+ammunition, including during initial start or weapon replacement.
 The live server owns ammunition capacity, supply and reload rules. Source and
 live tick intervals must match; playback does not resample state clocks.
 
@@ -460,6 +473,42 @@ normal. When the demo omits it, start before mounting the ladder so native movem
 can establish contact. Playback rejects that unsupported start instead of using a
 zero or stale plane. The ladder surface index is not a substitute for its normal.
 
-Manifest ABI 18 requires the matching v11 reader and BotController ABI 21.39
+Manifest ABI 19 requires the matching v12 reader and BotController ABI 21.40
 source-state capability (bit 17). Older archives remain readable but do not gain
 source evidence retroactively; reconvert the original demo to populate this section.
+
+### v12 compact source state (section 9, version 2)
+
+All other section layouts retain their v11 meanings. Source-state `element_count`
+is the number of logical changes, including clock-run expansion; the number of
+stored records is `uncompressed_len / 12`. Empty sections have both counts zero.
+The body contains two little-endian u32 columns followed by value byte planes:
+
+1. Tick-index deltas from the preceding stored record (initial index zero).
+2. Descriptors: bits 0..6 field ID, bit 7 presence, bits 8..31 run length minus one.
+3. Value-bit XORs against the preceding stored value of the same field (initial
+   bits zero), grouped by ascending field ID. Each group stores four byte planes
+   from least to most significant byte, preserving record order within the field.
+   Group lengths are derived from the descriptor column. The XOR baseline is the
+   preceding record's initial value, even when that record represents a run.
+
+Only a present PlayerTick (ID 1) may have a run longer than one tick. It represents
+consecutive changes at `start_tick + i` with value `start_bits + i` modulo 2^32.
+Writers merge only observed consecutive increments; gaps, pauses, jumps and
+absence retain their exact meaning. Runs must fit inside the replay, must not
+overlap, and must sum to `element_count`. Stored records retain strict
+`(tick_index, field_id)` ordering. Each decoded initial value uses the same
+presence/type validation as v11. The final value of a run remains in force until
+the next change, as with the legacy change stream.
+
+The converter and managed/native playback retain compact runs in memory. The
+16-byte native change structure is unchanged in size; ABI 21.40 assigns `present`
+bit 0 to presence and bits 1..24 to run length minus one (bits 25..31 must be zero).
+Non-clock fields retain 0/1. Native seek/start queries calculate only the requested
+clock value; neither loading nor continuous playback expands or rewrites it per
+tick. Existing callers using 0/1 remain valid. Readers continue to require plain
+0/1 presence in legacy section version 1.
+
+Field IDs 0, 52, 53, 54, 65 and 66 are reserved for legacy archives and omitted
+from new exports. PlayerTick and all other source evidence remain available at
+every recorded tick. No float quantization or snapshot/subtick decimation is used.

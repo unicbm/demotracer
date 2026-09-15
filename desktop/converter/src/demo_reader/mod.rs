@@ -1087,7 +1087,10 @@ mod demoparser_impl {
             rm_user_friendly_names(&source_props).map_err(|e| Error::Parser(format!("{e:?}")))?;
         let mut real_props =
             rm_user_friendly_names(&wanted_props).map_err(|e| Error::Parser(format!("{e:?}")))?;
-        for (prop, real) in source_props.iter().zip(&source_real_props) {
+        for (id, (prop, real)) in source_props.iter().zip(&source_real_props).enumerate() {
+            if !crate::model::source_state::is_playback_field(id) {
+                continue;
+            }
             if !real_props.contains(real) {
                 wanted_props.push(prop.clone());
                 real_props.push(real.clone());
@@ -2628,6 +2631,9 @@ mod demoparser_impl {
         use crate::model::source_state::{SourceKind, SourceState, SOURCE_FIELDS};
         let mut state = SourceState::default();
         for (id, field) in SOURCE_FIELDS.iter().enumerate() {
+            if !crate::model::source_state::is_playback_field(id) {
+                continue;
+            }
             let column = columns[id];
             let value = if let Some(component) = field.component {
                 get_vec3(column, idx)

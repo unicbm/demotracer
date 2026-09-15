@@ -166,6 +166,7 @@ fn synthesize_player_rec_with_projectile_iter<'a>(
     let first = rows[0].row();
     let mut source_state_changes = Vec::new();
     let mut previous_source_state = crate::model::source_state::SourceState::default();
+    let mut source_clock_change = None;
     let mut ticks = Vec::with_capacity(rows.len().saturating_sub(1));
     let mut subticks = Vec::new();
     let mut command_frames = Vec::with_capacity(rows.len().saturating_sub(1));
@@ -180,6 +181,7 @@ fn synthesize_player_rec_with_projectile_iter<'a>(
             &pre_row.source_state,
             ticks.len() as u32,
             &mut source_state_changes,
+            &mut source_clock_change,
         );
         previous_source_state = pre_row.source_state.clone();
         if !pre_row.velocity[2].is_finite() || !post_row.velocity[2].is_finite() {

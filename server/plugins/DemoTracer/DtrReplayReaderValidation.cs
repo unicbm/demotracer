@@ -24,8 +24,8 @@ internal static partial class DtrReplayReader
 
         for (var i = 0; i < replay.Ticks.Length; i++)
         {
-            ValidateSnapshot(replay.Ticks[i].Pre, $"tick {i} pre");
-            ValidateSnapshot(replay.Ticks[i].Post, $"tick {i} post");
+            ValidateSnapshot(in replay.Ticks[i].Pre, i, " pre");
+            ValidateSnapshot(in replay.Ticks[i].Post, i, " post");
             if (replay.Ticks[i].WeaponDefIndex < -1)
             {
                 throw new InvalidDataException(
@@ -46,7 +46,7 @@ internal static partial class DtrReplayReader
             }
             RequireFinite(
                 [subtick.Pressed, subtick.AnalogForward, subtick.AnalogLeft, subtick.PitchDelta, subtick.YawDelta],
-                $"subtick {i}");
+                "subtick", i);
         }
 
         for (var i = 0; i < replay.CommandFrames.Length; i++)
@@ -66,7 +66,7 @@ internal static partial class DtrReplayReader
             }
             RequireFinite(
                 [frame.ForwardMove, frame.LeftMove, frame.UpMove, frame.Pitch, frame.Yaw, frame.Roll],
-                $"command frame {i}");
+                "command frame", i);
         }
 
         for (var i = 0; i < replay.MovementExtras.Length; i++)
@@ -83,7 +83,7 @@ internal static partial class DtrReplayReader
                     extra.LastLandedVelocityY,
                     extra.LastLandedVelocityZ
                 ],
-                $"movement extra {i}");
+                "movement extra", i);
         }
 
         for (var i = 0; i < replay.InputHistoryEntries.Length; i++)
@@ -104,7 +104,7 @@ internal static partial class DtrReplayReader
                     entry.TargetAbsPosCheckX, entry.TargetAbsPosCheckY, entry.TargetAbsPosCheckZ,
                     entry.TargetAbsAngCheckX, entry.TargetAbsAngCheckY, entry.TargetAbsAngCheckZ
                 ],
-                $"input history entry {i}");
+                "input history entry", i);
         }
 
         for (var i = 0; i < replay.Projectiles.Length; i++)
@@ -138,11 +138,11 @@ internal static partial class DtrReplayReader
                     projectile.EffectPosition.Z,
                     projectile.EffectConfidence
                 ],
-                $"projectile {i}");
+                "projectile", i);
         }
     }
 
-    private static void ValidateSnapshot(NativeMovementSnapshot snapshot, string name)
+    private static void ValidateSnapshot(in NativeMovementSnapshot snapshot, int index, string phase)
     {
         RequireFinite(
             [
@@ -161,11 +161,11 @@ internal static partial class DtrReplayReader
                 snapshot.LadderNormalY,
                 snapshot.LadderNormalZ
             ],
-            name);
+            "tick", index, phase);
         if (snapshot.Pad0 != 0 || snapshot.Pad1 != 0 || snapshot.Pad2 != 0)
-            throw new InvalidDataException($"{name} padding must be zero");
+            throw new InvalidDataException($"tick {index}{phase} padding must be zero");
         if (snapshot.Ducked > 1 || snapshot.Ducking > 1 || snapshot.DesiresDuck > 1)
-            throw new InvalidDataException($"{name} duck state bytes must be 0 or 1");
+            throw new InvalidDataException($"tick {index}{phase} duck state bytes must be 0 or 1");
     }
 
     private static void RepairLaggedPlayerVelocities(
@@ -230,12 +230,12 @@ internal static partial class DtrReplayReader
         }
     }
 
-    private static void RequireFinite(ReadOnlySpan<float> values, string name)
+    private static void RequireFinite(ReadOnlySpan<float> values, string kind, int index, string suffix = "")
     {
         foreach (var value in values)
         {
             if (!float.IsFinite(value))
-                throw new InvalidDataException($"{name} contains a non-finite float");
+                throw new InvalidDataException($"{kind} {index}{suffix} contains a non-finite float");
         }
     }
 

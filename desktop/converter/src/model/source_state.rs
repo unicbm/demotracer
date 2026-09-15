@@ -111,16 +111,31 @@ pub struct SourceStateChange {
     pub tick_index: u32,
     pub field_id: u32,
     pub value_bits: u32,
+    // Bit 0: presence; bits 1..24: consecutive PlayerTick run length minus one.
+    // Legacy records use 0/1. The 16-byte native ABI stays layout-compatible.
     pub present: u32,
 }
+/// These IDs remain reserved/readable for old archives. Playback does not use
+/// ServerTick, and ammunition/reload state belongs to the live server.
+pub fn is_playback_field(id: usize) -> bool {
+    id < SOURCE_FIELDS.len() && !matches!(id, 0 | 52..=54 | 65..=66)
+}
 impl SourceStateChange {
+    pub fn run_length(&self) -> u32 {
+        (self.present >> 1) + 1
+    }
+    pub fn is_present(&self) -> bool {
+        self.present & 1 != 0
+    }
     pub fn valid(&self, tick_count: usize) -> bool {
         let Some(field) = SOURCE_FIELDS.get(self.field_id as usize) else {
             return false;
         };
         (self.tick_index as usize) < tick_count
-            && self.present <= 1
-            && if self.present == 0 {
+            && self.present <= 0x01ff_ffff
+            && (self.run_length() == 1 || (self.field_id == 1 && self.is_present()))
+            && u64::from(self.tick_index) + u64::from(self.run_length()) <= tick_count as u64
+            && if !self.is_present() {
                 self.value_bits == 0
             } else {
                 match field.kind {
@@ -136,10 +151,31 @@ pub fn changes_between(
     next: &SourceState,
     tick_index: u32,
     out: &mut Vec<SourceStateChange>,
+    last_clock: &mut Option<usize>,
 ) {
     for id in 0..SOURCE_FIELDS.len() {
+        if !is_playback_field(id) {
+            continue;
+        }
         let value = next.get(id);
         if previous.get(id) != value {
+            if id == 1 {
+                // The clock run can remain at the beginning of a long change
+                // stream. Keep its index rather than scanning backwards per tick.
+                if let (Some(bits), Some(index)) = (value, *last_clock) {
+                    let last = &mut out[index];
+                    let length = last.run_length();
+                    if last.is_present()
+                        && length < 0x0100_0000
+                        && u64::from(last.tick_index) + u64::from(length) == u64::from(tick_index)
+                        && last.value_bits.wrapping_add(length) == bits
+                    {
+                        last.present += 2;
+                        continue;
+                    }
+                }
+                *last_clock = Some(out.len());
+            }
             out.push(SourceStateChange {
                 tick_index,
                 field_id: id as u32,
@@ -154,14 +190,36 @@ pub fn changes_between(
 mod tests {
     use super::*;
     #[test]
+    fn conversion_keeps_one_clock_run_and_omits_runtime_owned_fields() {
+        let mut previous = SourceState::default();
+        let mut changes = Vec::new();
+        let mut last_clock = None;
+        for tick in 0..600 {
+            let mut next = SourceState::default();
+            for id in [0, 1, 52, 53, 54, 65, 66] {
+                next.set(id, tick + 100);
+            }
+            next.set(6, (tick as f32).to_bits());
+            changes_between(&previous, &next, tick, &mut changes, &mut last_clock);
+            previous = next;
+        }
+        assert_eq!(changes.len(), 601);
+        assert_eq!(changes[0].field_id, 1);
+        assert_eq!(changes[0].run_length(), 600);
+        assert!(changes[0].valid(600));
+        assert_eq!(last_clock, Some(0));
+        assert!(changes[1..].iter().all(|c| c.field_id == 6 && c.valid(600)));
+    }
+    #[test]
     fn absent_zero_and_disappearing_state_are_distinct() {
         let absent = SourceState::default();
         let mut zero = absent.clone();
         zero.set(2, 0);
         let mut changes = Vec::new();
-        changes_between(&absent, &zero, 0, &mut changes);
-        changes_between(&zero, &zero, 1, &mut changes);
-        changes_between(&zero, &absent, 2, &mut changes);
+        let mut last_clock = None;
+        changes_between(&absent, &zero, 0, &mut changes, &mut last_clock);
+        changes_between(&zero, &zero, 1, &mut changes, &mut last_clock);
+        changes_between(&zero, &absent, 2, &mut changes, &mut last_clock);
         assert_eq!(changes.len(), 2);
         assert_eq!(changes[0].present, 1);
         assert_eq!(changes[1].present, 0);
@@ -174,6 +232,9 @@ mod tests {
         ))
         .unwrap();
         let fields = value["fields"].as_array().unwrap();
+        assert_eq!(value["writer_omitted_field_ids"], serde_json::json!(
+            (0..SOURCE_FIELDS.len()).filter(|&id| !is_playback_field(id)).collect::<Vec<_>>()
+        ));
         assert_eq!(fields.len(), SOURCE_FIELDS.len());
         for (id, field) in fields.iter().enumerate() {
             assert_eq!(field["id"], id);

@@ -2,6 +2,9 @@
   "schema_version": 1,
   "section_id": 9,
   "change_bytes": 16,
+  "compact_section_version": 2,
+  "writer_omitted_field_ids": [0, 52, 53, 54, 65, 66],
+  "native_present_encoding": "presence_bit0_player_tick_run_minus_one_bits1_24",
   "fields": [
     {
       "id": 0,

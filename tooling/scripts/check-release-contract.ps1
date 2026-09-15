@@ -115,7 +115,12 @@ if ([string]::IsNullOrWhiteSpace([string]$releaseNotes.zh) -or [string]::IsNullO
 $null = Read-Text "tooling\release\github-release.v$Version.md"
 
 Assert-Equal "manifest ABI" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'DEMOTRACER_ABI:\s*i32\s*=\s*(\d+)' "manifest ABI") ([string]$contract.manifest_abi)
+Assert-Equal "CSS maximum manifest ABI" (Read-RegexValue "server\plugins\DemoTracer\DemoTracerPlugin.cs" 'MaxManifestAbiVersion\s*=\s*(\d+)' "maximum manifest ABI") ([string]$contract.manifest_abi)
 Assert-Equal "DTR writer" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'DTR_FORMAT_VERSION:\s*u32\s*=\s*(\d+)' "DTR writer") ([string]$contract.dtr_writer)
+Assert-Equal "DTR section codec" ([string]$contract.dtr_section_writer_codec) "zstd"
+Assert-Equal "DTR Zstd level" (Read-RegexValue "desktop\converter\src\rec_writer\mod.rs" 'ZSTD_LEVEL:\s*i32\s*=\s*(\d+)' "Zstd level") ([string]$contract.dtr_section_zstd_level)
+Assert-TextPresent "server\plugins\DemoTracer\DemoTracer.csproj" 'ZstdSharp\.Port" Version="0\.8\.8"' "managed Zstd decoder"
+Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+ZstdSharp\.dll[^\r\n]+ZstdSharp\.dll' "packaged Zstd decoder"
 Assert-Equal "CSS minimum DTR reader" (Read-RegexValue "server\plugins\DemoTracer\BotControllerNativeTypes.cs" 'MinRecFormatVersion\s*=\s*(\d+)' "minimum DTR reader") ([string]$contract.dtr_reader.min)
 Assert-Equal "CSS maximum DTR reader" (Read-RegexValue "server\plugins\DemoTracer\BotControllerNativeTypes.cs" 'RecFormatVersion\s*=\s*(\d+)' "maximum DTR reader") ([string]$contract.dtr_reader.max)
 Assert-Equal "CSS native ABI" (Read-RegexValue "server\plugins\DemoTracer\BotControllerNativeTypes.cs" 'ExpectedAbiVersion\s*=\s*(\d+)' "CSS native ABI") ([string]$contract.bot_controller.abi_major)
