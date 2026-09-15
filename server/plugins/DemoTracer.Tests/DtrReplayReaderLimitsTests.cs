@@ -472,6 +472,29 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         Assert.Contains("trailing bytes after top-level .dtr payload", error.Message);
     }
 
+    [Theory]
+    [InlineData("null")]
+    [InlineData("{\"tick_index\":0,\"steam_id\":1,\"weapon_def_counts\":null}")]
+    [InlineData("{\"tick_index\":1,\"steam_id\":1,\"weapon_def_counts\":[]}")]
+    [InlineData("{\"tick_index\":0,\"steam_id\":1,\"weapon_def_counts\":[{\"weapon_def_index\":7,\"count\":2147483647}]}")]
+    [InlineData("{\"tick_index\":0,\"steam_id\":1,\"weapon_def_counts\":[{\"weapon_def_index\":7,\"count\":1},{\"weapon_def_index\":7,\"count\":1}]}")]
+    public void RejectsUnsafeInventoryAcquisitionsBeforePlayback(string snapshot)
+    {
+        var metadata = Encoding.UTF8.GetBytes("{\"inventory_snapshots\":[" + snapshot + "]}");
+        var snapshots = BuildV2SnapshotPayload([new NativeMovementSnapshot(), new NativeMovementSnapshot()]);
+        var path = WriteFile(writer =>
+        {
+            WriteCompleteHeader(writer, version: 8, tickCount: 1, subtickCount: 0,
+                metadataJsonLength: (uint)metadata.Length);
+            writer.Write(4U);
+            WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
+            WriteSection(writer, 2, CodecNone, 1, new byte[8]);
+            WriteSection(writer, 4, CodecNone, 1, metadata);
+            WriteSection(writer, 5, CodecNone, 0, []);
+        });
+        Assert.Contains("inventory", Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path)).Message);
+    }
+
     [Fact]
     public void RejectsNonFiniteSnapshotValues()
     {

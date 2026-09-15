@@ -26,7 +26,8 @@ public sealed partial class DemoTracerPlugin
 {
     private void PreloadReplayWeaponsForSlot(int slot, LoadedReplay replay)
     {
-        if (!CanWriteReplaySlot(slot) || _session.RebuiltInventorySlots.Contains(slot))
+        if (replay.InventorySnapshots.Length > 0 ||
+            !CanWriteReplaySlot(slot) || _session.RebuiltInventorySlots.Contains(slot))
             return;
 
         var rebuilt = true;

@@ -21,6 +21,7 @@ bool InitializeOffsets() {
     aimServicesOffset = Schema::GetFieldOffset("CCSPlayerPawn", "m_pAimPunchServices");
     bool ready = modernJumpOffset >= 0 && aimServicesOffset >= 0;
     for (uint32_t i = 0; i < FieldCount; ++i) {
+        if (IsRuntimeOwnedAmmo(i)) { offsets[i] = -1; continue; }
         const auto &f = fields[i]; int offset = -1;
         switch (f.target) {
         case Target::Pawn: offset = Find({"CCSPlayerPawn", "CCSPlayerPawnBase", "CBasePlayerPawn", "CBaseEntity"}, f.field); break;
@@ -52,13 +53,13 @@ bool Apply(void *pawn, void *movement, void *weaponServices, void *weapon,
     // Player tickbase is the command simulation clock; never use the demo file tick.
     const auto sourceTick = state[PlayerTick];
     struct Write { void *base; int offset; uint32_t bits; size_t size; };
-    std::vector<Write> writes;
-    writes.reserve(FieldCount);
+    std::array<Write, FieldCount> writes;
+    size_t writeCount = 0;
     bool pawnChanged = false, weaponChanged = false;
     for (uint32_t i = 0; i < FieldCount; ++i) {
         const auto &f = fields[i];
         const bool weaponField = f.target == Target::Weapon || f.target == Target::WeaponServices;
-        if (weaponOnly != weaponField || !state[i] || offsets[i] < 0) continue;
+        if (IsRuntimeOwnedAmmo(i) || weaponOnly != weaponField || !state[i] || offsets[i] < 0) continue;
         void *base = nullptr;
         switch (f.target) {
         case Target::Pawn: base = pawn; break;
@@ -77,11 +78,14 @@ bool Apply(void *pawn, void *movement, void *weaponServices, void *weapon,
             bits = Rebase(*bits, f.clock, sourceTick.value_or(0), sourceRate, clock);
             if (!bits) return false;
         }
-        writes.push_back({base, offsets[i], *bits, f.kind == Kind::Bool ? size_t{1} : size_t{4}});
+        writes[writeCount++] = {base, offsets[i], *bits, f.kind == Kind::Bool ? size_t{1} : size_t{4}};
         if (f.target == Target::Weapon) weaponChanged = true;
         else pawnChanged = true;
     }
-    for (const auto &write : writes) if (!TryWriteMemory(write.base, write.offset, &write.bits, write.size)) return false;
+    for (size_t i = 0; i < writeCount; ++i) {
+        const auto &write = writes[i];
+        if (!TryWriteMemory(write.base, write.offset, &write.bits, write.size)) return false;
+    }
     if (pawnChanged) InputInjector::PublishReplayState(pawn);
     if (weaponChanged) InputInjector::PublishReplayState(weapon);
     return true;

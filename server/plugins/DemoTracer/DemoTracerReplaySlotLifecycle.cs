@@ -94,6 +94,7 @@ public sealed partial class DemoTracerPlugin
         ReplayReleaseKind releaseKind = ReplayReleaseKind.Immediate)
     {
         CancelReplaySlotDeferredWork(slot);
+        _session.ReplayInventoryBySlot.Remove(slot);
         // Buffer retention is independent of execution ownership. Repeating
         // stop/unload after handoff must not release the next owner's controls.
         if (!_session.ReplaySlots.Release(slot))

@@ -27,6 +27,7 @@ public sealed partial class DemoTracerPlugin
     [GameEventHandler]
     public HookResult OnRoundPrestart(EventRoundPrestart @event, GameEventInfo info)
     {
+        using var timing = new ReplayPhaseTimer("round_prestart");
         // CS2 constructs the new pawn inventory after round_prestart but before
         // round_start. BotRandomizer must therefore receive the complete replay
         // plan here so its GiveNamedItem hook can build the correct item views.
@@ -63,6 +64,7 @@ public sealed partial class DemoTracerPlugin
                 return HookResult.Continue;
             }
 
+            timing.Mark("stop_prepare");
             if (_session.Plan.SequenceActive)
             {
                 _ = PrepareNextSequenceRound(
@@ -91,8 +93,11 @@ public sealed partial class DemoTracerPlugin
         }
         finally
         {
+            timing.Mark("load_prepare");
             EndBotHiderPresentationTransition();
+            timing.Mark("bothider");
             EndBotRandomizerCosmeticLeaseTransition();
+            timing.Mark("randomizer");
         }
     }
 

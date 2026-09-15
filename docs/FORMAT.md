@@ -373,7 +373,13 @@ The top-level object contains:
   player row at or after the source round's live-start tick. Absence means no
   balance evidence and must never be interpreted as zero.
 - `events`: player-scoped high-fidelity events.
-- `inventory_snapshots`: inventory state after inventory changes.
+- `inventory_snapshots`: inventory state after weapon, armor, helmet or defuser
+  changes, including freeze time. Playback initializes from the snapshot at or
+  before its actual start cursor, then grants only newly acquired equipment at
+  its recorded time. Later snapshots do not refill unrelated utility, undo
+  damage, or remove human-introduced items. Archives without inventory snapshots
+  retain the legacy manifest loadout baseline. Regenerate older archives to
+  capture purchases that changed only armor, helmet or defuser state.
 - `projectiles`: player-scoped projectile effect metadata. This supplements
   the fixed-size `ProjectileEventV4` section without changing its binary
   layout.
@@ -444,9 +450,10 @@ angles. Stop and handoff preserve native motion and weapon state.
 
 Boundary writes notify native entity replication once, including nested services.
 Weapons are selected through the native deploy path before restoring their attack
-deadlines. Reserve ammo elements retain the engine's units without converting them
-to bullet counts. Source and live tick intervals must match; playback does not
-resample state clocks.
+deadlines. Clip counts, reserve ammo and reload flags are record-only evidence;
+playback never restores them, including during initial start or weapon replacement.
+The live server owns ammunition capacity, supply and reload rules. Source and
+live tick intervals must match; playback does not resample state clocks.
 
 A discontinuous start already on a ladder requires a valid recorded contact
 normal. When the demo omits it, start before mounting the ladder so native movement

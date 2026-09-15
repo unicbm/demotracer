@@ -239,13 +239,17 @@ internal static partial class DtrReplayReader
         }
     }
 
-    private static ReplayHighFidelityMetadata ReadHighFidelityMetadata(byte[] metadataJson)
+    private static ReplayHighFidelityMetadata ReadHighFidelityMetadata(byte[] metadataJson, int tickCount)
     {
         var metadata = JsonSerializer.Deserialize<ReplayHighFidelityMetadata>(metadataJson, HifiJsonOptions)
             ?? ReplayHighFidelityMetadata.Empty;
         metadata.Events ??= [];
         metadata.InventorySnapshots ??= [];
         metadata.Projectiles ??= [];
+        ValidateInventorySnapshots(metadata.InventorySnapshots, tickCount);
+        metadata.InventorySnapshots = metadata.InventorySnapshots.OrderBy(snapshot => snapshot.TickIndex)
+            .ThenBy(snapshot => snapshot.Tick).ToArray();
+        metadata.Events = metadata.Events.OrderBy(item => item.TickIndex).ThenBy(item => item.Tick).ToArray();
         return metadata;
     }
 

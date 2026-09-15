@@ -52,8 +52,10 @@ public sealed partial class DemoTracerPlugin
 
     private void PreloadLoadedReplays()
     {
+        using var timing = new ReplayPhaseTimer("round preload");
         PrepareLoadedReplayOwnership();
         CancelPendingReplaySlotReconciliations();
+        timing.Mark("ownership");
 
         if (_weaponAlignEnabled)
         {
@@ -69,6 +71,7 @@ public sealed partial class DemoTracerPlugin
             }
         }
 
+        timing.Mark("inventory");
         // Replay identity cosmetics are mandatory even when every optional
         // positive-evidence component is disabled: missing agent/knife/glove
         // evidence means native/default, not Randomizer ownership.
@@ -87,6 +90,7 @@ public sealed partial class DemoTracerPlugin
 
         ApplyLoadedReplayScoreboards();
         AlignSafeC4OwnerForLoadedReplays();
+        timing.Mark("presentation_c4");
     }
 
     private bool ReplayMusicKitAlignmentAllowed(int musicKitId)
