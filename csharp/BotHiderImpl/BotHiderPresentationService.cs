@@ -592,10 +592,9 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
                     _controllerRepairs++;
             }
 
-            if (presentationOverride?.CrosshairCode is not null && !crosshairPublished &&
-                (crosshairChanged || forceCrosshairPublication))
-                throw new InvalidOperationException("crosshair network publication failed");
-
+            // Lease acknowledgement checks requested field readback below.
+            // Network metadata/notification availability is not a client ACK
+            // and must not roll back an otherwise applied native identity.
             var scoreboardFlairNeedsWrite = effectiveScoreboardFlairManaged ||
                                              _scoreboardFlairManaged[state.Slot];
             if (scoreboardFlairNeedsWrite)
