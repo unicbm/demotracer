@@ -346,18 +346,29 @@ namespace
         auto ticks = Ticks(); for (auto &t : ticks) t.weaponDefIndex = 7;
         Check(mr::LoadReplay(slot, ticks.data(), 3, nullptr, 0), "load weapon replay");
         const source::Change changes[] = {
-            {0, source::PlayerTick, 4000, 1}, {0, source::Clip1, 7, 1},
+            {0, source::PlayerTick, 4000, 1}, {0, source::Clip1, uint32_t(-1), 1},
+            {0, source::Clip2, uint32_t(-1), 1}, {0, source::InReload, 1, 1},
             {0, source::NextPrimaryTick, 4008, 1},
             {0, source::NextAttack, source::Bits(62.625f), 1},
             {0, source::ActiveWeaponHandle, 1234, 1},
+            {0, source::ReserveAmmoPrimary, 999, 1}, {0, source::ReserveAmmoSecondary, 999, 1},
         };
-        Check(mr::LoadReplaySourceState(slot, changes, 5, 64, 1.0f / 64) && mr::StartReplay(slot, false), "start weapon replay");
-        Prepare();
         constexpr int clipOffset = 0x800 + source::Clip1 * 4;
         constexpr int attackOffset = 0x800 + source::NextPrimaryTick * 4;
+        Put(weapon, clipOffset, 30);
+        Put(weapon, 0x800 + source::Clip2 * 4, 0);
+        Put(weapon, 0x800 + source::InReload * 4, 0);
+        Put(weapon, 0x800 + source::ReserveAmmoPrimary * 4, 90);
+        Put(weapon, 0x800 + source::ReserveAmmoSecondary * 4, 0);
+        Check(mr::LoadReplaySourceState(slot, changes, 9, 64, 1.0f / 64) && mr::StartReplay(slot, false), "start weapon replay");
+        Prepare();
         Check(deploys == 1 && publishes == 2, "boundary deploy/publication count");
-        Check(Get<int>(weapon, clipOffset) == 7 && Get<int>(weapon, attackOffset) == 1008 &&
-              Get<float>(weaponServices, 0x800 + source::NextAttack * 4) == 15.75f, "deploy overwrote restored weapon clock/ammo");
+        Check(Get<int>(weapon, clipOffset) == 30 && Get<int>(weapon, attackOffset) == 1008 &&
+              Get<float>(weaponServices, 0x800 + source::NextAttack * 4) == 15.75f, "weapon clock restore changed native ammo");
+        Check(Get<int>(weapon, 0x800 + source::Clip2 * 4) == 0 &&
+              Get<int>(weapon, 0x800 + source::InReload * 4) == 0 &&
+              Get<int>(weapon, 0x800 + source::ReserveAmmoPrimary * 4) == 90 &&
+              Get<int>(weapon, 0x800 + source::ReserveAmmoSecondary * 4) == 0, "demo replaced server ammo/reload rules");
         Put(weapon, clipOffset, 6); Put(weapon, attackOffset, 1010);
         mr::OnReplayCommit(slot, services.data()); Prepare();
         Check(Get<int>(weapon, clipOffset) == 6 && Get<int>(weapon, attackOffset) == 1010 && publishes == 2, "continuous replay reset weapon");
@@ -366,12 +377,12 @@ namespace
         Check(deploys == 1 && Get<int>(weapon, clipOffset) == 6, "switch reset weapon state");
         // Reused entity index, new serial: this really is a new incarnation.
         Put(weaponIdentity, tg::kEntIdentity_EHandle, uint32_t{55 + 0x8000}); Prepare();
-        Check(deploys == 2 && publishes == 4 && Get<int>(weapon, clipOffset) == 7, "recreated weapon did not restore");
+        Check(deploys == 2 && publishes == 4 && Get<int>(weapon, clipOffset) == 6, "recreated weapon changed native ammo");
         source::Snapshot missingClock{};
         missingClock[source::Clip1] = 20;
         missingClock[source::NextPrimaryTick] = 10;
         Check(!source::Apply(pawn.data(), services.data(), weaponServices.data(), weapon.data(), missingClock, 64,
-                            {1000, 15.625f, 1.0f / 64}, true) && Get<int>(weapon, clipOffset) == 7,
+                            {1000, 15.625f, 1.0f / 64}, true) && Get<int>(weapon, clipOffset) == 6,
               "missing source clock partially applied weapon state");
         Check(!source::Rebase(4008, source::ClockKind::Tick, 4000, 128, {1000, 15.625f, 1.0f / 64}), "accepted incompatible clocks");
     }

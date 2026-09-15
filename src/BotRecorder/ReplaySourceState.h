@@ -81,6 +81,12 @@ enum Field : uint32_t {
     ReserveAmmoSecondary = 66,
     FieldCount = 67
 };
+// Retained as demo evidence for readers, never applied to the live weapon.
+// Magazine/reserve capacity and reload rules belong to the current server.
+inline constexpr bool IsRuntimeOwnedAmmo(uint32_t field) {
+    return field == Clip1 || field == Clip2 || field == InReload ||
+           field == ReserveAmmoPrimary || field == ReserveAmmoSecondary;
+}
 struct Descriptor { Target target; Kind kind; ClockKind clock; const char *field; int componentOffset; };
 inline constexpr std::array<Descriptor, FieldCount> fields{{
     {Target::Clock, Kind::U32, ClockKind::None, "server_tick", 0},
@@ -162,6 +168,7 @@ public:
     bool Load(const Change *changes, int count, int tickCount) {
         if (count < 0 || tickCount < 0 || count > int64_t(tickCount) * FieldCount || (count && !changes)) return false;
         Timeline staged;
+        std::array<size_t, FieldCount> counts{};
         uint64_t previous = 0;
         for (int i = 0; i < count; ++i) {
             const auto &c = changes[i];
@@ -171,8 +178,14 @@ public:
                 (c.present && fields[c.fieldId].kind == Kind::F32 && !std::isfinite(Float(c.valueBits))) ||
                 (c.present && fields[c.fieldId].kind == Kind::Bool && c.valueBits > 1)) return false;
             previous = key;
-            staged.values[c.fieldId].push_back(c);
+            ++counts[c.fieldId];
         }
+        // A round has tens of thousands of sparse changes. Allocate each
+        // field once instead of repeatedly growing and copying its vector.
+        for (uint32_t field = 0; field < FieldCount; ++field)
+            staged.values[field].reserve(counts[field]);
+        for (int i = 0; i < count; ++i)
+            staged.values[changes[i].fieldId].push_back(changes[i]);
         values.swap(staged.values);
         return true;
     }
