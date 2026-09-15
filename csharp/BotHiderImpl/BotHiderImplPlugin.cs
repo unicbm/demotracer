@@ -11,11 +11,9 @@ namespace BotHiderImpl;
 
 public sealed class BotHiderImplPlugin : BasePlugin
 {
-    private const float FastApplyIntervalSeconds = 0.25f;
-    private const int FastApplyTicks = 12;
 
     public override string ModuleName => "DemoTracer BotHider";
-    public override string ModuleVersion => "0.1.4";
+    public override string ModuleVersion => "0.1.5";
     public override string ModuleAuthor => "XBribo contributors, unicbm";
     public override string ModuleDescription =>
         "DemoTracer-managed bot identity and presentation runtime.";
@@ -23,16 +21,18 @@ public sealed class BotHiderImplPlugin : BasePlugin
     public static PluginCapability<IBotHiderApi> Capability { get; } =
         new(DemoTracerBotHiderContract.Capability);
 
-    private SharedMemoryClient? _client;
+    private NativePresentationClient? _client;
     private BotHiderPresentationService? _presentation;
-    private CounterStrikeSharp.API.Modules.Timers.Timer? _fastApplyTimer;
-    private int _fastApplyRemaining;
+    private bool _applyPending;
+    private bool _unloaded;
+    private int _mapGeneration;
     private Harmony? _harmony;
 
     public override void Load(bool hotReload)
     {
+        _unloaded = false;
         WarnIfLegacyBotHiderPluginIsPresent();
-        _client = new SharedMemoryClient();
+        _client = new NativePresentationClient();
         _presentation = new BotHiderPresentationService(_client);
         _client.TryConnect();
         Capabilities.RegisterPluginCapability(Capability, () => _presentation);
@@ -45,7 +45,7 @@ public sealed class BotHiderImplPlugin : BasePlugin
         RegisterListener<Listeners.OnMapEnd>(OnMapEnd);
         RegisterListener<Listeners.OnClientDisconnect>(OnClientDisconnect);
         AddTimer(2.0f, ApplyManagedSlots, TimerFlags.REPEAT);
-        StartFastApplyWindow();
+        ScheduleApply();
         Server.PrintToConsole(
             $"[DemoTracer BotHider] loaded api={DemoTracerBotHiderContract.ApiVersion} " +
             $"provider_epoch={_presentation.GetProviderInfo().ProviderEpoch} " +
@@ -54,10 +54,12 @@ public sealed class BotHiderImplPlugin : BasePlugin
 
     public override void Unload(bool hotReload)
     {
+        _unloaded = true;
         _harmony?.UnpatchAll(_harmony.Id);
         _harmony = null;
         IsBotPatch.Api = null;
-        StopFastApplyWindow();
+        _applyPending = false;
+        _mapGeneration++;
         _presentation?.Dispose();
         _presentation = null;
         _client?.Dispose();
@@ -66,14 +68,16 @@ public sealed class BotHiderImplPlugin : BasePlugin
 
     private void OnMapStart(string mapName)
     {
-        StopFastApplyWindow();
+        _applyPending = false;
+        _mapGeneration++;
         _presentation?.ResetForMapBoundary();
-        StartFastApplyWindow();
+        ScheduleApply();
     }
 
     private void OnMapEnd()
     {
-        StopFastApplyWindow();
+        _applyPending = false;
+        _mapGeneration++;
         _presentation?.ResetForMapBoundary();
     }
 
@@ -112,9 +116,7 @@ public sealed class BotHiderImplPlugin : BasePlugin
     [GameEventHandler]
     public HookResult OnRoundStart(EventRoundStart @event, GameEventInfo info)
     {
-        _presentation?.InvalidateAll();
-        StartFastApplyWindow();
-        Server.NextFrame(ApplyManagedSlots);
+        ScheduleApply();
         return HookResult.Continue;
     }
 
@@ -142,43 +144,19 @@ public sealed class BotHiderImplPlugin : BasePlugin
         return HookResult.Continue;
     }
 
-    private void SchedulePresentationReconcile(int slot)
+    private void SchedulePresentationReconcile(int slot) => ScheduleApply();
+
+    private void ScheduleApply()
     {
-        _presentation?.InvalidateSlot(slot);
-        StartFastApplyWindow();
+        if (_unloaded || _applyPending) return;
+        _applyPending = true;
+        var generation = _mapGeneration;
         Server.NextFrame(() =>
         {
-            _presentation?.InvalidateSlot(slot);
+            if (_unloaded || generation != _mapGeneration) return;
+            _applyPending = false;
             ApplyManagedSlots();
         });
-    }
-
-    private void StartFastApplyWindow()
-    {
-        _fastApplyRemaining = Math.Max(_fastApplyRemaining, FastApplyTicks);
-        if (_fastApplyTimer != null)
-            return;
-        _fastApplyTimer = AddTimer(
-            FastApplyIntervalSeconds,
-            RunFastApplyTick,
-            TimerFlags.REPEAT | TimerFlags.STOP_ON_MAPCHANGE);
-    }
-
-    private void StopFastApplyWindow()
-    {
-        _fastApplyTimer?.Kill();
-        _fastApplyTimer = null;
-        _fastApplyRemaining = 0;
-    }
-
-    private void RunFastApplyTick()
-    {
-        ApplyManagedSlots();
-        _fastApplyRemaining--;
-        if (_fastApplyRemaining > 0)
-            return;
-        _fastApplyTimer?.Kill();
-        _fastApplyTimer = null;
     }
 
     private void ApplyManagedSlots()

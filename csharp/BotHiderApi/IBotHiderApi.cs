@@ -19,7 +19,7 @@ public static class DemoTracerBotHiderContract
         }
 
         normalized = source.Trim();
-        if (Encoding.UTF8.GetByteCount(normalized) <= MaxCrosshairCodeUtf8Bytes)
+        if (!normalized.Contains('\0') && Encoding.UTF8.GetByteCount(normalized) <= MaxCrosshairCodeUtf8Bytes)
             return true;
 
         normalized = null;
@@ -37,7 +37,9 @@ public interface IBotHiderApi
 
     bool TryGetManagedSlot(int slot, out BotHiderManagedSlot state);
 
-    // Acquisition/replacement is atomic. A disconnected or reused slot leaves
+    // Acquisition/replacement commits lease ownership only after native identity
+    // and requested controller fields confirm success; this is not a client ACK.
+    // Main-thread only. A disconnected or reused slot leaves
     // the lease without revoking surviving slots. An empty lease is revoked.
     BotHiderPresentationLeaseResult AcquirePresentationLease(
         string owner,

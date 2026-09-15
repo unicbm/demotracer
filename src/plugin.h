@@ -49,7 +49,7 @@ namespace cs2bh
         const char *GetDescription() override { return "Bot persona/steamid/ping/crosshair hider"; }
         const char *GetURL() override { return ""; }
         const char *GetLicense() override { return "AGPL-3.0"; }
-        const char *GetVersion() override { return "0.2.9"; }
+        const char *GetVersion() override { return "0.3.0"; }
         const char *GetDate() override { return __DATE__; }
         const char *GetLogTag() override { return "BH"; }
 
@@ -88,6 +88,7 @@ namespace cs2bh
         void SetDisguiseEnabled(bool enabled);
 
         void RebuildBots();
+        bool PublishIdentity(int slot, uint64_t session, uint64_t incarnation, uint64_t sid, const char *name);
 
         // Toggle the display-name source: true=bot_info.json name, false=botprofile name
         void SetUseBotInfoName(bool useBotInfo) { m_bUseBotInfoName = useBotInfo; }
