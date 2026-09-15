@@ -387,6 +387,7 @@ public sealed partial class DemoTracerPlugin
         if (_replayIdentityMode != ReplayIdentityMode.Avatar)
         {
             ClearHumanTeamAvatarOverrides("identity_disabled");
+            BotControllerNative.ClearAvatarOverrides();
             Server.ExecuteCommand("sv_reliableavatardata false");
         }
         else if (_session.TeamAvatarOverrides.Count > 0)

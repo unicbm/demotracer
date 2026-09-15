@@ -62,39 +62,4 @@ public sealed class ReplayTeamAvatarPolicyTests
         Assert.Equal("solo-team-avatar", key);
     }
 
-    [Fact]
-    public void HumanAvatarOverrideCommandCarriesTheExactSlotForHudUserInfoRefresh()
-    {
-        var command = DemoTracerPlugin.BuildAvatarOverrideCommand(
-            Team[0],
-            "C:/avatar-cache/team.png",
-            slot: 7);
-
-        Assert.Equal(
-            $"bc_avatar_override_probe {Team[0]} \"C:/avatar-cache/team.png\" 7",
-            command);
-    }
-
-    [Fact]
-    public void ReplayAvatarOverrideWaitsForBotHiderToPublishUserInfo()
-    {
-        var command = DemoTracerPlugin.BuildAvatarOverrideCommand(
-            Team[0],
-            "C:/avatar-cache/player.png");
-
-        Assert.Equal(
-            $"bc_avatar_override_probe {Team[0]} \"C:/avatar-cache/player.png\"",
-            command);
-    }
-
-    [Fact]
-    public void AvatarCleanupAndRefreshCommandsCarryOnlyTheExactSlot()
-    {
-        Assert.Equal(
-            $"bc_avatar_override_clear {Team[0]} 7",
-            DemoTracerPlugin.BuildAvatarOverrideClearCommand(Team[0], slot: 7));
-        Assert.Equal(
-            "bc_avatar_userinfo_refresh 7",
-            DemoTracerPlugin.BuildAvatarUserInfoRefreshCommand(slot: 7));
-    }
 }

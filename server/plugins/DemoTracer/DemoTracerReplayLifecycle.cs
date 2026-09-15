@@ -226,6 +226,7 @@ public sealed partial class DemoTracerPlugin
     {
         CancelReplayPrefetch();
         StopLoadedReplaySlots(reason);
+        ClearLoadedTeamAvatarOverrides(reason);
         ClearReplayRetentionPriority(clearPending: true);
         ClearLoadedAutoVoiceClip();
         ClearLoadedAutoChat();

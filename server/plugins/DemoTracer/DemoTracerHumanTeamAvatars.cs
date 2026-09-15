@@ -7,7 +7,6 @@
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Utils;
-using System.Globalization;
 
 namespace DemoTracer;
 
@@ -79,31 +78,6 @@ public sealed partial class DemoTracerPlugin
     private void ScheduleHumanTeamAvatarOverrideReconciliation()
         => Server.NextFrame(ReconcileHumanTeamAvatarOverrides);
 
-    private void ScheduleAvatarOverrideUserInfoRefresh()
-    {
-        if (_replayIdentityMode == ReplayIdentityMode.Avatar)
-            Server.NextFrame(RefreshCurrentHumanAvatarOverrideUserInfo);
-    }
-
-    private void RefreshCurrentHumanAvatarOverrideUserInfo()
-    {
-        if (_replayIdentityMode != ReplayIdentityMode.Avatar)
-            return;
-
-        foreach (var pair in _session.HumanTeamAvatarOverrides.OrderBy(pair => pair.Key))
-        {
-            var slot = pair.Key;
-            var applied = pair.Value;
-            var player = Utilities.GetPlayerFromSlot(slot);
-            if (player is { IsValid: true } &&
-                player.UserId == applied.UserId &&
-                NormalizeOptionalULong(player.SteamID) == applied.SteamId)
-            {
-                Server.ExecuteCommand(BuildAvatarUserInfoRefreshCommand(slot));
-            }
-        }
-    }
-
     private void ReconcileHumanTeamAvatarOverrides()
     {
         if (_replayIdentityMode != ReplayIdentityMode.Avatar)
@@ -160,10 +134,9 @@ public sealed partial class DemoTracerPlugin
         }
 
         if (!TryPrepareReplayAvatarOverride(
-                steamId.Value,
                 teamAvatar.ManifestDirectory,
                 teamAvatar.Avatar,
-                out var commandPath,
+                out var png,
                 out var error))
         {
             ClearHumanTeamAvatarOverrideForSlot(slot, "overlay_unavailable");
@@ -172,24 +145,30 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        Server.ExecuteCommand(BuildAvatarOverrideCommand(
-            steamId.Value,
-            commandPath,
-            slot));
+        if (!BotControllerNative.TryPublishAvatarOverride(steamId.Value, png, out error))
+        {
+            Server.PrintToConsole($"dtr: human team avatar publish failed slot={slot}: {error}");
+            return;
+        }
         _session.HumanTeamAvatarOverrides[slot] = new AppliedHumanTeamAvatarOverride(
             userId,
             steamId.Value,
             teamAvatar.ContentKey);
         Server.PrintToConsole(
-            $"dtr: human team avatar queued slot={slot} sid={steamId.Value} team={player.Team} path={teamAvatar.Avatar.Path} cache={commandPath}");
+            $"dtr: human team avatar published slot={slot} sid={steamId.Value} team={player.Team} path={teamAvatar.Avatar.Path}");
     }
 
     private void ClearHumanTeamAvatarOverrideForSlot(int slot, string reason)
     {
-        if (!_session.HumanTeamAvatarOverrides.Remove(slot, out var applied))
+        if (!_session.HumanTeamAvatarOverrides.TryGetValue(slot, out var applied))
             return;
 
-        Server.ExecuteCommand(BuildAvatarOverrideClearCommand(applied.SteamId, slot));
+        if (!BotControllerNative.TryClearAvatarOverride(applied.SteamId, out var error))
+        {
+            Server.PrintToConsole($"dtr: human team avatar clear failed slot={slot}: {error}");
+            return;
+        }
+        _session.HumanTeamAvatarOverrides.Remove(slot);
         Server.PrintToConsole(
             $"dtr: human team avatar cleared slot={slot} sid={applied.SteamId} reason={reason}");
     }
@@ -203,26 +182,8 @@ public sealed partial class DemoTracerPlugin
     private void ClearLoadedTeamAvatarOverrides(string reason)
     {
         ClearHumanTeamAvatarOverrides(reason);
+        BotControllerNative.ClearAvatarOverrides();
         _session.TeamAvatarOverrides.Clear();
     }
 
-    internal static string BuildAvatarOverrideCommand(
-        ulong steamId,
-        string commandPath)
-        => $"bc_avatar_override_probe {steamId.ToString(CultureInfo.InvariantCulture)} " +
-           $"\"{EscapeConsoleString(commandPath)}\"";
-
-    internal static string BuildAvatarOverrideCommand(
-        ulong steamId,
-        string commandPath,
-        int slot)
-        => $"{BuildAvatarOverrideCommand(steamId, commandPath)} " +
-           slot.ToString(CultureInfo.InvariantCulture);
-
-    internal static string BuildAvatarOverrideClearCommand(ulong steamId, int slot)
-        => $"bc_avatar_override_clear {steamId.ToString(CultureInfo.InvariantCulture)} " +
-           slot.ToString(CultureInfo.InvariantCulture);
-
-    internal static string BuildAvatarUserInfoRefreshCommand(int slot)
-        => $"bc_avatar_userinfo_refresh {slot.ToString(CultureInfo.InvariantCulture)}";
 }

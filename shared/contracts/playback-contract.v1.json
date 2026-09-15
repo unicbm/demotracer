@@ -12,12 +12,12 @@
   },
   "bot_controller": {
     "abi_major": 21,
-    "min_abi_minor": 40,
+    "min_abi_minor": 41,
     "public_control_api": 20,
     "replay_tick_bytes": 228,
     "replay_tick_event_tail": "reserved_zero",
     "managed_provider_version": "0.6.3-dtr.2",
-    "required_capabilities_hex": "0x341df"
+    "required_capabilities_hex": "0x741df"
   },
   "bot_hider": {
     "api": 1

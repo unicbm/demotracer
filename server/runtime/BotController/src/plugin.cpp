@@ -31,6 +31,7 @@
 #include "sig_scan.h"
 #include "platform.h"
 #include "version_targets.h"
+#include "avatar_overrides.h"
 
 class BotControllerPlugin : public ISmmPlugin
 {
@@ -135,14 +136,6 @@ bool BotControllerPlugin::Load(PluginId id, ISmmAPI *ismm,
             "[BotController] WARN: network string table server interface unavailable; "
             "bc_avatar_override_probe disabled\n");
     }
-    BotController::Commands::g_pNetworkServerService = static_cast<INetworkServerService *>(
-        ismm->GetEngineFactory()(NETWORKSERVERSERVICE_INTERFACE_VERSION, nullptr));
-    if (!BotController::Commands::g_pNetworkServerService)
-    {
-        BotController::DebugOut(
-            "[BotController] WARN: network server service unavailable; "
-            "avatar HUD userinfo refresh disabled\n");
-    }
     BotController::Dispatch::g_pGameClients =
         static_cast<ISource2GameClients *>(serverIface);
     auto *networkMessages = static_cast<INetworkMessages *>(
@@ -221,12 +214,21 @@ bool BotControllerPlugin::Load(PluginId id, ISmmAPI *ismm,
         BotController::DebugOut(dbg);
     }
 
+    BotController::Avatars::Init(
+        BotController::Commands::g_pStringTables,
+        static_cast<INetworkStringTableContainer *>(ismm->GetEngineFactory()(
+            INTERFACENAME_NETWORKSTRINGTABLECLIENT, nullptr)), gd);
     BotController::DebugOut("[BotController] plugin loaded successfully\n");
     return true;
 }
 
-bool BotControllerPlugin::Unload(char * /*error*/, size_t /*maxlen*/)
+bool BotControllerPlugin::Unload(char *error, size_t maxlen)
 {
+    if (!BotController::Avatars::Shutdown())
+    {
+        std::snprintf(error, maxlen, "Local avatar bridge must unload on the engine main thread");
+        return false;
+    }
     BotController::MotionRecorder::ClearAll();
     BotController::InputInjector::Remove();
     BotController::BuyControllerHooks::Remove();
@@ -241,7 +243,6 @@ bool BotControllerPlugin::Unload(char * /*error*/, size_t /*maxlen*/)
     BotController::VoiceSender::SetInterfaces(nullptr, nullptr);
     BotController::Commands::g_pEngine = nullptr;
     BotController::Commands::g_pStringTables = nullptr;
-    BotController::Commands::g_pNetworkServerService = nullptr;
     BotController::Schema::Reset();
     ConVar_Unregister();
     g_pCVar = nullptr;
