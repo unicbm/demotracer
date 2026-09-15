@@ -117,7 +117,10 @@ namespace BotControllerApi
 
         // ---- buy plans ----
 
-        // Force a bot's per-round buy.
+        // 0 ready; negative when buying cannot be controlled by this provider.
+        int GetBuyStatus() => -1;
+
+        // Force a bot's per-round buy. Returns false if the native hook is unavailable.
         bool SetBuyPlan(int slot, string aliases);
 
         // Force a bot to buy nothing each round.

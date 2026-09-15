@@ -140,6 +140,12 @@ if ($runtimeMinor -lt [int]$contract.bot_controller.min_abi_minor) {
 
 Assert-Equal "DemoTracer companion API" (Read-RegexValue "server\plugins\DemoTracer\BotControllerNativeTypes.cs" 'DemoTracerApiVersion\s*=\s*(\d+)' "DemoTracer companion API") ([string]$contract.demotracer.companion_api)
 Assert-Equal "BotHider API" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderApi\IBotHiderApi.cs" 'ApiVersion\s*=\s*(\d+)' "BotHider API") ([string]$contract.bot_hider.api)
+Assert-Equal "BotHider native ABI" (Read-RegexValue "server\runtime\BotHider\src\presentation_state.h" 'kNativePresentationAbi\s*=\s*(\d+)' "BotHider native ABI") ([string]$contract.bot_hider.native_abi)
+Assert-Equal "BotHider managed native ABI" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderImpl\NativePresentationClient.cs" 'NativeAbi\s*=\s*(\d+)' "BotHider managed native ABI") ([string]$contract.bot_hider.native_abi)
+Assert-Equal "BotHider native slot bytes" (Read-RegexValue "server\runtime\BotHider\src\presentation_state.h" 'sizeof\(PresentationSlot\)\s*==\s*(\d+)' "BotHider native slot bytes") ([string]$contract.bot_hider.native_slot_bytes)
+Assert-Equal "BotHider managed slot bytes" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderImpl\NativePresentationClient.cs" 'SlotByteSize\s*=\s*(\d+)' "BotHider managed slot bytes") ([string]$contract.bot_hider.native_slot_bytes)
+Assert-Equal "BotHider native version" (Read-RegexValue "server\runtime\BotHider\src\plugin.h" 'GetVersion\(\).*?return "([^"]+)"' "BotHider native version") ([string]$contract.bot_hider.native_provider_version)
+Assert-Equal "BotHider managed version" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderImpl\BotHiderImplPlugin.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "BotHider managed version") ([string]$contract.bot_hider.managed_provider_version)
 Assert-Equal "BotRandomizer API" (Read-RegexValue "server\vendor\BotRandomizerApi\IBotRandomizerApi.cs" 'ApiVersion\s*=\s*(\d+)' "BotRandomizer API") ([string]$contract.bot_randomizer.api)
 Assert-Equal "BotRandomizer provider" (Read-RegexValue "server\runtime\BotRandomizer\BotRandomizer.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "BotRandomizer provider version") ([string]$contract.bot_randomizer.provider_version)
 Assert-Equal "DemoTracer target framework" (Read-RegexValue "server\plugins\DemoTracer\DemoTracer.csproj" '<TargetFramework>([^<]+)</TargetFramework>' "DemoTracer target framework") ([string]$contract.counterstrikesharp.target_framework)

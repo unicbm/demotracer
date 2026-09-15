@@ -349,5 +349,26 @@
       "windows": "48 8B C4 53 56 57 41 54 48 81 EC A8 00 00 00 48 89 68 18 BA FF FF FF FF 4C 89 70 D0 4D 8B E0 0F 29 70 B8 4C 8B F1 0F 29 78 A8"
     },
     "comment": "Optional local client HUD bridge; validate the matching engine/client ABI before installing."
+  },
+  "GameResourceServiceServer::EntitySystem": {
+    "offsets": {
+      "windows": 88,
+      "linux": 88
+    },
+    "comment": "Current entity resolver; validated against engine entity identity layout."
+  },
+  "CEntitySystem::IdentityChunks": {
+    "offsets": {
+      "windows": 16,
+      "linux": 16
+    },
+    "comment": "Current entity resolver; validated against engine entity identity layout."
+  },
+  "CEntityIdentity::Size": {
+    "offsets": {
+      "windows": 112,
+      "linux": 112
+    },
+    "comment": "Current entity resolver; validated against engine entity identity layout."
   }
 }

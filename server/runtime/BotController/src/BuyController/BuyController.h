@@ -16,6 +16,7 @@ namespace BotController
         void ResetInitialDelayLatch(int slot);
         void ResetAllInitialDelayLatches();
 
+        bool Ready();
         const char *Status();
         void *OnUpdateAddress();
     }

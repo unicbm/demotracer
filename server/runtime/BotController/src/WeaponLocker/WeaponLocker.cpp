@@ -9,13 +9,11 @@
 #include "version_targets.h"
 #include "hook.h"
 #include "platform.h"
+#include "live_entities.h"
+#include "BotController.h"
+#include "WeaponSelection.h"
 
 #include <cstdio>
-#include <array>
-#include <atomic>
-#include <vector>
-#include <mutex>
-#include <unordered_map>
 
 namespace tg = BotController::targets;
 
@@ -44,46 +42,6 @@ namespace BotController
 
         static std::string g_status = "not_attempted";
         static bool g_installed = false;
-
-        // WeaponServices* -> (bot slot, pawn)
-        struct WsBinding
-        {
-            int slot;
-            void *pawn;
-        };
-        static std::unordered_map<void *, WsBinding> g_wsToBinding;
-        // Inverse: slot -> WeaponServices*. Replay reads this every usercmd,
-        // so keep it lock-free while the forward map remains mutex-guarded.
-        static std::array<std::atomic<void *>, 64> g_slotToWs{};
-        static std::mutex g_wsToSlotMu;
-
-        static void RememberWsForBot(void *bot, int slot)
-        {
-            if (!bot || slot < 0 || slot >= 64)
-                return;
-            void *pawn = nullptr;
-            if (!SafeRead(bot, tg::kBot_Pawn, pawn))
-                return;
-            if (!pawn)
-                return;
-            void *ws = nullptr;
-            if (!SafeRead(pawn, tg::kPawn_WeaponServices, ws))
-                return;
-            if (!ws)
-                return;
-            std::lock_guard<std::mutex> lk(g_wsToSlotMu);
-            g_wsToBinding[ws] = {slot, pawn};
-            g_slotToWs[slot].store(ws, std::memory_order_release);
-        }
-
-        static WsBinding LookupBindingForWs(void *ws)
-        {
-            if (!ws)
-                return {-1, nullptr};
-            std::lock_guard<std::mutex> lk(g_wsToSlotMu);
-            auto it = g_wsToBinding.find(ws);
-            return it == g_wsToBinding.end() ? WsBinding{-1, nullptr} : it->second;
-        }
 
         // LockTarget -> engine weapon-slot index
         static int LockTargetToEngineSlot(LockTarget t)
@@ -122,8 +80,6 @@ namespace BotController
         static void BC_FASTCALL HookedEquipBestWeapon(void *bot, char mustEquip)
         {
             auto sr = ResolveSlot(bot);
-            if (sr.slot >= 0)
-                RememberWsForBot(bot, sr.slot);
             LockTarget lt = (sr.slot >= 0) ? WeaponLockerState::Get(sr.slot) : LockTarget::None;
             if (sr.slot >= 0 &&
                 (MotionRecorder::IsReplaying(sr.slot) || lt != LockTarget::None))
@@ -134,8 +90,6 @@ namespace BotController
         static void BC_FASTCALL HookedEquipPistol(void *bot, char mustEquip)
         {
             auto sr = ResolveSlot(bot);
-            if (sr.slot >= 0)
-                RememberWsForBot(bot, sr.slot);
             LockTarget lt = (sr.slot >= 0) ? WeaponLockerState::Get(sr.slot) : LockTarget::None;
             if (sr.slot >= 0 &&
                 (MotionRecorder::IsReplaying(sr.slot) || lt != LockTarget::None))
@@ -158,14 +112,11 @@ namespace BotController
                     }
             }
 
-            WsBinding bind = LookupBindingForWs(ws);
-            if (bind.slot < 0)
+            void *pawn = nullptr;
+            if (!SafeRead(ws, tg::kServices_Pawn, pawn) || !pawn)
                 return g_origSelectItem(ws, weapon, flag);
-
-            // Human took over this pawn -> current m_hController != bot slot
-            // we cached; don't block player's weapon switches.
-            int curSlot = ControllerSlotForPawn(bind.pawn);
-            if (curSlot != bind.slot)
+            const int slot = ControllerSlotForPawn(pawn);
+            if (slot < 0 || WsForSlot(slot) != ws)
                 return g_origSelectItem(ws, weapon, flag);
 
             // Native Update/Upkeep may shadow-run during replay for warm
@@ -173,14 +124,14 @@ namespace BotController
             // The DTR raw switch helper calls g_origSelectItem directly and
             // therefore bypasses this detour. Engine handling of the injected
             // cmd.weaponselect is allowed only for the exact replay weapon.
-            if (MotionRecorder::IsReplaying(bind.slot))
+            if (MotionRecorder::IsReplaying(slot))
             {
-                if (!ReplayAllowsWeaponSelection(bind.slot, weapon))
+                if (!ReplayAllowsWeaponSelection(slot, weapon))
                     return 0;
                 return g_origSelectItem(ws, weapon, flag);
             }
 
-            LockTarget lt = WeaponLockerState::Get(bind.slot);
+            LockTarget lt = WeaponLockerState::Get(slot);
             if (lt == LockTarget::None)
                 return g_origSelectItem(ws, weapon, flag);
 
@@ -310,12 +261,7 @@ namespace BotController
             g_origSelectItem = nullptr;
             g_installed = false;
             g_status = "not_attempted";
-            {
-                std::lock_guard<std::mutex> lk(g_wsToSlotMu);
-                g_wsToBinding.clear();
-                for (int i = 0; i < 64; ++i)
-                    g_slotToWs[i].store(nullptr, std::memory_order_release);
-            }
+
         }
 
         const char *Status() { return g_status.c_str(); }
@@ -375,33 +321,11 @@ namespace BotController
 
         int ActiveWeaponDef(void *ws)
         {
-            if (!ws || !g_pGetSlot)
-                return -1;
-            // m_hActiveWeapon is a handle; resolve it by matching its entity
-            // index against the pointers GetSlot returns
-            const int activeIdx = ActiveWeaponEntIndex(ws);
-            if (activeIdx < 0)
-                return -1;
-            for (int slot = 0; slot <= 4; ++slot)
-            {
-                // GEAR_SLOT_GRENADES (3) holds every grenade type at once
-                unsigned int maxPos = (slot == 3) ? 8u : 1u;
-                for (unsigned int pos = 0; pos < maxPos; ++pos)
-                {
-                    unsigned int posArg = (slot == 3) ? pos : 0xFFFFFFFFu;
-                    void *w = g_pGetSlot(ws, slot, posArg);
-                    if (w && EntIndexOf(w) == activeIdx)
-                    {
-                        int def = ReadDefIndex(w);
-                        // Engine slot 2 holds knife AND taser. Normalize any
-                        // knife skin to kKnifeDef; keep the taser (31) as-is.
-                        if (slot == 2 && def != 31)
-                            return kKnifeDef;
-                        return def;
-                    }
-                }
-            }
-            return -1;
+            if (!ws) return -1;
+            uint32_t handle = 0;
+            if (!SafeRead(ws, tg::kWs_ActiveWeapon, handle)) return -1;
+            const int def = ReadDefIndex(LiveEntities::FromHandle(handle));
+            return IsKnifeDefIndex(def) ? kKnifeDef : def;
         }
 
         int ActiveWeaponEntIndex(void *ws)
@@ -508,15 +432,20 @@ namespace BotController
         {
             if (!ws || !weapon || !g_origSelectItem)
                 return false;
-            g_origSelectItem(ws, weapon, 0);
-            return true;
+            uint32_t handle = 0;
+            if (!SafeRead(ws, tg::kWs_ActiveWeapon, handle)) return false;
+            return WeaponSelection::Apply(LiveEntities::FromHandle(handle), weapon,
+                [ws](void *target) { return g_origSelectItem(ws, target, 0); });
         }
 
         void *WsForSlot(int slot)
         {
             if (slot < 0 || slot >= 64)
                 return nullptr;
-            return g_slotToWs[slot].load(std::memory_order_acquire);
+            void *bot = BotControllerHooks::BotForSlot(slot);
+            void *pawn = nullptr, *ws = nullptr;
+            return bot && SafeRead(bot, tg::kBot_Pawn, pawn) && pawn &&
+                SafeRead(pawn, tg::kPawn_WeaponServices, ws) ? ws : nullptr;
         }
 
         int SwitchToLockTarget(int slot)
@@ -533,8 +462,7 @@ namespace BotController
             if (engineSlot < 0)
                 return 3;
 
-            void *ws = nullptr;
-            ws = g_slotToWs[slot].load(std::memory_order_acquire);
+            void *ws = WsForSlot(slot);
             if (!ws)
                 return 1; // bot hasn't ticked yet; lock will still take effect once AI runs.
 
@@ -544,8 +472,7 @@ namespace BotController
 
             // Route through the original (un-hooked) function so we don't
             // ping-pong through HookedSelectItem.
-            g_origSelectItem(ws, target, 0);
-            return 0;
+            return SelectWeaponRaw(ws, target) ? 0 : 4;
         }
     }
 }

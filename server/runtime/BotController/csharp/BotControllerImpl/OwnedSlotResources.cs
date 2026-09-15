@@ -13,12 +13,17 @@ internal enum SlotResource
 internal sealed class OwnedSlotResources
 {
     private readonly Dictionary<int, SlotResource> _slots = new();
-    public int[] Slots => _slots.Keys.ToArray();
+    private int[]? _slotSnapshot;
+    public int[] Slots => _slotSnapshot ??= _slots.Keys.ToArray();
     public bool Has(int slot, SlotResource resource)
         => _slots.TryGetValue(slot, out var held) && (held & resource) != 0;
     public bool Track(int slot, SlotResource resource, bool success)
     {
-        if (success) _slots[slot] = _slots.GetValueOrDefault(slot) | resource;
+        if (success)
+        {
+            if (!_slots.ContainsKey(slot)) _slotSnapshot = null;
+            _slots[slot] = _slots.GetValueOrDefault(slot) | resource;
+        }
         return success;
     }
     public long Track(int slot, SlotResource resource, long token)
@@ -29,22 +34,38 @@ internal sealed class OwnedSlotResources
     public void Forget(int slot, SlotResource resource)
     {
         var remaining = _slots.GetValueOrDefault(slot) & ~resource;
-        if (remaining == SlotResource.None) _slots.Remove(slot);
+        if (remaining == SlotResource.None)
+        {
+            if (_slots.Remove(slot)) _slotSnapshot = null;
+        }
         else _slots[slot] = remaining;
     }
     public void Release(int slot, bool takenByDemoTracer, Action<int, SlotResource> release)
     {
-        if (!_slots.Remove(slot, out var held)) return;
-        if (takenByDemoTracer) held &= ~SlotResource.Control;
-        if (held != SlotResource.None) release(slot, held);
+        Release(slot, _slots.GetValueOrDefault(slot), takenByDemoTracer, release);
     }
 
     public void Release(int slot, SlotResource resource, bool takenByDemoTracer, Action<int, SlotResource> release)
     {
         var held = _slots.GetValueOrDefault(slot) & resource;
-        Forget(slot, resource);
-        if (takenByDemoTracer) held &= ~SlotResource.Control;
-        if (held != SlotResource.None) release(slot, held);
+        if (takenByDemoTracer)
+        {
+            Forget(slot, held & SlotResource.Control);
+            held &= ~SlotResource.Control;
+        }
+        List<Exception>? errors = null;
+        for (int bit = 1; bit <= (int)SlotResource.BuyPlan; bit <<= 1)
+        {
+            var item = (SlotResource)bit;
+            if ((held & item) == 0) continue;
+            try
+            {
+                release(slot, item);
+                Forget(slot, item);
+            }
+            catch (Exception ex) { (errors ??= []).Add(ex); }
+        }
+        if (errors != null) throw new AggregateException(errors);
     }
 
     public void ReleaseAll(Func<int, bool> takenByDemoTracer, Action<int, SlotResource> release)

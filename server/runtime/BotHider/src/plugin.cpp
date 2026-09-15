@@ -7,7 +7,7 @@
 #include "fake_client_manager.h"
 #include "ping_display.h"
 #include "serversideclient_ref.h"
-#include "slot_publisher.h"
+#include "presentation_state.h"
 #include "version_targets.h"
 #include "sig_scan.h"
 #include "schema_resolver.h"
@@ -1728,7 +1728,7 @@ namespace cs2bh
         g_SlotEntry[idx] = nullptr;
         g_OriginalSlotName[idx].clear();
 
-        // Drain manager + personas + shared memory for this slot
+        // Drain manager, personas and presentation state for this slot
         Manager().ReleaseSlot(idx);
 
         META_CONPRINTF("[BOTHIDER] ClientDisconnect slot=%d name='%s' — slot released\n",
@@ -2338,6 +2338,44 @@ namespace cs2bh
         RETURN_META_VALUE(MRES_IGNORED, nullptr);
     }
 
+    bool HiderPlugin::PublishIdentity(int slot, uint64_t session, uint64_t incarnation,
+                                       uint64_t sid, const char *name)
+    {
+        if (!Publisher().Matches(slot, session, incarnation) || !Manager().IsManaged(slot) ||
+            !sid || !name || !name[0] || !std::memchr(name, 0, 32)) return false;
+        void *client = ResolveClientBySlot(slot);
+        if (!client || ssc::IsHltv(client)) return false;
+        // A connected human must never receive a bot persona, even during a
+        // slot transition whose manager notification has not arrived yet.
+        if (*reinterpret_cast<void **>(static_cast<unsigned char *>(client) + ssc::OFFSET_m_NetChannel))
+            return false;
+        const bool nameChanged = !EngineNameMatches(ssc::ReadName(client), name);
+        const bool sidChanged = !ssc::SteamIdMatches(client, sid);
+        if (m_bDisguiseEnabled)
+        {
+            ssc::ClearFakePlayer(client);
+            SetControllerFakeClientFlag(slot, false);
+        }
+        if (sidChanged) ssc::WriteSteamId(client, sid);
+        if (!ssc::SteamIdMatches(client, sid)) return false;
+        if (nameChanged)
+        {
+            if (!EngineNameMatches(SetEngineName(this, client, name), name)) return false;
+#if !defined(_WIN32)
+            // Linux currently uses CUtlString::Set, which does not publish.
+            if (!RefreshClientUserInfo(slot)) return false;
+#endif
+        }
+        else if (sidChanged && !RefreshClientUserInfo(slot)) return false;
+        // Windows SetName already publishes the final name + SID combination.
+        if (!Publisher().Matches(slot, session, incarnation)) return false;
+        Manager().SetSyntheticSid(slot, sid);
+        Personas().MarkSlotManaged(slot, name);
+        Publisher().UpdateSyntheticSid(slot, sid);
+        Publisher().UpdatePersonaName(slot, name);
+        return true;
+    }
+
     // Tick driver
     void HiderPlugin::Hook_GameFrame_Post(bool simulating, bool /*bFirst*/, bool /*bLast*/)
     {
@@ -2379,79 +2417,6 @@ namespace cs2bh
             }
         }
 
-        // Drain CSS -> C++ write commands posted via shared memory.
-        Publisher().DrainCommands(
-            // SET_SID: the versioned lease API has already validated the
-            // complete batch. Publish its exact identity; silently replacing
-            // it with another bot_info persona would split name/avatar/SID.
-            [this](int slot, uint64_t sid)
-            {
-                if (!Manager().IsManaged(slot))
-                    return;
-                void *pClient = ResolveClientBySlot(slot);
-                if (!pClient)
-                    return;
-                if (m_bDisguiseEnabled)
-                {
-                    ssc::ClearFakePlayer(pClient);
-                    SetControllerFakeClientFlag(slot, false);
-                }
-                ssc::WriteSteamId(pClient, sid);
-                if (!ssc::SteamIdMatches(pClient, sid))
-                {
-                    // Keep the publisher cache divergent so the managed lease
-                    // reconciler retries instead of accepting a false native ACK.
-                    Publisher().UpdateSyntheticSid(slot, 0);
-                    return;
-                }
-                Manager().SetSyntheticSid(slot, sid);
-                if (!RefreshClientUserInfo(slot))
-                {
-                    Publisher().UpdateSyntheticSid(slot, 0);
-                    return;
-                }
-                Publisher().UpdateSyntheticSid(slot, sid);
-            },
-            // SET_PERSONA: verify the engine setter and explicitly republish
-            // userinfo on every platform before acknowledging the command.
-            [this](int slot, const char *name)
-            {
-                if (!Manager().IsManaged(slot) || !name || !name[0])
-                    return;
-                void *pClient = ResolveClientBySlot(slot);
-                if (!pClient)
-                    return;
-                const char *storedName = SetEngineName(this, pClient, name);
-                if (!EngineNameMatches(storedName, name))
-                {
-                    Publisher().UpdatePersonaName(slot, "");
-                    return;
-                }
-                if (!RefreshClientUserInfo(slot))
-                {
-                    Publisher().UpdatePersonaName(slot, "");
-                    return;
-                }
-                Personas().MarkSlotManaged(slot, name);
-                Publisher().UpdatePersonaName(slot, name);
-            },
-            // SET_DISGUISE: global toggle for the m_bFakePlayer disguise
-            [this](bool enabled)
-            {
-                SetDisguiseEnabled(enabled);
-            },
-            // REBUILD
-            [this]()
-            {
-                RebuildBots();
-            },
-            // SET_NAME_SOURCE: global toggle for the display-name source
-            [this](bool useBotInfo)
-            {
-                SetUseBotInfoName(useBotInfo);
-                META_CONPRINTF("[BOTHIDER] name source -> %s\n",
-                               useBotInfo ? "bot_info" : "botprofile");
-            });
         RETURN_META(MRES_IGNORED);
     }
 
@@ -2637,10 +2602,10 @@ namespace cs2bh
 
         Manager().Init();
 
-        // Open the shared-memory bridge
+        // Initialize the synchronous in-process presentation API
         if (Publisher().Init())
         {
-            META_CONPRINTF("[BOTHIDER] shared memory '%s' mapped\n", shm::kMappingName);
+            META_CONPRINTF("[BOTHIDER] native presentation ABI %d ready\n", kNativePresentationAbi);
             // Publish resolved hook/sig addresses for bh_status (0 = unresolved)
             Publisher().PublishSignature("UTIL_Remove", reinterpret_cast<void *>(g_pfnUtilRemove));
             Publisher().PublishSignature("MaintainBotQuota", g_pQuotaHookTarget);
@@ -2651,7 +2616,7 @@ namespace cs2bh
         }
         else
         {
-            META_CONPRINTF("[BOTHIDER] warning: shared memory init failed — CSS bridge disabled\n");
+            META_CONPRINTF("[BOTHIDER] warning: native presentation init failed — CSS bridge disabled\n");
         }
 
         // Load bot identity data from JSON config
@@ -2741,3 +2706,36 @@ namespace cs2bh
     }
 
 } // namespace cs2bh
+
+#if defined(_WIN32)
+#define BH_EXPORT extern "C" __declspec(dllexport)
+#else
+#define BH_EXPORT extern "C" __attribute__((visibility("default")))
+#endif
+BH_EXPORT int BotHider_GetNativeAbi() { return cs2bh::kNativePresentationAbi; }
+BH_EXPORT uint64_t BotHider_GetSession() { return cs2bh::Publisher().Session(); }
+BH_EXPORT int BotHider_ReadSlot(int slot, cs2bh::PresentationSlot *out, int size)
+{
+    return out && size == sizeof(*out) && cs2bh::Publisher().ReadSlot(slot, *out) ? 0 : -1;
+}
+BH_EXPORT int BotHider_ReadSignature(int index, cs2bh::PresentationSignature *out, int size)
+{
+    return out && size == sizeof(*out) && cs2bh::Publisher().ReadSignature(index, *out) ? 0 : -1;
+}
+BH_EXPORT int BotHider_PublishIdentity(int slot, uint64_t session, uint64_t incarnation,
+                                       uint64_t sid, const char *name)
+{
+    return cs2bh::g_Plugin.PublishIdentity(slot, session, incarnation, sid, name) ? 0 : -1;
+}
+BH_EXPORT int BotHider_SetOption(uint64_t session, int option, int value)
+{
+    if (!session || cs2bh::Publisher().Session() != session) return -1;
+    switch (option)
+    {
+        case 1: cs2bh::g_Plugin.SetDisguiseEnabled(value != 0); break;
+        case 2: cs2bh::g_Plugin.SetUseBotInfoName(value != 0); break;
+        case 3: cs2bh::g_Plugin.RebuildBots(); break;
+        default: return -1;
+    }
+    return 0;
+}

@@ -250,6 +250,7 @@ Assert-BinaryContainsExport $runtimeDll "BotController_GetPublicApiVersion"
 Require-Path (Join-Path $botControllerCssOut "BotControllerImpl.dll") "BotController managed provider"
 Require-Path (Join-Path $botControllerApiOut "BotControllerApi.dll") "BotController shared API"
 Assert-BinaryContainsExport $runtimeDll "BotController_GetCapabilities"
+Assert-BinaryContainsExport $runtimeDll "BotController_GetBuyStatus"
 Assert-BinaryContainsExport $runtimeDll "BotController_RequestEquipBestWeapon"
 Assert-BinaryContainsExport $runtimeDll "BotController_GetBuildId"
 Assert-BinaryContainsExport $runtimeDll "BotController_ReleaseReplayBuffer"
@@ -258,6 +259,9 @@ Assert-BinaryContainsExport $runtimeDll "BotController_GetReplayPawnEquipmentSta
 Require-Path (Join-Path $runtimeRoot "addons\BotController\gamedata.json") "BotController gamedata"
 Require-Path (Join-Path $runtimeRoot "addons\metamod\BotController.vdf") "BotController Metamod VDF"
 Require-Path (Join-Path $botHiderRuntimeRoot "addons\BotHider\bin\win64\BotHider.dll") "DemoTracer BotHider runtime DLL"
+foreach ($export in @("BotHider_GetNativeAbi", "BotHider_GetSession", "BotHider_ReadSlot", "BotHider_ReadSignature", "BotHider_PublishIdentity", "BotHider_SetOption")) {
+    Assert-BinaryContainsExport (Join-Path $botHiderRuntimeRoot "addons\BotHider\bin\win64\BotHider.dll") $export
+}
 Require-Path (Join-Path $botHiderRuntimeRoot "addons\BotHider\gamedata.json") "DemoTracer BotHider gamedata"
 Require-Path (Join-Path $botHiderRuntimeRoot "addons\metamod\BotHider.vdf") "DemoTracer BotHider Metamod VDF"
 Require-Path (Join-Path $cssOut "DemoTracer.dll") "DemoTracer CSS plugin"

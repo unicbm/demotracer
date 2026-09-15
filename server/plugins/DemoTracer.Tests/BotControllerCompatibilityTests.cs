@@ -67,7 +67,7 @@ public sealed class BotControllerCompatibilityTests
         owned.Track(6, SlotResource.Input, -1L);
         var releases = new List<(int, SlotResource)>();
         owned.ReleaseAll(_ => false, (slot, resources) => releases.Add((slot, resources)));
-        Assert.Equal([(5, SlotResource.Replay | SlotResource.Input | SlotResource.BuyPlan)], releases);
+        Assert.Equal([(5, SlotResource.Replay), (5, SlotResource.Input), (5, SlotResource.BuyPlan)], releases);
         owned.ReleaseAll(_ => false, (_, _) => throw new Exception("released twice"));
         Assert.Empty(owned.Slots);
     }
@@ -117,6 +117,23 @@ public sealed class BotControllerCompatibilityTests
             if (slot == 2) throw new InvalidOperationException("native unavailable");
         }));
         Assert.Equal([2, 3], visited);
+        Assert.Equal([2], owned.Slots);
+        owned.ReleaseAll(_ => false, (_, _) => { });
+        Assert.Empty(owned.Slots);
+    }
+
+    [Fact]
+    public void PartialCleanupRetriesOnlyFailedResourcesAndStillRespectsTakeover()
+    {
+        var owned = new OwnedSlotResources();
+        owned.Track(4, SlotResource.Replay | SlotResource.Input | SlotResource.Recording, true);
+        Assert.Throws<AggregateException>(() => owned.Release(4, false, (_, resource) =>
+        {
+            if (resource == SlotResource.Replay) throw new InvalidOperationException("engine unavailable");
+        }));
+        Assert.True(owned.Has(4, SlotResource.Replay));
+        Assert.False(owned.Has(4, SlotResource.Input | SlotResource.Recording));
+        owned.Release(4, true, (_, _) => throw new Exception("new owner must be preserved"));
         Assert.Empty(owned.Slots);
     }
 }

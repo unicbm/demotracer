@@ -11,27 +11,27 @@ namespace DemoTracer.Tests;
 public sealed class BotHiderIdentityReassertTests
 {
     [Fact]
-    public void InvalidatedPresentationForcesNativeIdentityPublishEvenWhenCacheMatches()
+    public void NewPresentationPublishesCrosshairEvenWhenValueMatches()
     {
-        Assert.True(BotHiderPresentationService.RequiresNativeIdentityReassert(
+        Assert.True(BotHiderPresentationService.RequiresCrosshairPublication(
             hasAppliedPresentation: false,
             appliedIncarnation: 0,
             effectiveIncarnation: 12));
     }
 
     [Fact]
-    public void NewSlotIncarnationForcesNativeIdentityPublish()
+    public void NewSlotIncarnationPublishesCrosshair()
     {
-        Assert.True(BotHiderPresentationService.RequiresNativeIdentityReassert(
+        Assert.True(BotHiderPresentationService.RequiresCrosshairPublication(
             hasAppliedPresentation: true,
             appliedIncarnation: 11,
             effectiveIncarnation: 12));
     }
 
     [Fact]
-    public void StableAppliedPresentationDoesNotCreateContinuousIdentityTraffic()
+    public void StableAppliedPresentationDoesNotRepublishCrosshair()
     {
-        Assert.False(BotHiderPresentationService.RequiresNativeIdentityReassert(
+        Assert.False(BotHiderPresentationService.RequiresCrosshairPublication(
             hasAppliedPresentation: true,
             appliedIncarnation: 12,
             effectiveIncarnation: 12));
@@ -40,7 +40,7 @@ public sealed class BotHiderIdentityReassertTests
     [Theory]
     [InlineData(false, true)]
     [InlineData(true, false)]
-    public void AvatarPublicationCanForceAnUnchangedLeaseToRepublishIdentity(
+    public void ExplicitLeaseReplacementSkipsHeartbeatShortcut(
         bool forceReplace,
         bool expectedHeartbeat)
     {

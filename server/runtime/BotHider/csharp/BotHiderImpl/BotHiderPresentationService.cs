@@ -13,7 +13,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     private static readonly TimeSpan LeaseTimeout = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan PresentationFailureLogInterval = TimeSpan.FromSeconds(30);
 
-    private readonly SharedMemoryClient _client;
+    private readonly NativePresentationClient _client;
     private readonly object _sync = new();
     private readonly string _providerEpoch = Guid.NewGuid().ToString("N");
     private readonly bool[] _observedManaged = new bool[MaxSlots];
@@ -27,6 +27,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     private readonly Dictionary<string, PresentationLease> _leases = new(StringComparer.Ordinal);
     private readonly Dictionary<int, string> _leaseBySlot = new();
     private ulong _nextIncarnation;
+    private ulong _nativeSession;
+    private readonly ulong[] _nativeIncarnations = new ulong[MaxSlots];
     private ulong _mapEpoch = 1;
     private bool _draining;
     private bool _disposed;
@@ -35,7 +37,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     private int _publishedWrites;
     private int _controllerRepairs;
 
-    public BotHiderPresentationService(SharedMemoryClient client)
+    public BotHiderPresentationService(NativePresentationClient client)
     {
         _client = client;
     }
@@ -46,10 +48,11 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     {
         lock (_sync)
         {
+            ObserveNativeSession();
             return new BotHiderProviderInfo
             {
                 ApiVersion = ApiVersion,
-                ProviderEpoch = _providerEpoch,
+                ProviderEpoch = $"{_providerEpoch}:{_nativeSession:x}",
                 MapEpoch = _mapEpoch,
                 Connected = !_disposed && _client.IsConnected(),
                 Draining = _draining || _disposed
@@ -75,6 +78,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     {
         lock (_sync)
         {
+            ObserveNativeSession();
             if (_draining || _disposed)
                 return Fail("provider_draining");
 
@@ -104,6 +108,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     {
         lock (_sync)
         {
+            ObserveNativeSession();
             if (_draining || _disposed)
                 return Fail("provider_draining");
             if (string.IsNullOrWhiteSpace(leaseToken) ||
@@ -141,6 +146,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     {
         lock (_sync)
         {
+            ObserveNativeSession();
             if (_draining || _disposed ||
                 string.IsNullOrWhiteSpace(leaseToken) ||
                 !_leases.TryGetValue(leaseToken, out var lease))
@@ -157,7 +163,10 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     {
         bool released;
         lock (_sync)
+        {
+            ObserveNativeSession();
             released = RemoveLease(leaseToken, countRevocation: false);
+        }
 
         if (released)
             PublishManagedSlots();
@@ -169,6 +178,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         string[] tokens;
         lock (_sync)
         {
+            ObserveNativeSession();
             tokens = _leases.Values
                 .Where(lease => lease.Owner.Equals(owner, StringComparison.Ordinal))
                 .Select(lease => lease.Token)
@@ -267,10 +277,22 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         }
     }
 
+    private void ObserveNativeSession()
+    {
+        var session = _client.Session;
+        if (session == _nativeSession) return;
+        foreach (var token in _leases.Keys.ToArray()) RemoveLease(token, countRevocation: true);
+        Array.Fill(_observedManaged, false);
+        Array.Fill(_applied, null);
+        Array.Fill(_nativeIncarnations, 0UL);
+        _nativeSession = session;
+    }
+
     private bool TryReadManagedSlot(int slot, out BotHiderManagedSlot state)
     {
         state = new BotHiderManagedSlot { Slot = slot };
-        if (_disposed || slot is < 0 or >= MaxSlots || !_client.IsManagedBot(slot))
+        ObserveNativeSession();
+        if (_disposed || slot is < 0 or >= MaxSlots || !_client.TryGetSlot(slot, out var native) || native.Managed == 0)
         {
             ObserveUnmanaged(slot);
             return false;
@@ -283,12 +305,14 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             return false;
         }
 
-        if (!_observedManaged[slot] || _observedUserIds[slot] != userId)
+        if (!_observedManaged[slot] || _observedUserIds[slot] != userId ||
+            _nativeIncarnations[slot] != native.Incarnation)
         {
             RemoveSlotPresentation(slot);
             _observedManaged[slot] = true;
             _observedUserIds[slot] = userId;
             _slotIncarnations[slot] = ++_nextIncarnation;
+            _nativeIncarnations[slot] = native.Incarnation;
             _applied[slot] = null;
             _scoreboardFlairManaged[slot] = false;
             _scoreboardFlairRepublishPending[slot] = false;
@@ -298,11 +322,11 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         {
             Slot = slot,
             Incarnation = _slotIncarnations[slot],
-            BaseSteamId = _client.GetBaseSteamId(slot),
-            BasePlayerName = _client.GetBasePersonaName(slot),
-            BasePing = _client.GetPing(slot),
-            BaseCrosshairCode = _client.GetCrosshairCode(slot),
-            BaseScoreboardFlair = _client.GetScoreboardFlair(slot)
+            BaseSteamId = native.BaseSteamId,
+            BasePlayerName = native.ReadBaseName(),
+            BasePing = native.Ping,
+            BaseCrosshairCode = native.ReadCrosshair(),
+            BaseScoreboardFlair = native.ScoreboardFlair
         };
         return true;
     }
@@ -366,7 +390,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
 
             var playerName = requested.PlayerName?.Trim();
             if (playerName != null &&
-                (playerName.Length == 0 ||
+                (playerName.Length == 0 || playerName.Contains('\0') ||
                  Encoding.UTF8.GetByteCount(playerName) > DemoTracerBotHiderContract.MaxPlayerNameUtf8Bytes))
             {
                 reason = $"invalid_name:{requested.Slot}";
@@ -511,60 +535,36 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             return;
 
         var previous = _applied[state.Slot];
-        var forceNativeIdentityReassert = RequiresNativeIdentityReassert(
+        var forceCrosshairPublication = RequiresCrosshairPublication(
             previous.HasValue,
             previous?.Incarnation ?? 0,
             effective.Incarnation);
         try
         {
-            // Controller identity is the synchronous presentation truth. The
-            // native shared-memory command is only the userinfo companion; it
-            // must never turn a queued/published cache value into a successful
-            // lease while the visible controller still has the base identity.
-            var controllerNameMismatch = !player.PlayerName.Equals(
-                effective.PlayerName,
-                StringComparison.Ordinal);
-            var nativeNameMismatch = !_client.GetPublishedPersonaName(state.Slot).Equals(
-                effective.PlayerName,
-                StringComparison.Ordinal);
-            var nativeNameQueued = true;
-            if (forceNativeIdentityReassert || nativeNameMismatch || controllerNameMismatch)
-            {
-                nativeNameQueued = _client.SetPublishedPersonaName(state.Slot, effective.PlayerName);
-                if (controllerNameMismatch)
-                {
-                    player.PlayerName = effective.PlayerName;
-                    Utilities.SetStateChanged(player, "CBasePlayerController", "m_iszPlayerName");
-                    if (!player.PlayerName.Equals(effective.PlayerName, StringComparison.Ordinal))
-                        throw new InvalidOperationException("controller persona write was not retained");
-                    _publishedWrites++;
-                    _controllerRepairs++;
-                }
-                if (nativeNameQueued && (forceNativeIdentityReassert || nativeNameMismatch))
-                    _publishedWrites++;
-            }
+            // Native userinfo and controller fields must both confirm the
+            // effective identity before the lease can report success.
+            var nativeNameMismatch = !_client.GetPublishedPersonaName(state.Slot).Equals(effective.PlayerName, StringComparison.Ordinal);
+            var nativeSidMismatch = _client.GetPublishedSteamId(state.Slot) != effective.SteamId;
+            if (!_client.PublishIdentity(state.Slot, _nativeSession, _nativeIncarnations[state.Slot],
+                    effective.SteamId, effective.PlayerName))
+                throw new InvalidOperationException("native identity publication rejected");
+            if (nativeNameMismatch || nativeSidMismatch) _publishedWrites++;
 
-            var controllerSteamIdMismatch = player.SteamID != effective.SteamId;
-            var nativeSteamIdMismatch = _client.GetPublishedSteamId(state.Slot) != effective.SteamId;
-            var nativeSteamIdQueued = true;
-            if (forceNativeIdentityReassert || nativeSteamIdMismatch || controllerSteamIdMismatch)
+            if (!player.PlayerName.Equals(effective.PlayerName, StringComparison.Ordinal))
             {
-                nativeSteamIdQueued = _client.SetPublishedSteamId(state.Slot, effective.SteamId);
-                if (controllerSteamIdMismatch)
-                {
-                    Schema.SetSchemaValue(
-                        player.Handle,
-                        "CBasePlayerController",
-                        "m_steamID",
-                        effective.SteamId);
-                    Utilities.SetStateChanged(player, "CBasePlayerController", "m_steamID");
-                    if (player.SteamID != effective.SteamId)
-                        throw new InvalidOperationException("controller SteamID write was not retained");
-                    _publishedWrites++;
-                    _controllerRepairs++;
-                }
-                if (nativeSteamIdQueued && (forceNativeIdentityReassert || nativeSteamIdMismatch))
-                    _publishedWrites++;
+                player.PlayerName = effective.PlayerName;
+                Utilities.SetStateChanged(player, "CBasePlayerController", "m_iszPlayerName");
+                if (!player.PlayerName.Equals(effective.PlayerName, StringComparison.Ordinal))
+                    throw new InvalidOperationException("controller name write was not retained");
+                _publishedWrites++; _controllerRepairs++;
+            }
+            if (player.SteamID != effective.SteamId)
+            {
+                Schema.SetSchemaValue(player.Handle, "CBasePlayerController", "m_steamID", effective.SteamId);
+                Utilities.SetStateChanged(player, "CBasePlayerController", "m_steamID");
+                if (player.SteamID != effective.SteamId)
+                    throw new InvalidOperationException("controller SteamID write was not retained");
+                _publishedWrites++; _controllerRepairs++;
             }
 
             var expectedPing = checked((uint)Math.Max(state.BasePing, 0));
@@ -579,7 +579,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
 
             if (TryWriteNetworkedCrosshair(
                     effective.CrosshairCode,
-                    forceNativeIdentityReassert,
+                    forceCrosshairPublication,
                     () => player.CrosshairCodes,
                     value => player.CrosshairCodes = value,
                     () => TryPublishCrosshairStateChanged(player),
@@ -591,6 +591,10 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
                 if (crosshairChanged)
                     _controllerRepairs++;
             }
+
+            if (presentationOverride?.CrosshairCode is not null && !crosshairPublished &&
+                (crosshairChanged || forceCrosshairPublication))
+                throw new InvalidOperationException("crosshair network publication failed");
 
             var scoreboardFlairNeedsWrite = effectiveScoreboardFlairManaged ||
                                              _scoreboardFlairManaged[state.Slot];
@@ -660,7 +664,9 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         if (inventory == null)
             return false;
         var ranks = inventory.Rank;
-        return ranks.Length > 0 && ranks.ToArray().All(rank => (uint)rank == itemDefIndex);
+        if (ranks.Length == 0) return false;
+        for (int i = 0; i < ranks.Length; i++) if ((uint)ranks[i] != itemDefIndex) return false;
+        return true;
     }
 
     private static bool ApplyScoreboardFlair(CCSPlayerController player, uint itemDefIndex)
@@ -858,7 +864,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         }
     }
 
-    internal static bool RequiresNativeIdentityReassert(
+    internal static bool RequiresCrosshairPublication(
         bool hasAppliedPresentation,
         ulong appliedIncarnation,
         ulong effectiveIncarnation)
@@ -885,9 +891,11 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             }
 
             var playerNameMatches = requested.PlayerName == null ||
-                                    player.PlayerName.Equals(requested.PlayerName, StringComparison.Ordinal);
+                                    (player.PlayerName.Equals(requested.PlayerName, StringComparison.Ordinal) &&
+                                     _client.GetPublishedPersonaName(requested.Slot).Equals(requested.PlayerName, StringComparison.Ordinal));
             var steamIdMatches = !requested.SteamId.HasValue ||
-                                 player.SteamID == requested.SteamId.Value;
+                                 (player.SteamID == requested.SteamId.Value &&
+                                  _client.GetPublishedSteamId(requested.Slot) == requested.SteamId.Value);
             var scoreboardFlairMatches = !requested.ScoreboardFlair.HasValue ||
                                          ScoreboardFlairMatches(player, requested.ScoreboardFlair.Value);
             var crosshairMatches = RequestedCrosshairMatches(
@@ -918,13 +926,9 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         bool scoreboardFlairMatches,
         bool crosshairMatches)
     {
-        // Ping and crosshair are engine-owned presentation state. The periodic
-        // publisher can keep repairing them, but neither may roll an otherwise
-        // valid identity lease back to the bot's base persona.
-        _ = crosshairMatches;
         return playerNameMatches &&
                steamIdMatches &&
-               scoreboardFlairMatches;
+               scoreboardFlairMatches && crosshairMatches;
     }
 
     private BotHiderPresentationLeaseResult Success(PresentationLease lease)
@@ -934,7 +938,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         {
             Ok = true,
             LeaseToken = lease.Token,
-            ProviderEpoch = _providerEpoch,
+            ProviderEpoch = $"{_providerEpoch}:{_nativeSession:x}",
             Reason = "ok",
             Slots = lease.Overrides.Keys.Order().ToArray()
         };
@@ -974,7 +978,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         return new BotHiderPresentationLeaseResult
         {
             Ok = false,
-            ProviderEpoch = _providerEpoch,
+            ProviderEpoch = $"{_providerEpoch}:{_nativeSession:x}",
             Reason = reason
         };
     }

@@ -14,7 +14,7 @@ public sealed class BotHiderSlotReleaseTests
     [Fact]
     public void OneBotLeavingPreservesOtherDemoIdentitiesAndHeartbeat()
     {
-        using var client = new SharedMemoryClient();
+        using var client = new NativePresentationClient();
         var service = new BotHiderPresentationService(client);
         var retained = new BotHiderPresentationOverride
         {
@@ -51,7 +51,7 @@ public sealed class BotHiderSlotReleaseTests
     [Fact]
     public void MapBoundaryStillRevokesWholeLeaseAfterPartialSlotRemoval()
     {
-        using var client = new SharedMemoryClient();
+        using var client = new NativePresentationClient();
         var service = new BotHiderPresentationService(client);
         service.AddLease(new("token", "demotracer", new()
         {

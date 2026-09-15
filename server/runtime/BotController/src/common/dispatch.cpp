@@ -3,6 +3,7 @@
 #include "dispatch.h"
 #include "WeaponLockerState.h"
 #include "WeaponLocker.h"
+#include "WeaponSelection.h"
 #include "BotControllerState.h"
 
 #include <eiface.h>
@@ -37,7 +38,7 @@ namespace BotController
                 if (slot < 0 || slot >= WeaponLockerState::kMaxSlots)
                     return -2;
                 const auto tgt = static_cast<LockTarget>(arg);
-                if (tgt == LockTarget::None)
+                if (!WeaponSelection::ValidLockTarget(arg))
                     return -2;
                 WeaponLockerState::Set(slot, tgt);
                 (void)WeaponLockerHooks::SwitchToLockTarget(slot);

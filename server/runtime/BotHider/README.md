@@ -5,7 +5,7 @@ CS2 DemoTracer. It combines a Metamod plugin with a CounterStrikeSharp
 presentation provider.
 
 The native layer owns fake-client adoption, synthetic persona state, ping, and
-the shared native/C# transport. The C# layer is the only publisher for visible
+a synchronous, main-thread C ABI (native ABI 1). The C# layer is the only publisher for visible
 name, SteamID64, ping, scoreboard flair, and server-replicated crosshair state.
 It never assigns teams or respawns bots. Ordinary bots follow the engine's
 round lifecycle; DemoTracer prepares and respawns only its own replay roster.
@@ -16,7 +16,20 @@ presentation fields directly.
 
 ## Presentation leases
 
-Temporary DTR presentation is applied as an all-or-none batch lease:
+Temporary DTR presentation uses an all-or-none ownership lease. Success
+requires native userinfo and the requested controller fields to be applied
+and read back before returning; it does not acknowledge delivery to every
+client or promise simultaneous rendering across slots. Failed requests
+restore the previous lease or current base presentation.
+
+The native API checks its own live session and slot incarnation at each
+identity write. There is no shared-memory queue or cross-process mapping.
+Native reload revokes leases and an unloaded provider reports disconnected.
+Name and SteamID changes share one userinfo publication; unchanged identities
+do not force another publication. Events coalesce into one next-frame reconcile,
+with a slow periodic pass retained for expiry and engine-side changes.
+
+Lease rules:
 
 - each request carries the provider-issued slot incarnation;
 - one lease owns a slot at a time;
@@ -66,8 +79,8 @@ must use the presentation lease API.
 The maintained provider installs as `BotHiderImpl/BotHiderImpl.dll` for Panel
 file detection; its capability remains `demotracer:bot-hider:v1`. Replace the
 previous `DemoTracerBotHider` directory during migration. Do not run an upstream
-protocol-v1 provider beside this protocol-v2 provider. Two publishers can overwrite
-each other even when they share the same native BotHider mapping.
+provider beside this matched native/C# provider. Multiple publishers can
+overwrite the same controller presentation fields.
 
 The Panel Profiles toggle is not mapped to `bh_disguise`: this fork's native
 disguise switch may rebuild bots. Keep Profiles enabled during combined testing.

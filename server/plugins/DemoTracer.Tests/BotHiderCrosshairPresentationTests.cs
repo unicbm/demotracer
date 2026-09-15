@@ -29,6 +29,13 @@ public sealed class BotHiderCrosshairPresentationTests
         Assert.Null(normalized);
     }
 
+    [Fact]
+    public void ContractRejectsEmbeddedNull()
+    {
+        Assert.False(DemoTracerBotHiderContract.TryNormalizeCrosshairCode("CSGO-x\0y", out var normalized));
+        Assert.Null(normalized);
+    }
+
     [Theory]
     [InlineData(null, "server-value", true)]
     [InlineData("", "", true)]
@@ -149,11 +156,11 @@ public sealed class BotHiderCrosshairPresentationTests
 
     [Theory]
     [InlineData(true, true, true, true, true)]
-    [InlineData(true, true, true, false, true)]
+    [InlineData(true, true, true, false, false)]
     [InlineData(false, true, true, true, false)]
     [InlineData(true, false, true, true, false)]
     [InlineData(true, true, false, true, false)]
-    public void EngineOwnedPingAndOptionalCrosshairNeverRollBackCoreIdentityLease(
+    public void EveryExplicitlyRequestedPresentationFieldMustMatchBeforeLeaseSuccess(
         bool playerNameMatches,
         bool steamIdMatches,
         bool scoreboardFlairMatches,

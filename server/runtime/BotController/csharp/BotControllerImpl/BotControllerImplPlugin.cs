@@ -20,7 +20,7 @@ namespace BotControllerImpl;
 public partial class BotControllerPlugin : BasePlugin
 {
     public override string ModuleName => "BotControllerImpl";
-    public override string ModuleVersion => "0.6.3-dtr.2";
+    public override string ModuleVersion => "0.6.3-dtr.3";
     public override string ModuleAuthor => "XBribo & unicbm";
     public override string ModuleDescription =>
         "Record & Replay and Control CS2 bots.";
