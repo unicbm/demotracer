@@ -310,6 +310,43 @@ namespace
               source::Rebase(0, source::ClockKind::Tick, 4000, 64, live) == 0, "sentinel timestamp changed");
     }
 
+    void CompactSourceClocksMatchDenseTimeline()
+    {
+        namespace source = BotController::ReplaySourceState;
+        const source::Change compact[] = {
+            {0, source::PlayerTick, UINT32_MAX - 1, 5},
+            {0, source::DuckRoot, source::Bits(-0.0f), 1},
+            {1, source::DuckRoot, source::Bits(1.0f), 1},
+            {3, source::PlayerTick, 0, 0},
+            {4, source::PlayerTick, 100, 3},
+            {5, source::DuckRoot, 0, 0},
+        };
+        const source::Change dense[] = {
+            {0, source::PlayerTick, UINT32_MAX - 1, 1},
+            {0, source::DuckRoot, source::Bits(-0.0f), 1},
+            {1, source::PlayerTick, UINT32_MAX, 1},
+            {1, source::DuckRoot, source::Bits(1.0f), 1},
+            {2, source::PlayerTick, 0, 1},
+            {3, source::PlayerTick, 0, 0},
+            {4, source::PlayerTick, 100, 1},
+            {5, source::PlayerTick, 101, 1},
+            {5, source::DuckRoot, 0, 0},
+        };
+        source::Timeline a, b;
+        Check(a.Load(compact, 6, 8) && b.Load(dense, 9, 8), "load compact/dense clocks");
+        for (uint32_t tick = 0; tick < 8; ++tick)
+            Check(a.At(tick) == b.At(tick), "compact state differs at seek boundary");
+        source::Change invalid = {0, source::DuckRoot, 0, 3};
+        Check(!a.Load(&invalid, 1, 8), "non-clock run accepted");
+        invalid = {0, source::PlayerTick, 0, 2};
+        Check(!a.Load(&invalid, 1, 8), "absent run accepted");
+        invalid = {7, source::PlayerTick, 0, 3};
+        Check(!a.Load(&invalid, 1, 8), "run beyond replay accepted");
+        const source::Change overlap[] = {{0, source::PlayerTick, 100, 7}, {3, source::PlayerTick, 300, 1}};
+        Check(!a.Load(overlap, 2, 8), "overlapping runs accepted");
+        Check(a.At(5) == b.At(5), "invalid compact load damaged timeline");
+    }
+
     void InitializationFailureDoesNotConsumeBoundary()
     {
         Reset();
@@ -505,6 +542,7 @@ int main()
     CommandAxisPresence();
     StopPreservesNativeMovementState();
     SourceStateRestoresAtBoundariesOnly();
+    CompactSourceClocksMatchDenseTimeline();
     LadderStartRequiresContact();
     WeaponSourceRestoresOnceAfterDeploy();
     mr::ClearAll();
