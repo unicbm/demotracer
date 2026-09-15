@@ -1328,6 +1328,7 @@ fn inventory_snapshots_for_player(
 ) -> Vec<ReplayInventorySnapshot> {
     let mut snapshots = Vec::new();
     let mut previous_counts: Option<Vec<ReplayInventoryItemCount>> = None;
+    let mut previous_gear = None;
     for (row_index, row) in player_rows.iter().enumerate() {
         let counts = inventory_counts(row)
             .into_iter()
@@ -1336,10 +1337,12 @@ fn inventory_snapshots_for_player(
                 count,
             })
             .collect::<Vec<_>>();
-        if previous_counts.as_ref() == Some(&counts) && row_index != 0 {
+        let gear = (row.armor_value, row.has_helmet, row.has_defuser);
+        if previous_counts.as_ref() == Some(&counts) && previous_gear == Some(gear) && row_index != 0 {
             continue;
         }
         previous_counts = Some(counts.clone());
+        previous_gear = Some(gear);
         let Some(tick_index) = tick_index_for_event(player_rows, row.tick) else {
             continue;
         };
@@ -5603,6 +5606,37 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn inventory_snapshots_preserve_gear_only_purchases_and_damage() {
+        let steam_id = 76561198000000001;
+        let mut parsed = sample_demo();
+        parsed.rows = vec![
+            ParsedPlayerTick {
+                armor_value: 0, has_helmet: false,
+                ..row_with_inventory(100, steam_id, "alpha", vec![7])
+            },
+            ParsedPlayerTick {
+                armor_value: 100, has_helmet: true,
+                ..row_with_inventory(110, steam_id, "alpha", vec![7])
+            },
+            ParsedPlayerTick {
+                armor_value: 100, has_helmet: true, has_defuser: true,
+                ..row_with_inventory(120, steam_id, "alpha", vec![7])
+            },
+            ParsedPlayerTick {
+                armor_value: 60, has_helmet: true, has_defuser: true,
+                ..row_with_inventory(130, steam_id, "alpha", vec![7])
+            },
+        ];
+        let rec = rec_for_steam(&export_memory(parsed), steam_id);
+        let snapshots = &rec.high_fidelity.inventory_snapshots;
+        assert_eq!(snapshots.len(), 4);
+        assert_eq!(snapshots[1].tick, 110);
+        assert!(snapshots[1].has_helmet);
+        assert!(snapshots[2].has_defuser);
+        assert_eq!(snapshots[3].armor_value, 60);
     }
 
     #[test]
