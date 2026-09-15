@@ -252,6 +252,30 @@ cache; no missing-weapon result is cached.
 
 ------------------------------------------------------------------------
 
+## Demo-backed avatar publication
+
+DemoTracer's native avatar publisher requires ABI 21.41 and capability bit 18.
+`BotController_PublishAvatarOverride(steamId, png, length)` synchronously writes
+and verifies a PNG of at most 16 KiB. A nonnegative result confirms server
+publication, not display on a remote client. `BotController_ClearAvatarOverride`
+and `BotController_ClearAvatarOverrides` restore preceding data, preserving a
+later writer's replacement. Call these functions on the server game thread.
+
+For a Windows listen server, the optional local client bridge attaches to
+`ServerAvatarOverrides` data changes and queues Valve's targeted
+`ReloadAvatarImage` event after the matching bytes arrive. Identical content
+does not repeatedly invalidate the HUD. Map changes rebind the callback;
+unload restores the prior callback and owned local images. The bridge requires
+validated engine, client, and Panorama signatures. A failed validation leaves
+server publication available and reports that local HUD refresh is unavailable.
+It does not install code on remote clients.
+
+`bc_avatar_status` reports bridge availability and refresh-event counts.
+`bc_avatar_override_probe <steamid64> <png_path>` and
+`bc_avatar_override_clear <steamid64>` exercise the same publisher for local
+diagnostics. Avatar refresh does not republish userinfo or replace BotHider's
+identity lease. PNG selection remains opt-in and manifest-backed in DemoTracer.
+
 ## Special thanks
 
 - [cs2kz-metamod](https://github.com/KZGlobalTeam/cs2kz-metamod) for helping determine the replay framework.

@@ -9,6 +9,7 @@
 #include "VoiceSender.h"
 #include "projectile_birth_align.h"
 #include "PublicBotProfile.h"
+#include "avatar_overrides.h"
 
 #include <cstdint>
 #include <cstring>
@@ -22,7 +23,8 @@
 namespace
 {
     constexpr int kBotControllerAbiMajor = 21;
-    constexpr int kBotControllerAbiMinor = 40;
+    constexpr int kBotControllerAbiMinor = 41;
+    constexpr uint64_t kCapabilityAvatarPublication = 1ULL << 18;
     constexpr uint64_t kCapabilityReplaySlotState = 1ULL << 0;
     constexpr uint64_t kCapabilityStartReplayAt = 1ULL << 1;
     constexpr uint64_t kCapabilityStartReplayUntil = 1ULL << 2;
@@ -41,6 +43,7 @@ namespace
     constexpr uint64_t kCapabilityReplayPawnEquipment = 1ULL << 16;
     constexpr uint64_t kCapabilityReplaySourceState = 1ULL << 17;
     constexpr uint64_t kBotControllerCapabilities =
+        kCapabilityAvatarPublication |
         kCapabilityReplaySourceState |
         kCapabilityReplaySlotState |
         kCapabilityStartReplayAt |
@@ -105,6 +108,15 @@ extern "C" __declspec(dllexport) int BotController_GetVersion()
 {
     return kBotControllerAbiMajor;
 }
+
+extern "C" __declspec(dllexport) int BotController_PublishAvatarOverride(uint64_t steamId, const unsigned char *png, int bytes)
+{ return BotController::Avatars::Publish(steamId, png, bytes); }
+extern "C" __declspec(dllexport) int BotController_ClearAvatarOverride(uint64_t steamId)
+{ return BotController::Avatars::Clear(steamId); }
+extern "C" __declspec(dllexport) void BotController_ClearAvatarOverrides()
+{ BotController::Avatars::ClearAll(); }
+extern "C" __declspec(dllexport) const char *BotController_GetAvatarOverrideStatus()
+{ return BotController::Avatars::Status(); }
 
 // Distinguishes the maintained public controls from the upstream runtime.
 extern "C" __declspec(dllexport) int BotController_GetPublicApiVersion() { return 20; }

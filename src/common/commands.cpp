@@ -1,6 +1,8 @@
 // BotController console commands: bc_lock / bc_unlock / bc_unlock_all / bc_status.
 
 #include "commands.h"
+#include "avatar_overrides.h"
+#include <charconv>
 #include "dispatch.h"
 #include "WeaponLocker.h"
 #include "BotController.h"
@@ -34,7 +36,6 @@ namespace BotController
     {
         IVEngineServer2 *g_pEngine = nullptr;
         INetworkStringTableContainer *g_pStringTables = nullptr;
-        INetworkServerService *g_pNetworkServerService = nullptr;
 
         // ClientPrintf to the calling player, or server log if from console.
         void PrintToCaller(const CCommandContext &context, const char *fmt, ...)
@@ -126,18 +127,11 @@ namespace BotController
             return "?";
         }
 
-        static bool IsSteamId64(const char *s)
+        static bool ParseSteamId64(const char *text, uint64_t &id)
         {
-            if (!s || !*s)
-                return false;
-            size_t len = 0;
-            for (const unsigned char *p = reinterpret_cast<const unsigned char *>(s); *p; ++p)
-            {
-                if (!std::isdigit(*p))
-                    return false;
-                ++len;
-            }
-            return len >= 16 && len <= 20;
+            const char *end = text + std::strlen(text);
+            const auto result = std::from_chars(text, end, id);
+            return result.ec == std::errc{} && result.ptr == end && id != 0;
         }
 
         static bool ReadPngFile(const char *path, std::vector<unsigned char> &out,
@@ -187,341 +181,47 @@ namespace BotController
             return true;
         }
 
-        static bool SetAvatarOverride(INetworkStringTable *table, const char *steamId,
-                                      const std::vector<unsigned char> &bytes, int &index,
-                                      char *err, size_t errLen)
-        {
-            if (table->GetNumStrings() == 0)
-            {
-                SetStringUserDataRequest_t emptyUserData{};
-                const int sentinel = table->AddString(
-                    true, "__dtr_no_avatar__", &emptyUserData);
-                if (sentinel != 0)
-                {
-                    std::snprintf(err, errLen,
-                                  "failed to reserve ServerAvatarOverrides index 0 sentinel");
-                    return false;
-                }
-            }
-
-            const StringUserData_t *fallback = table->GetStringUserData(0);
-            if (fallback && fallback->m_cbDataSize != 0)
-            {
-                std::snprintf(err, errLen,
-                              "ServerAvatarOverrides index 0 already contains avatar data; change map before retrying");
-                return false;
-            }
-
-            SetStringUserDataRequest_t userData{};
-            userData.m_pRawData = const_cast<unsigned char *>(bytes.data());
-            userData.m_cbDataSize = static_cast<unsigned int>(bytes.size());
-
-            index = table->FindStringIndex(steamId);
-            if (index == 0)
-            {
-                std::snprintf(err, errLen,
-                              "refusing to store a player avatar in reserved index 0");
-                return false;
-            }
-            if (index < 0)
-            {
-                index = table->AddString(true, steamId, &userData);
-                if (index <= 0)
-                {
-                    std::snprintf(err, errLen,
-                                  "failed to allocate a nonzero avatar override index");
-                    return false;
-                }
-                return true;
-            }
-            return table->SetStringUserData(index, &userData, true);
-        }
-
-        static bool ClearAvatarOverride(INetworkStringTable *table, const char *steamId,
-                                        int &index, char *err, size_t errLen)
-        {
-            index = table->FindStringIndex(steamId);
-            if (index < 0)
-                return true;
-            if (index == 0)
-            {
-                std::snprintf(err, errLen,
-                              "refusing to clear reserved index 0");
-                return false;
-            }
-
-            SetStringUserDataRequest_t emptyUserData{};
-            if (!table->SetStringUserData(index, &emptyUserData, true))
-            {
-                std::snprintf(err, errLen,
-                              "failed to clear avatar user data");
-                return false;
-            }
-            return true;
-        }
-
-        static bool EnsureReliableAvatarData(const CCommandContext &context)
-        {
-            ConVarRefAbstract reliableAvatarData("sv_reliableavatardata");
-            if (!reliableAvatarData.IsValidRef() ||
-                !reliableAvatarData.IsConVarDataAvailable())
-            {
-                PrintToCaller(
-                    context,
-                    "[BC] error: sv_reliableavatardata not found; server avatar overrides are unavailable\n");
-                return false;
-            }
-
-            if (!reliableAvatarData.GetBool())
-            {
-                reliableAvatarData.SetBool(true);
-                if (!reliableAvatarData.GetBool())
-                {
-                    PrintToCaller(
-                        context,
-                        "[BC] error: failed to enable sv_reliableavatardata; run sv_reliableavatardata true\n");
-                    return false;
-                }
-                PrintToCaller(
-                    context,
-                    "[BC] sv_reliableavatardata enabled for server avatar overrides\n");
-            }
-            return true;
-        }
-
-        static bool RefreshClientUserInfo(int slot, char *err, size_t errLen)
-        {
-            if (!g_pNetworkServerService)
-            {
-                std::snprintf(err, errLen, "network server service unavailable");
-                return false;
-            }
-
-            auto *gameServer = g_pNetworkServerService->GetIGameServer();
-            if (!gameServer)
-            {
-                std::snprintf(err, errLen, "game server unavailable");
-                return false;
-            }
-            if (slot < 0 || slot >= gameServer->GetMaxClients())
-            {
-                std::snprintf(err, errLen, "refresh slot out of range");
-                return false;
-            }
-
-            // The PNG table update and userinfo broadcast must happen in this
-            // order. TAB reads the former directly, while the top HUD can keep
-            // the old avatar until player-info is republished for this slot.
-            gameServer->UserInfoChanged(CPlayerSlot(slot));
-            return true;
-        }
-
-        static bool ParseAvatarRefreshSlot(const char *value, int &slot)
-        {
-            char *end = nullptr;
-            const long parsed = std::strtol(value, &end, 10);
-            if (!end || *end != '\0' || parsed < 0 || parsed > 63)
-                return false;
-            slot = static_cast<int>(parsed);
-            return true;
-        }
     }
+}
+
+CON_COMMAND_F(bc_avatar_status, "Show native avatar publication and local HUD bridge status.", FCVAR_NONE)
+{
+    BotController::Commands::PrintToCaller(context, "[BC avatar] %s\n", BotController::Avatars::Status());
 }
 
 CON_COMMAND_F(bc_avatar_override_probe,
-              "bc_avatar_override_probe <steamid64> <png_path> [slot]  "
-              "Set ServerAvatarOverrides data and optionally refresh that slot's HUD userinfo.",
-              FCVAR_NONE)
+              "bc_avatar_override_probe <steamid64> <png_path>  Publish a diagnostic PNG through the native bridge.", FCVAR_NONE)
 {
     using namespace BotController;
-
-    if (args.ArgC() < 3)
+    uint64_t id = 0;
+    if (args.ArgC() != 3 || !Commands::ParseSteamId64(args.Arg(1), id))
     {
-        Commands::PrintToCaller(context,
-                                "usage: bc_avatar_override_probe <steamid64> <png_path> [slot]\n");
+        Commands::PrintToCaller(context, "usage: bc_avatar_override_probe <steamid64> <png_path>\n");
         return;
     }
-
-    const char *steamId = args.Arg(1);
-    if (!Commands::IsSteamId64(steamId))
+    std::vector<unsigned char> png;
+    char error[128]{};
+    if (!Commands::ReadPngFile(args.Arg(2), png, error, sizeof(error)))
     {
-        Commands::PrintToCaller(context, "[BC] error: expected a SteamID64 key\n");
+        Commands::PrintToCaller(context, "[BC avatar] %s\n", error);
         return;
     }
-
-    if (!Commands::g_pStringTables)
-    {
-        Commands::PrintToCaller(context,
-                                "[BC] error: network string table server interface unavailable\n");
-        return;
-    }
-
-    INetworkStringTable *table =
-        Commands::g_pStringTables->FindTable("ServerAvatarOverrides");
-    if (!table)
-    {
-        Commands::PrintToCaller(context,
-                                "[BC] error: ServerAvatarOverrides table not found yet\n");
-        return;
-    }
-
-    std::vector<unsigned char> bytes;
-    char err[128] = {0};
-    if (!Commands::ReadPngFile(args.Arg(2), bytes, err, sizeof(err)))
-    {
-        Commands::PrintToCaller(context, "[BC] error: %s\n", err);
-        return;
-    }
-
-    if (!Commands::EnsureReliableAvatarData(context))
-        return;
-
-    int refreshSlot = -1;
-    if (args.ArgC() >= 4)
-    {
-        if (!Commands::ParseAvatarRefreshSlot(args.Arg(3), refreshSlot))
-        {
-            Commands::PrintToCaller(context,
-                                    "[BC] error: avatar refresh slot must be 0..63\n");
-            return;
-        }
-    }
-
-    int index = -1;
-    if (!Commands::SetAvatarOverride(
-            table, steamId, bytes, index, err, sizeof(err)))
-    {
-        Commands::PrintToCaller(context,
-                                "[BC] error: failed to update avatar override for %s: %s\n",
-                                steamId, err[0] ? err : "unknown error");
-        return;
-    }
-
-    bool userInfoRefreshed = false;
-    if (refreshSlot >= 0)
-    {
-        if (!Commands::RefreshClientUserInfo(refreshSlot, err, sizeof(err)))
-        {
-            Commands::PrintToCaller(
-                context,
-                "[BC] error: avatar override set for %s but slot %d userinfo refresh failed: %s\n",
-                steamId, refreshSlot, err[0] ? err : "unknown error");
-            return;
-        }
-        userInfoRefreshed = true;
-    }
-
-    Commands::PrintToCaller(context,
-                            "[BC] avatar override set %s (%zu bytes, index %d, table_count %d, sv_reliableavatardata=true, userinfo=%s)\n",
-                            steamId, bytes.size(), index, table->GetNumStrings(),
-                            userInfoRefreshed ? "refreshed" : "unchanged");
+    const int result = Avatars::Publish(id, png.data(), static_cast<int>(png.size()));
+    Commands::PrintToCaller(context, "[BC avatar] publication result=%d; %s\n", result, Avatars::Status());
 }
 
 CON_COMMAND_F(bc_avatar_override_clear,
-              "bc_avatar_override_clear <steamid64> <slot>  "
-              "Clear one ServerAvatarOverrides entry and refresh that slot's HUD userinfo.",
-              FCVAR_NONE)
+              "bc_avatar_override_clear <steamid64>  Restore the value preceding this publisher's PNG.", FCVAR_NONE)
 {
     using namespace BotController;
-
-    if (args.ArgC() < 3)
+    uint64_t id = 0;
+    if (args.ArgC() != 2 || !Commands::ParseSteamId64(args.Arg(1), id))
     {
-        Commands::PrintToCaller(context,
-                                "usage: bc_avatar_override_clear <steamid64> <slot>\n");
+        Commands::PrintToCaller(context, "usage: bc_avatar_override_clear <steamid64>\n");
         return;
     }
-
-    const char *steamId = args.Arg(1);
-    if (!Commands::IsSteamId64(steamId))
-    {
-        Commands::PrintToCaller(context, "[BC] error: expected a SteamID64 key\n");
-        return;
-    }
-
-    int refreshSlot = -1;
-    if (!Commands::ParseAvatarRefreshSlot(args.Arg(2), refreshSlot))
-    {
-        Commands::PrintToCaller(context,
-                                "[BC] error: avatar refresh slot must be 0..63\n");
-        return;
-    }
-
-    if (!Commands::g_pStringTables)
-    {
-        Commands::PrintToCaller(context,
-                                "[BC] error: network string table server interface unavailable\n");
-        return;
-    }
-
-    INetworkStringTable *table =
-        Commands::g_pStringTables->FindTable("ServerAvatarOverrides");
-    if (!table)
-    {
-        Commands::PrintToCaller(context,
-                                "[BC] error: ServerAvatarOverrides table not found yet\n");
-        return;
-    }
-
-    if (!Commands::EnsureReliableAvatarData(context))
-        return;
-
-    int index = -1;
-    char err[128] = {0};
-    if (!Commands::ClearAvatarOverride(table, steamId, index, err, sizeof(err)))
-    {
-        Commands::PrintToCaller(context,
-                                "[BC] error: failed to clear avatar override for %s: %s\n",
-                                steamId, err[0] ? err : "unknown error");
-        return;
-    }
-
-    if (!Commands::RefreshClientUserInfo(refreshSlot, err, sizeof(err)))
-    {
-        Commands::PrintToCaller(
-            context,
-            "[BC] error: avatar override cleared for %s but slot %d userinfo refresh failed: %s\n",
-            steamId, refreshSlot, err[0] ? err : "unknown error");
-        return;
-    }
-
-    Commands::PrintToCaller(context,
-                            "[BC] avatar override cleared %s (index %d, table_count %d, userinfo=slot%d)\n",
-                            steamId, index, table->GetNumStrings(), refreshSlot);
-}
-
-CON_COMMAND_F(bc_avatar_userinfo_refresh,
-              "bc_avatar_userinfo_refresh <slot>  Refresh one slot's HUD userinfo.",
-              FCVAR_NONE)
-{
-    using namespace BotController;
-
-    if (args.ArgC() < 2)
-    {
-        Commands::PrintToCaller(context,
-                                "usage: bc_avatar_userinfo_refresh <slot>\n");
-        return;
-    }
-
-    int slot = -1;
-    if (!Commands::ParseAvatarRefreshSlot(args.Arg(1), slot))
-    {
-        Commands::PrintToCaller(context,
-                                "[BC] error: avatar refresh slot must be 0..63\n");
-        return;
-    }
-
-    char err[128] = {0};
-    if (!Commands::RefreshClientUserInfo(slot, err, sizeof(err)))
-    {
-        Commands::PrintToCaller(context,
-                                "[BC] error: slot %d userinfo refresh failed: %s\n",
-                                slot, err[0] ? err : "unknown error");
-        return;
-    }
-
-    Commands::PrintToCaller(context,
-                            "[BC] avatar userinfo refreshed slot %d\n",
-                            slot);
+    const int result = Avatars::Clear(id);
+    Commands::PrintToCaller(context, "[BC avatar] restoration result=%d; %s\n", result, Avatars::Status());
 }
 
 CON_COMMAND_F(bc_lock,

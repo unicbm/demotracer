@@ -142,6 +142,7 @@ set(SDK_SOURCES
 
 add_library(BotController SHARED
     src/plugin.cpp
+    src/common/avatar_overrides.cpp
     src/WeaponLocker/WeaponLocker.cpp
     src/WeaponLocker/WeaponLockerState.cpp
     src/BuyController/BuyController.cpp

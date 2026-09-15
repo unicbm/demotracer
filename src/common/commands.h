@@ -3,7 +3,6 @@
 class CCommandContext;
 class IVEngineServer2;
 class INetworkStringTableContainer;
-class INetworkServerService;
 
 namespace BotController
 {
@@ -13,7 +12,6 @@ namespace BotController
         // who issued a console command. nullptr -> fall back to server log.
         extern IVEngineServer2 *g_pEngine;
         extern INetworkStringTableContainer *g_pStringTables;
-        extern INetworkServerService *g_pNetworkServerService;
 
         void PrintToCaller(const CCommandContext &context, const char *fmt, ...);
     }

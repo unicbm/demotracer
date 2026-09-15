@@ -7,6 +7,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(CTest)
 
+add_executable(BotControllerAvatarPublicationTests avatar_publication_tests.cpp)
+target_include_directories(BotControllerAvatarPublicationTests PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../src/common")
+add_test(NAME BotControllerAvatarPublicationTests COMMAND BotControllerAvatarPublicationTests)
+
 add_executable(BotControllerUsercmdRequestTests usercmd_requests_tests.cpp)
 target_include_directories(BotControllerUsercmdRequestTests PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../src/BotRecorder")
 add_test(NAME BotControllerUsercmdRequestTests COMMAND BotControllerUsercmdRequestTests)

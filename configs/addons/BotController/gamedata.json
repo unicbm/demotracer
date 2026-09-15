@@ -325,5 +325,29 @@
       "linux": 0
     },
     "comment": "CCSPlayer_MovementServices vtable index. linux: TODO"
+  },
+  "AvatarHud::SetStringChangedCallback": {
+    "signatures": {
+      "windows": "48 89 5C 24 18 56 48 83 EC 40 48 8B 02 48 8B D9 48 39 41 48 75 ?? 48 8B 42 08 48 39 41 50 0F 84 ?? ?? ?? ??"
+    },
+    "comment": "Optional local client HUD bridge; validate the matching engine/client ABI before installing."
+  },
+  "AvatarHud::RemoveAllTables": {
+    "signatures": {
+      "windows": "48 89 7C 24 18 41 56 48 83 EC 30 83 79 38 00 48 8B F9 48 89 5C 24 40 7E ?? 8B 0D ?? ?? ?? ??"
+    },
+    "comment": "Optional local client HUD bridge; validate the matching engine/client ABI before installing."
+  },
+  "AvatarHud::DispatchEventCommand": {
+    "signatures": {
+      "windows": "40 53 56 57 48 83 EC 30 48 63 02 48 8D 1D ?? ?? ?? ?? 48 8B F2 85 C0 74 ?? 4C 8B C8 4C 03 4A 10 EB ?? 4C 8B CB 4C 89 4C 24 60"
+    },
+    "comment": "Optional local client HUD bridge; validate the matching engine/client ABI before installing."
+  },
+  "AvatarHud::DispatchEventAsync": {
+    "signatures": {
+      "windows": "48 8B C4 53 56 57 41 54 48 81 EC A8 00 00 00 48 89 68 18 BA FF FF FF FF 4C 89 70 D0 4D 8B E0 0F 29 70 B8 4C 8B F1 0F 29 78 A8"
+    },
+    "comment": "Optional local client HUD bridge; validate the matching engine/client ABI before installing."
   }
 }
