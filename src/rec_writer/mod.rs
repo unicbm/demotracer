@@ -16,11 +16,17 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Cursor, Read, Write};
 use std::path::Path;
 
+mod source_state;
+
 const MAGIC: &[u8; 8] = b"CSDTRREC";
 const CODEC_NONE: u8 = 0;
 const CODEC_BROTLI: u8 = 1;
+const CODEC_ZSTD: u8 = 2;
+const ZSTD_LEVEL: i32 = 9;
 const BROTLI_BUFFER_SIZE: usize = 4096;
+#[cfg(test)]
 const BROTLI_QUALITY: u32 = 6;
+#[cfg(test)]
 const BROTLI_LGWIN: u32 = 22;
 const SNAPSHOT_BYTE_SIZE: usize = 92;
 const TICK_METADATA_BYTE_SIZE: usize = 8;
@@ -427,8 +433,8 @@ fn validate_rec_semantics(rec: &Cs2Rec, format_version: u32) -> Result<()> {
     }
 
     for (tick_index, tick) in rec.ticks.iter().enumerate() {
-        validate_snapshot_semantics(&tick.pre, &format!("tick {tick_index} pre"))?;
-        validate_snapshot_semantics(&tick.post, &format!("tick {tick_index} post"))?;
+        validate_snapshot_semantics(&tick.pre, format_args!("tick {tick_index} pre"))?;
+        validate_snapshot_semantics(&tick.post, format_args!("tick {tick_index} post"))?;
         if tick.weapon_def_index < -1 {
             return Err(Error::InvalidRec(format!(
                 "tick {tick_index} weapon_def_index {} is below -1",
@@ -459,7 +465,7 @@ fn validate_rec_semantics(rec: &Cs2Rec, format_version: u32) -> Result<()> {
                 subtick.pitch_delta,
                 subtick.yaw_delta,
             ],
-            &format!("subtick {index}"),
+            format_args!("subtick {index}"),
         )?;
     }
 
@@ -490,7 +496,7 @@ fn validate_rec_semantics(rec: &Cs2Rec, format_version: u32) -> Result<()> {
                 frame.yaw,
                 frame.roll,
             ],
-            &format!("command frame {index}"),
+            format_args!("command frame {index}"),
         )?;
     }
 
@@ -506,7 +512,7 @@ fn validate_rec_semantics(rec: &Cs2Rec, format_version: u32) -> Result<()> {
                 extra.last_landed_velocity[1],
                 extra.last_landed_velocity[2],
             ],
-            &format!("movement extra {index}"),
+            format_args!("movement extra {index}"),
         )?;
     }
 
@@ -541,7 +547,7 @@ fn validate_rec_semantics(rec: &Cs2Rec, format_version: u32) -> Result<()> {
                 entry.target_abs_ang_check[1],
                 entry.target_abs_ang_check[2],
             ],
-            &format!("input history entry {index}"),
+            format_args!("input history entry {index}"),
         )?;
     }
 
@@ -561,25 +567,25 @@ fn validate_rec_semantics(rec: &Cs2Rec, format_version: u32) -> Result<()> {
         }
         validate_finite_values(
             &projectile.initial_position,
-            &format!("projectile {index} initial position"),
+            format_args!("projectile {index} initial position"),
         )?;
         validate_finite_values(
             &projectile.initial_velocity,
-            &format!("projectile {index} initial velocity"),
+            format_args!("projectile {index} initial velocity"),
         )?;
         validate_finite_values(
             &projectile.detonation_position,
-            &format!("projectile {index} detonation position"),
+            format_args!("projectile {index} detonation position"),
         )?;
     }
 
     validate_input_history_shape(rec)
 }
 
-fn validate_snapshot_semantics(snapshot: &MovementSnapshot, name: &str) -> Result<()> {
-    validate_finite_values(&snapshot.origin, &format!("{name} origin"))?;
-    validate_finite_values(&snapshot.velocity, &format!("{name} velocity"))?;
-    validate_finite_values(&snapshot.angles, &format!("{name} angles"))?;
+fn validate_snapshot_semantics(snapshot: &MovementSnapshot, name: std::fmt::Arguments<'_>) -> Result<()> {
+    validate_finite_values(&snapshot.origin, format_args!("{name} origin"))?;
+    validate_finite_values(&snapshot.velocity, format_args!("{name} velocity"))?;
+    validate_finite_values(&snapshot.angles, format_args!("{name} angles"))?;
     validate_finite_values(
         &[
             snapshot.duck_amount,
@@ -602,7 +608,7 @@ fn validate_snapshot_semantics(snapshot: &MovementSnapshot, name: &str) -> Resul
     Ok(())
 }
 
-fn validate_finite_values(values: &[f32], name: &str) -> Result<()> {
+fn validate_finite_values(values: &[f32], name: std::fmt::Arguments<'_>) -> Result<()> {
     if values.iter().any(|value| !value.is_finite()) {
         return Err(Error::InvalidRec(format!(
             "{name} contains a non-finite float"
@@ -781,42 +787,43 @@ fn write_sectioned_body<W: Write>(
         build_input_history_section(rec)?,
     ));
 
-    let mut source_body = Vec::with_capacity(rec.source_state_changes.len() * 16);
-    for change in &rec.source_state_changes {
-        for value in [
-            change.tick_index,
-            change.field_id,
-            change.value_bits,
-            change.present,
-        ] {
-            write_u32(&mut source_body, value)?;
-        }
-    }
+    let (source_count, source_body) = source_state::encode(&rec.source_state_changes)?;
     sections.push((
         SECTION_SOURCE_STATE,
-        SECTION_VERSION_V1,
-        rec.source_state_changes.len(),
+        SECTION_VERSION_V2,
+        source_count,
         source_body,
     ));
 
     write_u32(writer, checked_u32_count("section count", sections.len())?)?;
+    let mut compressor = zstd::bulk::Compressor::new(ZSTD_LEVEL)
+        .map_err(|e| Error::InvalidRec(format!("zstd compressor: {e}")))?;
     for (section_id, section_version, element_count, payload) in sections {
-        write_section(writer, section_id, section_version, element_count, &payload)?;
+        let compressed = compressor.compress(&payload)
+            .map_err(|e| Error::InvalidRec(format!("zstd compression: {e}")))?;
+        write_encoded_section(writer, section_id, section_version, element_count,
+            &payload, CODEC_ZSTD, &compressed)?;
     }
     Ok(())
 }
 
-fn write_section<W: Write>(
+fn write_encoded_section<W: Write>(
     writer: &mut W,
     section_id: u32,
     section_version: u32,
     element_count: usize,
     payload: &[u8],
+    codec: u8,
+    compressed: &[u8],
 ) -> Result<()> {
-    let compressed = compress_body(payload)?;
+    let (codec, stored) = if compressed.len() < payload.len() {
+        (codec, compressed)
+    } else {
+        (CODEC_NONE, payload)
+    };
     write_u32(writer, section_id)?;
     write_u32(writer, section_version)?;
-    write_u8(writer, CODEC_BROTLI)?;
+    write_u8(writer, codec)?;
     writer
         .write_all(&[0, 0, 0])
         .map_err(|e| Error::InvalidRec(e.to_string()))?;
@@ -826,10 +833,15 @@ fn write_section<W: Write>(
         checked_u32_count("section element count", element_count)?,
     )?;
     write_u64(writer, payload.len() as u64)?;
-    write_u64(writer, compressed.len() as u64)?;
+    write_u64(writer, stored.len() as u64)?;
     writer
-        .write_all(&compressed)
+        .write_all(stored)
         .map_err(|e| Error::InvalidRec(e.to_string()))
+}
+
+#[cfg(test)]
+fn write_section<W: Write>(writer: &mut W, id: u32, version: u32, count: usize, payload: &[u8]) -> Result<()> {
+    write_encoded_section(writer, id, version, count, payload, CODEC_BROTLI, &compress_body(payload)?)
 }
 
 fn build_tick_metadata_section(rec: &Cs2Rec) -> Result<Vec<u8>> {
@@ -1510,13 +1522,21 @@ fn read_sectioned_body<R: Read>(
                         "source state count exceeds tick/field capacity".into(),
                     ));
                 }
-                require_section_header_shape(
-                    "source state",
-                    header.section_version,
-                    header.element_count,
-                    header.element_count as usize,
-                    header.uncompressed_len,
-                    checked_product(header.element_count as usize, 16, "source state section")?,
+                source_state::validate_header(format_version, &header)?;
+                let records = if header.section_version == SECTION_VERSION_V2 {
+                    header.uncompressed_len / 12
+                } else {
+                    u64::from(header.element_count)
+                };
+                let indexed_bytes = records * 16;
+                enforce_byte_limit(
+                    "indexed source state", indexed_bytes, limits.max_decoded_section_bytes,
+                )?;
+                total_decoded = add_budgeted_bytes(
+                    "total decoded sections",
+                    total_decoded,
+                    indexed_bytes.saturating_sub(header.uncompressed_len),
+                    limits.max_total_decoded_bytes,
                 )?;
             }
             SECTION_INPUT_HISTORY => {
@@ -1531,7 +1551,9 @@ fn read_sectioned_body<R: Read>(
             _ => unreachable!(),
         }
 
-        if !matches!(header.codec, CODEC_NONE | CODEC_BROTLI) {
+        if !matches!(header.codec, CODEC_NONE | CODEC_BROTLI | CODEC_ZSTD)
+            || (header.codec == CODEC_ZSTD && format_version < 12)
+        {
             return Err(Error::InvalidRec(format!(
                 "unsupported section codec {}",
                 header.codec
@@ -1581,19 +1603,12 @@ fn read_sectioned_body<R: Read>(
                 saw_movement_extras = true;
             }
             SECTION_SOURCE_STATE => {
-                let mut values =
-                    reserved_vec(header.element_count as usize, "source state changes")?;
-                let mut reader = Cursor::new(&body);
-                for _ in 0..header.element_count {
-                    values.push(SourceStateChange {
-                        tick_index: read_u32(&mut reader)?,
-                        field_id: read_u32(&mut reader)?,
-                        value_bits: read_u32(&mut reader)?,
-                        present: read_u32(&mut reader)?,
-                    });
-                }
-                validate_source_changes(&values, tick_count)?;
-                source_state_changes = Some(values);
+                source_state_changes = Some(source_state::decode(
+                    &body,
+                    header.element_count as usize,
+                    tick_count,
+                    header.section_version,
+                )?);
             }
             SECTION_INPUT_HISTORY => {
                 (input_history_ticks, input_history_entries) =
@@ -1674,14 +1689,21 @@ fn read_sectioned_body<R: Read>(
 
 fn validate_source_changes(changes: &[SourceStateChange], tick_count: usize) -> Result<()> {
     let mut previous = None;
+    let mut clock_end = 0_u64;
     for value in changes {
         let key = (value.tick_index, value.field_id);
-        if !value.valid(tick_count) || previous.is_some_and(|prev| prev >= key) {
+        if !value.valid(tick_count)
+            || previous.is_some_and(|prev| prev >= key)
+            || (value.field_id == 1 && u64::from(value.tick_index) < clock_end)
+        {
             return Err(Error::InvalidRec(
                 "invalid or unordered source state change".into(),
             ));
         }
         previous = Some(key);
+        if value.field_id == 1 {
+            clock_end = u64::from(value.tick_index) + u64::from(value.run_length());
+        }
     }
     Ok(())
 }
@@ -1754,6 +1776,16 @@ fn decode_section_body(compressed: Vec<u8>, codec: u8, expected_len: usize) -> R
             Ok(compressed)
         }
         CODEC_BROTLI => decompress_body(&compressed, expected_len),
+        CODEC_ZSTD => {
+            let mut decoded = reserved_vec(expected_len, "zstd output")?;
+            decoded.resize(expected_len, 0);
+            let size = zstd::bulk::decompress_to_buffer(&compressed, decoded.as_mut_slice())
+                .map_err(|e| Error::InvalidRec(format!("invalid zstd section: {e}")))?;
+            if size != expected_len {
+                return Err(Error::InvalidRec(format!("zstd decoded length {size} != expected {expected_len}")));
+            }
+            Ok(decoded)
+        }
         _ => Err(Error::InvalidRec(format!(
             "unsupported section codec {codec}"
         ))),
@@ -1808,7 +1840,7 @@ fn require_versioned_section_header_shape(
                 )));
             }
         }
-        (8 | 9 | 10 | 11, SECTION_VERSION_V2) => {
+        (8..=DTR_FORMAT_VERSION, SECTION_VERSION_V2) => {
             if expected_elements == 0 && byte_len != 0 {
                 return Err(Error::InvalidRec(format!(
                     "empty {name} section has non-zero byte length {byte_len}"
@@ -2358,6 +2390,7 @@ fn optional_metadata_json_bytes(metadata: &HighFidelityMetadata) -> Result<Vec<u
     }
 }
 
+#[cfg(test)]
 fn compress_body(body: &[u8]) -> Result<Vec<u8>> {
     let mut compressed = Vec::new();
     {
@@ -3078,6 +3111,7 @@ mod tests {
 
         let mut bytes = Vec::new();
         write_rec(&mut bytes, &rec).unwrap();
+        let mut bytes = sections_as_brotli(&bytes);
         // The old file has no source-state section. Mark this additive section
         // unknown when exercising the v9 subtick validator.
         let mut offset = v7_section_count_offset(&bytes) + 4;
@@ -3118,6 +3152,43 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("source state"));
+    }
+
+    #[test]
+    fn zstd_sections_are_bounded_and_reject_truncation_and_garbage() {
+        let raw = vec![42_u8; 4096];
+        let packed = zstd::bulk::compress(&raw, ZSTD_LEVEL).unwrap();
+        assert_eq!(decode_section_body(packed.clone(), CODEC_ZSTD, raw.len()).unwrap(), raw);
+        assert!(decode_section_body(packed.clone(), CODEC_ZSTD, 12).is_err());
+        assert!(decode_section_body(packed.clone(), CODEC_ZSTD, 8192).is_err());
+        assert!(decode_section_body(packed[..packed.len() - 1].to_vec(), CODEC_ZSTD, 4096).is_err());
+        let mut trailing = packed;
+        trailing.push(0x42);
+        assert!(decode_section_body(trailing, CODEC_ZSTD, 4096).is_err());
+    }
+
+    #[test]
+    fn reader_keeps_brotli_sections_and_gates_zstd_at_v12() {
+        let bytes = encoded_sample_rec();
+        let brotli = sections_as_brotli(&bytes);
+        assert_eq!(read_rec(&mut &bytes[..]).unwrap(), read_rec(&mut &brotli[..]).unwrap());
+        let mut old_version = bytes;
+        old_version[8..12].copy_from_slice(&11_u32.to_le_bytes());
+        assert!(read_rec(&mut &old_version[..]).unwrap_err().to_string().contains("codec"));
+    }
+
+    fn sections_as_brotli(bytes: &[u8]) -> Vec<u8> {
+        let start = v7_section_count_offset(bytes) + 4;
+        let mut output = bytes[..start].to_vec();
+        let mut reader = Cursor::new(&bytes[start..]);
+        while (reader.position() as usize) < bytes.len() - start {
+            let header = read_section_header(&mut reader).unwrap();
+            let mut packed = vec![0; header.compressed_len as usize];
+            reader.read_exact(&mut packed).unwrap();
+            let body = decode_section_body(packed, header.codec, header.uncompressed_len as usize).unwrap();
+            write_section(&mut output, header.section_id, header.section_version, header.element_count as usize, &body).unwrap();
+        }
+        output
     }
 
     #[test]
@@ -3589,7 +3660,7 @@ mod tests {
 
     #[test]
     fn v8_variable_section_length_is_enforced_during_decode() {
-        let mut bytes = encoded_sample_rec();
+        let mut bytes = sections_as_brotli(&encoded_sample_rec());
         let first_section = v7_section_count_offset(&bytes) + 4;
         let uncompressed_len_offset = first_section + 20;
         bytes[uncompressed_len_offset..uncompressed_len_offset + 8]

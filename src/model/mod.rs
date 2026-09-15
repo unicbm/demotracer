@@ -9,8 +9,8 @@ use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
 
-pub const DEMOTRACER_ABI: i32 = 18;
-pub const DTR_FORMAT_VERSION: u32 = 11;
+pub const DEMOTRACER_ABI: i32 = 19;
+pub const DTR_FORMAT_VERSION: u32 = 12;
 pub mod source_state;
 
 pub const COMMAND_FIELD_FORWARD_MOVE: u32 = 1 << 0;
