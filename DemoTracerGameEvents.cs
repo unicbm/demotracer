@@ -185,6 +185,7 @@ public sealed partial class DemoTracerPlugin
         if (@event.Userid is { IsValid: true } player)
         {
             var spawnedSlot = player.Slot;
+            InvalidateReplayPawnViewState(spawnedSlot);
             if (_session.LoadedReplays.TryGetValue(spawnedSlot, out var spawnedReplay) &&
                 !ReplayTeamAssignmentPolicy.LiveTeamMatches(
                     spawnedReplay.ManifestTeam,
@@ -198,11 +199,6 @@ public sealed partial class DemoTracerPlugin
                     "spawn_team_mismatch",
                     out _,
                     out _);
-            }
-            if (_retainedReplayViewmodelSlots.Contains(player.Slot) &&
-                !_session.ReplaySlots.IsPlaying(player.Slot))
-            {
-                RestoreReplayBotViewmodel(player.Slot);
             }
             InvalidateReplayWriteEpoch(spawnedSlot);
             _session.PawnEquipmentSync.Invalidate(spawnedSlot);

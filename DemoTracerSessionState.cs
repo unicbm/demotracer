@@ -46,9 +46,7 @@ public sealed partial class DemoTracerPlugin
         public Dictionary<int, PendingThreat360> PendingThreat360 { get; } = [];
         public HashSet<int> CosmeticSyncedSlots { get; } = [];
         public HashSet<int> ScoreboardSyncedSlots { get; } = [];
-        public Dictionary<int, ReplayViewmodel> ReplayOriginalViewmodels { get; } = [];
-        public Dictionary<int, ReplayViewmodel> ReplayAppliedViewmodels { get; } = [];
-        public HashSet<int> ReplayFailedViewmodelSlots { get; } = [];
+        public Dictionary<int, ReplayPawnViewState> ReplayViewmodels { get; } = [];
         public ReplayPlanState Plan { get; } = new();
 
         public bool SafeC4Aligned { get; set; }
