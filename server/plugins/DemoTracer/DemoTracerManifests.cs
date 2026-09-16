@@ -178,7 +178,7 @@ public sealed partial class DemoTracerPlugin
         public ReplayViewmodel? Viewmodel { get; set; }
     }
 
-    private sealed class ReplayViewmodel
+    internal sealed class ReplayViewmodel
     {
         [JsonPropertyName("left_handed")]
         public bool? LeftHanded { get; set; }

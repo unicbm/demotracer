@@ -5,7 +5,7 @@
 
 namespace cs2bh
 {
-    inline constexpr int kNativePresentationAbi = 1;
+    inline constexpr int kNativePresentationAbi = 2;
 #pragma pack(push, 4)
     struct PresentationSlot
     {

@@ -137,7 +137,7 @@ public sealed class BotHiderCrosshairPresentationTests
     }
 
     [Fact]
-    public void NetworkedCrosshairPublicationFailureRemainsOptional()
+    public void NetworkedCrosshairPublicationFailureCannotReportSuccess()
     {
         var actual = string.Empty;
         var retained = BotHiderPresentationService.TryWriteNetworkedCrosshair(
@@ -152,6 +152,31 @@ public sealed class BotHiderCrosshairPresentationTests
         Assert.False(retained);
         Assert.True(changed);
         Assert.False(published);
+    }
+
+    [Fact]
+    public void PendingNotificationRetriesWithoutRewritingRetainedValue()
+    {
+        var actual = string.Empty;
+        var writes = 0;
+        var attempts = 0;
+        bool Publish() => ++attempts > 1;
+        void Write(string value) { actual = value; writes++; }
+
+        var pending = !BotHiderPresentationService.TryWriteNetworkedCrosshair(
+            "CSGO-test", false, () => actual, Write, Publish, out _, out _);
+        Assert.True(pending);
+        Assert.False(BotHiderPresentationService.RequestedCrosshairMatches("CSGO-test", actual, pending));
+        Assert.True(BotHiderPresentationService.RequestedCrosshairMatches(null, actual, pending));
+
+        pending = !BotHiderPresentationService.TryWriteNetworkedCrosshair(
+            "CSGO-test", pending, () => actual, Write, Publish, out var changed, out var published);
+        Assert.False(pending);
+        Assert.False(changed);
+        Assert.True(published);
+        Assert.True(BotHiderPresentationService.RequestedCrosshairMatches("CSGO-test", actual, pending));
+        Assert.Equal(1, writes);
+        Assert.Equal(2, attempts);
     }
 
     [Theory]

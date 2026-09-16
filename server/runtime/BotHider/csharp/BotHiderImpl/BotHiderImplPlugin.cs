@@ -13,7 +13,7 @@ public sealed class BotHiderImplPlugin : BasePlugin
 {
 
     public override string ModuleName => "DemoTracer BotHider";
-    public override string ModuleVersion => "0.1.5";
+    public override string ModuleVersion => "0.1.6";
     public override string ModuleAuthor => "XBribo contributors, unicbm";
     public override string ModuleDescription =>
         "DemoTracer-managed bot identity and presentation runtime.";

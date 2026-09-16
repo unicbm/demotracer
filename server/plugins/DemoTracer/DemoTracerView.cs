@@ -6,7 +6,6 @@
 
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
-using CounterStrikeSharp.API.Modules.Memory;
 using DemoTracerBotHiderApi;
 
 namespace DemoTracer;
@@ -19,7 +18,7 @@ public sealed partial class DemoTracerPlugin
         Round
     }
 
-    private readonly Dictionary<int, bool> _replayLeftHandDesiredLatches = new();
+    private readonly Dictionary<int, ReplayViewOwner> _replayLeftHandDesiredLatches = new();
     private readonly HashSet<int> _retainedReplayViewmodelSlots = new();
     private ViewmodelContinuityMode _viewmodelContinuityMode = ViewmodelContinuityMode.Round;
 
@@ -103,7 +102,7 @@ public sealed partial class DemoTracerPlugin
     }
 
     private string FormatViewmodelStatusCounts()
-        => $"viewmodel_evidence={CountLoadedViewmodelEvidence()} viewmodel_bots={_session.ReplayAppliedViewmodels.Count} viewmodel_failed={_session.ReplayFailedViewmodelSlots.Count} viewmodel_retained={_retainedReplayViewmodelSlots.Count} left_hand_latches={_replayLeftHandDesiredLatches.Count}";
+        => $"viewmodel_evidence={CountLoadedViewmodelEvidence()} viewmodel_bots={_session.ReplayViewmodels.Values.Count(state => state.Applied != null)} viewmodel_failed={_session.ReplayViewmodels.Values.Count(state => state.Failed)} viewmodel_retained={_retainedReplayViewmodelSlots.Count} left_hand_latches={_replayLeftHandDesiredLatches.Count}";
 
     private int CountLoadedCrosshairEvidence()
         => _session.LoadedReplays.Values.Count(replay => HasCrosshairEvidence(replay.View));
@@ -158,6 +157,13 @@ public sealed partial class DemoTracerPlugin
             }
 
             activeReplaySlotMask |= 1UL << slot;
+            var pawn = replayBot.PlayerPawn.Value;
+            if (pawn is not { IsValid: true })
+                continue;
+            var owner = GetReplayViewOwner(replayBot, pawn);
+            if (_leftHandDesiredEnabled &&
+                (!_replayLeftHandDesiredLatches.TryGetValue(slot, out var latchOwner) || latchOwner != owner))
+                ApplyReplayLeftHandDesiredLatch(slot, replay.View.Viewmodel?.LeftHanded ?? pawn.LeftHanded);
             if (HasViewmodelEvidence(replay.View))
                 ApplyReplayBotViewmodel(replayBot, replay.View.Viewmodel!);
         }
@@ -175,16 +181,12 @@ public sealed partial class DemoTracerPlugin
     }
 
     private bool HasTrackedReplayViewmodelState()
-        => _session.ReplayOriginalViewmodels.Count > 0 ||
-           _session.ReplayAppliedViewmodels.Count > 0 ||
-           _session.ReplayFailedViewmodelSlots.Count > 0 ||
+        => _session.ReplayViewmodels.Count > 0 ||
            _retainedReplayViewmodelSlots.Count > 0 ||
            _replayLeftHandDesiredLatches.Count > 0;
 
     private bool IsReplayViewmodelSlotTracked(int slot)
-        => _session.ReplayOriginalViewmodels.ContainsKey(slot) ||
-           _session.ReplayAppliedViewmodels.ContainsKey(slot) ||
-           _session.ReplayFailedViewmodelSlots.Contains(slot) ||
+        => _session.ReplayViewmodels.ContainsKey(slot) ||
            _retainedReplayViewmodelSlots.Contains(slot) ||
            _replayLeftHandDesiredLatches.ContainsKey(slot);
 
@@ -247,26 +249,27 @@ public sealed partial class DemoTracerPlugin
         if (pawn is not { IsValid: true })
             return;
 
-        if (!_session.ReplayOriginalViewmodels.ContainsKey(slot))
-            _session.ReplayOriginalViewmodels[slot] = ReadCurrentViewmodel(pawn);
+        var owner = GetReplayViewOwner(bot, pawn);
+        if (!_session.ReplayViewmodels.TryGetValue(slot, out var state) || state.Owner != owner)
+            _session.ReplayViewmodels[slot] = state = new ReplayPawnViewState(owner);
 
-        if (_session.ReplayAppliedViewmodels.TryGetValue(slot, out var current) &&
-            ViewmodelsEquivalent(current, viewmodel))
+        if (state.Applied is { } current && ViewmodelsEquivalent(current, viewmodel))
         {
             return;
         }
 
-        if (_session.ReplayFailedViewmodelSlots.Contains(slot))
+        if (state.Failed)
             return;
 
+        state.Capture(ReadCurrentViewmodel(pawn), viewmodel);
         if (TryApplyViewmodelToPawn(pawn, viewmodel, $"slot={slot} replay_bot"))
         {
-            _session.ReplayAppliedViewmodels[slot] = CopyViewmodel(viewmodel);
-            _session.ReplayFailedViewmodelSlots.Remove(slot);
+            state.Applied = CopyViewmodel(viewmodel);
+            state.Failed = false;
         }
         else
         {
-            _session.ReplayFailedViewmodelSlots.Add(slot);
+            state.Failed = true;
         }
     }
 
@@ -280,9 +283,7 @@ public sealed partial class DemoTracerPlugin
             if (IsReplayViewmodelSlotTracked(slot))
                 RestoreReplayBotViewmodel(slot, clearLeftHandDesiredLatch: false);
         }
-        _session.ReplayOriginalViewmodels.Clear();
-        _session.ReplayAppliedViewmodels.Clear();
-        _session.ReplayFailedViewmodelSlots.Clear();
+        _session.ReplayViewmodels.Clear();
         _retainedReplayViewmodelSlots.Clear();
         ClearReplayLeftHandDesiredLatches();
     }
@@ -290,21 +291,31 @@ public sealed partial class DemoTracerPlugin
     private void RestoreReplayBotViewmodel(int slot, bool clearLeftHandDesiredLatch = true)
     {
         _retainedReplayViewmodelSlots.Remove(slot);
-        _session.ReplayAppliedViewmodels.Remove(slot);
-        _session.ReplayFailedViewmodelSlots.Remove(slot);
         if (clearLeftHandDesiredLatch)
             ClearReplayLeftHandDesiredLatch(slot);
-        if (!_session.ReplayOriginalViewmodels.TryGetValue(slot, out var original))
+        if (!_session.ReplayViewmodels.Remove(slot, out var state))
             return;
-
-        _session.ReplayOriginalViewmodels.Remove(slot);
 
         var bot = Utilities.GetPlayerFromSlot(slot);
         var pawn = bot?.PlayerPawn.Value;
         if (bot is not { IsValid: true } || pawn is not { IsValid: true } || !IsReplayTargetBot(bot))
             return;
 
-        _ = TryApplyViewmodelToPawn(pawn, original, $"slot={slot} restore");
+        var original = state.GetRestore(GetReplayViewOwner(bot, pawn), ReadCurrentViewmodel(pawn));
+        if (original != null)
+            _ = TryApplyViewmodelToPawn(pawn, original, $"slot={slot} restore");
+    }
+
+    private static ReplayViewOwner GetReplayViewOwner(CCSPlayerController controller, CCSPlayerPawn pawn)
+        => new(controller.EntityHandle.Raw, pawn.EntityHandle.Raw, pawn.Handle);
+
+    private void InvalidateReplayPawnViewState(int slot)
+    {
+        // The engine has already reset this pawn. Never write a pre-spawn
+        // snapshot back into it, even if its pointer and handle are unchanged.
+        _session.ReplayViewmodels.Remove(slot);
+        _retainedReplayViewmodelSlots.Remove(slot);
+        ClearReplayLeftHandDesiredLatch(slot);
     }
 
     private static bool TryParseViewmodelContinuityMode(string value, out ViewmodelContinuityMode mode)
@@ -372,25 +383,25 @@ public sealed partial class DemoTracerPlugin
         {
             // Handedness is an input desire, not an output field to overwrite.
             // The native command hook owns it and CS2 performs real switches.
-            if (viewmodel.Fov.HasValue)
+            if (viewmodel.Fov.HasValue && !NullableFloatBitsEqual(pawn.ViewmodelFOV, viewmodel.Fov))
             {
                 pawn.ViewmodelFOV = viewmodel.Fov.Value;
-                TrySetPawnStateChanged(pawn, "m_flViewmodelFOV");
+                Utilities.SetStateChanged(pawn, "CCSPlayerPawn", "m_flViewmodelFOV");
             }
-            if (viewmodel.OffsetX.HasValue)
+            if (viewmodel.OffsetX.HasValue && !NullableFloatBitsEqual(pawn.ViewmodelOffsetX, viewmodel.OffsetX))
             {
                 pawn.ViewmodelOffsetX = viewmodel.OffsetX.Value;
-                TrySetPawnStateChanged(pawn, "m_flViewmodelOffsetX");
+                Utilities.SetStateChanged(pawn, "CCSPlayerPawn", "m_flViewmodelOffsetX");
             }
-            if (viewmodel.OffsetY.HasValue)
+            if (viewmodel.OffsetY.HasValue && !NullableFloatBitsEqual(pawn.ViewmodelOffsetY, viewmodel.OffsetY))
             {
                 pawn.ViewmodelOffsetY = viewmodel.OffsetY.Value;
-                TrySetPawnStateChanged(pawn, "m_flViewmodelOffsetY");
+                Utilities.SetStateChanged(pawn, "CCSPlayerPawn", "m_flViewmodelOffsetY");
             }
-            if (viewmodel.OffsetZ.HasValue)
+            if (viewmodel.OffsetZ.HasValue && !NullableFloatBitsEqual(pawn.ViewmodelOffsetZ, viewmodel.OffsetZ))
             {
                 pawn.ViewmodelOffsetZ = viewmodel.OffsetZ.Value;
-                TrySetPawnStateChanged(pawn, "m_flViewmodelOffsetZ");
+                Utilities.SetStateChanged(pawn, "CCSPlayerPawn", "m_flViewmodelOffsetZ");
             }
 
             return true;
@@ -410,15 +421,23 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        if (_replayLeftHandDesiredLatches.TryGetValue(slot, out var current) &&
-            current == leftHanded.Value)
+        var bot = Utilities.GetPlayerFromSlot(slot);
+        var pawn = bot?.PlayerPawn.Value;
+        if (bot is not { IsValid: true, PawnIsAlive: true } || pawn is not { IsValid: true } || !IsReplayTargetBot(bot))
+        {
+            ClearReplayLeftHandDesiredLatch(slot);
+            return;
+        }
+        var owner = GetReplayViewOwner(bot, pawn);
+        if (_replayLeftHandDesiredLatches.TryGetValue(slot, out var current) && current == owner)
         {
             return;
         }
 
+        ClearReplayLeftHandDesiredLatch(slot);
         var rc = BotControllerNative.SetLeftHandDesiredLatch(slot, enabled: true, leftHandDesired: leftHanded.Value);
         if (rc == 0)
-            _replayLeftHandDesiredLatches[slot] = leftHanded.Value;
+            _replayLeftHandDesiredLatches[slot] = owner;
     }
 
     private void ClearReplayLeftHandDesiredLatch(int slot)
@@ -432,19 +451,6 @@ public sealed partial class DemoTracerPlugin
     {
         foreach (var slot in _replayLeftHandDesiredLatches.Keys.ToArray())
             ClearReplayLeftHandDesiredLatch(slot);
-    }
-
-    private static void TrySetPawnStateChanged(CCSPlayerPawn pawn, string field)
-    {
-        try
-        {
-            if (!Schema.IsSchemaFieldNetworked("CCSPlayerPawn", field))
-                return;
-            Utilities.SetStateChanged(pawn, "CCSPlayerPawn", field);
-        }
-        catch
-        {
-        }
     }
 
 }

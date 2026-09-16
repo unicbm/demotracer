@@ -148,13 +148,14 @@ public sealed class ReplayLifecycleBoundaryTests
         var plugin = CreatePlugin();
         var session = GetField<object>(plugin, "_session");
         GetProperty<HashSet<int>>(session, "FreezePrerollSlots").Add(4);
-        GetField<Dictionary<int, bool>>(plugin, "_replayLeftHandDesiredLatches").Add(4, true);
+        var owner = new DemoTracerPlugin.ReplayViewOwner(0x8005, 0x8010, 0x1000);
+        GetField<Dictionary<int, DemoTracerPlugin.ReplayViewOwner>>(plugin, "_replayLeftHandDesiredLatches").Add(4, owner);
 
         // No manifest viewmodel and no PlayingSlots yet. Running the real
         // cleanup must not clear the already-running native pre-roll's desire.
         Invoke<object?>(plugin, "RestoreNonRetainedReplayBotViewmodels");
 
-        Assert.True(GetField<Dictionary<int, bool>>(plugin, "_replayLeftHandDesiredLatches")[4]);
+        Assert.Equal(owner, GetField<Dictionary<int, DemoTracerPlugin.ReplayViewOwner>>(plugin, "_replayLeftHandDesiredLatches")[4]);
         Assert.True(Invoke<bool>(plugin, "IsReplayViewmodelSlotTracked", 4));
     }
 
@@ -163,9 +164,10 @@ public sealed class ReplayLifecycleBoundaryTests
     {
         var plugin = CreatePlugin();
         var retained = GetField<HashSet<int>>(plugin, "_retainedReplayViewmodelSlots");
-        var hands = GetField<Dictionary<int, bool>>(plugin, "_replayLeftHandDesiredLatches");
+        var hands = GetField<Dictionary<int, DemoTracerPlugin.ReplayViewOwner>>(plugin, "_replayLeftHandDesiredLatches");
+        var owner = new DemoTracerPlugin.ReplayViewOwner(0x8005, 0x8010, 0x1000);
         retained.Add(4);
-        hands.Add(4, true);
+        hands.Add(4, owner);
 
         // This entry point implements viewmodel_continuity=release. Changing
         // visual offsets must not force a weapon redeploy during native combat.
@@ -173,7 +175,28 @@ public sealed class ReplayLifecycleBoundaryTests
         Invoke<object?>(plugin, "RestoreNonRetainedReplayBotViewmodels");
 
         Assert.Contains(4, retained);
-        Assert.True(hands[4]);
+        Assert.Equal(owner, hands[4]);
+    }
+
+    [Fact]
+    public void SpawnDiscardsAppliedFailedAndRestoreStateWithoutTouchingResetPawn()
+    {
+        var plugin = CreatePlugin();
+        var session = GetField<object>(plugin, "_session");
+        var views = GetProperty<Dictionary<int, DemoTracerPlugin.ReplayPawnViewState>>(session, "ReplayViewmodels");
+        var retained = GetField<HashSet<int>>(plugin, "_retainedReplayViewmodelSlots");
+        var owner = new DemoTracerPlugin.ReplayViewOwner(0x8005, 0x8010, 0x1000);
+        var old = new DemoTracerPlugin.ReplayPawnViewState(owner) { Failed = true, Applied = new() { Fov = 68 } };
+        old.Capture(new() { Fov = 60 }, new() { Fov = 68 });
+        views.Add(4, old);
+        retained.Add(4);
+
+        // Same pointer/handle on respawn must still discard the whole state.
+        // This runs without CSS/native entities, so any restore attempt fails.
+        Invoke<object?>(plugin, "InvalidateReplayPawnViewState", 4);
+        Assert.Empty(views);
+        Assert.Empty(retained);
+        Assert.False(Invoke<bool>(plugin, "IsReplayViewmodelSlotTracked", 4));
     }
 
     private static DemoTracerPlugin CreatePlugin()

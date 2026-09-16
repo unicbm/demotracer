@@ -20,6 +20,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     private readonly int[] _observedUserIds = Enumerable.Repeat(int.MinValue, MaxSlots).ToArray();
     private readonly ulong[] _slotIncarnations = new ulong[MaxSlots];
     private readonly AppliedPresentation?[] _applied = new AppliedPresentation?[MaxSlots];
+    private readonly uint[] _appliedControllerHandles = new uint[MaxSlots];
+    private readonly bool[] _crosshairPublicationPending = new bool[MaxSlots];
     private readonly bool[] _scoreboardFlairManaged = new bool[MaxSlots];
     private readonly bool[] _scoreboardFlairRepublishPending = new bool[MaxSlots];
     private readonly DateTime[] _nextPresentationFailureLogUtc = new DateTime[MaxSlots];
@@ -231,6 +233,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             Array.Fill(_observedUserIds, int.MinValue);
             Array.Fill(_slotIncarnations, 0UL);
             Array.Fill(_applied, null);
+            Array.Clear(_appliedControllerHandles);
+            Array.Clear(_crosshairPublicationPending);
             Array.Fill(_scoreboardFlairManaged, false);
             Array.Fill(_scoreboardFlairRepublishPending, false);
         }
@@ -284,6 +288,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         foreach (var token in _leases.Keys.ToArray()) RemoveLease(token, countRevocation: true);
         Array.Fill(_observedManaged, false);
         Array.Fill(_applied, null);
+        Array.Clear(_appliedControllerHandles);
+        Array.Clear(_crosshairPublicationPending);
         Array.Fill(_nativeIncarnations, 0UL);
         _nativeSession = session;
     }
@@ -314,6 +320,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             _slotIncarnations[slot] = ++_nextIncarnation;
             _nativeIncarnations[slot] = native.Incarnation;
             _applied[slot] = null;
+            _appliedControllerHandles[slot] = 0;
+            _crosshairPublicationPending[slot] = false;
             _scoreboardFlairManaged[slot] = false;
             _scoreboardFlairRepublishPending[slot] = false;
         }
@@ -340,6 +348,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         _observedUserIds[slot] = int.MinValue;
         _slotIncarnations[slot] = 0;
         _applied[slot] = null;
+        _appliedControllerHandles[slot] = 0;
+        _crosshairPublicationPending[slot] = false;
         _scoreboardFlairManaged[slot] = false;
         _scoreboardFlairRepublishPending[slot] = false;
         ClearPresentationFailure(slot);
@@ -538,7 +548,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         var forceCrosshairPublication = RequiresCrosshairPublication(
             previous.HasValue,
             previous?.Incarnation ?? 0,
-            effective.Incarnation);
+            effective.Incarnation) || _crosshairPublicationPending[state.Slot] ||
+            _appliedControllerHandles[state.Slot] != player.EntityHandle.Raw;
         try
         {
             // Native userinfo and controller fields must both confirm the
@@ -577,24 +588,23 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
                 _publishedWrites++;
             }
 
-            if (TryWriteNetworkedCrosshair(
+            var crosshairSynchronized = TryWriteNetworkedCrosshair(
                     effective.CrosshairCode,
                     forceCrosshairPublication,
                     () => player.CrosshairCodes,
                     value => player.CrosshairCodes = value,
-                    () => TryPublishCrosshairStateChanged(player),
+                    () => _client.PublishCrosshair(state.Slot, _nativeSession,
+                        _nativeIncarnations[state.Slot], player.EntityHandle.Raw),
                     out var crosshairChanged,
-                    out var crosshairPublished))
-            {
-                if (crosshairChanged || crosshairPublished)
-                    _publishedWrites++;
-                if (crosshairChanged)
-                    _controllerRepairs++;
-            }
+                    out var crosshairPublished);
+            _crosshairPublicationPending[state.Slot] = !crosshairSynchronized;
+            if (crosshairChanged || crosshairPublished) _publishedWrites++;
+            if (crosshairChanged) _controllerRepairs++;
+            if (!crosshairSynchronized)
+                ReportPresentationFailure(state.Slot, "crosshair notification pending");
 
-            // Lease acknowledgement checks requested field readback below.
-            // Network metadata/notification availability is not a client ACK
-            // and must not roll back an otherwise applied native identity.
+            // A requested crosshair requires native notification submission as
+            // well as readback. This is not a remote client's rendering ACK.
             var scoreboardFlairNeedsWrite = effectiveScoreboardFlairManaged ||
                                              _scoreboardFlairManaged[state.Slot];
             if (scoreboardFlairNeedsWrite)
@@ -625,7 +635,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             }
 
             _applied[state.Slot] = effective;
-            _suppressedPresentationFailures[state.Slot] = 0;
+            _appliedControllerHandles[state.Slot] = player.EntityHandle.Raw;
+            if (crosshairSynchronized) _suppressedPresentationFailures[state.Slot] = 0;
         }
         catch (Exception ex)
         {
@@ -755,21 +766,10 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         }
         catch
         {
-            // Crosshair presentation remains optional. A failed publication
-            // must not roll back an otherwise valid identity lease.
+            // Keep notification failure visible to the retry state and to
+            // leases that explicitly requested a crosshair override.
             return false;
         }
-    }
-
-    private static bool TryPublishCrosshairStateChanged(CCSPlayerController player)
-    {
-        // Resolve network metadata only after a live controller exists. An
-        // early lookup can cache an unavailable serializer as non-networked.
-        if (!IsNetworkedSchemaField("CCSPlayerController", "m_szCrosshairCodes"))
-            return false;
-
-        Utilities.SetStateChanged(player, "CCSPlayerController", "m_szCrosshairCodes");
-        return true;
     }
 
     private static void TrySetStateChanged(
@@ -899,7 +899,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
                                          ScoreboardFlairMatches(player, requested.ScoreboardFlair.Value);
             var crosshairMatches = RequestedCrosshairMatches(
                 requested.CrosshairCode,
-                player.CrosshairCodes);
+                player.CrosshairCodes,
+                _crosshairPublicationPending[requested.Slot]);
             if (!CanCommitSynchronousPresentationLease(
                     playerNameMatches,
                     steamIdMatches,
@@ -915,9 +916,9 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         return true;
     }
 
-    internal static bool RequestedCrosshairMatches(string? requested, string? actual)
+    internal static bool RequestedCrosshairMatches(string? requested, string? actual, bool publicationPending = false)
         => requested == null ||
-           string.Equals(actual ?? string.Empty, requested, StringComparison.Ordinal);
+           (!publicationPending && string.Equals(actual ?? string.Empty, requested, StringComparison.Ordinal));
 
     internal static bool CanCommitSynchronousPresentationLease(
         bool playerNameMatches,

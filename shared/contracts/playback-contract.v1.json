@@ -21,10 +21,10 @@
   },
   "bot_hider": {
     "api": 1,
-    "native_abi": 1,
+    "native_abi": 2,
     "native_slot_bytes": 172,
-    "native_provider_version": "0.3.0",
-    "managed_provider_version": "0.1.5"
+    "native_provider_version": "0.3.1",
+    "managed_provider_version": "0.1.6"
   },
   "bot_randomizer": {
     "api": 2,
