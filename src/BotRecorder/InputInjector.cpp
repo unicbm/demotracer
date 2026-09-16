@@ -829,11 +829,10 @@ namespace BotController
                     command.weaponSelect = base->weaponselect();
                     command.fields |= MotionRecorder::kCommandFieldWeaponSelect;
                 }
-                if (pc->has_left_hand_desired())
-                {
-                    command.leftHandDesired = pc->left_hand_desired() ? 1 : 0;
-                    command.fields |= MotionRecorder::kCommandFieldLeftHand;
-                }
+                // This is a complete engine command, not a demo delta. An
+                // omitted protobuf bool is the authoritative default false.
+                command.leftHandDesired = pc->left_hand_desired() ? 1 : 0;
+                command.fields |= MotionRecorder::kCommandFieldLeftHand;
                 MotionRecorder::OnCaptureCommand(slot, command);
                 }
 
