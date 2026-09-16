@@ -461,6 +461,7 @@ namespace cs2bh
 
     // Current controller field used to resolve each managed bot pawn
     static int g_BotPawnHandleOffset = -1;
+    static int g_ControllerCrosshairOffset = -1;
 
 #if !defined(_WIN32)
     static void ClearFakeClientCallStack()
@@ -2376,6 +2377,30 @@ namespace cs2bh
         return true;
     }
 
+    bool HiderPlugin::PublishCrosshair(int slot, uint64_t session, uint64_t incarnation,
+                                       uint32_t controllerHandle)
+    {
+        if (!Publisher().Matches(slot, session, incarnation) || !Manager().IsManaged(slot) ||
+            g_ControllerCrosshairOffset < 0) return false;
+        void *client = ResolveClientBySlot(slot);
+        if (!client || ssc::IsHltv(client) ||
+            *reinterpret_cast<void **>(static_cast<unsigned char *>(client) + ssc::OFFSET_m_NetChannel))
+            return false;
+        const int index = *reinterpret_cast<int *>(
+            static_cast<unsigned char *>(client) + ssc::OFFSET_m_nEntityIndex);
+        char className[64];
+        void *controller = ResolveEntityInstance(index, className, sizeof(className));
+        if (!controller || std::strcmp(className, "cs_player_controller") != 0 ||
+            IsEntityBeingDeleted(controller)) return false;
+        auto *entity = reinterpret_cast<CEntityInstance *>(controller);
+        if (static_cast<uint32_t>(entity->GetRefEHandle().ToInt()) != controllerHandle)
+            return false;
+        // The engine's crosshair setter uses this same field notification.
+        // Controller Schema metadata can omit MNetworkEnable for this field.
+        MarkEntityFieldChanged(controller, static_cast<uint32_t>(g_ControllerCrosshairOffset));
+        return true;
+    }
+
     // Tick driver
     void HiderPlugin::Hook_GameFrame_Post(bool simulating, bool /*bFirst*/, bool /*bLast*/)
     {
@@ -2556,6 +2581,7 @@ namespace cs2bh
         {
             int pawnOff = schema::GetFieldOffset("CBasePlayerController", "m_hPawn");
             int playerPawnOff = schema::GetFieldOffset("CCSPlayerController", "m_hPlayerPawn");
+            g_ControllerCrosshairOffset = schema::GetFieldOffset("CCSPlayerController", "m_szCrosshairCodes");
             int idleOff = schema::GetFieldOffset("CCSPlayerPawnBase", "m_flIdleTimeSinceLastAction");
             targets::kBaseEntity_FlagsOffset =
                 schema::GetFieldOffset("CBaseEntity", "m_fFlags");
@@ -2573,6 +2599,7 @@ namespace cs2bh
         else
         {
             g_BotPawnHandleOffset = -1;
+            g_ControllerCrosshairOffset = -1;
             targets::kBaseEntity_FlagsOffset = -1;
             targets::kController_TeamOffset = -1;
             META_CONPRINTF("[BOTHIDER] warning: SchemaSystem unresolved — idle-kick and FL_BOT overrides disabled\n");
@@ -2738,4 +2765,10 @@ BH_EXPORT int BotHider_SetOption(uint64_t session, int option, int value)
         default: return -1;
     }
     return 0;
+}
+
+BH_EXPORT int BotHider_PublishCrosshair(int slot, uint64_t session, uint64_t incarnation,
+                                        uint32_t controllerHandle)
+{
+    return cs2bh::g_Plugin.PublishCrosshair(slot, session, incarnation, controllerHandle) ? 0 : -1;
 }

@@ -5,7 +5,7 @@ CS2 DemoTracer. It combines a Metamod plugin with a CounterStrikeSharp
 presentation provider.
 
 The native layer owns fake-client adoption, synthetic persona state, ping, and
-a synchronous, main-thread C ABI (native ABI 1). The C# layer is the only publisher for visible
+a synchronous, main-thread C ABI (native ABI 2). The C# layer is the only publisher for visible
 name, SteamID64, ping, scoreboard flair, and server-replicated crosshair state.
 It never assigns teams or respawns bots. Ordinary bots follow the engine's
 round lifecycle; DemoTracer prepares and respawns only its own replay roster.
@@ -28,6 +28,11 @@ Native reload revokes leases and an unloaded provider reports disconnected.
 Name and SteamID changes share one userinfo publication; unchanged identities
 do not force another publication. Events coalesce into one next-frame reconcile,
 with a slow periodic pass retained for expiry and engine-side changes.
+Crosshair changes use the native controller field notification, guarded by
+session, slot incarnation, and the complete controller entity handle. Failed
+notifications remain pending for retry even when the string already matches;
+an explicit crosshair lease cannot succeed while its notification is pending.
+The managed provider and native ABI 2 runtime must be installed together.
 
 Lease rules:
 

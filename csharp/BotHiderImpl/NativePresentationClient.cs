@@ -7,7 +7,7 @@ namespace BotHiderImpl;
 // no process-global mapping or queued writes can survive a slot replacement.
 public sealed unsafe class NativePresentationClient : IDisposable
 {
-    public const int NativeAbi = 1;
+    public const int NativeAbi = 2;
     public const int SlotByteSize = 172;
     private bool _disposed;
 
@@ -39,6 +39,8 @@ public sealed unsafe class NativePresentationClient : IDisposable
     private static extern int BotHider_PublishIdentity(int slot, ulong session, ulong incarnation, ulong sid, byte[] name);
     [DllImport("BotHider", CallingConvention = CallingConvention.Cdecl)]
     private static extern int BotHider_SetOption(ulong session, int option, int value);
+    [DllImport("BotHider", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int BotHider_PublishCrosshair(int slot, ulong session, ulong incarnation, uint controllerHandle);
 
     public ulong Session
     {
@@ -72,6 +74,10 @@ public sealed unsafe class NativePresentationClient : IDisposable
     internal bool PublishIdentity(int slot, ulong session, ulong incarnation, ulong sid, string name)
         => session != 0 && Session == session && TryEncodeFixedUtf8(name, 32, out var bytes) &&
            BotHider_PublishIdentity(slot, session, incarnation, sid, bytes) == 0;
+
+    internal bool PublishCrosshair(int slot, ulong session, ulong incarnation, uint controllerHandle)
+        => session != 0 && Session == session &&
+           BotHider_PublishCrosshair(slot, session, incarnation, controllerHandle) == 0;
 
     public (string Name, ulong Addr)[] GetSignatures()
     {
