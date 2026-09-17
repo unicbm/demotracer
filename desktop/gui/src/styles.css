@@ -1409,12 +1409,15 @@ input[type="radio"] {
 }
 
 .gui-update-dialog {
+  display: flex;
+  flex-direction: column;
   width: min(720px, calc(100vw - 48px));
   padding: 0;
   overflow: hidden;
 }
 
 .update-dialog-header {
+  flex: none;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -1459,7 +1462,14 @@ input[type="radio"] {
 }
 
 .update-dialog-content {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 20px 24px 0;
+}
+
+.update-dialog-content > * {
+  flex-shrink: 0;
 }
 
 .update-dialog-component {
@@ -1559,6 +1569,7 @@ input[type="radio"] {
 }
 
 .update-dialog-footer {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;

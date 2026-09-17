@@ -896,7 +896,8 @@ export function SettingsWorkspace({
   );
 
   const releaseBusy = releaseAction !== null;
-  const playbackUpdateBusy = releaseBusy || playbackUpdate.phase === "checking";
+  const playbackUpdateBusy = releaseBusy || playbackUpdate.phase === "checking"
+    || guiUpdate.phase === "checking" || guiUpdate.phase === "downloading" || guiUpdate.phase === "installing";
   const playbackUpdateLabel = playbackUpdate.phase === "checking" ? words.releaseChecking
     : playbackUpdate.phase === "current" ? words.releaseUpToDate
       : playbackUpdate.phase === "available" ? words.releaseUpdateAvailable
@@ -1006,7 +1007,8 @@ export function SettingsWorkspace({
               </div>
               {playbackUpdate.phase === "available" ? (
                 <button className="primary-button" type="button" disabled={playbackUpdateBusy} onClick={onInstallLatestPlayback}>
-                  <ReplayIcon size={15} />{releaseAction === "installingOnline" ? playbackInstallLabel : words.releaseInstallPlaybackUpdate}
+                  <ReplayIcon size={15} />{releaseAction === "installingOnline" ? playbackInstallLabel
+                    : guiUpdate.phase === "available" ? words.releaseUpdateAll : words.releaseInstallPlaybackUpdate}
                 </button>
               ) : (
                 <button className="secondary-button" type="button" disabled={playbackUpdateBusy} onClick={onCheckPlaybackUpdate}>
@@ -1019,13 +1021,17 @@ export function SettingsWorkspace({
               <span>{words.releaseInstalledBundle}</span>
               <strong>{playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy}</strong>
             </div>
-            <div className={`playback-settings-row${playbackReleaseError ? " has-error" : ""}`}>
+            <div className="playback-settings-row">
               <div>
                 <span>{words.releaseLoadedPlugin}</span>
-                {playbackReleaseError ? <small>{playbackReleaseError}</small> : null}
               </div>
               <strong>{playbackRelease?.loadedPluginVersion ? `v${playbackRelease.loadedPluginVersion}` : words.releaseNotRunning}</strong>
             </div>
+            {playbackReleaseError ? (
+              <div className="playback-settings-row has-error" role="alert">
+                <div><span>{words.errorPlaybackTitle}</span><small>{playbackReleaseError}</small></div>
+              </div>
+            ) : null}
             <div className="playback-settings-row is-action">
               <span>{words.releaseLocalPackage}</span>
               <button className="secondary-button" type="button" disabled={releaseBusy} onClick={onInstallPlaybackBundle}>

@@ -539,6 +539,9 @@ export function userFacingErrorMessage(error: { code: string; message: string; p
   if (code.includes("cs2_running")) {
     return words.errorCs2Running;
   }
+  if (code === "playback_receipt_contract_mismatch") {
+    return words.errorPlaybackDesktopMismatch;
+  }
   if (code.includes("not_found") || code.includes("unavailable") || code.includes("missing")) {
     return words.errorFileNotFound;
   }

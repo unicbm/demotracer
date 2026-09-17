@@ -67,6 +67,10 @@ if ([string]::IsNullOrWhiteSpace($ReleaseNotesZh)) {
 
 & (Join-Path $PSScriptRoot "assert-clean-worktree.ps1") -RepoRoot $repoRoot
 & (Join-Path $PSScriptRoot "check-release-contract.ps1") -Version $Version -PlaybackVersion $PlaybackVersion
+foreach ($manifest in @("desktop/converter/Cargo.toml", "desktop/gui/src-tauri/Cargo.toml")) {
+    & cargo fmt --manifest-path (Join-Path $repoRoot $manifest) --check
+    if ($LASTEXITCODE -ne 0) { throw "Rust formatting check failed: $manifest" }
+}
 
 $guiArgs = @{
     Version = $Version

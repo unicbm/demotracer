@@ -155,6 +155,12 @@ export function useUpdateController({
   async function installLatestPlaybackBundle() {
     const normalizedCs2Path = cs2Path.trim();
     if (!normalizedCs2Path || releaseAction) return false;
+    // Settings must follow the same GUI-first sequence as the update dialog.
+    if (guiUpdate.phase === "checking" || guiUpdate.phase === "downloading" || guiUpdate.phase === "installing") return false;
+    if (guiUpdate.availableVersion && guiUpdate.availableVersion !== guiUpdate.currentVersion) {
+      setDialogOpen(true);
+      return false;
+    }
     setReleaseAction("installingOnline");
     setPlaybackReleaseError("");
     setPlaybackInstallBlockedByCs2(false);

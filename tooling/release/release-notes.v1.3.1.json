@@ -1,0 +1,4 @@
+{
+  "zh": "1.3.1 修复更新弹窗长说明遮挡按钮，统一先更新 GUI、再更新播放组件的顺序，并准确提示组件不兼容。\n播放组件继续使用 1.3.0；完整说明见 GitHub Release。",
+  "en": "1.3.1 keeps update buttons visible with long notes, updates the GUI before Playback, and explains incompatible bundles correctly.\nPlayback remains at 1.3.0. Full notes are on GitHub Releases."
+}
