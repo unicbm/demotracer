@@ -7,9 +7,24 @@ namespace BotHiderImpl;
 // no process-global mapping or queued writes can survive a slot replacement.
 public sealed unsafe class NativePresentationClient : IDisposable
 {
-    public const int NativeAbi = 2;
+    public const int NativeAbi = 3;
     public const int SlotByteSize = 172;
     private bool _disposed;
+    private ulong _listeningSession;
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void ChangeListener(uint reason, int slot);
+    private readonly ChangeListener? _listener;
+
+    public NativePresentationClient(Action<uint, int>? changed = null)
+    {
+        if (changed != null)
+            _listener = (reason, slot) =>
+            {
+                // Exceptions must never unwind through the native callback.
+                try { changed(reason, slot); }
+                catch (Exception ex) { System.Console.Error.WriteLine($"[BotHider] change callback failed: {ex.Message}"); }
+            };
+    }
 
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
     internal struct Slot
@@ -32,6 +47,8 @@ public sealed unsafe class NativePresentationClient : IDisposable
     [DllImport("BotHider", CallingConvention = CallingConvention.Cdecl)]
     private static extern ulong BotHider_GetSession();
     [DllImport("BotHider", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int BotHider_Listen(ulong session, ChangeListener? listener);
+    [DllImport("BotHider", CallingConvention = CallingConvention.Cdecl)]
     private static extern int BotHider_ReadSlot(int slot, out Slot state, int size);
     [DllImport("BotHider", CallingConvention = CallingConvention.Cdecl)]
     private static extern int BotHider_ReadSignature(int index, out Signature signature, int size);
@@ -41,13 +58,22 @@ public sealed unsafe class NativePresentationClient : IDisposable
     private static extern int BotHider_SetOption(ulong session, int option, int value);
     [DllImport("BotHider", CallingConvention = CallingConvention.Cdecl)]
     private static extern int BotHider_PublishCrosshair(int slot, ulong session, ulong incarnation, uint controllerHandle);
+    [DllImport("BotHider", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int BotHider_PublishPing(int slot, ulong session, ulong incarnation, uint controllerHandle);
 
     public ulong Session
     {
         get
         {
             if (_disposed) return 0;
-            try { return BotHider_GetNativeAbi() == NativeAbi ? BotHider_GetSession() : 0; }
+            try
+            {
+                var session = BotHider_GetNativeAbi() == NativeAbi ? BotHider_GetSession() : 0;
+                if (session != 0 && session != _listeningSession && _listener != null &&
+                    BotHider_Listen(session, _listener) == 0)
+                    _listeningSession = session;
+                return session;
+            }
             catch (DllNotFoundException) { return 0; }
             catch (EntryPointNotFoundException) { return 0; }
             catch (BadImageFormatException) { return 0; }
@@ -61,16 +87,8 @@ public sealed unsafe class NativePresentationClient : IDisposable
         return slot is >= 0 and < 64 && Session != 0 && BotHider_ReadSlot(slot, out state, sizeof(Slot)) == 0;
     }
     public bool IsManagedBot(int slot) => TryGetSlot(slot, out var s) && s.Managed != 0;
-    public ulong GetBaseSteamId(int slot) => TryGetSlot(slot, out var s) ? s.BaseSteamId : 0;
     public ulong GetPublishedSteamId(int slot) => TryGetSlot(slot, out var s) ? s.SteamId : 0;
-    public string GetBasePersonaName(int slot) => TryGetSlot(slot, out var s) ? s.ReadBaseName() : "";
     public string GetPublishedPersonaName(int slot) => TryGetSlot(slot, out var s) ? s.ReadName() : "";
-    public int[] GetManagedSlots()
-    {
-        List<int> slots = [];
-        for (int slot = 0; slot < 64; slot++) if (IsManagedBot(slot)) slots.Add(slot);
-        return slots.ToArray();
-    }
     internal bool PublishIdentity(int slot, ulong session, ulong incarnation, ulong sid, string name)
         => session != 0 && Session == session && TryEncodeFixedUtf8(name, 32, out var bytes) &&
            BotHider_PublishIdentity(slot, session, incarnation, sid, bytes) == 0;
@@ -78,6 +96,10 @@ public sealed unsafe class NativePresentationClient : IDisposable
     internal bool PublishCrosshair(int slot, ulong session, ulong incarnation, uint controllerHandle)
         => session != 0 && Session == session &&
            BotHider_PublishCrosshair(slot, session, incarnation, controllerHandle) == 0;
+
+    internal bool PublishPing(int slot, ulong session, ulong incarnation, uint controllerHandle)
+        => session != 0 && Session == session &&
+           BotHider_PublishPing(slot, session, incarnation, controllerHandle) == 0;
 
     public (string Name, ulong Addr)[] GetSignatures()
     {
@@ -94,7 +116,6 @@ public sealed unsafe class NativePresentationClient : IDisposable
     }
     public bool SetDisguise(bool enabled) => SetOption(1, enabled ? 1 : 0);
     public bool SetNameSource(bool useBotInfo) => SetOption(2, useBotInfo ? 1 : 0);
-    public bool RequestRebuild() => SetOption(3, 0);
 
     private static string Decode(byte* pointer, int length)
     {
@@ -109,5 +130,17 @@ public sealed unsafe class NativePresentationClient : IDisposable
         Encoding.UTF8.GetBytes(value, buffer);
         return true;
     }
-    public void Dispose() => _disposed = true;
+    public void Dispose()
+    {
+        if (_disposed) return;
+        try
+        {
+            if (_listeningSession != 0) BotHider_Listen(_listeningSession, null);
+        }
+        catch (DllNotFoundException) { }
+        catch (EntryPointNotFoundException) { }
+        catch (BadImageFormatException) { }
+        _listeningSession = 0;
+        _disposed = true;
+    }
 }
