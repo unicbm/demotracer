@@ -582,7 +582,10 @@ fn validate_rec_semantics(rec: &Cs2Rec, format_version: u32) -> Result<()> {
     validate_input_history_shape(rec)
 }
 
-fn validate_snapshot_semantics(snapshot: &MovementSnapshot, name: std::fmt::Arguments<'_>) -> Result<()> {
+fn validate_snapshot_semantics(
+    snapshot: &MovementSnapshot,
+    name: std::fmt::Arguments<'_>,
+) -> Result<()> {
     validate_finite_values(&snapshot.origin, format_args!("{name} origin"))?;
     validate_finite_values(&snapshot.velocity, format_args!("{name} velocity"))?;
     validate_finite_values(&snapshot.angles, format_args!("{name} angles"))?;
@@ -799,10 +802,18 @@ fn write_sectioned_body<W: Write>(
     let mut compressor = zstd::bulk::Compressor::new(ZSTD_LEVEL)
         .map_err(|e| Error::InvalidRec(format!("zstd compressor: {e}")))?;
     for (section_id, section_version, element_count, payload) in sections {
-        let compressed = compressor.compress(&payload)
+        let compressed = compressor
+            .compress(&payload)
             .map_err(|e| Error::InvalidRec(format!("zstd compression: {e}")))?;
-        write_encoded_section(writer, section_id, section_version, element_count,
-            &payload, CODEC_ZSTD, &compressed)?;
+        write_encoded_section(
+            writer,
+            section_id,
+            section_version,
+            element_count,
+            &payload,
+            CODEC_ZSTD,
+            &compressed,
+        )?;
     }
     Ok(())
 }
@@ -840,8 +851,22 @@ fn write_encoded_section<W: Write>(
 }
 
 #[cfg(test)]
-fn write_section<W: Write>(writer: &mut W, id: u32, version: u32, count: usize, payload: &[u8]) -> Result<()> {
-    write_encoded_section(writer, id, version, count, payload, CODEC_BROTLI, &compress_body(payload)?)
+fn write_section<W: Write>(
+    writer: &mut W,
+    id: u32,
+    version: u32,
+    count: usize,
+    payload: &[u8],
+) -> Result<()> {
+    write_encoded_section(
+        writer,
+        id,
+        version,
+        count,
+        payload,
+        CODEC_BROTLI,
+        &compress_body(payload)?,
+    )
 }
 
 fn build_tick_metadata_section(rec: &Cs2Rec) -> Result<Vec<u8>> {
@@ -1530,7 +1555,9 @@ fn read_sectioned_body<R: Read>(
                 };
                 let indexed_bytes = records * 16;
                 enforce_byte_limit(
-                    "indexed source state", indexed_bytes, limits.max_decoded_section_bytes,
+                    "indexed source state",
+                    indexed_bytes,
+                    limits.max_decoded_section_bytes,
                 )?;
                 total_decoded = add_budgeted_bytes(
                     "total decoded sections",
@@ -1782,7 +1809,9 @@ fn decode_section_body(compressed: Vec<u8>, codec: u8, expected_len: usize) -> R
             let size = zstd::bulk::decompress_to_buffer(&compressed, decoded.as_mut_slice())
                 .map_err(|e| Error::InvalidRec(format!("invalid zstd section: {e}")))?;
             if size != expected_len {
-                return Err(Error::InvalidRec(format!("zstd decoded length {size} != expected {expected_len}")));
+                return Err(Error::InvalidRec(format!(
+                    "zstd decoded length {size} != expected {expected_len}"
+                )));
             }
             Ok(decoded)
         }
@@ -3158,10 +3187,15 @@ mod tests {
     fn zstd_sections_are_bounded_and_reject_truncation_and_garbage() {
         let raw = vec![42_u8; 4096];
         let packed = zstd::bulk::compress(&raw, ZSTD_LEVEL).unwrap();
-        assert_eq!(decode_section_body(packed.clone(), CODEC_ZSTD, raw.len()).unwrap(), raw);
+        assert_eq!(
+            decode_section_body(packed.clone(), CODEC_ZSTD, raw.len()).unwrap(),
+            raw
+        );
         assert!(decode_section_body(packed.clone(), CODEC_ZSTD, 12).is_err());
         assert!(decode_section_body(packed.clone(), CODEC_ZSTD, 8192).is_err());
-        assert!(decode_section_body(packed[..packed.len() - 1].to_vec(), CODEC_ZSTD, 4096).is_err());
+        assert!(
+            decode_section_body(packed[..packed.len() - 1].to_vec(), CODEC_ZSTD, 4096).is_err()
+        );
         let mut trailing = packed;
         trailing.push(0x42);
         assert!(decode_section_body(trailing, CODEC_ZSTD, 4096).is_err());
@@ -3171,10 +3205,16 @@ mod tests {
     fn reader_keeps_brotli_sections_and_gates_zstd_at_v12() {
         let bytes = encoded_sample_rec();
         let brotli = sections_as_brotli(&bytes);
-        assert_eq!(read_rec(&mut &bytes[..]).unwrap(), read_rec(&mut &brotli[..]).unwrap());
+        assert_eq!(
+            read_rec(&mut &bytes[..]).unwrap(),
+            read_rec(&mut &brotli[..]).unwrap()
+        );
         let mut old_version = bytes;
         old_version[8..12].copy_from_slice(&11_u32.to_le_bytes());
-        assert!(read_rec(&mut &old_version[..]).unwrap_err().to_string().contains("codec"));
+        assert!(read_rec(&mut &old_version[..])
+            .unwrap_err()
+            .to_string()
+            .contains("codec"));
     }
 
     fn sections_as_brotli(bytes: &[u8]) -> Vec<u8> {
@@ -3185,8 +3225,16 @@ mod tests {
             let header = read_section_header(&mut reader).unwrap();
             let mut packed = vec![0; header.compressed_len as usize];
             reader.read_exact(&mut packed).unwrap();
-            let body = decode_section_body(packed, header.codec, header.uncompressed_len as usize).unwrap();
-            write_section(&mut output, header.section_id, header.section_version, header.element_count as usize, &body).unwrap();
+            let body = decode_section_body(packed, header.codec, header.uncompressed_len as usize)
+                .unwrap();
+            write_section(
+                &mut output,
+                header.section_id,
+                header.section_version,
+                header.element_count as usize,
+                &body,
+            )
+            .unwrap();
         }
         output
     }
