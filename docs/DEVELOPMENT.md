@@ -38,7 +38,7 @@ header purposes. The playback server additionally requires Windows x64 CS2,
 Metamod:Source, CounterStrikeSharp 1.0.371 or newer, and a matching DemoTracer
 bundle.
 
-BotRandomizer 1.6 is part of the matched playback bundle and implements the v2
+BotRandomizer 1.6 is part of the matched playback bundle and implements the v3
 replay-plan API. DemoTracer owns normalization and plan lifetime only;
 BotRandomizer owns all cosmetic entity writes at spawn or item construction.
 Ray-Trace 1.0.16 or newer is optional for stricter handoff line-of-sight checks.
@@ -60,8 +60,8 @@ movement initializations without writing per-tick logs.
 | --- | --- |
 | `.dtr` writer / reader | v12 / v3-v12 |
 | Manifest ABI | 19 |
-| BotController native ABI | 21, minor 40+; 228-byte replay tick |
-| BotHider / BotRandomizer API | 1 / 2 |
+| BotController native ABI | 21, minor 42+; 228-byte replay tick |
+| BotHider / BotRandomizer API | 2 / 3 |
 | DemoTracer companion API | 7 |
 
 ## Build and Test
@@ -180,7 +180,7 @@ measurements.
   playback path.
 - Ordinary weapon, attachment, and scoreboard alignment remain default-off and
   demo-backed. DemoTracer may only submit complete cosmetic plans through the
-  BotRandomizer v2 API. BotRandomizer is the only cosmetic entity writer and
+  BotRandomizer v3 API. BotRandomizer is the only cosmetic entity writer and
   consumes plans during natural spawn/item construction; DemoTracer must not
   add a parallel econ/model/bodygroup repair path.
 

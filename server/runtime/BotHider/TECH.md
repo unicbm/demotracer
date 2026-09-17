@@ -9,13 +9,13 @@
 - `configs/addons/BotHider/`: sanitized runtime defaults.
 
 CounterStrikeSharp projects compile against `CounterStrikeSharp.API` 1.0.371.
-The private native/C# shared-memory contract is version 2; it keeps immutable
+The private native/C# C ABI is version 3; it keeps immutable
 persona base name/SteamID fields separate from the effective values published
-by lease-controlled native commands.
+by lease-controlled publication calls.
 
 ## Capability
 
-The provider registers `demotracer:bot-hider:v1` and exposes
+The provider registers `demotracer:bot-hider:v2` and exposes
 `DemoTracerBotHiderApi.IBotHiderApi`.
 
 The API intentionally separates native persona base state from temporary
@@ -24,15 +24,29 @@ current `Incarnation`, then acquire or replace an array of
 `BotHiderPresentationOverride` entries.
 
 The provider validates the complete array before changing ownership. A failed
-entry changes nothing. Slot reuse changes the incarnation and revokes the full
-lease containing that slot. SteamID values are exact: duplicate or unresolved
+entry changes nothing. Slot reuse changes the incarnation and removes that
+slot from its lease, preserving surviving participants. SteamID values are exact: duplicate or unresolved
 live-slot conflicts reject the batch, and native publication never substitutes
 another persona identity.
 
 ## Ownership and restore
 
-The shared memory mapping `CS2BotHider_Slots` is private transport between the
-native and C# halves. It is not a public DemoTracer integration ABI.
+The native and managed halves communicate synchronously through a private C
+ABI. Session, slot incarnation, and complete controller handles fence writes.
+The managed provider registers one native change callback and unregisters it
+on unload; native shutdown clears it. Notifications queue reconciliation on the
+server thread and do not perform entity writes inside native adoption hooks.
+Ping notifications carry the changed slot and coalesce separately. Their writer
+uses the same live session, incarnation, controller handle, and NetChannel
+checks as crosshair publication, then updates only non-networked `m_iPing`.
+They do not rebuild presentation objects, submit userinfo, or notify crosshair.
+
+Consumers supply a `CancellationToken` on acquisition and cancel it on the
+server thread when unloading. Replacement preserves that owner registration;
+explicit release, the last participant leaving, and map/provider teardown
+unregister it. Neither lease expiry scans nor keepalive calls are needed.
+Consumers subscribe to `ProviderChanged` in the shared API assembly and
+unsubscribe on unload to handle provider replacement without periodic probes.
 
 The effective presentation for each field is:
 
@@ -43,7 +57,7 @@ active exact lease override ?? current native persona base
 Because release recomputes from current base state, a persona refresh that
 happens while DTR is active is not overwritten by stale saved values.
 The publisher also compares effective lease values with live controller fields
-on every pass and schedules immediate reconciliation after spawn/death. This
+at actual lifecycle/change events and schedules reconciliation after spawn/death. This
 prevents engine lifecycle writes from exposing the persona base while a lease
 is active.
 

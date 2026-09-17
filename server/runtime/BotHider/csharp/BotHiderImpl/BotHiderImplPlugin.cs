@@ -3,7 +3,6 @@ using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Core.Capabilities;
 using CounterStrikeSharp.API.Modules.Commands;
-using CounterStrikeSharp.API.Modules.Timers;
 using DemoTracerBotHiderApi;
 using HarmonyLib;
 
@@ -13,7 +12,7 @@ public sealed class BotHiderImplPlugin : BasePlugin
 {
 
     public override string ModuleName => "DemoTracer BotHider";
-    public override string ModuleVersion => "0.1.6";
+    public override string ModuleVersion => "0.1.7";
     public override string ModuleAuthor => "XBribo contributors, unicbm";
     public override string ModuleDescription =>
         "DemoTracer-managed bot identity and presentation runtime.";
@@ -24,6 +23,8 @@ public sealed class BotHiderImplPlugin : BasePlugin
     private NativePresentationClient? _client;
     private BotHiderPresentationService? _presentation;
     private bool _applyPending;
+    private bool _fullApplyPending;
+    private ulong _pendingPingSlots;
     private bool _unloaded;
     private int _mapGeneration;
     private Harmony? _harmony;
@@ -32,7 +33,7 @@ public sealed class BotHiderImplPlugin : BasePlugin
     {
         _unloaded = false;
         WarnIfLegacyBotHiderPluginIsPresent();
-        _client = new NativePresentationClient();
+        _client = new NativePresentationClient(OnNativePresentationChanged);
         _presentation = new BotHiderPresentationService(_client);
         _client.TryConnect();
         Capabilities.RegisterPluginCapability(Capability, () => _presentation);
@@ -44,7 +45,6 @@ public sealed class BotHiderImplPlugin : BasePlugin
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
         RegisterListener<Listeners.OnMapEnd>(OnMapEnd);
         RegisterListener<Listeners.OnClientDisconnect>(OnClientDisconnect);
-        AddTimer(2.0f, ApplyManagedSlots, TimerFlags.REPEAT);
         ScheduleApply();
         Server.PrintToConsole(
             $"[DemoTracer BotHider] loaded api={DemoTracerBotHiderContract.ApiVersion} " +
@@ -55,20 +55,63 @@ public sealed class BotHiderImplPlugin : BasePlugin
     public override void Unload(bool hotReload)
     {
         _unloaded = true;
-        _harmony?.UnpatchAll(_harmony.Id);
-        _harmony = null;
         IsBotPatch.Api = null;
         _applyPending = false;
         _mapGeneration++;
-        _presentation?.Dispose();
-        _presentation = null;
-        _client?.Dispose();
-        _client = null;
+        try
+        {
+            _harmony?.UnpatchAll(_harmony.Id);
+        }
+        finally
+        {
+            _harmony = null;
+            try { _presentation?.Dispose(); }
+            finally
+            {
+                _presentation = null;
+                // Never leave a managed callback in native code after unload,
+                // including when another cleanup step failed.
+                _client?.Dispose();
+                _client = null;
+                DemoTracerBotHiderContract.NotifyProviderChanged();
+            }
+        }
+    }
+
+    public override void OnAllPluginsLoaded(bool hotReload)
+    {
+        _client?.TryConnect();
+        ScheduleApply();
+        DemoTracerBotHiderContract.NotifyProviderChanged();
+    }
+
+    [ConsoleCommand("bh_native_ready", "Rebind the native BotHider presentation lifecycle")]
+    [CommandHelper(0, "", CommandUsage.SERVER_ONLY)]
+    public void OnNativeReady(CCSPlayerController? player, CommandInfo command)
+    {
+        if (_client?.TryConnect() == true) OnNativePresentationChanged(1, -1);
+    }
+
+    private void OnNativePresentationChanged(uint reason, int slot)
+    {
+        if (_unloaded) return;
+        if (reason == 1)
+        {
+            ScheduleApply();
+            DemoTracerBotHiderContract.NotifyProviderChanged();
+        }
+        else if (reason == 2 && slot is >= 0 and < 64)
+        {
+            _pendingPingSlots |= 1UL << slot;
+            SchedulePublication();
+        }
     }
 
     private void OnMapStart(string mapName)
     {
         _applyPending = false;
+        _fullApplyPending = false;
+        _pendingPingSlots = 0;
         _mapGeneration++;
         _presentation?.ResetForMapBoundary();
         ScheduleApply();
@@ -77,6 +120,8 @@ public sealed class BotHiderImplPlugin : BasePlugin
     private void OnMapEnd()
     {
         _applyPending = false;
+        _fullApplyPending = false;
+        _pendingPingSlots = 0;
         _mapGeneration++;
         _presentation?.ResetForMapBoundary();
     }
@@ -148,6 +193,12 @@ public sealed class BotHiderImplPlugin : BasePlugin
 
     private void ScheduleApply()
     {
+        _fullApplyPending = true;
+        SchedulePublication();
+    }
+
+    private void SchedulePublication()
+    {
         if (_unloaded || _applyPending) return;
         _applyPending = true;
         var generation = _mapGeneration;
@@ -155,12 +206,22 @@ public sealed class BotHiderImplPlugin : BasePlugin
         {
             if (_unloaded || generation != _mapGeneration) return;
             _applyPending = false;
-            ApplyManagedSlots();
+            var full = _fullApplyPending;
+            var pingSlots = _pendingPingSlots;
+            _fullApplyPending = false;
+            _pendingPingSlots = 0;
+            if (full) _presentation?.PublishManagedSlots();
+            else
+            {
+                while (pingSlots != 0)
+                {
+                    var slot = System.Numerics.BitOperations.TrailingZeroCount(pingSlots);
+                    pingSlots &= pingSlots - 1;
+                    _presentation?.PublishPing(slot);
+                }
+            }
         });
     }
-
-    private void ApplyManagedSlots()
-        => _presentation?.PublishManagedSlots();
 
     [ConsoleCommand("bh_status", "Show DemoTracer BotHider provider and managed-slot status")]
     [CommandHelper(0, "", CommandUsage.SERVER_ONLY)]

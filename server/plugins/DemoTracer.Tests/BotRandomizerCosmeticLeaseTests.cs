@@ -11,10 +11,10 @@ namespace DemoTracer.Tests;
 public sealed class BotRandomizerCosmeticLeaseTests
 {
     [Fact]
-    public void ContractRequiresReplayPlanProviderV2()
+    public void ContractRequiresReplayPlanProviderV3()
     {
-        Assert.Equal(2, BotRandomizerContract.ApiVersion);
-        Assert.Equal("botrandomizer:replay-cosmetic-plan:v2", BotRandomizerContract.Capability);
+        Assert.Equal(3, BotRandomizerContract.ApiVersion);
+        Assert.Equal("botrandomizer:replay-cosmetic-plan:v3", BotRandomizerContract.Capability);
     }
 
     [Fact]

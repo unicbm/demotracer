@@ -2701,24 +2701,24 @@ mod tests {
             "counterStrikeSharpVersion": "1.0.371.0",
             "botController": {
                 "abiMajor": 21,
-                "abiMinor": 40,
-                "capabilities": "0x3ffff",
+                "abiMinor": 42,
+                "capabilities": "0x7ffff",
                 "buildId": "fixture",
                 "compatible": true,
                 "requiredCapabilities": {
-                    "mask": "0x341df",
+                    "mask": "0x741df",
                     "present": true,
                     "missing": "0x0"
                 }
             },
             "botHider": {
-                "providerApi": 1,
+                "providerApi": 2,
                 "connected": true,
                 "draining": false,
                 "available": true
             },
             "botRandomizer": {
-                "providerApi": 2,
+                "providerApi": 3,
                 "ready": true,
                 "draining": false,
                 "replayPlanPrebuildAvailable": true,
@@ -2775,14 +2775,14 @@ mod tests {
             "counterStrikeSharpVersion": "1.0.371.0",
             "botController": {
                 "abiMajor": 21,
-                "abiMinor": 40,
-                "capabilities": "0x3ffff",
+                "abiMinor": 42,
+                "capabilities": "0x7ffff",
                 "buildId": "fixture",
                 "compatible": true,
-                "requiredCapabilities": { "mask": "0x341df", "present": true, "missing": "0x0" }
+                "requiredCapabilities": { "mask": "0x741df", "present": true, "missing": "0x0" }
             },
-            "botHider": { "providerApi": 1, "connected": true, "draining": false, "available": true },
-            "botRandomizer": { "providerApi": 2, "ready": true, "draining": false, "replayPlanPrebuildAvailable": true, "available": true },
+            "botHider": { "providerApi": 2, "connected": true, "draining": false, "available": true },
+            "botRandomizer": { "providerApi": 3, "ready": true, "draining": false, "replayPlanPrebuildAvailable": true, "available": true },
             "cosmetics": {
                 "alignmentEnabled": false,
                 "weaponsEnabled": false,

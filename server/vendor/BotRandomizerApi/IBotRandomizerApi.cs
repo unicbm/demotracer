@@ -1,11 +1,16 @@
+using System;
+using System.Threading;
+
 namespace BotRandomizerApi;
 
 public static class BotRandomizerContract
 {
-    public const int ApiVersion = 2;
-    public const string Capability = "botrandomizer:replay-cosmetic-plan:v2";
+    public const int ApiVersion = 3;
+    public const string Capability = "botrandomizer:replay-cosmetic-plan:v3";
     public const string DemoTracerOwner = "demotracer";
-    public const int LeaseTimeoutMilliseconds = 4_000;
+    // Shared contract assembly: subscribers defer work and unsubscribe on unload.
+    public static event Action? ProviderChanged;
+    public static void NotifyProviderChanged() => ProviderChanged?.Invoke();
 }
 
 public static class BotRandomizerReplayTeamPolicy
@@ -49,15 +54,16 @@ public static class BotRandomizerReplayTeamPolicy
 /// The provider is the sole cosmetic entity writer. Consumers submit immutable,
 /// demo-backed desired state; the provider validates it and applies it only from
 /// its normal spawn and GiveNamedItem lifecycle.
+/// All operations, including ownerLifetime cancellation, run on the server thread.
+/// Owners must cancel on unload. Plans have no heartbeat or expiration.
 /// </summary>
 public interface IBotRandomizerApi
 {
     int ApiVersion { get; }
     BotRandomizerProviderInfo GetProviderInfo();
     bool TryGetManagedBot(int slot, out BotRandomizerManagedBot state);
-    BotRandomizerReplayPlanResult AcquireReplayPlan(string owner, BotRandomizerReplayCosmeticPlan[] plans);
+    BotRandomizerReplayPlanResult AcquireReplayPlan(string owner, BotRandomizerReplayCosmeticPlan[] plans, CancellationToken ownerLifetime);
     BotRandomizerReplayPlanResult ReplaceReplayPlan(string planToken, BotRandomizerReplayCosmeticPlan[] plans);
-    bool HeartbeatReplayPlan(string planToken);
     bool ReleaseReplayPlan(string planToken);
     int ReleaseReplayPlansByOwner(string owner);
     BotRandomizerDiagnostics GetDiagnostics();
@@ -82,7 +88,6 @@ public sealed class BotRandomizerProviderInfo
     public bool ReplayPlanPrebuildAvailable { get; set; }
     public string CatalogRepository { get; set; } = string.Empty;
     public string CatalogCommit { get; set; } = string.Empty;
-    public int LeaseTimeoutMilliseconds { get; set; }
 }
 
 public sealed class BotRandomizerManagedBot
@@ -185,6 +190,5 @@ public sealed class BotRandomizerDiagnostics
     public int ReplacedPlans { get; set; }
     public int ReleasedPlans { get; set; }
     public int RevokedPlans { get; set; }
-    public int ExpiredPlans { get; set; }
     public int RejectedRequests { get; set; }
 }

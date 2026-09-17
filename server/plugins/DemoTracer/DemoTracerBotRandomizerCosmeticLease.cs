@@ -126,16 +126,10 @@ internal sealed class DemoTracerBotRandomizerPlanSnapshot
 
 public sealed partial class DemoTracerPlugin
 {
-    // OnAllPluginsLoaded can run before StartupServer exposes CGlobalVars, so
-    // lease maintenance must use a process-monotonic clock rather than game time.
-    private const long BotRandomizerLeaseHeartbeatMilliseconds = 1_000;
-    private const long BotRandomizerLeaseRetryMilliseconds = 1_000;
     private readonly DemoTracerBotRandomizerBridge _botRandomizerBridge = new();
     private readonly DemoTracerBotRandomizerPlanSnapshot _botRandomizerLease = new();
     private string _botRandomizerLeaseSignature = string.Empty;
     private string _lastBotRandomizerLeaseError = string.Empty;
-    private long _nextBotRandomizerLeaseHeartbeatAtMilliseconds;
-    private long _nextBotRandomizerLeaseRetryAtMilliseconds;
     private int _botRandomizerLeaseTransitionDepth;
 
     private void BeginBotRandomizerCosmeticLeaseTransition() => _botRandomizerLeaseTransitionDepth++;
@@ -145,31 +139,6 @@ public sealed partial class DemoTracerPlugin
         if (_botRandomizerLeaseTransitionDepth <= 0 || --_botRandomizerLeaseTransitionDepth > 0)
             return;
         _ = SyncBotRandomizerCosmeticLease(announce: false);
-    }
-
-    private void EnsureBotRandomizerCosmeticLease()
-    {
-        if (_botRandomizerLeaseTransitionDepth > 0)
-            return;
-
-        if (!string.IsNullOrWhiteSpace(_botRandomizerLease.Token) &&
-            Environment.TickCount64 >= _nextBotRandomizerLeaseHeartbeatAtMilliseconds)
-        {
-            _nextBotRandomizerLeaseHeartbeatAtMilliseconds =
-                Environment.TickCount64 + BotRandomizerLeaseHeartbeatMilliseconds;
-            if (!ProviderEpochMatchesActiveBotRandomizerLease() ||
-                !_botRandomizerBridge.Heartbeat(_botRandomizerLease.Token))
-            {
-                InvalidateBotRandomizerCosmeticLease("heartbeat_failed");
-            }
-        }
-
-        if (Environment.TickCount64 >= _nextBotRandomizerLeaseRetryAtMilliseconds &&
-            (string.IsNullOrWhiteSpace(_botRandomizerLease.Token) ||
-             !string.IsNullOrWhiteSpace(_lastBotRandomizerLeaseError)))
-        {
-            _ = SyncBotRandomizerCosmeticLease(announce: false);
-        }
     }
 
     private bool SyncBotRandomizerCosmeticLease(bool announce)
@@ -183,8 +152,6 @@ public sealed partial class DemoTracerPlugin
             !provider.Ready || provider.Draining)
         {
             InvalidateBotRandomizerCosmeticLease("provider_unavailable");
-            _nextBotRandomizerLeaseRetryAtMilliseconds =
-                Environment.TickCount64 + BotRandomizerLeaseRetryMilliseconds;
             ReportBotRandomizerLeaseError("provider_unavailable", announce);
             return false;
         }
@@ -206,8 +173,6 @@ public sealed partial class DemoTracerPlugin
             (!provider.WeaponPrebuildAvailable || !provider.ReplayPlanPrebuildAvailable))
         {
             InvalidateBotRandomizerCosmeticLease("replay_prebuild_unavailable");
-            _nextBotRandomizerLeaseRetryAtMilliseconds =
-                Environment.TickCount64 + BotRandomizerLeaseRetryMilliseconds;
             ReportBotRandomizerLeaseError("replay_prebuild_unavailable", announce);
             return false;
         }
@@ -244,8 +209,6 @@ public sealed partial class DemoTracerPlugin
                 _botRandomizerLease.Invalidate();
                 _botRandomizerLeaseSignature = string.Empty;
             }
-            _nextBotRandomizerLeaseRetryAtMilliseconds =
-                Environment.TickCount64 + BotRandomizerLeaseRetryMilliseconds;
             ReportBotRandomizerLeaseError(result.Reason, announce);
             return false;
         }
@@ -253,9 +216,6 @@ public sealed partial class DemoTracerPlugin
         _botRandomizerLease.Activate(result.PlanToken, result.ProviderEpoch, requests);
         _botRandomizerLeaseSignature = signature;
         _lastBotRandomizerLeaseError = string.Empty;
-        _nextBotRandomizerLeaseHeartbeatAtMilliseconds =
-            Environment.TickCount64 + BotRandomizerLeaseHeartbeatMilliseconds;
-        _nextBotRandomizerLeaseRetryAtMilliseconds = 0;
         foreach (var slot in result.Slots)
             QueueLoadedReplayCosmeticAlignmentForSlot(slot);
         if (announce)
@@ -270,11 +230,11 @@ public sealed partial class DemoTracerPlugin
     private BotRandomizerReplayPlanResult AcquireBotRandomizerReplayPlan(
         BotRandomizerReplayCosmeticPlan[] requests)
     {
-        var result = _botRandomizerBridge.Acquire(BotRandomizerContract.DemoTracerOwner, requests);
+        var result = _botRandomizerBridge.Acquire(BotRandomizerContract.DemoTracerOwner, requests, _presentationLifetime.Token);
         if (!result.Ok && result.Reason.StartsWith("slot_leased:", StringComparison.Ordinal))
         {
             _ = _botRandomizerBridge.ReleaseOwner(BotRandomizerContract.DemoTracerOwner);
-            result = _botRandomizerBridge.Acquire(BotRandomizerContract.DemoTracerOwner, requests);
+            result = _botRandomizerBridge.Acquire(BotRandomizerContract.DemoTracerOwner, requests, _presentationLifetime.Token);
         }
         return result;
     }
@@ -458,20 +418,11 @@ public sealed partial class DemoTracerPlugin
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(providerEpoch + "|" + json)));
     }
 
-    private bool ProviderEpochMatchesActiveBotRandomizerLease()
-    {
-        var provider = _botRandomizerBridge.GetProviderInfo();
-        return provider != null && provider.Ready && !provider.Draining &&
-               provider.ProviderEpoch.Equals(_botRandomizerLease.ProviderEpoch, StringComparison.Ordinal);
-    }
-
     private void InvalidateBotRandomizerCosmeticLease(string reason)
     {
         var hadActiveLease = !string.IsNullOrWhiteSpace(_botRandomizerLease.Token);
         _botRandomizerLease.Invalidate();
         _botRandomizerLeaseSignature = string.Empty;
-        _nextBotRandomizerLeaseHeartbeatAtMilliseconds = 0;
-        _nextBotRandomizerLeaseRetryAtMilliseconds = Environment.TickCount64;
         if (hadActiveLease)
             Server.PrintToConsole($"dtr: BotRandomizer replay plan invalidated reason={reason}");
     }
@@ -485,8 +436,6 @@ public sealed partial class DemoTracerPlugin
         _botRandomizerLease.Invalidate();
         _botRandomizerLeaseSignature = string.Empty;
         _lastBotRandomizerLeaseError = string.Empty;
-        _nextBotRandomizerLeaseHeartbeatAtMilliseconds = 0;
-        _nextBotRandomizerLeaseRetryAtMilliseconds = 0;
         if (string.IsNullOrWhiteSpace(token))
             return;
 

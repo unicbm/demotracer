@@ -13,30 +13,14 @@ public sealed partial class DemoTracerPlugin
 {
     private sealed class DemoTracerBotHiderBridge
     {
-        private const long CapabilityRetryDelayMilliseconds = 1_000;
-        private const long ProviderValidationIntervalMilliseconds = 500;
-        private static readonly PluginCapability<IBotHiderApi> Capability =
-            new(DemoTracerBotHiderContract.Capability);
-
+        private static readonly PluginCapability<IBotHiderApi> Capability = new(DemoTracerBotHiderContract.Capability);
         private IBotHiderApi? _api;
-        private long _nextCapabilityLookupAtMilliseconds;
-        private long _providerValidationExpiresAtMilliseconds;
-        private bool _tickQueryScopeActive;
-        private bool _providerValidatedInTickQueryScope;
+        private bool _resolved;
 
         public void Refresh()
-            => InvalidateApi(throttleCapabilityLookup: false);
-
-        public void BeginTickQueryScope()
         {
-            _tickQueryScopeActive = true;
-            _providerValidatedInTickQueryScope = false;
-        }
-
-        public void EndTickQueryScope()
-        {
-            _tickQueryScopeActive = false;
-            _providerValidatedInTickQueryScope = false;
+            _api = null;
+            _resolved = false;
         }
 
         public bool IsAvailable()
@@ -52,7 +36,7 @@ public sealed partial class DemoTracerPlugin
             }
             catch
             {
-                InvalidateApi(throttleCapabilityLookup: true);
+                Refresh();
                 return false;
             }
         }
@@ -68,24 +52,24 @@ public sealed partial class DemoTracerPlugin
             }
             catch
             {
-                InvalidateApi(throttleCapabilityLookup: true);
+                Refresh();
                 return false;
             }
         }
 
         public BotHiderPresentationLeaseResult Acquire(
             string owner,
-            BotHiderPresentationOverride[] overrides)
+            BotHiderPresentationOverride[] overrides, CancellationToken ownerLifetime)
         {
             if (!TryGetApi(out var api))
                 return Fail("provider_unavailable");
             try
             {
-                return api.AcquirePresentationLease(owner, overrides);
+                return api.AcquirePresentationLease(owner, overrides, ownerLifetime);
             }
             catch (Exception ex)
             {
-                InvalidateApi(throttleCapabilityLookup: true);
+                Refresh();
                 return Fail($"provider_error:{ex.Message}");
             }
         }
@@ -102,23 +86,8 @@ public sealed partial class DemoTracerPlugin
             }
             catch (Exception ex)
             {
-                InvalidateApi(throttleCapabilityLookup: true);
+                Refresh();
                 return Fail($"provider_error:{ex.Message}");
-            }
-        }
-
-        public bool Heartbeat(string leaseToken)
-        {
-            if (!TryGetApi(out var api))
-                return false;
-            try
-            {
-                return api.HeartbeatPresentationLease(leaseToken);
-            }
-            catch
-            {
-                InvalidateApi(throttleCapabilityLookup: true);
-                return false;
             }
         }
 
@@ -134,7 +103,7 @@ public sealed partial class DemoTracerPlugin
             }
             catch
             {
-                InvalidateApi(throttleCapabilityLookup: true);
+                Refresh();
                 return false;
             }
         }
@@ -149,7 +118,7 @@ public sealed partial class DemoTracerPlugin
             }
             catch
             {
-                InvalidateApi(throttleCapabilityLookup: true);
+                Refresh();
                 return 0;
             }
         }
@@ -164,23 +133,12 @@ public sealed partial class DemoTracerPlugin
             }
             catch
             {
-                InvalidateApi(throttleCapabilityLookup: true);
+                Refresh();
                 return null;
             }
         }
 
-        public BotHiderProviderInfo? ProbeProviderInfo()
-        {
-            try
-            {
-                var api = _api ?? Capability.Get();
-                return api?.GetProviderInfo();
-            }
-            catch
-            {
-                return null;
-            }
-        }
+        public BotHiderProviderInfo? ProbeProviderInfo() => GetProviderInfo();
 
         public BotHiderDiagnostics? GetDiagnostics()
         {
@@ -192,93 +150,24 @@ public sealed partial class DemoTracerPlugin
             }
             catch
             {
-                InvalidateApi(throttleCapabilityLookup: true);
+                Refresh();
                 return null;
             }
         }
 
+        // Provider lifecycle notifications invalidate this reference. Operations
+        // still validate current native ownership; no availability TTL is used.
         private bool TryGetApi(out IBotHiderApi api)
         {
-            var now = Environment.TickCount64;
-            // Cache only provider availability. Every safety decision still calls
-            // IsManagedBot/TryGetManagedSlot on the provider for the current slot.
-            if (_api != null &&
-                (_tickQueryScopeActive && _providerValidatedInTickQueryScope ||
-                 now < _providerValidationExpiresAtMilliseconds ||
-                 ValidateCachedApi(_api, now)))
+            if (!_resolved)
             {
-                api = _api;
-                return true;
+                _resolved = true;
+                try { _api = Capability.Get(); }
+                catch { _api = null; }
             }
-
-            if (_api != null)
-                InvalidateApi(throttleCapabilityLookup: true);
-
-            if (now < _nextCapabilityLookupAtMilliseconds)
-            {
-                api = null!;
-                return false;
-            }
-
-            _nextCapabilityLookupAtMilliseconds = now + CapabilityRetryDelayMilliseconds;
-            try
-            {
-                var candidate = Capability.Get();
-                if (candidate != null && ProviderIsUsable(candidate))
-                {
-                    _api = candidate;
-                    _nextCapabilityLookupAtMilliseconds = 0;
-                    _providerValidationExpiresAtMilliseconds = now + ProviderValidationIntervalMilliseconds;
-                    if (_tickQueryScopeActive)
-                        _providerValidatedInTickQueryScope = true;
-                }
-            }
-            catch
-            {
-                InvalidateApi(throttleCapabilityLookup: true);
-            }
-
             api = _api!;
-            return api != null;
+            return api != null && api.ApiVersion == DemoTracerBotHiderContract.ApiVersion;
         }
-
-        private bool ValidateCachedApi(IBotHiderApi api, long now)
-        {
-            if (!ProviderIsUsable(api))
-                return false;
-
-            _providerValidationExpiresAtMilliseconds = now + ProviderValidationIntervalMilliseconds;
-            if (_tickQueryScopeActive)
-                _providerValidatedInTickQueryScope = true;
-            return true;
-        }
-
-        private void InvalidateApi(bool throttleCapabilityLookup)
-        {
-            _api = null;
-            _providerValidatedInTickQueryScope = false;
-            _providerValidationExpiresAtMilliseconds = 0;
-            _nextCapabilityLookupAtMilliseconds = throttleCapabilityLookup
-                ? Environment.TickCount64 + CapabilityRetryDelayMilliseconds
-                : 0;
-        }
-
-        private static bool ProviderIsUsable(IBotHiderApi api)
-        {
-            try
-            {
-                var provider = api.GetProviderInfo();
-                return api.ApiVersion == DemoTracerBotHiderContract.ApiVersion &&
-                       provider.ApiVersion == DemoTracerBotHiderContract.ApiVersion &&
-                       provider.Connected &&
-                       !provider.Draining;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
         private static BotHiderPresentationLeaseResult Fail(string reason)
             => new()
             {

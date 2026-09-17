@@ -13,43 +13,24 @@ public sealed class BotHiderIdentityReassertTests
     [Fact]
     public void NewPresentationPublishesCrosshairEvenWhenValueMatches()
     {
-        Assert.True(BotHiderPresentationService.RequiresCrosshairPublication(
-            hasAppliedPresentation: false,
-            appliedIncarnation: 0,
-            effectiveIncarnation: 12));
+        var state = new BotHiderPresentationService.SlotState();
+        Assert.True(state.NeedsCrosshairPublication(0x8005));
     }
 
     [Fact]
-    public void NewSlotIncarnationPublishesCrosshair()
+    public void ReusedControllerIndexWithNewSerialPublishesCrosshair()
     {
-        Assert.True(BotHiderPresentationService.RequiresCrosshairPublication(
-            hasAppliedPresentation: true,
-            appliedIncarnation: 11,
-            effectiveIncarnation: 12));
+        var state = new BotHiderPresentationService.SlotState { PublishedController = 0x8005 };
+        Assert.True(state.NeedsCrosshairPublication(0x10005));
     }
 
     [Fact]
     public void StableAppliedPresentationDoesNotRepublishCrosshair()
     {
-        Assert.False(BotHiderPresentationService.RequiresCrosshairPublication(
-            hasAppliedPresentation: true,
-            appliedIncarnation: 12,
-            effectiveIncarnation: 12));
-    }
-
-    [Theory]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    public void ExplicitLeaseReplacementSkipsHeartbeatShortcut(
-        bool forceReplace,
-        bool expectedHeartbeat)
-    {
-        Assert.Equal(
-            expectedHeartbeat,
-            BotHiderPresentationLeasePolicy.ShouldHeartbeatExistingLease(
-                forceReplace,
-                hasLease: true,
-                signatureMatches: true));
+        var state = new BotHiderPresentationService.SlotState { PublishedController = 0x8005 };
+        Assert.False(state.NeedsCrosshairPublication(0x8005));
+        state.CrosshairPending = true;
+        Assert.True(state.NeedsCrosshairPublication(0x8005));
     }
 
     [Theory]

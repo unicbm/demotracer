@@ -4,11 +4,16 @@ namespace DemoTracerBotHiderApi;
 
 public static class DemoTracerBotHiderContract
 {
-    public const int ApiVersion = 1;
-    public const string Capability = "demotracer:bot-hider:v1";
+    public const int ApiVersion = 2;
+    public const string Capability = "demotracer:bot-hider:v2";
     public const string DemoTracerOwner = "demotracer";
     public const int MaxPlayerNameUtf8Bytes = 31;
     public const int MaxCrosshairCodeUtf8Bytes = 63;
+
+    // Shared contract assembly: notifications survive provider hot reload.
+    // Subscribers must unsubscribe on unload and defer engine work to a frame.
+    public static event Action? ProviderChanged;
+    public static void NotifyProviderChanged() => ProviderChanged?.Invoke();
 
     public static bool TryNormalizeCrosshairCode(string? source, out string? normalized)
     {
@@ -39,17 +44,18 @@ public interface IBotHiderApi
 
     // Acquisition/replacement commits lease ownership only after native identity
     // and requested controller fields confirm success; this is not a client ACK.
-    // Main-thread only. A disconnected or reused slot leaves
+    // All operations, including ownerLifetime cancellation, are main-thread only.
+    // The owner must cancel on unload; no heartbeat or expiration is required.
+    // A disconnected or reused slot leaves
     // the lease without revoking surviving slots. An empty lease is revoked.
     BotHiderPresentationLeaseResult AcquirePresentationLease(
         string owner,
-        BotHiderPresentationOverride[] overrides);
+        BotHiderPresentationOverride[] overrides,
+        CancellationToken ownerLifetime);
 
     BotHiderPresentationLeaseResult ReplacePresentationLease(
         string leaseToken,
         BotHiderPresentationOverride[] overrides);
-
-    bool HeartbeatPresentationLease(string leaseToken);
 
     bool ReleasePresentationLease(string leaseToken);
 
@@ -78,6 +84,7 @@ public sealed class BotHiderManagedSlot
     public ulong Incarnation { get; set; }
 
     public ulong BaseSteamId { get; set; }
+    public ulong PublishedSteamId { get; set; }
 
     public string BasePlayerName { get; set; } = string.Empty;
 
@@ -128,8 +135,6 @@ public sealed class BotHiderDiagnostics
     public int LeasedSlots { get; set; }
 
     public int RevokedLeases { get; set; }
-
-    public int ExpiredLeases { get; set; }
 
     public int PublishedWrites { get; set; }
 

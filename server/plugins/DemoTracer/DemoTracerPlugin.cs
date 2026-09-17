@@ -25,7 +25,7 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin : BasePlugin
 {
     public override string ModuleName => "CS2 DemoTracer";
-    public override string ModuleVersion => "1.2.3";
+    public override string ModuleVersion => "1.3.0";
     public override string ModuleAuthor => "unicbm";
     public override string ModuleDescription => "Trace CS2 demos into bot-executable route replays.";
 
@@ -125,6 +125,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         Capabilities.RegisterPluginCapability(ApiCapability, () => (IDemoTracerApi)_apiFacade);
         ConfigureNativeSafetyOffsets();
         InstallProjectilePhysicsHook();
+        StartPresentationLifetime();
         StartRuntimeHealthHeartbeat();
         Server.PrintToConsole("dtr: CSS control plugin loaded");
     }
@@ -142,24 +143,31 @@ public sealed partial class DemoTracerPlugin : BasePlugin
 
     public override void Unload(bool hotReload)
     {
-        _session.ProjectileBirths.Clear();
         try
         {
-            _projectilePhysicsHook?.Dispose();
+            _session.ProjectileBirths.Clear();
+            try
+            {
+                _projectilePhysicsHook?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                // The callback is disabled before Unhook. Still release replay
+                // ownership and injected input if native hook cleanup reports an error.
+                Server.PrintToConsole($"dtr: projectile hook cleanup failed: {ex.Message}");
+            }
+            StopRuntimeHealthHeartbeat();
+            UnregisterReplayBuySuppressionHooks();
+            UnregisterReplayRetentionJoinHook();
+            ClearReplayStateForLifecycle(hotReload ? "plugin_reload" : "plugin_unload");
+            _ = _botRandomizerBridge.ReleaseOwner(BotRandomizerApi.BotRandomizerContract.DemoTracerOwner);
+            _botHiderBridge.Refresh();
+            _botRandomizerBridge.Refresh();
         }
-        catch (Exception ex)
+        finally
         {
-            // The callback is disabled before Unhook. Still release replay
-            // ownership and injected input if native hook cleanup reports an error.
-            Server.PrintToConsole($"dtr: projectile hook cleanup failed: {ex.Message}");
+            StopPresentationLifetime();
         }
-        StopRuntimeHealthHeartbeat();
-        UnregisterReplayBuySuppressionHooks();
-        UnregisterReplayRetentionJoinHook();
-        ClearReplayStateForLifecycle(hotReload ? "plugin_reload" : "plugin_unload");
-        _ = _botRandomizerBridge.ReleaseOwner(BotRandomizerApi.BotRandomizerContract.DemoTracerOwner);
-        _botHiderBridge.Refresh();
-        _botRandomizerBridge.Refresh();
     }
 
     private void OnMapStart(string mapName)

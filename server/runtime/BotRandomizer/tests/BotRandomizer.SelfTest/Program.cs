@@ -426,8 +426,9 @@ var reusedSlotState = stateStore.GetOrCreate(
 Assert(reusedSlotState.Incarnation != firstIncarnation,
     "slot reuse receives a new managed bot incarnation");
 
-long leaseClock = 1_000;
-var leaseStore = new CosmeticWriteLeaseStore("self-test", () => leaseClock);
+using var leaseOwner = new CancellationTokenSource();
+int[] cancelledSlots = [];
+var leaseStore = new CosmeticWriteLeaseStore("self-test", slots => cancelledSlots = slots);
 var replayIdentity = new ReplayEconIdentity(9, 88, null, null, 1234, "demo");
 var demoTracerPolicy = new CosmeticWritePolicy(
     BotRandomizerReplayTeamPolicy.Terrorist,
@@ -450,6 +451,7 @@ var demoTracerClaims = new Dictionary<int, LeasedCosmeticWriteClaim>
 Assert(leaseStore.TryAcquire(
         "demotracer",
         demoTracerClaims,
+        leaseOwner.Token,
         out var demoTracerLease,
         out var leaseReason)
     && leaseReason.Length == 0,
@@ -471,6 +473,7 @@ Assert(!leaseStore.TryGetPolicy(1, 12, out _, out _),
 Assert(!leaseStore.TryAcquire(
         "other-writer",
         demoTracerClaims,
+        leaseOwner.Token,
         out _,
         out leaseReason)
     && leaseReason == "slot_leased:1",
@@ -505,33 +508,33 @@ Assert(!leaseStore.TryGetPolicy(1, 11, out _, out _)
     && replacementActive.MusicKit == 3,
     "lease replacement releases old claims and installs new claims");
 
-leaseClock += 3_999;
-Assert(leaseStore.Heartbeat(replacementLease.Token), "lease heartbeat before timeout");
-leaseClock += 4_001;
-Assert(leaseStore.SweepExpired().SequenceEqual(new[] { 2 })
+leaseOwner.Cancel();
+Assert(cancelledSlots.SequenceEqual(new[] { 2 })
     && !leaseStore.TryGetPolicy(2, 22, out _, out _),
-    "expired lease restores randomizer ownership");
+    "owner cancellation releases the replaced plan synchronously without a sweep");
 var leaseCounters = leaseStore.GetCounters();
 Assert(leaseCounters.ActiveLeases == 0
     && leaseCounters.AcquiredLeases == 1
     && leaseCounters.ReplacedLeases == 1
-    && leaseCounters.ExpiredLeases == 1
+    && leaseCounters.ReleasedLeases == 1
     && leaseCounters.RejectedRequests == 1,
     "lease diagnostics counters");
 
-var disconnectLeases = new CosmeticWriteLeaseStore("disconnect-test", () => leaseClock);
+using var batchOwner = new CancellationTokenSource();
+using var reusedOwner = new CancellationTokenSource();
+var disconnectLeases = new CosmeticWriteLeaseStore("disconnect-test");
 Assert(disconnectLeases.TryAcquire("demotracer", new Dictionary<int, LeasedCosmeticWriteClaim>
     {
         [1] = new(11, null, demoTracerPolicy),
         [2] = new(22, null, replacementPolicy)
-    }, out var batchLease, out _), "multi-bot replay plan acquisition");
+    }, batchOwner.Token, out var batchLease, out _), "multi-bot replay plan acquisition");
 Assert(disconnectLeases.RevokeSlot(1)
     && !disconnectLeases.TryGetPolicy(1, 11, out _, out _)
     && !disconnectLeases.TryGetPolicy(1, 12, out _, out _)
     && disconnectLeases.TryGetPolicy(2, 22, out var retainedPolicy, out _)
     && ReferenceEquals(retainedPolicy, replacementPolicy)
-    && disconnectLeases.Heartbeat(batchLease.Token),
-    "one disconnect preserves the other bot's plan and heartbeat token");
+    && disconnectLeases.GetCounters().ActiveLeases == 1,
+    "one disconnect preserves the other bot's plan and owner lifetime");
 Assert(batchLease.Claims.Count == 2,
     "partial disconnect preserves the original acquisition snapshot");
 Assert(!disconnectLeases.RevokeSlot(1) && !disconnectLeases.RevokeSlot(5)
@@ -544,7 +547,7 @@ Assert(partialCounters.ActiveLeases == 1 && partialCounters.LeasedSlots == 1
 Assert(disconnectLeases.TryAcquire("new-bot", new Dictionary<int, LeasedCosmeticWriteClaim>
     {
         [1] = new(12, null, demoTracerPolicy)
-    }, out var reusedSlotLease, out _)
+    }, reusedOwner.Token, out var reusedSlotLease, out _)
     && !disconnectLeases.TryGetPolicy(1, 11, out _, out _)
     && disconnectLeases.TryGetPolicy(1, 12, out _, out _),
     "reused slot acquires a fresh plan without inheriting the old incarnation");
@@ -552,14 +555,31 @@ Assert(disconnectLeases.TryRelease(batchLease.Token, out var releasedSlots)
     && releasedSlots.SequenceEqual(new[] { 2 })
     && !disconnectLeases.TryGetPolicy(2, 22, out _, out _)
     && disconnectLeases.TryGetPolicy(1, 12, out _, out _)
-    && disconnectLeases.Heartbeat(reusedSlotLease.Token),
+    && disconnectLeases.GetCounters().ActiveLeases == 1,
     "releasing the original batch leaves the reused slot's new lease intact");
 Assert(disconnectLeases.RevokeSlot(1)
-    && !disconnectLeases.Heartbeat(reusedSlotLease.Token)
     && disconnectLeases.GetCounters().ActiveLeases == 0
     && disconnectLeases.GetCounters().LeasedSlots == 0
     && disconnectLeases.GetCounters().RevokedLeases == 1,
     "last participant disconnect revokes the empty lease and its mappings");
+
+Assert(!leaseStore.TryAcquire("inactive", demoTracerClaims, leaseOwner.Token, out _, out var inactiveReason)
+    && inactiveReason == "owner_lifetime_inactive"
+    && !leaseStore.TryAcquire("unowned", demoTracerClaims, CancellationToken.None, out _, out _),
+    "cancelled and uncancellable owners cannot acquire plans");
+using var oldMapOwner = new CancellationTokenSource();
+using var newMapOwner = new CancellationTokenSource();
+var releaseCallbacks = 0;
+var mapLeases = new CosmeticWriteLeaseStore("maps", _ => releaseCallbacks++);
+Assert(mapLeases.TryAcquire("old", demoTracerClaims, oldMapOwner.Token, out _, out _), "old map lease");
+mapLeases.Reset(countRevocation: true);
+Assert(mapLeases.TryAcquire("new", demoTracerClaims, newMapOwner.Token, out _, out _), "new map lease");
+oldMapOwner.Cancel();
+Assert(releaseCallbacks == 0 && mapLeases.TryGetPolicy(1, 11, out _, out _),
+    "old owner cancellation cannot invalidate new map plans");
+newMapOwner.Cancel();
+Assert(releaseCallbacks == 1 && !mapLeases.TryGetPolicy(1, 11, out _, out _),
+    "new owner cancellation releases exactly once");
 
 RandomizerControlTests.Run();
 Console.WriteLine("BotRandomizer self-test passed.");

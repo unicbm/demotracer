@@ -462,6 +462,7 @@ namespace cs2bh
     // Current controller field used to resolve each managed bot pawn
     static int g_BotPawnHandleOffset = -1;
     static int g_ControllerCrosshairOffset = -1;
+    static int g_ControllerPingOffset = -1;
 
 #if !defined(_WIN32)
     static void ClearFakeClientCallStack()
@@ -2377,27 +2378,48 @@ namespace cs2bh
         return true;
     }
 
-    bool HiderPlugin::PublishCrosshair(int slot, uint64_t session, uint64_t incarnation,
-                                       uint32_t controllerHandle)
+    static void *ResolvePresentationController(int slot, uint64_t session, uint64_t incarnation,
+                                              uint32_t controllerHandle)
     {
-        if (!Publisher().Matches(slot, session, incarnation) || !Manager().IsManaged(slot) ||
-            g_ControllerCrosshairOffset < 0) return false;
+        if (!Publisher().Matches(slot, session, incarnation) || !Manager().IsManaged(slot)) return nullptr;
         void *client = ResolveClientBySlot(slot);
         if (!client || ssc::IsHltv(client) ||
             *reinterpret_cast<void **>(static_cast<unsigned char *>(client) + ssc::OFFSET_m_NetChannel))
-            return false;
+            return nullptr;
         const int index = *reinterpret_cast<int *>(
             static_cast<unsigned char *>(client) + ssc::OFFSET_m_nEntityIndex);
         char className[64];
         void *controller = ResolveEntityInstance(index, className, sizeof(className));
         if (!controller || std::strcmp(className, "cs_player_controller") != 0 ||
-            IsEntityBeingDeleted(controller)) return false;
+            IsEntityBeingDeleted(controller)) return nullptr;
         auto *entity = reinterpret_cast<CEntityInstance *>(controller);
         if (static_cast<uint32_t>(entity->GetRefEHandle().ToInt()) != controllerHandle)
-            return false;
+            return nullptr;
+        return controller;
+    }
+
+    bool HiderPlugin::PublishCrosshair(int slot, uint64_t session, uint64_t incarnation,
+                                      uint32_t controllerHandle)
+    {
+        if (g_ControllerCrosshairOffset < 0) return false;
+        void *controller = ResolvePresentationController(slot, session, incarnation, controllerHandle);
+        if (!controller) return false;
         // The engine's crosshair setter uses this same field notification.
         // Controller Schema metadata can omit MNetworkEnable for this field.
         MarkEntityFieldChanged(controller, static_cast<uint32_t>(g_ControllerCrosshairOffset));
+        return true;
+    }
+
+    bool HiderPlugin::PublishPing(int slot, uint64_t session, uint64_t incarnation,
+                                 uint32_t controllerHandle)
+    {
+        if (g_ControllerPingOffset < 0) return false;
+        void *controller = ResolvePresentationController(slot, session, incarnation, controllerHandle);
+        PresentationSlot state;
+        if (!controller || !Publisher().ReadSlot(slot, state)) return false;
+        // m_iPing is engine display state, not a networked schema field.
+        *reinterpret_cast<int *>(static_cast<char *>(controller) + g_ControllerPingOffset) =
+            std::max(0, state.Ping);
         return true;
     }
 
@@ -2582,6 +2604,7 @@ namespace cs2bh
             int pawnOff = schema::GetFieldOffset("CBasePlayerController", "m_hPawn");
             int playerPawnOff = schema::GetFieldOffset("CCSPlayerController", "m_hPlayerPawn");
             g_ControllerCrosshairOffset = schema::GetFieldOffset("CCSPlayerController", "m_szCrosshairCodes");
+            g_ControllerPingOffset = schema::GetFieldOffset("CCSPlayerController", "m_iPing");
             int idleOff = schema::GetFieldOffset("CCSPlayerPawnBase", "m_flIdleTimeSinceLastAction");
             targets::kBaseEntity_FlagsOffset =
                 schema::GetFieldOffset("CBaseEntity", "m_fFlags");
@@ -2600,6 +2623,7 @@ namespace cs2bh
         {
             g_BotPawnHandleOffset = -1;
             g_ControllerCrosshairOffset = -1;
+            g_ControllerPingOffset = -1;
             targets::kBaseEntity_FlagsOffset = -1;
             targets::kController_TeamOffset = -1;
             META_CONPRINTF("[BOTHIDER] warning: SchemaSystem unresolved — idle-kick and FL_BOT overrides disabled\n");
@@ -2633,6 +2657,8 @@ namespace cs2bh
         if (Publisher().Init())
         {
             META_CONPRINTF("[BOTHIDER] native presentation ABI %d ready\n", kNativePresentationAbi);
+            // Rebind a managed subscriber after a native hot reload.
+            if (engine) engine->ServerCommand("bh_native_ready\n");
             // Publish resolved hook/sig addresses for bh_status (0 = unresolved)
             Publisher().PublishSignature("UTIL_Remove", reinterpret_cast<void *>(g_pfnUtilRemove));
             Publisher().PublishSignature("MaintainBotQuota", g_pQuotaHookTarget);
@@ -2741,6 +2767,10 @@ namespace cs2bh
 #endif
 BH_EXPORT int BotHider_GetNativeAbi() { return cs2bh::kNativePresentationAbi; }
 BH_EXPORT uint64_t BotHider_GetSession() { return cs2bh::Publisher().Session(); }
+BH_EXPORT int BotHider_Listen(uint64_t session, cs2bh::PresentationChanged listener)
+{
+    return cs2bh::Publisher().Listen(session, listener) ? 0 : -1;
+}
 BH_EXPORT int BotHider_ReadSlot(int slot, cs2bh::PresentationSlot *out, int size)
 {
     return out && size == sizeof(*out) && cs2bh::Publisher().ReadSlot(slot, *out) ? 0 : -1;
@@ -2761,7 +2791,6 @@ BH_EXPORT int BotHider_SetOption(uint64_t session, int option, int value)
     {
         case 1: cs2bh::g_Plugin.SetDisguiseEnabled(value != 0); break;
         case 2: cs2bh::g_Plugin.SetUseBotInfoName(value != 0); break;
-        case 3: cs2bh::g_Plugin.RebuildBots(); break;
         default: return -1;
     }
     return 0;
@@ -2771,4 +2800,10 @@ BH_EXPORT int BotHider_PublishCrosshair(int slot, uint64_t session, uint64_t inc
                                         uint32_t controllerHandle)
 {
     return cs2bh::g_Plugin.PublishCrosshair(slot, session, incarnation, controllerHandle) ? 0 : -1;
+}
+
+BH_EXPORT int BotHider_PublishPing(int slot, uint64_t session, uint64_t incarnation,
+                                 uint32_t controllerHandle)
+{
+    return cs2bh::g_Plugin.PublishPing(slot, session, incarnation, controllerHandle) ? 0 : -1;
 }

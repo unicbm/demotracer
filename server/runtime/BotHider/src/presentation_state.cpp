@@ -20,7 +20,7 @@ namespace cs2bh
         m_thread = std::this_thread::get_id();
         m_session = std::max(m_session + 1, static_cast<uint64_t>(
             std::chrono::steady_clock::now().time_since_epoch().count()));
-        m_slots = {}; m_signatures = {}; m_signatureCount = 0;
+        m_slots = {}; m_signatures = {}; m_signatureCount = 0; m_listener = nullptr;
         m_active = true;
         return true;
     }
@@ -28,7 +28,18 @@ namespace cs2bh
     {
         return std::this_thread::get_id() == m_thread && m_active;
     }
-    void SlotPublisher::Shutdown() { m_active = false; m_slots = {}; }
+    bool SlotPublisher::Listen(uint64_t session, PresentationChanged listener)
+    {
+        if (!Active() || session != m_session) return false;
+        m_listener = listener;
+        return true;
+    }
+    void SlotPublisher::Shutdown()
+    {
+        m_active = false; m_slots = {};
+        auto listener = m_listener; m_listener = nullptr;
+        if (listener) listener(kPresentationRosterChanged, -1);
+    }
     bool SlotPublisher::ReadSlot(int slot, PresentationSlot &out) const
     {
         if (!Active() || slot < 0 || slot >= 64) return false;
@@ -47,10 +58,15 @@ namespace cs2bh
         s.Session = m_session; s.Incarnation = ++m_nextIncarnation;
         s.BaseSteamId = s.SteamId = sid; s.Managed = 1; s.ScoreboardFlair = flair;
         Copy(s.BaseName, name); Copy(s.Name, name); Copy(s.Crosshair, crosshair);
+        Notify(kPresentationRosterChanged, slot);
     }
     void SlotPublisher::PublishRelease(int slot)
     {
-        if (Active() && slot >= 0 && slot < 64) m_slots[slot] = {};
+        if (Active() && slot >= 0 && slot < 64 && m_slots[slot].Managed)
+        {
+            m_slots[slot] = {};
+            Notify(kPresentationRosterChanged, slot);
+        }
     }
     void SlotPublisher::UpdateSyntheticSid(int slot, uint64_t sid)
     {
@@ -62,7 +78,11 @@ namespace cs2bh
     }
     void SlotPublisher::UpdatePing(int slot, int ping)
     {
-        if (Active() && slot >= 0 && slot < 64) m_slots[slot].Ping = ping;
+        if (Active() && slot >= 0 && slot < 64 && m_slots[slot].Ping != ping)
+        {
+            m_slots[slot].Ping = ping;
+            Notify(kPresentationPingChanged, slot);
+        }
     }
     void SlotPublisher::PublishSignature(const char *name, const void *address)
     {

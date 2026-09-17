@@ -29,7 +29,9 @@ public sealed class BotHiderNativeEncodingTests
         Assert.Equal(0UL, client.Session);
         Assert.False(client.TryGetSlot(1, out _));
         Assert.False(client.PublishIdentity(1, 1, 1, 123, "bot"));
-        Assert.False(client.RequestRebuild());
+        Assert.False(client.PublishPing(1, 1, 1, 0x8005));
+        Assert.False(client.SetDisguise(true));
+        Assert.False(client.SetNameSource(true));
     }
     [Theory]
     [InlineData("abc", 4)]

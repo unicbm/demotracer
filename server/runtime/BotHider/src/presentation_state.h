@@ -5,7 +5,9 @@
 
 namespace cs2bh
 {
-    inline constexpr int kNativePresentationAbi = 2;
+    inline constexpr int kNativePresentationAbi = 3;
+    using PresentationChanged = void (*)(uint32_t reason, int slot);
+    inline constexpr uint32_t kPresentationRosterChanged = 1, kPresentationPingChanged = 2;
 #pragma pack(push, 4)
     struct PresentationSlot
     {
@@ -27,6 +29,7 @@ namespace cs2bh
         bool Init();
         void Shutdown();
         bool Active() const;
+        bool Listen(uint64_t session, PresentationChanged listener);
         uint64_t Session() const { return Active() ? m_session : 0; }
         bool ReadSlot(int slot, PresentationSlot &out) const;
         bool Matches(int slot, uint64_t session, uint64_t incarnation) const;
@@ -44,6 +47,8 @@ namespace cs2bh
         std::array<PresentationSlot, 64> m_slots{};
         std::array<PresentationSignature, 8> m_signatures{};
         int m_signatureCount = 0;
+        PresentationChanged m_listener = nullptr;
+        void Notify(uint32_t reason, int slot) const { if (m_listener) m_listener(reason, slot); }
     };
     SlotPublisher &Publisher();
 }

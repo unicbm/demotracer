@@ -29,6 +29,7 @@ public sealed class BotHiderTakeoverPresentationTests
         Assert.Equal(first.PlayerName, duringTakeover.PlayerName);
         Assert.Equal(first.SteamId, duringTakeover.SteamId);
         Assert.Equal(42UL, duringTakeover.Incarnation);
+        Assert.Equal(0, provider.ProviderInfoCalls);
 
         // Native management remains the authority: a real disconnect removes
         // eligibility, and a human slot is never assigned this bot's identity.
@@ -46,6 +47,7 @@ public sealed class BotHiderTakeoverPresentationTests
         var bridge = Activator.CreateInstance(bridgeField.FieldType, nonPublic: true)!;
         var api = DispatchProxy.Create<IBotHiderApi, ManagedBotProvider>();
         bridgeField.FieldType.GetField("_api", PrivateInstance)!.SetValue(bridge, api);
+        bridgeField.FieldType.GetField("_resolved", PrivateInstance)!.SetValue(bridge, true);
         bridgeField.SetValue(plugin, bridge);
         var mode = typeof(DemoTracerPlugin).GetField("_replayIdentityMode", PrivateInstance)!;
         mode.SetValue(plugin, Enum.Parse(mode.FieldType, "Steam"));
@@ -69,6 +71,7 @@ public sealed class BotHiderTakeoverPresentationTests
     public class ManagedBotProvider : DispatchProxy
     {
         public bool Managed { get; set; } = true;
+        public int ProviderInfoCalls { get; private set; }
 
         protected override object? Invoke(MethodInfo? method, object?[]? args)
         {
@@ -76,6 +79,7 @@ public sealed class BotHiderTakeoverPresentationTests
             {
                 case "get_ApiVersion": return DemoTracerBotHiderContract.ApiVersion;
                 case nameof(IBotHiderApi.GetProviderInfo):
+                    ProviderInfoCalls++;
                     return new BotHiderProviderInfo { ApiVersion = DemoTracerBotHiderContract.ApiVersion, Connected = true };
                 case nameof(IBotHiderApi.TryGetManagedSlot):
                     args![1] = new BotHiderManagedSlot { Slot = (int)args[0]!, Incarnation = 42 };

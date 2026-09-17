@@ -34,16 +34,15 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
     private bool _giveNamedItemErrorLogged;
     private bool _draining;
     private ulong _mapEpoch = 1;
-    private long _nextLeaseSweepMilliseconds;
 
     public BotRandomizerPlugin()
     {
-        _writeLeases = new CosmeticWriteLeaseStore(_providerEpoch);
+        _writeLeases = new CosmeticWriteLeaseStore(_providerEpoch, InvalidateLeasePolicySlots);
         _apiFacade = new BotRandomizerApiFacade(this);
     }
 
     public override string ModuleName => "BotRandomizer";
-    public override string ModuleVersion => "1.6.3";
+    public override string ModuleVersion => "1.6.4";
     public override string ModuleAuthor => "ed0ard, Misaka17032 & unicbm";
     public override string ModuleDescription =>
         "Stable per-bot knives, gloves, weapon skins, stickers, charms, agents and music kits";
@@ -56,7 +55,6 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
 
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
         RegisterListener<Listeners.OnClientDisconnect>(OnClientDisconnect);
-        RegisterListener<Listeners.OnTick>(OnTick);
         RegisterEventHandler<EventRoundPrestart>(OnRoundPrestart, HookMode.Pre);
         RegisterEventHandler<EventPlayerSpawn>(OnPlayerSpawn);
         RegisterEventHandler<EventRoundMvp>(OnRoundMvp, HookMode.Pre);
@@ -87,7 +85,11 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
 
         _weaponItemViews?.Dispose();
         _weaponItemViews = null;
+        BotRandomizerContract.NotifyProviderChanged();
     }
+
+    public override void OnAllPluginsLoaded(bool hotReload)
+        => BotRandomizerContract.NotifyProviderChanged();
 
     private void LoadCatalog()
     {
@@ -187,16 +189,6 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         _pendingRerolls.Remove(playerSlot);
         _weaponItemViews?.ClearSlot(playerSlot);
         _applicator?.ClearSlot(playerSlot);
-    }
-
-    private void OnTick()
-    {
-        var now = Environment.TickCount64;
-        if (now < _nextLeaseSweepMilliseconds)
-            return;
-
-        _nextLeaseSweepMilliseconds = now + 1_000;
-        SweepExpiredWriteLeases();
     }
 
     private HookResult OnRoundPrestart(EventRoundPrestart @event, GameEventInfo info)

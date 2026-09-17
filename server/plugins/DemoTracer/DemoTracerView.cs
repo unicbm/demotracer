@@ -125,7 +125,7 @@ public sealed partial class DemoTracerPlugin
         if (_session.LoadedSlots.Count == 0 && _retainedBotHiderPresentation.Count == 0)
             ReleaseBotHiderPresentationLease("crosshair_clear_all");
         else
-            EnsureBotHiderPresentationLease();
+            _ = SyncBotHiderPresentationLease(announce: false);
     }
 
     private void UpdateReplayBotViewmodels(TickPlayerSnapshot playerSnapshot)
