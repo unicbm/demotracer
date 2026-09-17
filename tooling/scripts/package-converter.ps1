@@ -96,7 +96,23 @@ if (-not $SkipBuild) {
         Remove-Item -LiteralPath $resolvedBundleRoot -Recurse -Force
     }
     Push-Location $desktopRoot
+    $savedEncodedRustFlags = $env:CARGO_ENCODED_RUSTFLAGS
     try {
+        # Panic locations in dependencies also embed source paths in release binaries.
+        $rustFlags = @(if (-not [string]::IsNullOrEmpty($savedEncodedRustFlags)) {
+            $savedEncodedRustFlags -split [char]0x1f
+        } elseif (-not [string]::IsNullOrWhiteSpace($env:RUSTFLAGS)) {
+            $env:RUSTFLAGS.Trim() -split '\s+'
+        })
+        $buildUserRoot = [Environment]::GetFolderPath('UserProfile')
+        if (-not [string]::IsNullOrWhiteSpace($buildUserRoot)) {
+            $rustFlags += "--remap-path-prefix=$buildUserRoot=/_/build"
+        }
+        $rustFlags += "--remap-path-prefix=$repoRoot=/_/demotracer"
+        if (-not [string]::IsNullOrWhiteSpace($env:CARGO_HOME)) {
+            $rustFlags += "--remap-path-prefix=$env:CARGO_HOME=/_/cargo"
+        }
+        $env:CARGO_ENCODED_RUSTFLAGS = $rustFlags -join [char]0x1f
         Invoke-Checked "pnpm.cmd" @("install", "--frozen-lockfile")
         $tauriArgs = @(
             "run", "tauri:build",
@@ -108,6 +124,7 @@ if (-not $SkipBuild) {
         $tauriArgs += @("--", "--locked")
         Invoke-Checked "pnpm.cmd" $tauriArgs
     } finally {
+        $env:CARGO_ENCODED_RUSTFLAGS = $savedEncodedRustFlags
         Pop-Location
     }
 }
