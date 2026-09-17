@@ -13,13 +13,13 @@ public sealed partial class BotRandomizerPlugin
             => plugin.TryGetManagedBotForApi(slot, out state);
         public BotRandomizerReplayPlanResult AcquireReplayPlan(
             string owner,
-            BotRandomizerReplayCosmeticPlan[] plans)
-            => plugin.AcquireReplayPlanForApi(owner, plans);
+            BotRandomizerReplayCosmeticPlan[] plans,
+            CancellationToken ownerLifetime)
+            => plugin.AcquireReplayPlanForApi(owner, plans, ownerLifetime);
         public BotRandomizerReplayPlanResult ReplaceReplayPlan(
             string planToken,
             BotRandomizerReplayCosmeticPlan[] plans)
             => plugin.ReplaceReplayPlanForApi(planToken, plans);
-        public bool HeartbeatReplayPlan(string planToken) => plugin._writeLeases.Heartbeat(planToken);
         public bool ReleaseReplayPlan(string planToken) => plugin.ReleaseReplayPlanForApi(planToken);
         public int ReleaseReplayPlansByOwner(string owner) => plugin.ReleaseReplayPlansByOwnerForApi(owner);
         public BotRandomizerDiagnostics GetDiagnostics() => plugin.GetDiagnosticsForApi();
@@ -37,8 +37,7 @@ public sealed partial class BotRandomizerPlugin
             WeaponPrebuildAvailable = _weaponItemViews?.NativeAvailable == true,
             ReplayPlanPrebuildAvailable = _weaponItemViews?.NativeAvailable == true,
             CatalogRepository = _catalog?.SourceRepository ?? string.Empty,
-            CatalogCommit = _catalog?.SourceCommit ?? string.Empty,
-            LeaseTimeoutMilliseconds = BotRandomizerContract.LeaseTimeoutMilliseconds
+            CatalogCommit = _catalog?.SourceCommit ?? string.Empty
         };
 
     private bool TryGetManagedBotForApi(int slot, out BotRandomizerManagedBot result)
@@ -70,17 +69,17 @@ public sealed partial class BotRandomizerPlugin
 
     private BotRandomizerReplayPlanResult AcquireReplayPlanForApi(
         string owner,
-        BotRandomizerReplayCosmeticPlan[] plans)
+        BotRandomizerReplayCosmeticPlan[] plans,
+        CancellationToken ownerLifetime)
     {
         if (_draining)
             return FailReplayPlan("provider_draining");
-        SweepExpiredWriteLeases();
         if (!TryNormalizeReplayPlans(plans, out var normalized, out var reason))
         {
             _writeLeases.RecordRejectedRequest();
             return FailReplayPlan(reason);
         }
-        if (!_writeLeases.TryAcquire(owner ?? string.Empty, normalized, out var lease, out reason))
+        if (!_writeLeases.TryAcquire(owner ?? string.Empty, normalized, ownerLifetime, out var lease, out reason))
             return FailReplayPlan(reason);
 
         InvalidateLeasePolicySlots(lease.Claims.Keys);
@@ -93,7 +92,6 @@ public sealed partial class BotRandomizerPlugin
     {
         if (_draining)
             return FailReplayPlan("provider_draining");
-        SweepExpiredWriteLeases();
         if (!TryNormalizeReplayPlans(plans, out var normalized, out var reason))
         {
             _writeLeases.RecordRejectedRequest();
@@ -141,7 +139,6 @@ public sealed partial class BotRandomizerPlugin
             ReplacedPlans = counters.ReplacedLeases,
             ReleasedPlans = counters.ReleasedLeases,
             RevokedPlans = counters.RevokedLeases,
-            ExpiredPlans = counters.ExpiredLeases,
             RejectedRequests = counters.RejectedRequests
         };
     }
@@ -423,13 +420,6 @@ public sealed partial class BotRandomizerPlugin
             string.IsNullOrWhiteSpace(requested.CustomName) ? null : requested.CustomName.Trim());
 
     private static bool AreFinite(params float[] values) => values.All(float.IsFinite);
-
-    private void SweepExpiredWriteLeases()
-    {
-        var affectedSlots = _writeLeases.SweepExpired();
-        if (affectedSlots.Length > 0)
-            InvalidateLeasePolicySlots(affectedSlots);
-    }
 
     private void InvalidateLeasePolicySlots(IEnumerable<int> slots)
     {

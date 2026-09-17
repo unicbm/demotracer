@@ -47,7 +47,10 @@ internal sealed record CosmeticWriteLease(
     string Token,
     string Owner,
     IReadOnlyDictionary<int, LeasedCosmeticWriteClaim> Claims,
-    long LastHeartbeatMilliseconds);
+    CancellationToken OwnerLifetime)
+{
+    internal CancellationTokenRegistration OwnerRegistration { get; set; }
+}
 
 internal readonly record struct CosmeticWriteLeaseCounters(
     int ActiveLeases,
@@ -56,14 +59,13 @@ internal readonly record struct CosmeticWriteLeaseCounters(
     int ReplacedLeases,
     int ReleasedLeases,
     int RevokedLeases,
-    int ExpiredLeases,
     int RejectedRequests);
 
 internal sealed class CosmeticWriteLeaseStore
 {
     private const int MaximumOwnerLength = 64;
     private readonly object _sync = new();
-    private readonly Func<long> _clock;
+    private readonly Action<int[]> _ownerReleased;
     private readonly string _providerEpoch;
     private readonly Dictionary<string, CosmeticWriteLease> _leases = new(StringComparer.Ordinal);
     private readonly Dictionary<int, string> _leaseBySlot = [];
@@ -72,18 +74,18 @@ internal sealed class CosmeticWriteLeaseStore
     private int _replacedLeases;
     private int _releasedLeases;
     private int _revokedLeases;
-    private int _expiredLeases;
     private int _rejectedRequests;
 
-    internal CosmeticWriteLeaseStore(string providerEpoch, Func<long>? clock = null)
+    internal CosmeticWriteLeaseStore(string providerEpoch, Action<int[]>? ownerReleased = null)
     {
         _providerEpoch = providerEpoch;
-        _clock = clock ?? (() => Environment.TickCount64);
+        _ownerReleased = ownerReleased ?? (_ => { });
     }
 
     internal bool TryAcquire(
         string owner,
         IReadOnlyDictionary<int, LeasedCosmeticWriteClaim> claims,
+        CancellationToken ownerLifetime,
         out CosmeticWriteLease lease,
         out string reason)
     {
@@ -92,6 +94,8 @@ internal sealed class CosmeticWriteLeaseStore
         owner = owner.Trim();
         lock (_sync)
         {
+            if (!ownerLifetime.CanBeCanceled || ownerLifetime.IsCancellationRequested)
+                return Reject("owner_lifetime_inactive", out reason);
             if (owner.Length is 0 or > MaximumOwnerLength)
                 return Reject("invalid_owner", out reason);
             if (claims.Count == 0)
@@ -104,9 +108,15 @@ internal sealed class CosmeticWriteLeaseStore
 
             var token = $"{_providerEpoch}:{Guid.NewGuid():N}";
             var storedClaims = claims.ToDictionary(pair => pair.Key, pair => pair.Value);
-            lease = new CosmeticWriteLease(token, owner, storedClaims, _clock());
+            lease = new CosmeticWriteLease(token, owner, storedClaims, ownerLifetime);
             _leases.Add(token, lease);
             AddMappings(lease);
+            lease.OwnerRegistration = ownerLifetime.Register(() =>
+            {
+                if (TryRelease(token, out var slots)) _ownerReleased(slots);
+            });
+            if (ownerLifetime.IsCancellationRequested)
+                return Reject("owner_lifetime_inactive", out reason);
             _acquiredLeases++;
             return true;
         }
@@ -144,29 +154,12 @@ internal sealed class CosmeticWriteLeaseStore
             var storedClaims = claims.ToDictionary(pair => pair.Key, pair => pair.Value);
             lease = existing with
             {
-                Claims = storedClaims,
-                LastHeartbeatMilliseconds = _clock()
+                Claims = storedClaims
             };
             _leases[leaseToken] = lease;
             AddMappings(lease);
             affectedSlots = existing.Claims.Keys.Concat(claims.Keys).Distinct().Order().ToArray();
             _replacedLeases++;
-            return true;
-        }
-    }
-
-    internal bool Heartbeat(string leaseToken)
-    {
-        lock (_sync)
-        {
-            if (string.IsNullOrWhiteSpace(leaseToken)
-                || !_leases.TryGetValue(leaseToken, out var lease)
-                || IsExpired(lease, _clock()))
-            {
-                return false;
-            }
-
-            _leases[leaseToken] = lease with { LastHeartbeatMilliseconds = _clock() };
             return true;
         }
     }
@@ -238,25 +231,6 @@ internal sealed class CosmeticWriteLeaseStore
         }
     }
 
-    internal int[] SweepExpired()
-    {
-        lock (_sync)
-        {
-            var now = _clock();
-            var slots = new HashSet<int>();
-            foreach (var lease in _leases.Values.ToArray())
-            {
-                if (!IsExpired(lease, now) || !RemoveLease(lease.Token, out var expired))
-                    continue;
-                foreach (var slot in expired.Claims.Keys)
-                    slots.Add(slot);
-                _expiredLeases++;
-                _revokedLeases++;
-            }
-            return slots.Order().ToArray();
-        }
-    }
-
     internal int[] Reset(bool countRevocation)
     {
         lock (_sync)
@@ -264,6 +238,7 @@ internal sealed class CosmeticWriteLeaseStore
             var slots = _leaseBySlot.Keys.Order().ToArray();
             if (countRevocation)
                 _revokedLeases += _leases.Count;
+            foreach (var lease in _leases.Values) lease.OwnerRegistration.Unregister();
             _leases.Clear();
             _leaseBySlot.Clear();
             return slots;
@@ -280,7 +255,7 @@ internal sealed class CosmeticWriteLeaseStore
         {
             if (_leaseBySlot.TryGetValue(slot, out var token)
                 && _leases.TryGetValue(token, out var lease)
-                && !IsExpired(lease, _clock())
+                && !lease.OwnerLifetime.IsCancellationRequested
                 && lease.Claims.TryGetValue(slot, out var claim)
                 && claim.Incarnation == incarnation)
             {
@@ -306,7 +281,6 @@ internal sealed class CosmeticWriteLeaseStore
                 _replacedLeases,
                 _releasedLeases,
                 _revokedLeases,
-                _expiredLeases,
                 _rejectedRequests);
         }
     }
@@ -323,9 +297,6 @@ internal sealed class CosmeticWriteLeaseStore
         reason = value;
         return false;
     }
-
-    private bool IsExpired(CosmeticWriteLease lease, long now)
-        => now - lease.LastHeartbeatMilliseconds > BotRandomizerContract.LeaseTimeoutMilliseconds;
 
     private void AddMappings(CosmeticWriteLease lease)
     {
@@ -354,6 +325,7 @@ internal sealed class CosmeticWriteLeaseStore
             return false;
         }
 
+        lease.OwnerRegistration.Unregister();
         RemoveMappings(lease);
         return true;
     }
