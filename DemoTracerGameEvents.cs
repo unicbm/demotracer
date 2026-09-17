@@ -349,16 +349,6 @@ public sealed partial class DemoTracerPlugin
         if (!_mapActive || _lifecycleResetInProgress)
             return;
 
-        _botHiderBridge.BeginTickQueryScope();
-        try
-        {
-            EnsureBotHiderPresentationLease();
-            EnsureBotRandomizerCosmeticLease();
-            ProcessReplayTick();
-        }
-        finally
-        {
-            _botHiderBridge.EndTickQueryScope();
-        }
+        ProcessReplayTick();
     }
 }
