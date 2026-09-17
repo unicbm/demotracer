@@ -1338,7 +1338,10 @@ fn inventory_snapshots_for_player(
             })
             .collect::<Vec<_>>();
         let gear = (row.armor_value, row.has_helmet, row.has_defuser);
-        if previous_counts.as_ref() == Some(&counts) && previous_gear == Some(gear) && row_index != 0 {
+        if previous_counts.as_ref() == Some(&counts)
+            && previous_gear == Some(gear)
+            && row_index != 0
+        {
             continue;
         }
         previous_counts = Some(counts.clone());
@@ -5614,19 +5617,25 @@ mod tests {
         let mut parsed = sample_demo();
         parsed.rows = vec![
             ParsedPlayerTick {
-                armor_value: 0, has_helmet: false,
+                armor_value: 0,
+                has_helmet: false,
                 ..row_with_inventory(100, steam_id, "alpha", vec![7])
             },
             ParsedPlayerTick {
-                armor_value: 100, has_helmet: true,
+                armor_value: 100,
+                has_helmet: true,
                 ..row_with_inventory(110, steam_id, "alpha", vec![7])
             },
             ParsedPlayerTick {
-                armor_value: 100, has_helmet: true, has_defuser: true,
+                armor_value: 100,
+                has_helmet: true,
+                has_defuser: true,
                 ..row_with_inventory(120, steam_id, "alpha", vec![7])
             },
             ParsedPlayerTick {
-                armor_value: 60, has_helmet: true, has_defuser: true,
+                armor_value: 60,
+                has_helmet: true,
+                has_defuser: true,
                 ..row_with_inventory(130, steam_id, "alpha", vec![7])
             },
         ];

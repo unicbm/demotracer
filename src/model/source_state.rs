@@ -232,9 +232,12 @@ mod tests {
         ))
         .unwrap();
         let fields = value["fields"].as_array().unwrap();
-        assert_eq!(value["writer_omitted_field_ids"], serde_json::json!(
-            (0..SOURCE_FIELDS.len()).filter(|&id| !is_playback_field(id)).collect::<Vec<_>>()
-        ));
+        assert_eq!(
+            value["writer_omitted_field_ids"],
+            serde_json::json!((0..SOURCE_FIELDS.len())
+                .filter(|&id| !is_playback_field(id))
+                .collect::<Vec<_>>())
+        );
         assert_eq!(fields.len(), SOURCE_FIELDS.len());
         for (id, field) in fields.iter().enumerate() {
             assert_eq!(field["id"], id);
