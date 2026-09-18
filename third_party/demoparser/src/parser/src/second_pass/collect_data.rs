@@ -1,6 +1,6 @@
 use super::entities::PlayerMetaData;
 use super::variants::Variant;
-use super::variants::{InventoryWeaponAttribute, InventoryWeaponCosmetic, Sticker};
+use super::variants::{into_shared_slice, InventoryWeaponAttribute, InventoryWeaponCosmetic, Sticker};
 use crate::demo_network_handle::{
     demo_network_ehandle_index, DEMO_NETWORK_EHANDLE_INVALID_INDEX,
 };
@@ -8,7 +8,7 @@ use crate::first_pass::prop_controller::*;
 use crate::first_pass::read_bits::DemoParserError;
 use crate::maps::BUTTONMAP;
 use crate::maps::PLAYER_COLOR;
-use crate::second_pass::entities::EntityType;
+use crate::second_pass::entities::{Entity, EntityType};
 use crate::second_pass::parser_settings::{PlayerInventorySnapshot, SecondPassParser};
 use crate::second_pass::variants::PropColumn;
 use crate::second_pass::variants::VarVec;
@@ -16,6 +16,7 @@ use csgoproto::maps::AGENTSMAP;
 use csgoproto::maps::PAINTKITS;
 use csgoproto::maps::STICKER_ID_TO_NAME;
 use csgoproto::maps::WEAPINDICIES;
+use std::cell::Ref;
 use std::fmt;
 use std::sync::Arc;
 
@@ -32,6 +33,33 @@ pub enum PropType {
     Steamid,
     Tick,
     GameTime,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum SharedStringSource {
+    Name, Controller, Team, Weapon, Agent, Color, WeaponName, SkinName, OriginalOwner,
+}
+
+pub(crate) fn make_shared_string_sources(props: &PropController) -> Vec<Option<SharedStringSource>> {
+    props.prop_infos.iter().map(|prop| {
+        use SharedStringSource::*;
+        match (prop.prop_type, prop.prop_name.as_str(), prop.id) {
+            (PropType::Name, _, _) => Some(Name),
+            (PropType::Controller, "CCSPlayerController.m_szCrosshairCodes", _) => Some(Controller),
+            (PropType::Team, "CCSTeam.m_szTeamname" | "CCSTeam.m_szClanTeamname", _) => Some(Team),
+            (PropType::Weapon, "m_szCustomName", _) => Some(Weapon),
+            (PropType::Custom, _, AGENT_SKIN_ID) => Some(Agent),
+            (PropType::Custom, "CCSPlayerController.m_iCompTeammateColor", _) => Some(Color),
+            (PropType::Custom, _, WEAPON_NAME_ID) => Some(WeaponName),
+            (PropType::Custom, _, WEAPON_SKIN_NAME) => Some(SkinName),
+            (PropType::Custom, _, WEAPON_ORIGINGAL_OWNER_ID) => Some(OriginalOwner),
+            _ => None,
+        }
+    }).collect()
+}
+
+pub(crate) fn make_dense_column_slots(count: usize, is_deferred: impl Fn(usize) -> bool) -> Vec<usize> {
+    (0..count).filter(|&slot| !is_deferred(slot)).collect()
 }
 
 // DONT KNOW IF THESE ARE CORRECT. SEEMS TO GIVE CORRECT VALUES
@@ -233,6 +261,97 @@ pub enum CoordinateAxis {
     Z,
 }
 
+/// These entity links cannot change while a single player row is collected.
+/// Resolve them once without changing the public getters used by game events.
+struct RowCollectionContext<'a> {
+    pawn: Option<&'a Entity>,
+    controller: Option<&'a Entity>,
+    rules: Option<&'a Entity>,
+    team: Option<&'a Entity>,
+    weapon: Option<&'a Entity>,
+    metadata_weapon: Option<&'a Entity>,
+    metadata_weapon_id: Option<i32>,
+    eye_angles: Option<[f32; 3]>,
+}
+
+impl<'a> RowCollectionContext<'a> {
+    fn new(parser: &'a SecondPassParser<'_>, entity_id: i32, player: &PlayerMetaData) -> Self {
+        let ids = &parser.prop_controller.special_ids;
+        let pawn = Self::entity(parser, Some(entity_id));
+        if parser.entity_projection.as_ref().is_some_and(|plan| plan.direct_rows_only) {
+            return Self { pawn, controller: Self::entity(parser, player.controller_entid),
+                rules: Self::entity(parser, parser.rules_entity_id), team: None,
+                weapon: None, metadata_weapon: None, metadata_weapon_id: None, eye_angles: None };
+        }
+        let weapon_id = Self::u32_property(pawn, ids.active_weapon).map(demo_network_ehandle_index);
+        // Some legacy custom getters follow PlayerMetaData rather than the
+        // roster key. Preserve that distinction even for incomplete metadata.
+        let metadata_weapon_id = if player.player_entity_id == Some(entity_id) {
+            weapon_id
+        } else {
+            Self::u32_property(Self::entity(parser, player.player_entity_id), ids.active_weapon)
+                .map(demo_network_ehandle_index)
+        };
+        let weapon = Self::entity(parser, weapon_id);
+        let metadata_weapon = if metadata_weapon_id == weapon_id {
+            weapon
+        } else {
+            Self::entity(parser, metadata_weapon_id)
+        };
+        let team_id = match Self::u32_property(pawn, ids.player_team_pointer) {
+            Some(1) => parser.teams.team1_entid,
+            Some(2) => parser.teams.team2_entid,
+            Some(3) => parser.teams.team3_entid,
+            _ => None,
+        };
+        let eye_angles = ids.eye_angles.and_then(|id| match pawn?.props.get(&id)? {
+            Variant::VecXYZ(value) => Some(*value),
+            _ => None,
+        });
+        Self {
+            pawn,
+            controller: Self::entity(parser, player.controller_entid),
+            rules: Self::entity(parser, parser.rules_entity_id),
+            team: Self::entity(parser, team_id),
+            weapon,
+            metadata_weapon,
+            metadata_weapon_id,
+            eye_angles,
+        }
+    }
+
+    fn entity(parser: &'a SecondPassParser<'_>, id: Option<i32>) -> Option<&'a Entity> {
+        parser.entities.get(id? as usize)?.as_ref()
+    }
+
+    #[inline]
+    fn property(entity: Option<&Entity>, id: u32) -> Option<Variant> {
+        entity?.props.get(&id).cloned()
+    }
+
+    fn u32_property(entity: Option<&Entity>, id: Option<u32>) -> Option<u32> {
+        match entity?.props.get(&id?)? {
+            Variant::U32(value) => Some(*value),
+            _ => None,
+        }
+    }
+
+    fn coordinate(&self, cell_id: Option<u32>, offset_id: Option<u32>) -> Option<Variant> {
+        let cell = Self::property(self.pawn, cell_id?)
+            .ok_or(PropCollectionError::GetPropFromEntPropNotFound);
+        let offset = Self::property(self.pawn, offset_id?)
+            .ok_or(PropCollectionError::GetPropFromEntPropNotFound);
+        coord_from_cell(cell, offset).ok().map(Variant::F32)
+    }
+
+    fn weapon_skin_id(&self) -> Option<u32> {
+        match self.weapon?.props.get(&WEAPON_SKIN_ID)? {
+            Variant::F32(value) if value.fract() == 0.0 && *value >= 0.0 => Some(*value as u32),
+            _ => None,
+        }
+    }
+}
+
 // This file collects the data that is converted into a dataframe in the end in parser.parse_ticks()
 
 fn should_collect_player_rows(
@@ -245,6 +364,31 @@ fn should_collect_player_rows(
     all_player_rows
         || event_with_velocity
         || (!wanted_events_present && (!wanted_ticks_present || current_tick_wanted))
+}
+
+pub(crate) fn make_dense_player_columns(
+    props: &PropController,
+    order_by_steamid: bool,
+    parse_projectiles: bool,
+) -> Option<Vec<PropColumn>> {
+    // Velocity reads previously appended output rows. Query filters and shared
+    // property IDs retain the legacy path, including its partial-row behavior.
+    if order_by_steamid
+        || parse_projectiles
+        || props.event_with_velocity
+        || !props.wanted_prop_state_infos.is_empty()
+    {
+        return None;
+    }
+    let mut ids = ahash::AHashSet::with_capacity(props.prop_infos.len());
+    for prop in &props.prop_infos {
+        if matches!(prop.id, VELOCITY_ID | VELOCITY_X_ID | VELOCITY_Y_ID | VELOCITY_Z_ID)
+            || !ids.insert(prop.id)
+        {
+            return None;
+        }
+    }
+    Some(props.prop_infos.iter().map(|_| PropColumn::new()).collect())
 }
 
 impl<'a> SecondPassParser<'a> {
@@ -264,6 +408,11 @@ impl<'a> SecondPassParser<'a> {
         }
         if self.collect_projectile_records {
             self.collect_projectiles(false);
+        }
+        if let Some(mut columns) = self.dense_player_columns.take() {
+            self.collect_dense_player_rows(&mut columns);
+            self.dense_player_columns = Some(columns);
+            return;
         }
         // iterate every player and every wanted prop name
         // if either one is missing then push None to output
@@ -318,6 +467,155 @@ impl<'a> SecondPassParser<'a> {
                         .push(val);
                 }
             }
+        }
+    }
+
+    fn collect_dense_player_rows(&mut self, columns: &mut [PropColumn]) {
+        // The immutable property list and dense columns share their order for
+        // the entire second pass. Detaching the columns allows normal getters
+        // and their per-player caches without a hash lookup for every cell.
+        let mut sparse = self.sparse_scalar_columns.take();
+        let mut property_profile = self.property_profile.take();
+        for (entity_id, player) in &self.players {
+            let player_steamid = player.steamid.unwrap_or(0);
+            if !self.wanted_players.is_empty() && !self.wanted_players.contains(&player_steamid) {
+                continue;
+            }
+            let row = RowCollectionContext::new(self, *entity_id, player);
+            if let Some(sparse) = sparse.as_mut() {
+                sparse.record_linked_row([row.pawn, row.controller, row.rules, row.team, row.weapon]
+                    .map(|entity| entity.map(|entity| entity.entity_id)));
+            }
+            let mut button_mask = None;
+            if property_profile.as_mut().is_some_and(|profile| profile.sample_row()) {
+                let profile = property_profile.as_mut().unwrap();
+                for &slot in &self.dense_column_slots {
+                    let prop_info = &self.prop_controller.prop_infos[slot];
+                    let column = &mut columns[slot];
+                    let started = std::time::Instant::now();
+                    if !self.push_dense_shared_string(self.shared_string_sources[slot], prop_info, player, &row, column) {
+                        let val = self.find_dense_prop(prop_info, entity_id, player, &row, &mut button_mask);
+                        column.push(val);
+                    }
+                    profile.record(slot, started);
+                }
+            } else {
+                for &slot in &self.dense_column_slots {
+                    let prop_info = &self.prop_controller.prop_infos[slot];
+                    let column = &mut columns[slot];
+                    if !self.push_dense_shared_string(self.shared_string_sources[slot], prop_info, player, &row, column) {
+                        let val = self.find_dense_prop(prop_info, entity_id, player, &row, &mut button_mask);
+                        column.push(val);
+                    }
+                }
+            }
+        }
+        self.sparse_scalar_columns = sparse;
+        self.property_profile = property_profile;
+    }
+
+    #[inline]
+    fn push_dense_shared_string(
+        &self,
+        source: Option<SharedStringSource>,
+        prop: &PropInfo,
+        player: &PlayerMetaData,
+        row: &RowCollectionContext<'_>,
+        column: &mut PropColumn,
+    ) -> bool {
+        use SharedStringSource::*;
+        let Some(source) = source else { return false; };
+        let ids = &self.prop_controller.special_ids;
+        let value = match source {
+            Name => player.name.as_deref(),
+            Controller | Team | Weapon => {
+                let entity = match source {
+                    Controller => row.controller,
+                    Team => row.team,
+                    Weapon => row.weapon,
+                    _ => unreachable!(),
+                };
+                match entity.and_then(|entity| entity.props.get(&prop.id)) {
+                    Some(Variant::String(value)) => Some(value.as_str()),
+                    // Keep the legacy collector's handling of unexpected types.
+                    Some(_) => return false,
+                    None => None,
+                }
+            }
+            Agent => self.find_agent_skin_name(player).ok(),
+            Color => match row.controller.and_then(|entity| entity.props.get(&prop.id)) {
+                Some(Variant::I32(value)) => match PLAYER_COLOR.get(value) {
+                    Some(name) => Some(*name),
+                    None => { column.push_shared_i32(*value); return true; }
+                },
+                _ => None,
+            },
+            WeaponName => RowCollectionContext::u32_property(row.weapon, ids.item_def)
+                .and_then(|id| WEAPINDICIES.get(&id)).copied(),
+            SkinName => row.weapon_skin_id().and_then(|id| PAINTKITS.get(&id)).copied(),
+            OriginalOwner => {
+                if let (Some(low), Some(high)) = (
+                    RowCollectionContext::u32_property(row.weapon, ids.orig_own_low),
+                    RowCollectionContext::u32_property(row.weapon, ids.orig_own_high),
+                ) {
+                    column.push_shared_u64((u64::from(high) << 32) | u64::from(low));
+                    return true;
+                }
+                None
+            }
+        };
+        column.push_shared_string(value);
+        true
+    }
+
+    #[inline]
+    fn find_dense_prop(
+        &self,
+        prop_info: &PropInfo,
+        entity_id: &i32,
+        player: &PlayerMetaData,
+        row: &RowCollectionContext<'_>,
+        button_mask: &mut Option<Option<u64>>,
+    ) -> Option<Variant> {
+        match prop_info.prop_type {
+            PropType::Player => RowCollectionContext::property(row.pawn, prop_info.id),
+            PropType::Controller => RowCollectionContext::property(row.controller, prop_info.id),
+            PropType::Rules => RowCollectionContext::property(row.rules, prop_info.id),
+            PropType::Team => RowCollectionContext::property(row.team, prop_info.id),
+            PropType::Weapon => RowCollectionContext::property(row.weapon, prop_info.id),
+            PropType::Button => self.get_button_prop_cached(prop_info, entity_id, button_mask).ok(),
+            PropType::Custom => {
+                let ids = &self.prop_controller.special_ids;
+                match prop_info.id {
+                    PLAYER_X_ID => row.coordinate(ids.cell_x_player, ids.cell_x_offset_player),
+                    PLAYER_Y_ID => row.coordinate(ids.cell_y_player, ids.cell_y_offset_player),
+                    PLAYER_Z_ID => row.coordinate(ids.cell_z_player, ids.cell_z_offset_player),
+                    PITCH_ID => row.eye_angles.map(|angles| Variant::F32(angles[0])),
+                    YAW_ID => row.eye_angles.map(|angles| Variant::F32(angles[1])),
+                    WEAPON_RESERVE_AMMO_SECONDARY => RowCollectionContext::property(row.weapon, WEAPON_RESERVE_AMMO_BASE + 1),
+                    WEAPON_NAME_ID => RowCollectionContext::u32_property(row.weapon, ids.item_def)
+                        .and_then(|id| WEAPINDICIES.get(&id))
+                        .map(|name| Variant::String((*name).to_string())),
+                    WEAPON_SKIN_ID => row.weapon_skin_id().map(Variant::U32),
+                    WEAPON_SKIN_NAME => row.weapon_skin_id()
+                        .and_then(|id| PAINTKITS.get(&id))
+                        .map(|name| Variant::String((*name).to_string())),
+                    WEAPON_FLOAT => RowCollectionContext::property(row.metadata_weapon, WEAPON_FLOAT),
+                    WEAPON_PAINT_SEED => Some(Variant::U32(match RowCollectionContext::property(row.metadata_weapon, WEAPON_PAINT_SEED) {
+                        Some(Variant::F32(value)) => value as u32,
+                        _ => 0,
+                    })),
+                    WEAPON_ORIGINGAL_OWNER_ID => {
+                        let low = RowCollectionContext::u32_property(row.weapon, ids.orig_own_low)?;
+                        let high = RowCollectionContext::u32_property(row.weapon, ids.orig_own_high)?;
+                        Some(Variant::String(((u64::from(high) << 32) | u64::from(low)).to_string()))
+                    }
+                    WEAPON_STICKERS_ID => self.find_stickers(&row.metadata_weapon_id?).ok(),
+                    IS_ALIVE_ID => Some(Variant::Bool(RowCollectionContext::u32_property(row.pawn, ids.life_state) == Some(0))),
+                    _ => self.create_custom_prop(prop_info, entity_id, player).ok(),
+                }
+            }
+            _ => self.find_prop(prop_info, entity_id, player).ok(),
         }
     }
 
@@ -970,27 +1268,41 @@ impl<'a> SecondPassParser<'a> {
     }
 
     pub fn find_stickers(&self, weapon_entity_id: &i32) -> Result<Variant, PropCollectionError> {
-        if let Some(cosmetic) = self.cached_weapon_cosmetic(weapon_entity_id) {
-            return Ok(Variant::Stickers(cosmetic.stickers.clone()));
+        let signature = self.entities.get(*weapon_entity_id as usize)
+            .and_then(Option::as_ref)
+            .map(|entity| (entity.serial, entity.cosmetic_revision));
+        if let Some(signature) = signature {
+            if let Some((cached_signature, stickers)) = self.weapon_sticker_cache.borrow().get(weapon_entity_id) {
+                if *cached_signature == signature {
+                    return Ok(Variant::Stickers(Arc::clone(stickers)));
+                }
+            }
         }
 
-        // Preserve the legacy partial-evidence behavior for malformed weapon
-        // entities that expose attributes without a usable item definition.
-        let mut attributes = Vec::new();
-        for idx in 0..64 {
-            let Ok(Variant::U32(definition_index)) = self.get_prop_from_ent(&(WEAPON_ATTRIBUTE_DEF_INDEX_ID + idx), weapon_entity_id) else {
-                continue;
-            };
-            let Ok(Variant::F32(raw_value)) = self.get_prop_from_ent(&(WEAPON_SKIN_ID + idx), weapon_entity_id) else {
-                continue;
-            };
-            attributes.push(StickerAttribute {
-                definition_index,
-                raw_value,
-            });
-        }
+        let stickers: Arc<[Sticker]> = if let Some(cosmetic) = self.cached_weapon_cosmetic(weapon_entity_id) {
+            into_shared_slice(cosmetic.stickers.clone())
+        } else {
+            // Preserve the legacy partial-evidence behavior for malformed weapon
+            // entities that expose attributes without a usable item definition.
+            let mut attributes = Vec::new();
+            for idx in 0..64 {
+                let Ok(Variant::U32(definition_index)) = self.get_prop_from_ent(&(WEAPON_ATTRIBUTE_DEF_INDEX_ID + idx), weapon_entity_id) else {
+                    continue;
+                };
+                let Ok(Variant::F32(raw_value)) = self.get_prop_from_ent(&(WEAPON_SKIN_ID + idx), weapon_entity_id) else {
+                    continue;
+                };
+                attributes.push(StickerAttribute {
+                    definition_index,
+                    raw_value,
+                });
+            }
+            into_shared_slice(stickers_from_attributes(attributes))
+        };
 
-        let stickers = stickers_from_attributes(attributes);
+        if let Some(signature) = signature {
+            self.weapon_sticker_cache.borrow_mut().insert(*weapon_entity_id, (signature, Arc::clone(&stickers)));
+        }
         Ok(Variant::Stickers(stickers))
     }
     pub fn find_skin_paint_seed(&self, player: &PlayerMetaData) -> Result<Variant, PropCollectionError> {
@@ -1002,10 +1314,15 @@ impl<'a> SecondPassParser<'a> {
         return Ok(Variant::U32(0));
     }
     pub fn find_agent_skin(&self, player: &PlayerMetaData) -> Result<Variant, PropCollectionError> {
+        self.find_agent_skin_name(player).map(|name| Variant::String(name.to_owned()))
+    }
+    fn find_agent_skin_name(&self, player: &PlayerMetaData) -> Result<&'static str, PropCollectionError> {
         let cache_key = player.steamid.zip(player.team_num);
         if let Some(key) = cache_key {
-            if let Some(agent) = self.stable_agent_skin_cache.borrow().get(&key) {
-                return Ok(Variant::String(agent.clone()));
+            if let Some(agent_id) = self.stable_agent_skin_cache.borrow().get(&key) {
+                if let Some(agent) = AGENTSMAP.get(agent_id) {
+                    return Ok(*agent);
+                }
             }
         }
         let id = match self.prop_controller.special_ids.agent_skin_idx {
@@ -1015,13 +1332,12 @@ impl<'a> SecondPassParser<'a> {
         match self.get_controller_prop(&id, player) {
             Ok(Variant::U32(agent_id)) => match AGENTSMAP.get(&agent_id) {
                 Some(agent) => {
-                    let agent = agent.to_string();
                     if let Some(key) = cache_key.filter(|_| !is_map_based_default_agent(&agent)) {
                         self.stable_agent_skin_cache
                             .borrow_mut()
-                            .insert(key, agent.clone());
+                            .insert(key, agent_id);
                     }
-                    return Ok(Variant::String(agent));
+                    return Ok(*agent);
                 }
                 None => return Err(PropCollectionError::AgentIdNotFound),
             },
@@ -1214,11 +1530,11 @@ impl<'a> SecondPassParser<'a> {
     }
     pub fn find_my_inventory_as_ids(&self, entity_id: &i32) -> Result<Variant, PropCollectionError> {
         let snapshot = self.player_inventory_snapshot(entity_id, false)?;
-        Ok(Variant::U32Vec(snapshot.ids))
+        Ok(Variant::U32Vec(snapshot.ids.clone()))
     }
     pub fn find_my_inventory_weapon_cosmetics(&self, entity_id: &i32) -> Result<Variant, PropCollectionError> {
         let snapshot = self.player_inventory_snapshot(entity_id, true)?;
-        let cosmetics = snapshot.cosmetics.unwrap_or_else(|| Arc::from([]));
+        let cosmetics = snapshot.cosmetics.as_ref().map(Arc::clone).unwrap_or_default();
         Ok(Variant::InventoryWeaponCosmetics(cosmetics))
     }
 
@@ -1226,109 +1542,121 @@ impl<'a> SecondPassParser<'a> {
         &self,
         entity_id: &i32,
         include_cosmetics: bool,
-    ) -> Result<PlayerInventorySnapshot, PropCollectionError> {
-        if let Some(mut snapshot) = clone_current_inventory_snapshot(
+    ) -> Result<Ref<'_, PlayerInventorySnapshot>, PropCollectionError> {
+        if let Some(snapshot) = current_inventory_snapshot(
             &self.player_inventory_snapshot_cache,
             *entity_id,
             self.inventory_generation,
         ) {
             if include_cosmetics && snapshot.cosmetics.is_none() {
-                snapshot.cosmetics = Some(self.collect_inventory_cosmetics(
-                    &snapshot.weapon_eids,
-                ));
+                let cosmetics = self.collect_inventory_cosmetics(&snapshot.weapon_eids);
+                // Release the read before upgrading the cached snapshot. Only the
+                // cosmetics Arc changes; its inventory vectors remain in the cache.
+                drop(snapshot);
                 self.player_inventory_snapshot_cache
                     .borrow_mut()
-                    .insert(*entity_id, snapshot.clone());
+                    .get_mut(entity_id)
+                    .expect("current inventory snapshot")
+                    .cosmetics = Some(cosmetics);
+                return Ok(current_inventory_snapshot(
+                    &self.player_inventory_snapshot_cache,
+                    *entity_id,
+                    self.inventory_generation,
+                ).expect("upgraded inventory snapshot"));
             }
             return Ok(snapshot);
         }
 
-        if !matches!(self.find_is_alive(entity_id), Ok(Variant::Bool(true))) {
-            let snapshot = PlayerInventorySnapshot {
+        let alive = matches!(self.find_is_alive(entity_id), Ok(Variant::Bool(true)));
+        // Preserve the previous cache entry if a live player's inventory length
+        // is unavailable. Once validation succeeds, reuse its owned allocations.
+        let inventory_max_len = if alive {
+            match self.get_prop_from_ent(&(MY_WEAPONS_OFFSET as u32), entity_id) {
+                Ok(Variant::U32(value)) => value,
+                _ => return Err(PropCollectionError::InventoryMaxNotFound),
+            }
+        } else {
+            0
+        };
+        let player_signature = self.inventory_player_signature(entity_id);
+        let mut snapshot = self.player_inventory_snapshot_cache.borrow_mut()
+            .remove(entity_id)
+            .unwrap_or_else(|| PlayerInventorySnapshot {
                 generation: self.inventory_generation,
-                player_signature: self.inventory_player_signature(entity_id),
+                player_signature,
                 weapon_eids: Vec::new(),
                 weapon_signature: Vec::new(),
                 ids: Vec::new(),
-                cosmetics: include_cosmetics.then(|| Arc::from([])),
-            };
+                cosmetics: None,
+            });
+        snapshot.generation = self.inventory_generation;
+        snapshot.weapon_eids.clear();
+        snapshot.ids.clear();
+        if !alive {
+            snapshot.player_signature = player_signature;
+            snapshot.weapon_signature.clear();
+            snapshot.cosmetics = include_cosmetics.then(Arc::default);
             self.player_inventory_snapshot_cache
                 .borrow_mut()
-                .insert(*entity_id, snapshot.clone());
-            return Ok(snapshot);
+                .insert(*entity_id, snapshot);
+            return Ok(current_inventory_snapshot(
+                &self.player_inventory_snapshot_cache,
+                *entity_id,
+                self.inventory_generation,
+            ).expect("inserted inventory snapshot"));
         }
 
-        let inventory_max_len = match self.get_prop_from_ent(&(MY_WEAPONS_OFFSET as u32), entity_id) {
-            Ok(Variant::U32(value)) => value,
-            _ => return Err(PropCollectionError::InventoryMaxNotFound),
-        };
-        let mut weapon_eids = Vec::new();
         for index in 1..=inventory_max_len {
             let prop_id = MY_WEAPONS_OFFSET + index;
             let eid = match self.get_prop_from_ent(&(prop_id as u32), entity_id) {
                 Ok(Variant::U32(handle)) => demo_network_ehandle_index(handle),
                 _ => continue,
             };
-            if !weapon_eids.contains(&eid) {
-                weapon_eids.push(eid);
+            if !snapshot.weapon_eids.contains(&eid) {
+                snapshot.weapon_eids.push(eid);
             }
         }
 
-        let weapon_signature = weapon_eids
-            .iter()
-            .map(|eid| {
-                let entity = self.entities.get(*eid as usize).and_then(Option::as_ref);
-                (
-                    *eid,
-                    entity.map(|entity| entity.serial).unwrap_or(u32::MAX),
-                    entity
-                        .map(|entity| entity.cosmetic_revision)
-                        .unwrap_or(u64::MAX),
-                )
-            })
-            .collect::<Vec<_>>();
-        let player_signature = self.inventory_player_signature(entity_id);
-        let mut ids = Vec::new();
+        let mut reusable_cosmetics = snapshot.player_signature == player_signature
+            && snapshot.weapon_signature.len() == snapshot.weapon_eids.len();
+        for (index, eid) in snapshot.weapon_eids.iter().enumerate() {
+            let entity = self.entities.get(*eid as usize).and_then(Option::as_ref);
+            let signature = (
+                *eid,
+                entity.map(|entity| entity.serial).unwrap_or(u32::MAX),
+                entity.map(|entity| entity.cosmetic_revision).unwrap_or(u64::MAX),
+            );
+            if let Some(previous) = snapshot.weapon_signature.get_mut(index) {
+                reusable_cosmetics &= *previous == signature;
+                *previous = signature;
+            } else {
+                snapshot.weapon_signature.push(signature);
+            }
+        }
+        snapshot.weapon_signature.truncate(snapshot.weapon_eids.len());
+        snapshot.player_signature = player_signature;
         if let Some(item_def_id) = self.prop_controller.special_ids.item_def {
-            for eid in &weapon_eids {
+            for eid in &snapshot.weapon_eids {
                 if let Ok(item_def) = self.get_prop_from_ent(&item_def_id, eid) {
-                    self.insert_equipment_id(&mut ids, item_def, entity_id);
+                    self.insert_equipment_id(&mut snapshot.ids, item_def, entity_id);
                 }
             }
         }
 
-        let reusable_cosmetics = self
-            .player_inventory_snapshot_cache
-            .borrow()
-            .get(entity_id)
-            .filter(|snapshot| {
-                inventory_cosmetics_are_reusable(
-                    snapshot.player_signature,
-                    &snapshot.weapon_signature,
-                    player_signature,
-                    &weapon_signature,
-                )
-            })
-            .and_then(|snapshot| snapshot.cosmetics.as_ref().map(Arc::clone));
-        let cosmetics = if include_cosmetics {
-            reusable_cosmetics.or_else(|| {
-                Some(self.collect_inventory_cosmetics(&weapon_eids))
-            })
-        } else {
-            reusable_cosmetics
-        };
-        let snapshot = PlayerInventorySnapshot {
-            generation: self.inventory_generation,
-            player_signature,
-            weapon_eids,
-            weapon_signature,
-            ids,
-            cosmetics,
-        };
+        if !reusable_cosmetics {
+            snapshot.cosmetics = None;
+        }
+        if include_cosmetics && snapshot.cosmetics.is_none() {
+            snapshot.cosmetics = Some(self.collect_inventory_cosmetics(&snapshot.weapon_eids));
+        }
         self.player_inventory_snapshot_cache
             .borrow_mut()
-            .insert(*entity_id, snapshot.clone());
-        Ok(snapshot)
+            .insert(*entity_id, snapshot);
+        Ok(current_inventory_snapshot(
+            &self.player_inventory_snapshot_cache,
+            *entity_id,
+            self.inventory_generation,
+        ).expect("inserted inventory snapshot"))
     }
 
     fn inventory_player_signature(
@@ -1355,11 +1683,11 @@ impl<'a> SecondPassParser<'a> {
     ) -> Arc<[InventoryWeaponCosmetic]> {
         // Entity/revision caching preserves each item's actual appearance. A
         // player/side/weapon slot must not overwrite later purchased items.
-        weapon_eids
+        into_shared_slice(weapon_eids
             .iter()
             .filter_map(|eid| self.cached_weapon_cosmetic(eid))
             .map(|item| item.as_ref().clone())
-            .collect()
+            .collect())
     }
 
     pub(crate) fn cached_weapon_cosmetic(
@@ -1954,10 +2282,10 @@ impl<'a> SecondPassParser<'a> {
                 _ => None,
             };
             let name = match self.prop_controller.special_ids.player_name {
-                Some(id) => match self.get_prop_from_ent(&id, entity_id) {
-                    Ok(Variant::String(name)) => Some(name),
-                    Ok(_) => return Err(DemoParserError::IncorrectMetaDataProp),
-                    Err(_) => None,
+                Some(id) => match entity.props.get(&id) {
+                    Some(Variant::String(name)) => Some(name.as_str()),
+                    Some(_) => return Err(DemoParserError::IncorrectMetaDataProp),
+                    None => None,
                 },
                 _ => None,
             };
@@ -1982,22 +2310,39 @@ impl<'a> SecondPassParser<'a> {
                     && steamid != Some(0)
                     && team_num != Some(SPECTATOR_TEAM_NUM)
                 {
-                    match self.should_remove(steamid) {
+                    let previous_entity_id = self.should_remove(steamid);
+                    if previous_entity_id == Some(e) && self.players.get(&e).is_some_and(|existing|
+                        existing.name.as_deref() == name && existing.team_num == team_num
+                        && existing.player_entity_id == player_entid && existing.steamid == steamid
+                        && existing.controller_entid == Some(*entity_id)) {
+                        // Most controller updates change only counters. Keep
+                        // identical roster metadata without cloning its name
+                        // and removing/reinserting its tree entry. The first
+                        // matching SteamID check preserves collision cleanup.
+                        return Ok(());
+                    }
+                    let metadata = PlayerMetaData {
+                        name: name.map(str::to_owned),
+                        team_num,
+                        player_entity_id: player_entid,
+                        steamid,
+                        controller_entid: Some(*entity_id),
+                    };
+                    // Controllers are gathered after every entity update. Replacing
+                    // identical metadata is harmless, but a moved/replaced player can
+                    // change the inventory cache's pawn and ownership signature.
+                    if previous_entity_id.is_some_and(|previous| previous != e)
+                        || self.players.get(&e) != Some(&metadata)
+                    {
+                        self.invalidate_inventory_snapshots();
+                    }
+                    match previous_entity_id {
                         Some(eid) => {
                             self.players.remove(&eid);
                         }
                         None => {}
                     }
-                    self.players.insert(
-                        e,
-                        PlayerMetaData {
-                            name,
-                            team_num,
-                            player_entity_id: player_entid,
-                            steamid,
-                            controller_entid: Some(*entity_id),
-                        },
-                    );
+                    self.players.insert(e, metadata);
                 }
             }
         }
@@ -2076,30 +2421,384 @@ fn inventory_cosmetics_are_reusable(
         && cached_weapon_signature == current_weapon_signature
 }
 
-fn clone_current_inventory_snapshot(
+fn current_inventory_snapshot(
     cache: &std::cell::RefCell<ahash::AHashMap<i32, PlayerInventorySnapshot>>,
     entity_id: i32,
     generation: u64,
-) -> Option<PlayerInventorySnapshot> {
-    let cache = cache.borrow();
-    cache
-        .get(&entity_id)
-        .filter(|snapshot| snapshot.generation == generation)
-        .cloned()
+) -> Option<Ref<'_, PlayerInventorySnapshot>> {
+    Ref::filter_map(cache.borrow(), |cache| {
+        cache
+            .get(&entity_id)
+            .filter(|snapshot| snapshot.generation == generation)
+    }).ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        clone_current_inventory_snapshot, inventory_cosmetics_are_reusable,
+        current_inventory_snapshot, inventory_cosmetics_are_reusable,
         glove_paint_seed_from_attribute, is_map_based_default_agent,
         stickers_from_attributes, should_collect_player_rows, StickerAttribute,
     };
     use crate::second_pass::parser_settings::PlayerInventorySnapshot;
-    use crate::second_pass::variants::Variant;
+    use crate::second_pass::variants::{PropColumn, Variant};
+    use crate::first_pass::parser_settings::{FirstPassParser, ParserInputs};
+    use crate::first_pass::prop_controller::{
+        PropInfo, WantedPropStateInfo, NAME_ID, PLAYER_X_ID, PLAYER_Y_ID, PLAYER_Z_ID,
+        STEAMID_ID, TICK_ID, VELOCITY_ID, VELOCITY_X_ID, VELOCITY_Y_ID, VELOCITY_Z_ID,
+    };
+    use crate::parse_demo::DecodePlan;
+    use crate::second_pass::entities::{Entity, EntityType, PlayerMetaData};
+    use crate::second_pass::parser::SecondPassOutput;
+    use crate::second_pass::parser_settings::SecondPassParser;
+    use super::PropType;
     use ahash::AHashMap;
     use std::cell::RefCell;
     use std::sync::Arc;
+
+    #[derive(Clone, Copy, Debug)]
+    enum CollectionCase {
+        Rows,
+        NoPlayers,
+        NoSelectedPlayers,
+        TickFilter,
+        DuplicateProperty,
+        Velocity,
+        EventVelocity,
+        StateFilter,
+        PerPlayer,
+        Projectiles,
+    }
+
+    fn collection_property(id: u32, prop_type: PropType) -> PropInfo {
+        PropInfo {
+            id,
+            prop_type,
+            prop_name: id.to_string(),
+            prop_friendly_name: id.to_string(),
+            is_player_prop: true,
+        }
+    }
+
+    #[test]
+    fn dense_slot_selection_preserves_original_column_indices() {
+        assert_eq!(super::make_dense_column_slots(7, |slot| matches!(slot, 0 | 3 | 5)), vec![1, 2, 4, 6]);
+        assert_eq!(super::make_dense_column_slots(3, |_| false), vec![0, 1, 2]);
+        assert!(super::make_dense_column_slots(3, |_| true).is_empty());
+    }
+
+    fn run_collection_case(case: CollectionCase, force_legacy: bool) -> (bool, SecondPassOutput) {
+        let huf = Vec::new();
+        let settings = ParserInputs {
+            real_name_to_og_name: AHashMap::default(),
+            wanted_players: if matches!(case, CollectionCase::NoSelectedPlayers) { vec![999] } else { vec![] },
+            wanted_player_props: vec![],
+            wanted_other_props: vec![],
+            wanted_prop_states: AHashMap::default(),
+            wanted_ticks: if matches!(case, CollectionCase::TickFilter) { vec![11] } else { vec![] },
+            wanted_events: vec![],
+            parse_ents: true,
+            parse_projectiles: matches!(case, CollectionCase::Projectiles),
+            collect_projectile_records: false,
+            parse_grenades: false,
+            only_header: false,
+            only_convars: false,
+            huffman_lookup_table: &huf,
+            order_by_steamid: matches!(case, CollectionCase::PerPlayer),
+            list_props: false,
+            fallback_bytes: None,
+            cancelled: None,
+        };
+        let mut first = FirstPassParser::new(&settings);
+        first.cls_by_id = Some(Arc::new(Vec::new()));
+        first.prop_controller.prop_infos = vec![
+            collection_property(TICK_ID, PropType::Tick),
+            collection_property(STEAMID_ID, PropType::Steamid),
+            collection_property(NAME_ID, PropType::Name),
+            collection_property(PLAYER_X_ID, PropType::Custom),
+            collection_property(PLAYER_Y_ID, PropType::Custom),
+            collection_property(PLAYER_Z_ID, PropType::Custom),
+            collection_property(120, PropType::Player),
+            collection_property(121, PropType::Player),
+        ];
+        let ids = &mut first.prop_controller.special_ids;
+        ids.cell_x_player = Some(101);
+        ids.cell_y_player = Some(101);
+        ids.cell_z_player = Some(101);
+        ids.cell_x_offset_player = Some(102);
+        ids.cell_y_offset_player = Some(102);
+        ids.cell_z_offset_player = Some(102);
+        if matches!(case, CollectionCase::DuplicateProperty) {
+            first.prop_controller.prop_infos.push(collection_property(120, PropType::Player));
+        }
+        if matches!(case, CollectionCase::Velocity) {
+            for id in [VELOCITY_ID, VELOCITY_X_ID, VELOCITY_Y_ID, VELOCITY_Z_ID] {
+                first.prop_controller.prop_infos.push(collection_property(id, PropType::Custom));
+            }
+        }
+        first.prop_controller.event_with_velocity = matches!(case, CollectionCase::EventVelocity);
+        if matches!(case, CollectionCase::StateFilter) {
+            first.prop_controller.wanted_prop_state_infos.push(WantedPropStateInfo {
+                base: collection_property(120, PropType::Player),
+                wanted_prop_state: Variant::F32(1.0),
+            });
+        }
+        let mut parser = SecondPassParser::new(
+            first.create_first_pass_output().unwrap(), 0, false, None, DecodePlan::FULL,
+        ).unwrap();
+        let dense_enabled = parser.dense_player_columns.is_some();
+        if force_legacy {
+            parser.dense_player_columns = None;
+        }
+        if !matches!(case, CollectionCase::NoPlayers) {
+            for (entity_id, steamid) in [(7, 1001), (9, 1002)] {
+                parser.players.insert(entity_id, PlayerMetaData {
+                    player_entity_id: Some(entity_id),
+                    steamid: Some(steamid),
+                    controller_entid: None,
+                    name: (entity_id == 7).then(|| "first".to_string()),
+                    team_num: Some(2),
+                });
+                parser.entities[entity_id as usize] = Some(Entity {
+                    cls_id: 0,
+                    entity_id,
+                    serial: 1,
+                    props: [(101, Variant::U32(32)), (102, Variant::F32(10.0)),
+                            (120, Variant::F32(if entity_id == 7 { 1.0 } else { 2.0 }))].into_iter().collect(),
+                    entity_type: EntityType::Normal,
+                    cosmetic_revision: 0,
+                });
+            }
+        }
+        for tick in 10..=12 {
+            parser.tick = tick;
+            if let Some(entity) = parser.entities[7].as_mut() {
+                entity.props.insert(102, Variant::F32(tick as f32));
+                entity.props.insert(120, Variant::F32(if tick == 11 { 2.0 } else { 1.0 }));
+                if tick == 11 {
+                    // A previously all-null column resolves its type after rows exist.
+                    entity.props.insert(121, Variant::U32(55));
+                }
+            }
+            if tick == 12 {
+                parser.players.remove(&9);
+            }
+            parser.collect_entities();
+        }
+        (dense_enabled, parser.create_output())
+    }
+
+    #[test]
+    fn dense_collection_matches_legacy_rows_and_fallback_modes() {
+        for case in [
+            CollectionCase::Rows, CollectionCase::NoPlayers, CollectionCase::NoSelectedPlayers,
+            CollectionCase::TickFilter, CollectionCase::DuplicateProperty, CollectionCase::Velocity,
+            CollectionCase::EventVelocity, CollectionCase::StateFilter, CollectionCase::PerPlayer,
+            CollectionCase::Projectiles,
+        ] {
+            let (enabled, dense) = run_collection_case(case, false);
+            let (_, legacy) = run_collection_case(case, true);
+            assert_eq!(enabled, matches!(case,
+                CollectionCase::Rows | CollectionCase::NoPlayers |
+                CollectionCase::NoSelectedPlayers | CollectionCase::TickFilter,
+            ), "{case:?}");
+            assert_eq!(dense.df, legacy.df, "{case:?}");
+            assert_eq!(dense.df_per_player, legacy.df_per_player, "{case:?}");
+            if matches!(case, CollectionCase::NoPlayers | CollectionCase::NoSelectedPlayers) {
+                assert!(dense.df.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn unchanged_controller_metadata_preserves_collision_cleanup_and_moves() {
+        use crate::first_pass::parser_settings::{FirstPassParser, ParserInputs};
+        use crate::first_pass::read_bits::DemoParserError;
+        use crate::parse_demo::DecodePlan;
+        use ahash::AHashMap;
+        let huffman = Vec::new();
+        let settings = ParserInputs {
+            real_name_to_og_name: AHashMap::default(), wanted_players: vec![],
+            wanted_player_props: vec![], wanted_other_props: vec![],
+            wanted_prop_states: AHashMap::default(), wanted_ticks: vec![], wanted_events: vec![],
+            parse_ents: true, parse_projectiles: false, collect_projectile_records: false,
+            parse_grenades: false, only_header: false, only_convars: false,
+            huffman_lookup_table: &huffman, order_by_steamid: false, list_props: false,
+            fallback_bytes: None, cancelled: None,
+        };
+        let mut first = FirstPassParser::new(&settings);
+        first.cls_by_id = Some(Arc::new(vec![]));
+        first.prop_controller.special_ids.teamnum = Some(100);
+        first.prop_controller.special_ids.player_name = Some(101);
+        first.prop_controller.special_ids.steamid = Some(102);
+        first.prop_controller.special_ids.player_pawn = Some(103);
+        let mut parser = SecondPassParser::new(first.create_first_pass_output().unwrap(),
+            0, true, None, DecodePlan::FULL).unwrap();
+        parser.entities[1] = Some(Entity {
+            cls_id: 0, entity_id: 1, serial: 1, entity_type: EntityType::PlayerController,
+            cosmetic_revision: 0, props: AHashMap::from_iter([
+                (100, Variant::U32(2)), (101, Variant::String("first".into())),
+                (102, Variant::U64(70)), (103, Variant::U32(8)),
+            ]),
+        });
+        parser.gather_extra_info(&1, false).unwrap();
+        let expected = parser.players[&8].clone();
+        let generation = parser.inventory_generation;
+        parser.gather_extra_info(&1, false).unwrap();
+        assert_eq!(parser.players[&8], expected);
+        assert_eq!(parser.inventory_generation, generation);
+        parser.players.insert(7, PlayerMetaData { player_entity_id: Some(7), ..expected.clone() });
+        parser.gather_extra_info(&1, false).unwrap();
+        assert_eq!(parser.players.len(), 1);
+        assert_eq!(parser.players[&8], expected);
+        parser.entities[1].as_mut().unwrap().props.insert(101, Variant::U32(1));
+        assert_eq!(parser.gather_extra_info(&1, false), Err(DemoParserError::IncorrectMetaDataProp));
+        assert_eq!(parser.players[&8], expected);
+        parser.entities[1].as_mut().unwrap().props.extend([
+            (100, Variant::U32(3)), (101, Variant::String("renamed".into())), (103, Variant::U32(9)),
+        ]);
+        parser.gather_extra_info(&1, false).unwrap();
+        assert_eq!(parser.players.len(), 1);
+        assert_eq!(parser.players[&9].name.as_deref(), Some("renamed"));
+        assert_eq!(parser.players[&9].team_num, Some(3));
+    }
+
+    #[test]
+    fn row_context_matches_legacy_for_missing_links_and_incomplete_metadata() {
+        use super::RowCollectionContext;
+        use crate::first_pass::prop_controller::*;
+
+        for case in 0..22 {
+            let huf = Vec::new();
+            let settings = ParserInputs {
+                real_name_to_og_name: AHashMap::default(), wanted_players: vec![],
+                wanted_player_props: vec![], wanted_other_props: vec![],
+                wanted_prop_states: AHashMap::default(), wanted_ticks: vec![], wanted_events: vec![],
+                parse_ents: true, parse_projectiles: false, collect_projectile_records: false,
+                parse_grenades: false, only_header: false, only_convars: false,
+                huffman_lookup_table: &huf, order_by_steamid: false, list_props: false,
+                fallback_bytes: None, cancelled: None,
+            };
+            let mut first = FirstPassParser::new(&settings);
+            first.cls_by_id = Some(Arc::new(Vec::new()));
+            let ids = &mut first.prop_controller.special_ids;
+            ids.active_weapon = Some(100);
+            ids.player_team_pointer = Some(101);
+            ids.eye_angles = Some(102);
+            ids.life_state = Some(103);
+            ids.item_def = Some(104);
+            ids.orig_own_low = Some(105);
+            ids.orig_own_high = Some(106);
+            ids.cell_x_player = Some(107);
+            ids.cell_y_player = Some(107);
+            ids.cell_z_player = Some(107);
+            ids.cell_x_offset_player = Some(108);
+            ids.cell_y_offset_player = Some(108);
+            ids.cell_z_offset_player = Some(108);
+            if case == 19 {
+                *ids = crate::second_pass::parser_settings::SpecialIDs::new();
+            }
+            let mut parser = SecondPassParser::new(
+                first.create_first_pass_output().unwrap(), 0, false, None, DecodePlan::FULL,
+            ).unwrap();
+            parser.rules_entity_id = Some(3);
+            parser.teams.team2_entid = Some(4);
+            let mut player = PlayerMetaData {
+                player_entity_id: Some(7), steamid: Some(1001), controller_entid: Some(2),
+                name: Some("player".to_string()), team_num: Some(2),
+            };
+            for entity_id in [2, 3, 4, 7, 8, 10, 11] {
+                let props = [
+                    (100, Variant::U32(if entity_id == 8 { 11 } else { 10 })),
+                    (101, Variant::U32(2)), (102, Variant::VecXYZ([10.0, 20.0, 30.0])),
+                    (103, Variant::U32(0)), (104, Variant::U32(7)),
+                    (105, Variant::U32(1000 + entity_id as u32)), (106, Variant::U32(1)),
+                    (107, Variant::U32(32)), (108, Variant::F32(14.0)),
+                    (142, Variant::I32(entity_id)),
+                    (143, Variant::String(format!("entity {entity_id}"))),
+                    (WEAPON_SKIN_ID, Variant::F32(44.0)),
+                    (WEAPON_FLOAT, Variant::F32(entity_id as f32 / 100.0)),
+                    (WEAPON_PAINT_SEED, Variant::F32(entity_id as f32 + 0.5)),
+                    (WEAPON_RESERVE_AMMO_BASE + 1, Variant::U32(5)),
+                ].into_iter().collect();
+                parser.entities[entity_id as usize] = Some(Entity {
+                    cls_id: 0, entity_id, serial: 1, props,
+                    entity_type: EntityType::Normal, cosmetic_revision: 0,
+                });
+            }
+            match case {
+                1 => parser.entities[7] = None,
+                2 => { parser.entities[7].as_mut().unwrap().props.remove(&100); }
+                3 => { parser.entities[7].as_mut().unwrap().props.insert(100, Variant::I32(10)); }
+                4 => { parser.entities[7].as_mut().unwrap().props.insert(100, Variant::U32(u32::MAX)); }
+                5 => parser.entities[10] = None,
+                6 => {
+                    let props = &mut parser.entities[10].as_mut().unwrap().props;
+                    props.insert(104, Variant::F32(7.0));
+                    props.insert(105, Variant::I32(1000));
+                    props.insert(WEAPON_SKIN_ID, Variant::I32(44));
+                    props.insert(WEAPON_PAINT_SEED, Variant::U32(12));
+                    props.insert(WEAPON_FLOAT, Variant::U32(1));
+                }
+                7 => player.player_entity_id = None,
+                8 => player.player_entity_id = Some(8),
+                9 => player.player_entity_id = Some(999),
+                10 => player.controller_entid = None,
+                11 => parser.entities[2] = None,
+                12 => parser.rules_entity_id = None,
+                13 => parser.entities[3] = None,
+                14 => { parser.entities[7].as_mut().unwrap().props.insert(101, Variant::U32(99)); }
+                15 => { parser.entities[7].as_mut().unwrap().props.insert(101, Variant::I32(2)); }
+                16 => parser.teams.team2_entid = None,
+                17 => parser.entities[4] = None,
+                18 => parser.entities[7].as_mut().unwrap().props.clear(),
+                20 => { parser.entities[7].as_mut().unwrap().props.insert(100, Variant::U32((19 << 14) | 10)); }
+                21 => { parser.entities[7].as_mut().unwrap().props.insert(103, Variant::I32(0)); }
+                _ => {}
+            }
+            let row = RowCollectionContext::new(&parser, 7, &player);
+            let mut props: Vec<_> = [PropType::Player, PropType::Controller, PropType::Rules, PropType::Team, PropType::Weapon]
+                .into_iter().map(|kind| collection_property(142, kind)).collect();
+            props.extend([
+                PLAYER_X_ID, PLAYER_Y_ID, PLAYER_Z_ID, PITCH_ID, YAW_ID, WEAPON_NAME_ID,
+                WEAPON_SKIN_ID, WEAPON_SKIN_NAME, WEAPON_FLOAT, WEAPON_PAINT_SEED,
+                WEAPON_ORIGINGAL_OWNER_ID, WEAPON_STICKERS_ID, WEAPON_RESERVE_AMMO_SECONDARY,
+                IS_ALIVE_ID,
+            ].into_iter().map(|id| collection_property(id, PropType::Custom)));
+            props.push(collection_property(NAME_ID, PropType::Name));
+            for (name, kind) in [
+                ("CCSPlayerController.m_szCrosshairCodes", PropType::Controller),
+                ("CCSTeam.m_szTeamname", PropType::Team),
+                ("CCSTeam.m_szClanTeamname", PropType::Team),
+                ("m_szCustomName", PropType::Weapon),
+                ("CCSPlayerController.m_iCompTeammateColor", PropType::Custom),
+            ] {
+                let mut prop = collection_property(if kind == PropType::Custom { 142 } else { 143 }, kind);
+                prop.prop_name = name.to_owned();
+                props.push(prop);
+            }
+            let mut source_props = crate::first_pass::prop_controller::PropController::new(
+                vec![], vec![], AHashMap::default(), AHashMap::default(), false, &[], false,
+            );
+            source_props.prop_infos = props.clone();
+            let sources = super::make_shared_string_sources(&source_props);
+            for (prop, source) in props.into_iter().zip(sources) {
+                let expected = parser.find_prop(&prop, &7, &player).ok();
+                assert_eq!(
+                    parser.find_dense_prop(&prop, &7, &player, &row, &mut None),
+                    expected,
+                    "case {case}, property {} {:?}", prop.id, prop.prop_type,
+                );
+                let mut actual_column = PropColumn::new();
+                if !parser.push_dense_shared_string(source, &prop, &player, &row, &mut actual_column) {
+                    actual_column.push(parser.find_dense_prop(&prop, &7, &player, &row, &mut None));
+                }
+                let mut expected_column = PropColumn::new();
+                expected_column.push(expected);
+                assert_eq!(actual_column, expected_column, "shared string case {case}, property {}", prop.id);
+            }
+        }
+    }
 
     #[test]
     fn explicit_full_player_rows_do_not_depend_on_synthetic_velocity() {
@@ -2166,7 +2865,7 @@ mod tests {
     }
 
     #[test]
-    fn cloned_inventory_snapshot_releases_cache_borrow_before_upgrade() {
+    fn inventory_snapshot_releases_cache_borrow_before_upgrade() {
         let cache = RefCell::new(AHashMap::default());
         cache.borrow_mut().insert(
             7,
@@ -2180,11 +2879,205 @@ mod tests {
             },
         );
 
-        let mut snapshot = clone_current_inventory_snapshot(&cache, 7, 3).unwrap();
-        snapshot.cosmetics = Some(Arc::from([]));
-        cache.borrow_mut().insert(7, snapshot);
+        let snapshot = current_inventory_snapshot(&cache, 7, 3).unwrap();
+        let ids = snapshot.ids.clone();
+        drop(snapshot);
+        cache.borrow_mut().get_mut(&7).unwrap().cosmetics = Some(Arc::from([]));
 
         assert!(cache.borrow().get(&7).unwrap().cosmetics.is_some());
+        assert_eq!(ids, vec![7]);
+        assert!(current_inventory_snapshot(&cache, 7, 4).is_none());
+        assert!(current_inventory_snapshot(&cache, 8, 3).is_none());
+
+        let snapshot = current_inventory_snapshot(&cache, 7, 3).unwrap();
+        let cosmetics = snapshot.cosmetics.as_ref().map(Arc::clone).unwrap();
+        drop(snapshot);
+        assert!(Arc::ptr_eq(
+            &cosmetics,
+            cache.borrow().get(&7).unwrap().cosmetics.as_ref().unwrap(),
+        ));
+    }
+
+    #[test]
+    fn inventory_snapshot_reuses_allocations_and_preserves_invalidation() {
+        let huf = Vec::new();
+        let settings = ParserInputs {
+            real_name_to_og_name: AHashMap::default(), wanted_players: vec![],
+            wanted_player_props: vec![], wanted_other_props: vec![],
+            wanted_prop_states: AHashMap::default(), wanted_ticks: vec![], wanted_events: vec![],
+            parse_ents: true, parse_projectiles: false, collect_projectile_records: false,
+            parse_grenades: false, only_header: false, only_convars: false,
+            huffman_lookup_table: &huf, order_by_steamid: false, list_props: false,
+            fallback_bytes: None, cancelled: None,
+        };
+        let mut first = FirstPassParser::new(&settings);
+        first.cls_by_id = Some(Arc::new(Vec::new()));
+        first.prop_controller.special_ids.life_state = Some(101);
+        first.prop_controller.special_ids.item_def = Some(102);
+        let mut parser = SecondPassParser::new(
+            first.create_first_pass_output().unwrap(), 0, false, None, DecodePlan::FULL,
+        ).unwrap();
+        parser.players.insert(7, PlayerMetaData {
+            player_entity_id: Some(7), steamid: Some(1001), controller_entid: None,
+            name: None, team_num: Some(2),
+        });
+        for entity_id in [7, 41, 42] {
+            parser.entities[entity_id as usize] = Some(Entity {
+                cls_id: 0, entity_id, serial: 1, props: AHashMap::default(),
+                entity_type: EntityType::Normal, cosmetic_revision: 0,
+            });
+        }
+        let inventory = super::MY_WEAPONS_OFFSET;
+        parser.entities[7].as_mut().unwrap().props.extend([
+            (101, Variant::U32(0)), (inventory, Variant::U32(3)),
+            (inventory + 1, Variant::U32(41)), (inventory + 2, Variant::U32(42)),
+            // Duplicate handles must not duplicate an inventory item.
+            (inventory + 3, Variant::U32(41)),
+        ]);
+        parser.entities[41].as_mut().unwrap().props.insert(102, Variant::U32(7));
+        parser.entities[42].as_mut().unwrap().props.insert(102, Variant::U32(9));
+        let allocation = |snapshot: &PlayerInventorySnapshot| (
+            snapshot.weapon_eids.as_ptr() as usize,
+            snapshot.weapon_signature.as_ptr() as usize,
+            snapshot.ids.as_ptr() as usize,
+        );
+        let snapshot = parser.player_inventory_snapshot(&7, false).unwrap();
+        assert_eq!(snapshot.weapon_eids, vec![41, 42]);
+        assert_eq!(snapshot.ids, vec![7, 9]);
+        assert!(snapshot.cosmetics.is_none());
+        let initial_allocations = allocation(&snapshot);
+        drop(snapshot);
+        let snapshot = parser.player_inventory_snapshot(&7, true).unwrap();
+        let cosmetics = Arc::clone(snapshot.cosmetics.as_ref().unwrap());
+        assert_eq!(cosmetics.len(), 2);
+        assert_eq!(allocation(&snapshot), initial_allocations);
+        drop(snapshot);
+
+        parser.inventory_generation += 1;
+        let snapshot = parser.player_inventory_snapshot(&7, false).unwrap();
+        assert_eq!(allocation(&snapshot), initial_allocations);
+        assert!(Arc::ptr_eq(snapshot.cosmetics.as_ref().unwrap(), &cosmetics));
+        drop(snapshot);
+
+        // Failed inventory length validation must leave the old entry intact.
+        parser.inventory_generation += 1;
+        parser.entities[7].as_mut().unwrap().props.remove(&inventory);
+        assert!(parser.player_inventory_snapshot(&7, true).is_err());
+        {
+            let cache = parser.player_inventory_snapshot_cache.borrow();
+            let cached = cache.get(&7).unwrap();
+            assert_eq!(cached.generation, parser.inventory_generation - 1);
+            assert_eq!(cached.ids, vec![7, 9]);
+            assert_eq!(allocation(cached), initial_allocations);
+        }
+        parser.entities[7].as_mut().unwrap().props.insert(inventory, Variant::U32(3));
+        parser.entities[41].as_mut().unwrap().cosmetic_revision += 1;
+        let snapshot = parser.player_inventory_snapshot(&7, false).unwrap();
+        assert!(snapshot.cosmetics.is_none());
+        assert_eq!(allocation(&snapshot), initial_allocations);
+        drop(snapshot);
+        let snapshot = parser.player_inventory_snapshot(&7, true).unwrap();
+        assert!(!Arc::ptr_eq(snapshot.cosmetics.as_ref().unwrap(), &cosmetics));
+        drop(snapshot);
+
+        // Truncation must invalidate cosmetics and drop old signature entries,
+        // without freeing any of the three reusable vector allocations.
+        parser.inventory_generation += 1;
+        parser.entities[7].as_mut().unwrap().props.insert(inventory, Variant::U32(1));
+        let snapshot = parser.player_inventory_snapshot(&7, false).unwrap();
+        assert_eq!(snapshot.weapon_eids, vec![41]);
+        assert_eq!(snapshot.weapon_signature.len(), 1);
+        assert_eq!(snapshot.ids, vec![7]);
+        assert!(snapshot.cosmetics.is_none());
+        assert_eq!(allocation(&snapshot), initial_allocations);
+        drop(snapshot);
+        let snapshot = parser.player_inventory_snapshot(&7, true).unwrap();
+        assert_eq!(snapshot.cosmetics.as_ref().unwrap().len(), 1);
+        drop(snapshot);
+
+        // Player side changes still invalidate an otherwise identical list.
+        parser.inventory_generation += 1;
+        parser.players.get_mut(&7).unwrap().team_num = Some(3);
+        assert!(parser.player_inventory_snapshot(&7, false).unwrap().cosmetics.is_none());
+
+        // Dead-player snapshots retain the documented empty/lazy semantics.
+        parser.inventory_generation += 1;
+        parser.entities[7].as_mut().unwrap().props.insert(101, Variant::U32(1));
+        parser.entities[7].as_mut().unwrap().props.remove(&inventory);
+        let snapshot = parser.player_inventory_snapshot(&7, false).unwrap();
+        assert!(snapshot.weapon_eids.is_empty() && snapshot.weapon_signature.is_empty() && snapshot.ids.is_empty());
+        assert!(snapshot.cosmetics.is_none());
+        assert_eq!(allocation(&snapshot), initial_allocations);
+        drop(snapshot);
+        assert!(parser.player_inventory_snapshot(&7, true).unwrap().cosmetics.as_ref().unwrap().is_empty());
+    }
+
+    #[test]
+    fn sticker_snapshots_share_storage_and_invalidate_on_revision_and_entity_reuse() {
+        let huf = Vec::new();
+        let settings = ParserInputs {
+            real_name_to_og_name: AHashMap::default(), wanted_players: vec![],
+            wanted_player_props: vec![], wanted_other_props: vec![],
+            wanted_prop_states: AHashMap::default(), wanted_ticks: vec![], wanted_events: vec![],
+            parse_ents: true, parse_projectiles: false, collect_projectile_records: false,
+            parse_grenades: false, only_header: false, only_convars: false,
+            huffman_lookup_table: &huf, order_by_steamid: false, list_props: false,
+            fallback_bytes: None, cancelled: None,
+        };
+        let mut first = FirstPassParser::new(&settings);
+        first.cls_by_id = Some(Arc::new(Vec::new()));
+        first.prop_controller.special_ids.item_def = Some(102);
+        let mut parser = SecondPassParser::new(
+            first.create_first_pass_output().unwrap(), 0, false, None, DecodePlan::FULL,
+        ).unwrap();
+        parser.entities[41] = Some(Entity {
+            cls_id: 0, entity_id: 41, serial: 1,
+            props: AHashMap::from_iter([
+                (super::WEAPON_ATTRIBUTE_DEF_INDEX_ID, Variant::U32(113)),
+                (super::WEAPON_SKIN_ID, Variant::F32(f32::from_bits(477))),
+            ]),
+            entity_type: EntityType::Normal, cosmetic_revision: 0,
+        });
+        let snapshot = |parser: &SecondPassParser<'_>| {
+            let Variant::Stickers(stickers) = parser.find_stickers(&41).unwrap() else { unreachable!() };
+            stickers
+        };
+
+        // Missing item-definition evidence keeps the legacy partial sticker output.
+        let original = snapshot(&parser);
+        assert_eq!(original.len(), 1);
+        assert_eq!(original[0].id, 477);
+        assert!(Arc::ptr_eq(&original, &snapshot(&parser)));
+
+        let entity = parser.entities[41].as_mut().unwrap();
+        entity.props.insert(super::WEAPON_SKIN_ID, Variant::F32(f32::from_bits(478)));
+        entity.cosmetic_revision += 1;
+        let changed = snapshot(&parser);
+        assert_eq!(changed[0].id, 478);
+        assert!(!Arc::ptr_eq(&original, &changed));
+        assert_eq!(original[0].id, 477);
+        assert!(Arc::ptr_eq(&changed, &snapshot(&parser)));
+
+        // Once item-definition evidence arrives, the full cosmetic-cache path agrees.
+        let entity = parser.entities[41].as_mut().unwrap();
+        entity.props.insert(102, Variant::U32(7));
+        entity.cosmetic_revision += 1;
+        let complete = snapshot(&parser);
+        assert_eq!(complete.as_ref(), changed.as_ref());
+        assert!(!Arc::ptr_eq(&complete, &changed));
+        assert!(Arc::ptr_eq(&complete, &snapshot(&parser)));
+
+        let entity = parser.entities[41].as_mut().unwrap();
+        entity.serial += 1;
+        entity.cosmetic_revision = 0;
+        entity.props.insert(super::WEAPON_SKIN_ID, Variant::F32(f32::from_bits(477)));
+        let replacement = snapshot(&parser);
+        assert_eq!(replacement[0].id, 477);
+        assert!(!Arc::ptr_eq(&replacement, &complete));
+        assert_eq!(complete[0].id, 478);
+
+        parser.entities[41] = None;
+        assert!(snapshot(&parser).is_empty());
     }
 
     #[test]

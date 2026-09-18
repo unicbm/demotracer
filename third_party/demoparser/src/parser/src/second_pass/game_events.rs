@@ -521,6 +521,7 @@ impl<'a> SecondPassParser<'a> {
     }
     pub fn emit_events(&mut self, events: Vec<GameEventInfo>) -> Result<(), DemoParserError> {
         self.handle_player_connect(&events)?;
+        if !self.decode_plan.game_events { return Ok(()); }
         if SecondPassParser::contains_round_end_event(&events) {
             self.create_custom_event_round_end(&events)?;
         }
@@ -589,6 +590,7 @@ impl<'a> SecondPassParser<'a> {
                     {
                         match self.should_remove(steamid) {
                             Some(eid) => {
+                                self.invalidate_inventory_snapshots();
                                 self.players.remove(&eid);
                             }
                             None => {}
@@ -603,6 +605,10 @@ impl<'a> SecondPassParser<'a> {
                         if self.players.iter().all(|x| x.1.steamid != steamid){
                             self.create_custom_event_player_connect(&p)?;
                         }
+                        // Event extra props can have cached an inventory while the
+                        // previous roster entry was absent. Invalidate that snapshot
+                        // again when restoring the player's metadata.
+                        self.invalidate_inventory_snapshots();
                         self.players.insert(e,p.clone());
                     }
                 }
@@ -1577,5 +1583,90 @@ impl Serialize for GameEvent {
             map.serialize_entry(&field.name, &field.data)?;
         }
         map.end()
+    }
+}
+
+#[cfg(test)]
+mod inventory_epoch_tests {
+    use super::*;
+    use crate::first_pass::parser_settings::{FirstPassParser, ParserInputs};
+    use crate::first_pass::prop_controller::INVENTORY_AS_IDS_ID;
+    use crate::parse_demo::DecodePlan;
+    use ahash::AHashMap;
+    use std::sync::Arc;
+
+    #[test]
+    fn roster_callback_inventory_is_invalidated_before_and_after_replacement() {
+        let huffman = Vec::new();
+        let settings = ParserInputs {
+            real_name_to_og_name: AHashMap::default(), wanted_players: vec![],
+            wanted_player_props: vec![], wanted_other_props: vec![],
+            wanted_prop_states: AHashMap::default(), wanted_ticks: vec![],
+            wanted_events: vec!["player_first_connect".to_string()],
+            parse_ents: true, parse_projectiles: false, collect_projectile_records: false,
+            parse_grenades: false, only_header: false, only_convars: false,
+            huffman_lookup_table: &huffman, order_by_steamid: false, list_props: false,
+            fallback_bytes: None, cancelled: None,
+        };
+        let mut first = FirstPassParser::new(&settings);
+        first.cls_by_id = Some(Arc::new(Vec::new()));
+        first.prop_controller.special_ids.steamid = Some(101);
+        first.prop_controller.special_ids.teamnum = Some(102);
+        first.prop_controller.special_ids.player_pawn = Some(103);
+        first.prop_controller.prop_infos = vec![PropInfo {
+            id: INVENTORY_AS_IDS_ID, prop_type: PropType::Custom,
+            prop_name: "inventory".to_string(), prop_friendly_name: "inventory".to_string(),
+            is_player_prop: true,
+        }];
+        let mut parser = SecondPassParser::new(first.create_first_pass_output().unwrap(),
+            0, false, None, DecodePlan::FULL).unwrap();
+        parser.entities[1] = Some(Entity {
+            cls_id: 0, entity_id: 1, serial: 1, entity_type: EntityType::PlayerController,
+            cosmetic_revision: 0, props: AHashMap::from_iter([
+                (101, Variant::U64(1001)), (102, Variant::U32(2)), (103, Variant::U32(8)),
+            ]),
+        });
+        parser.entities[8] = Some(Entity {
+            cls_id: 0, entity_id: 8, serial: 3, props: AHashMap::default(),
+            entity_type: EntityType::Normal, cosmetic_revision: 0,
+        });
+        // The connecting player moves from pawn 7 onto pawn 8, which still has
+        // another player's metadata while event extra props are collected.
+        for (entity_id, steamid, team_num) in [(7, 1001, 2), (8, 2002, 3)] {
+            parser.players.insert(entity_id, PlayerMetaData {
+                player_entity_id: Some(entity_id), steamid: Some(steamid),
+                team_num: Some(team_num), name: None, controller_entid: None,
+            });
+        }
+        parser.find_my_inventory_as_ids(&8).unwrap();
+        parser.handle_player_connect(&[GameEventInfo::PlayerConnect(1)]).unwrap();
+        assert_eq!(parser.inventory_generation, 2);
+        assert!(!parser.players.contains_key(&7));
+        assert_eq!(parser.players[&8].steamid, Some(1001));
+        assert!(parser.game_events[0].fields.iter().any(|field|
+            field.name == "user_inventory" && field.data.is_some()));
+        {
+            let cache = parser.player_inventory_snapshot_cache.borrow();
+            let during_callback = &cache[&8];
+            assert_eq!(during_callback.generation, 1);
+            assert_eq!(during_callback.player_signature, (3, Some(2002), Some(3)));
+        }
+        parser.find_my_inventory_as_ids(&8).unwrap();
+        {
+            let cache = parser.player_inventory_snapshot_cache.borrow();
+            assert_eq!(cache[&8].generation, 2);
+            assert_eq!(cache[&8].player_signature, (3, Some(1001), Some(2)));
+        }
+
+        parser.gather_extra_info(&1, false).unwrap();
+        assert_eq!(parser.inventory_generation, 2, "identical controller metadata");
+        parser.entities[1].as_mut().unwrap().props.insert(102, Variant::U32(3));
+        parser.gather_extra_info(&1, false).unwrap();
+        assert_eq!(parser.inventory_generation, 3, "changed team");
+        parser.entities[1].as_mut().unwrap().props.insert(103, Variant::U32(9));
+        parser.gather_extra_info(&1, true).unwrap();
+        assert_eq!(parser.inventory_generation, 4, "baseline moved the pawn");
+        assert!(!parser.players.contains_key(&8));
+        assert_eq!(parser.players[&9].steamid, Some(1001));
     }
 }

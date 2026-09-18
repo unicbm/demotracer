@@ -16,11 +16,37 @@ use itertools::Itertools;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::IntoParallelRefIterator;
 use rayon::prelude::ParallelIterator;
+use std::time::Instant;
 
 pub const HEADER_ENDS_AT_BYTE: usize = 16;
 
+/// Opt-in coarse wall-clock timing shared with converter stages.
+pub struct ProfileTimer {
+    label: &'static str,
+    started: Option<Instant>,
+}
+
+impl ProfileTimer {
+    pub fn new(label: &'static str) -> Self {
+        Self {
+            label,
+            started: std::env::var_os("DEMOTRACER_PROFILE").is_some().then(Instant::now),
+        }
+    }
+}
+
+impl Drop for ProfileTimer {
+    fn drop(&mut self) {
+        if let Some(started) = self.started {
+            eprintln!("[demotracer-profile] {}_ms={:.3}", self.label, started.elapsed().as_secs_f64() * 1000.0);
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DecodePlan {
+    /// Opt-in: retain requested properties plus every parser dependency.
+    pub project_entity_state: bool,
     pub game_events: bool,
     pub voice_data: bool,
     pub item_drops: bool,
@@ -30,6 +56,7 @@ pub struct DecodePlan {
 
 impl DecodePlan {
     pub const FULL: Self = Self {
+        project_entity_state: false,
         game_events: true,
         voice_data: true,
         item_drops: true,
@@ -42,6 +69,7 @@ impl DecodePlan {
     /// same pass; the parser's legacy FULL plan treats events as event-only
     /// unless synthetic velocity happens to be requested.
     pub const FULL_PLAYER_ROWS: Self = Self {
+        project_entity_state: false,
         game_events: true,
         voice_data: true,
         item_drops: true,
@@ -53,6 +81,7 @@ impl DecodePlan {
     /// remain enabled. Only side-channel outputs that cannot contribute to the
     /// strict player-row overlay are skipped.
     pub const PLAYER_ROWS_ONLY: Self = Self {
+        project_entity_state: false,
         game_events: false,
         voice_data: false,
         item_drops: false,
@@ -113,20 +142,35 @@ impl<'a> Parser<'a> {
         }
     }
     pub fn parse_demo(&mut self, demo_bytes: &[u8]) -> Result<DemoOutput, DemoParserError> {
+        let profile = std::env::var_os("DEMOTRACER_PROFILE").is_some();
+        let started = profile.then(Instant::now);
         let mut first_pass_parser = FirstPassParser::new(&self.input);
         let first_pass_output = first_pass_parser.parse_demo(&demo_bytes, false)?;
+        if let Some(started) = started {
+            eprintln!(
+                "[demotracer-profile] first_pass_ms={:.3} segments={} props={} events={}",
+                started.elapsed().as_secs_f64() * 1000.0,
+                first_pass_output.fullpacket_offsets.len(),
+                self.input.wanted_player_props.len(),
+                self.input.wanted_events.len(),
+            );
+        }
         if self.parsing_mode == ParsingMode::Normal
             && check_multithreadability(&self.input.wanted_player_props)
             && !(self.parsing_mode == ParsingMode::ForceSingleThreaded)
             || self.parsing_mode == ParsingMode::ForceMultiThreaded
         {
-            return self.second_pass_multi_threaded(demo_bytes, first_pass_output);
+            return self.second_pass_multi_threaded(demo_bytes, first_pass_output, profile);
         } else {
-            self.second_pass_single_threaded(demo_bytes, first_pass_output)
+            self.second_pass_single_threaded(demo_bytes, first_pass_output, profile)
         }
     }
 
-    fn second_pass_multi_threaded(&self, outer_bytes: &[u8], first_pass_output: FirstPassOutput) -> Result<DemoOutput, DemoParserError> {
+    fn second_pass_multi_threaded(&self, outer_bytes: &[u8], first_pass_output: FirstPassOutput, profile: bool) -> Result<DemoOutput, DemoParserError> {
+        let started = profile.then(Instant::now);
+        if profile {
+            eprintln!("[demotracer-profile] second_pass_mode=multi segments={} threads={}", first_pass_output.fullpacket_offsets.len(), rayon::current_num_threads());
+        }
         let decode_plan = self.decode_plan;
         let second_pass_outputs: Vec<Result<SecondPassOutput, DemoParserError>> = first_pass_output
             .fullpacket_offsets
@@ -151,7 +195,14 @@ impl<'a> Parser<'a> {
                 Ok(r) => ok.push(r),
             };
         }
+        if let Some(started) = started {
+            eprintln!("[demotracer-profile] second_pass_ms={:.3}", started.elapsed().as_secs_f64() * 1000.0);
+        }
+        let combine_started = profile.then(Instant::now);
         let mut outputs = self.combine_outputs(&mut ok, first_pass_output);
+        if let Some(started) = combine_started {
+            eprintln!("[demotracer-profile] combine_ms={:.3}", started.elapsed().as_secs_f64() * 1000.0);
+        }
         if let Some(new_df) = self.rm_unwanted_ticks(&mut outputs.df) {
             outputs.df = new_df;
         }
@@ -181,7 +232,11 @@ impl<'a> Parser<'a> {
         events.retain(|x|x.name != "player_first_connect");
         events.extend(ids.values().map(|x| x.clone()));
     }
-    fn second_pass_single_threaded(&self, outer_bytes: &[u8], first_pass_output: FirstPassOutput) -> Result<DemoOutput, DemoParserError> {
+    fn second_pass_single_threaded(&self, outer_bytes: &[u8], first_pass_output: FirstPassOutput, profile: bool) -> Result<DemoOutput, DemoParserError> {
+        let started = profile.then(Instant::now);
+        if profile {
+            eprintln!("[demotracer-profile] second_pass_mode=single segments={} threads=1", first_pass_output.fullpacket_offsets.len());
+        }
         let mut parser = SecondPassParser::new(
             first_pass_output.clone(),
             16,
@@ -191,7 +246,14 @@ impl<'a> Parser<'a> {
         )?;
         parser.start(outer_bytes)?;
         let second_pass_output = parser.create_output();
+        if let Some(started) = started {
+            eprintln!("[demotracer-profile] second_pass_ms={:.3}", started.elapsed().as_secs_f64() * 1000.0);
+        }
+        let combine_started = profile.then(Instant::now);
         let mut outputs = self.combine_outputs(&mut vec![second_pass_output], first_pass_output);
+        if let Some(started) = combine_started {
+            eprintln!("[demotracer-profile] combine_ms={:.3}", started.elapsed().as_secs_f64() * 1000.0);
+        }
         if let Some(new_df) = self.rm_unwanted_ticks(&mut outputs.df) {
             outputs.df = new_df;
         }

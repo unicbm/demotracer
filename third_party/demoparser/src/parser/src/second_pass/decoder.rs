@@ -37,6 +37,21 @@ pub struct QfMapper {
 }
 impl<'a> Bitreader<'a> {
     #[inline(always)]
+    pub(crate) fn skip_value(&mut self, decoder: &Decoder, qf_map: &QfMapper) -> Result<(), DemoParserError> {
+        match decoder {
+            StringDecoder => { while self.read_nbits(8)? != 0 {} }
+            BinaryBlockDecoder => {
+                let len = self.read_varint()? as usize;
+                self.skip_n_bytes(len)?;
+            }
+            // The regular decoders preserve validation and variable bit lengths;
+            // the unused scalar result does not need a heap allocation.
+            _ => { self.decode(decoder, qf_map)?; }
+        }
+        Ok(())
+    }
+
+    #[inline(always)]
     pub fn decode(&mut self, decoder: &Decoder, qf_map: &QfMapper) -> Result<Variant, DemoParserError> {
         match decoder {
             NoscaleDecoder => Ok(Variant::F32(f32::from_bits(self.read_nbits(32)?))),
@@ -124,11 +139,9 @@ impl<'a> Bitreader<'a> {
         Ok(v)
     }
     pub fn decode_uint64(&mut self) -> Result<u64, DemoParserError> {
-        let bytes = self.read_n_bytes(8)?;
-        match bytes.try_into() {
-            Err(_) => Err(DemoParserError::OutOfBytesError),
-            Ok(arr) => Ok(u64::from_ne_bytes(arr)),
-        }
+        let mut bytes = [0_u8; 8];
+        self.read_n_bytes_mut(bytes.len(), &mut bytes)?;
+        Ok(u64::from_ne_bytes(bytes))
     }
     pub fn decode_noscale(&mut self) -> Result<f32, DemoParserError> {
         Ok(f32::from_le_bytes(self.read_nbits(32)?.to_le_bytes()))
@@ -409,7 +422,79 @@ impl QuantalizedFloat {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn skipped_values_preserve_wire_position_and_errors() {
+        use super::*;
+        let qf = QfMapper { idx: 0, map: AHashMap::default() };
+        for decoder in [StringDecoder, BinaryBlockDecoder, UnsignedDecoder, SignedDecoder,
+            NoscaleDecoder, VectorNoscaleDecoder, BooleanDecoder, FloatCoordDecoder,
+            Qangle3Decoder(10), QanglePresDecoder, QuantalizedFloatDecoder(0)] {
+            for payload in [vec![0], vec![3, b'a', b'b', 0, 99, 17],
+                vec![15, 0xff, 0xff, 0], vec![3; 32]] {
+                for offset in 0..8 {
+                    // Pad scalar lookahead and string terminators, then shift
+                    // the complete wire payload to each possible bit offset.
+                    let mut bytes = vec![0_u8; 96];
+                    for (i, &byte) in payload.iter().enumerate() {
+                        for bit in 0..8 {
+                            let target = i * 8 + bit + offset as usize;
+                            bytes[target / 8] |= ((byte >> bit) & 1) << (target % 8);
+                        }
+                    }
+                    let mut decoded = Bitreader::new(&bytes);
+                    let mut skipped = Bitreader::new(&bytes);
+                    if decoded.read_nbits(offset).is_err() { continue; }
+                    skipped.read_nbits(offset).unwrap();
+                    assert_eq!(decoded.decode(&decoder, &qf).map(|_| ()), skipped.skip_value(&decoder, &qf));
+                    assert_eq!(decoded.bits_remaining(), skipped.bits_remaining());
+                    assert_eq!(decoded.read_nbits(1), skipped.read_nbits(1));
+                }
+            }
+        }
+        let mut decoded = Bitreader::new(&[3, 1, 2]);
+        let mut skipped = Bitreader::new(&[3, 1, 2]);
+        assert_eq!(decoded.decode(&BinaryBlockDecoder, &qf).map(|_| ()), skipped.skip_value(&BinaryBlockDecoder, &qf));
+        assert_eq!(decoded.bits_remaining(), skipped.bits_remaining());
+    }
     use crate::second_pass::decoder::*;
+
+    #[test]
+    fn fixed64_preserves_all_bit_alignments_and_following_value() {
+        let value_bytes = [0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef];
+        for offset in 0..8 {
+            let wire = ((u64::from_le_bytes(value_bytes) as u128) << offset)
+                | (0xa5_u128 << (64 + offset));
+            let bytes = wire.to_le_bytes();
+            let mut reader = Bitreader::new(&bytes);
+            if offset != 0 {
+                reader.read_nbits(offset).unwrap();
+            }
+            assert_eq!(reader.decode_uint64().unwrap(), u64::from_ne_bytes(value_bytes));
+            assert_eq!(reader.read_nbits(8).unwrap(), 0xa5);
+        }
+    }
+
+    #[test]
+    fn fixed64_rejects_truncated_values_like_the_byte_reader() {
+        let bytes = [0xff_u8; 8];
+        for length in 0..=bytes.len() {
+            for offset in 0..8 {
+                if (length == 0 && offset != 0) || length * 8 >= 64 + offset {
+                    continue;
+                }
+                let mut reader = Bitreader::new(&bytes[..length]);
+                let mut reference = Bitreader::new(&bytes[..length]);
+                if offset != 0 {
+                    reader.read_nbits(offset as u32).unwrap();
+                    reference.read_nbits(offset as u32).unwrap();
+                }
+                assert_eq!(
+                    reader.decode_uint64().unwrap_err(),
+                    reference.read_n_bytes(8).unwrap_err(),
+                );
+            }
+        }
+    }
 
     #[test]
     fn test_qfloat_new() {

@@ -105,6 +105,60 @@ cd ..\..
 .\tooling\scripts\check-release-contract.ps1
 ```
 
+### Parser implementation and diagnostics
+
+The vendored parser's unit tests use its own locked development dependencies.
+The upstream demo fixtures are not vendored; run the remaining tests with:
+
+```powershell
+cargo test --manifest-path third_party\demoparser\src\parser\Cargo.toml --locked --lib -- --skip e2e_test
+```
+
+`DEMOTRACER_PROFILE` enables coarse stderr timings for first/second pass, column
+merge, converter channels/fallback reasons, hashing, sorting and row materialization.
+It is off by default and does not log per-tick data. The GUI release profile uses
+speed optimization (`opt-level = 3`), fat LTO and one codegen unit. Compare
+performance with matching release code-generation settings and diagnostics
+disabled. Keep local measurement tools, demo inputs and results out of commits.
+
+Direct scalar columns record value changes during protocol decoding and expand
+them into final typed columns using linear CPU cursors. Entity generations and
+output-row sequence distinguish recreation, missing values and multiple samples
+within one tick. Scalar columns also track the actual controller, rules, team
+and active-weapon entities referenced by each row. Vectors and lists retain
+their existing semantics. Immutable history, subticks and sticker snapshots share backing
+storage; repeated strings use dictionary columns and are materialized by the
+converter. Row-local entity links are resolved once, and inventory snapshots
+invalidate on their actual data dependencies rather than every entity packet.
+
+Set `DEMOTRACER_SPARSE_COLUMNS=0` to compare the normal collector against sparse
+scalar collection in the same executable. Leave it unset for the default optimized
+path. `DEMOTRACER_PROFILE` additionally reports frame decompression, entity
+decoding, collection, and deferred-column finalization; include all these phases
+in the complete parse time. These optimizations use CPU only and add no graphics
+runtime or driver requirement.
+
+For hotspot diagnosis, `DEMOTRACER_PROFILE_PROPERTIES=1` samples one row in
+each 256-row block and reports the most expensive remaining getters/appends.
+Sampling rotates across player slots. Timer overhead is included, so use this
+to locate hotspots, not as a substitute for complete parse timings. Leave it
+unset for performance measurements.
+
+The converter splits continuous-state fields (usercmds, duck/fall state,
+accumulated damage and affected source-state fields) into a sequential channel;
+the remaining channel uses fullpacket segments in parallel. Both channels run
+concurrently, and every tick/entity/SteamID/round key must match in order before
+the overlay is accepted. Unsupported fields, missing columns or alignment
+failure fall back to the complete sequential parse. Source-state aliases also
+resolve through this overlay.
+
+`DecodePlan::project_entity_state` is an opt-in dependency projection used by
+the converter. It consumes every wire value while avoiding storage for unused
+ordinary properties. Requested fields, query filters, parser metadata and
+dynamic inventory/econ/event namespaces are retained. The restricted direct-row
+channel can omit unrelated links; general parser plans keep full entity state.
+Input hashing and column reclamation overlap independent parsing/row work.
+
 Run the install-free GUI acceptance application with its real Rust backend and
 Vite hot reload:
 
@@ -124,6 +178,20 @@ dev:debug` only when debugging Rust itself. `pnpm run dev:web` starts only the
 frontend server and is useful for isolated layout work; a regular browser at
 that address does not have Tauri IPC and therefore cannot be used to accept
 Manifest, library, conversion, or other real-backend behavior.
+
+For a standalone release executable that runs without Vite, use the Tauri
+build entry point from `desktop/gui`:
+
+```powershell
+node node_modules/@tauri-apps/cli/tauri.js build --no-bundle --ci -- --locked
+```
+
+This builds the frontend and enables Tauri's `custom-protocol` asset embedding.
+Bare `cargo build --release` is only a Rust compilation check: it can still
+produce a development-mode WebView that loads `localhost:1420`. Do not deliver
+that executable as a standalone GUI. Validate the release executable with Vite
+stopped, checking that the embedded page renders and a read-only Tauri command
+succeeds. Use `pnpm run tauri:build` when an NSIS installer is required.
 
 GUI appearance preferences use `gui-preferences.v1.json` in Tauri's application
 local-data directory as their versioned source of truth. The document stores the

@@ -99,6 +99,7 @@ impl<'a> FirstPassParser<'a> {
         }
         self.handle_short_header(demo_bytes.len(), &demo_bytes[..HEADER_ENDS_AT_BYTE])?;
         let mut reuseable_buffer = vec![0_u8; 100_000];
+        let profile_started = self.profile.start();
         // Loop that goes trough the entire file
         loop {
             if self.settings.cancelled.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
@@ -116,7 +117,9 @@ impl<'a> FirstPassParser<'a> {
                 Err(DemoParserError::OutOfBytesError) => break,
                 Err(e) => return Err(e),
             };
-            if self.is_packet_we_skip_on_first_pass(frame.demo_cmd) {
+            let skipped = self.is_packet_we_skip_on_first_pass(frame.demo_cmd);
+            self.profile.frame(skipped);
+            if skipped {
                 self.ptr += frame.size;
                 continue;
             }
@@ -147,6 +150,7 @@ impl<'a> FirstPassParser<'a> {
                 _ => {}
             };
         }
+        self.profile.report("first", HEADER_ENDS_AT_BYTE, profile_started);
         self.fallback_if_first_pass_missing_data()?;
         self.create_first_pass_output()
     }
@@ -189,9 +193,13 @@ impl<'a> FirstPassParser<'a> {
     fn decompress_if_needed<'b>(&mut self, buf: &'b mut Vec<u8>, possibly_uncompressed_bytes: &'b [u8], frame: &Frame) -> Result<&'b [u8], DemoParserError> {
         match frame.is_compressed {
             true => {
+                let profile_started = self.profile.start();
                 FirstPassParser::resize_if_needed(buf, decompress_len(possibly_uncompressed_bytes))?;
                 match SnapDecoder::new().decompress(possibly_uncompressed_bytes, buf) {
-                    Ok(idx) => Ok(&buf[..idx]),
+                    Ok(idx) => {
+                        self.profile.decompressed(profile_started, possibly_uncompressed_bytes.len(), idx);
+                        Ok(&buf[..idx])
+                    }
                     Err(e) => return Err(DemoParserError::DecompressionFailure(format!("{}", e))),
                 }
             }

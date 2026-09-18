@@ -23,6 +23,7 @@ use csgoproto::CDemoFullPacket;
 use csgoproto::CDemoPacket;
 use csgoproto::CInButtonStatePb;
 use csgoproto::CMsgQAngle;
+#[cfg(test)]
 use csgoproto::CSubtickMoveStep;
 use csgoproto::CnetMsgTick;
 use csgoproto::CsgoInputHistoryEntryPb;
@@ -36,10 +37,69 @@ use snap::raw::decompress_len;
 use snap::raw::Decoder as SnapDecoder;
 use std::sync::atomic::Ordering;
 
-use super::variants::{InputHistory, InputHistoryInterpolation, UserCmdSubtickMove};
+use super::variants::{into_shared_slice, InputHistory, InputHistoryInterpolation, UserCmdSubtickMove};
+
+#[path = "usercmd_delta.rs"]
+mod usercmd_delta;
 
 const OUTER_BUF_DEFAULT_LEN: usize = 400_000;
 const INNER_BUF_DEFAULT_LEN: usize = 8192 * 15;
+
+#[inline]
+fn commit_usercmd_scalar(
+    entity: &mut Entity,
+    sparse: Option<&mut super::sparse_scalar::SparseScalarColumns>,
+    property_id: u32,
+    value: Variant,
+) {
+    use std::collections::hash_map::Entry;
+    match entity.props.entry(property_id) {
+        Entry::Occupied(mut entry) => {
+            let unchanged = match (entry.get(), &value) {
+                (Variant::Bool(a), Variant::Bool(b)) => a == b,
+                (Variant::I32(a), Variant::I32(b)) => a == b,
+                (Variant::U32(a), Variant::U32(b)) => a == b,
+                (Variant::F32(a), Variant::F32(b)) => a.to_bits() == b.to_bits(),
+                _ => false,
+            };
+            if unchanged { return; }
+            if let Some(sparse) = sparse { sparse.record(entity.entity_id, property_id, &value); }
+            entry.insert(value);
+        }
+        Entry::Vacant(entry) => {
+            if let Some(sparse) = sparse { sparse.record(entity.entity_id, property_id, &value); }
+            entry.insert(value);
+        }
+    }
+}
+
+// Both full and delta writers invoke this only where they actually commit a scalar.
+macro_rules! commit_usercmd_scalar {
+    ($parser:ident, $entity:ident, $property:expr, $value:expr) => {{
+        commit_usercmd_scalar($entity, $parser.sparse_scalar_columns.as_mut(), $property, $value);
+    }};
+}
+
+#[inline]
+fn packet_message_is_needed(
+    msg_type: &NetMessageType,
+    decode_plan: crate::parse_demo::DecodePlan,
+    parse_usercmd: bool,
+    should_parse_entities: bool,
+) -> bool {
+    match msg_type {
+        svc_PacketEntities => should_parse_entities,
+        svc_UserCmds => parse_usercmd,
+        svc_CreateStringTable | svc_UpdateStringTable | svc_ServerInfo
+        | CS_UM_PlayerStatsUpdate | net_Tick | svc_ClearAllStringTables => true,
+        CS_UM_SendPlayerItemDrops => decode_plan.item_drops,
+        CS_UM_EndOfMatchAllPlayersData => decode_plan.end_of_match,
+        svc_VoiceData => decode_plan.voice_data,
+        UM_SayText2 | UM_SayText | net_SetConVar | CS_UM_ServerRankUpdate
+        | GE_Source1LegacyGameEvent | GE_FireBulletsId | GE_PlayerBulletHitId => decode_plan.game_events,
+        _ => false,
+    }
+}
 
 // July 2026 CS2 demos carry server user commands in CMsgServerUserCmd.delta_data.
 // The outer command and its singular children still use protobuf wire fields, while
@@ -121,6 +181,7 @@ fn read_delta_varint(bytes: &mut &[u8]) -> Option<u64> {
     None
 }
 
+#[cfg(test)]
 fn write_delta_varint(mut value: u64, out: &mut Vec<u8>) {
     while value >= 0x80 {
         out.push((value as u8 & 0x7F) | 0x80);
@@ -204,9 +265,8 @@ impl DeltaMessageSchema {
         }
     }
 
-    fn explicit_defaults(self) -> Vec<u8> {
-        let mut out = Vec::new();
-        let fields: &[(u64, u8)] = match self {
+    fn default_fields(self) -> &'static [(u64, u8)] {
+        match self {
             Self::Buttons => &[(1, 0), (2, 0), (3, 0)],
             Self::QAngle => &[(1, 5), (2, 5), (3, 5)],
             Self::BaseUserCmd => &[(3, 2), (4, 2), (5, 5), (6, 5), (7, 5), (8, 0), (9, 0), (11, 0), (12, 0), (20, 0)],
@@ -216,8 +276,13 @@ impl DeltaMessageSchema {
             Self::InterpolationCl => &[(3, 5)],
             Self::Vector => &[(1, 5), (2, 5), (3, 5)],
             Self::SubtickMove => &[(1, 0), (2, 0), (3, 5), (4, 5), (5, 5), (8, 5), (9, 5)],
-        };
-        for (field, wire_type) in fields {
+        }
+    }
+
+    #[cfg(test)]
+    fn explicit_defaults(self) -> Vec<u8> {
+        let mut out = Vec::new();
+        for (field, wire_type) in self.default_fields() {
             write_delta_varint((field << 3) | u64::from(*wire_type), &mut out);
             match wire_type {
                 0 => out.push(0),
@@ -232,6 +297,17 @@ impl DeltaMessageSchema {
         }
         out
     }
+}
+
+fn shared_input_history(history: &[CsgoInputHistoryEntryPb]) -> std::sync::Arc<[InputHistory]> {
+    let mut output = std::sync::Arc::<[InputHistory]>::new_uninit_slice(history.len());
+    let target = std::sync::Arc::get_mut(&mut output).unwrap();
+    for (slot, entry) in target.iter_mut().zip(history) {
+        slot.write(parse_input_history(*entry));
+    }
+    // SAFETY: the allocation has exactly history.len() elements, and the loop
+    // initializes every element before publishing the immutable slice.
+    unsafe { output.assume_init() }
 }
 
 fn parse_input_history(input: CsgoInputHistoryEntryPb) -> InputHistory {
@@ -272,6 +348,7 @@ fn parse_input_history(input: CsgoInputHistoryEntryPb) -> InputHistory {
     }
 }
 
+#[cfg(test)]
 fn sanitize_codegen_delta_message(mut bytes: &[u8], schema: DeltaMessageSchema) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(bytes.len());
     while !bytes.is_empty() {
@@ -333,6 +410,7 @@ fn sanitize_codegen_delta_message(mut bytes: &[u8], schema: DeltaMessageSchema) 
     Some(out)
 }
 
+#[cfg(test)]
 struct DecodedRepeatedDelta<M> {
     state: Vec<M>,
     updates: Vec<M>,
@@ -342,6 +420,7 @@ struct DecodedRepeatedDelta<M> {
 /// the elements updated by this command. The leading wire-type 7 key declares
 /// the target list length in its field-number bits. Following length-delimited
 /// fields use their field number as a zero-based element index and may be sparse.
+#[cfg(test)]
 fn decode_codegen_delta_repeated<M>(
     payloads: &[prost::bytes::Bytes],
     schema: DeltaMessageSchema,
@@ -424,6 +503,7 @@ pub struct SecondPassOutput {
 impl<'a> SecondPassParser<'a> {
     pub fn start(&mut self, demo_bytes: &'a [u8]) -> Result<(), DemoParserError> {
         let started_at = self.ptr;
+        let profile_started = self.profile.start();
         // re-use these to avoid allocation
         let mut buf = vec![0_u8; INNER_BUF_DEFAULT_LEN];
         let mut buf2 = vec![0_u8; OUTER_BUF_DEFAULT_LEN];
@@ -441,7 +521,9 @@ impl<'a> SecondPassParser<'a> {
                 Err(DemoParserError::OutOfBytesError) => break,
                 Err(e) => return Err(e),
             };
-            if frame.demo_cmd == DemAnimationData || frame.demo_cmd == DemSendTables || frame.demo_cmd == DemStringTables {
+            let skipped = frame.demo_cmd == DemAnimationData || frame.demo_cmd == DemSendTables || frame.demo_cmd == DemStringTables;
+            self.profile.frame(skipped);
+            if skipped {
                 self.ptr += frame.size as usize;
                 continue;
             }
@@ -470,6 +552,7 @@ impl<'a> SecondPassParser<'a> {
             };
             ok?;
         }
+        self.profile.report("second", started_at, profile_started);
         Ok(())
     }
     fn parse_full_packet_and_break_if_needed(&mut self, bytes: &[u8], buf: &mut Vec<u8>, started_at: usize) -> Result<bool, DemoParserError> {
@@ -524,9 +607,13 @@ impl<'a> SecondPassParser<'a> {
     fn decompress_if_needed<'b>(&mut self, buf: &'b mut Vec<u8>, possibly_uncompressed_bytes: &'b [u8], frame: &Frame) -> Result<&'b [u8], DemoParserError> {
         match frame.is_compressed {
             true => {
+                let profile_started = self.profile.start();
                 FirstPassParser::resize_if_needed(buf, decompress_len(possibly_uncompressed_bytes))?;
                 match SnapDecoder::new().decompress(possibly_uncompressed_bytes, buf) {
-                    Ok(idx) => Ok(&buf[..idx]),
+                    Ok(idx) => {
+                        self.profile.decompressed(profile_started, possibly_uncompressed_bytes.len(), idx);
+                        Ok(&buf[..idx])
+                    }
                     Err(e) => return Err(DemoParserError::DecompressionFailure(format!("{}", e))),
                 }
             }
@@ -546,10 +633,12 @@ impl<'a> SecondPassParser<'a> {
     }
 
     pub fn parse_packet(&mut self, bytes: &[u8], buf: &mut Vec<u8>) -> Result<(), DemoParserError> {
+        let started = self.profile.start();
         let msg = match CDemoPacket::decode(bytes) {
             Err(_) => return Err(DemoParserError::MalformedMessage),
             Ok(msg) => msg,
         };
+        self.profile.phase(0, started);
         let mut bitreader = Bitreader::new(msg.data());
         self.parse_packet_from_bitreader(&mut bitreader, buf, true, false)?;
         Ok(())
@@ -565,19 +654,33 @@ impl<'a> SecondPassParser<'a> {
         let mut wrong_order_events = vec![];
 
         while bitreader.bits_remaining().unwrap_or(0) > 8 {
-            let msg_type = bitreader.read_u_bit_var()?;
+            let msg_type = NetMessageType::from(bitreader.read_u_bit_var()? as i32);
             let size = bitreader.read_varint()?;
+            // Ignored payloads can be large (sounds, cosmetics, voice). Preserve
+            // their exact bit extent without resizing or filling the scratch buffer.
+            if !packet_message_is_needed(&msg_type, self.decode_plan, self.parse_usercmd, should_parse_entities) {
+                bitreader.skip_n_bytes(size as usize)?;
+                continue;
+            }
             if buf.len() < size as usize {
                 buf.resize(size as usize, 0)
             }
+            let started = self.profile.start();
             bitreader.read_n_bytes_mut(size as usize, buf)?;
+            self.profile.phase(1, started);
             let msg_bytes = &buf[..size as usize];
-            let ok = match NetMessageType::from(msg_type as i32) {
+            let phase = match msg_type { svc_PacketEntities => None, svc_UserCmds => Some(2), _ => Some(3) };
+            let started = phase.and_then(|_| self.profile.start());
+            let ok = match msg_type {
                 svc_PacketEntities => {
                     if should_parse_entities {
+                        let profile_started = self.profile.start();
                         self.parse_packet_ents(&msg_bytes, is_fullpacket)?;
+                        self.profile.parsed_entities(profile_started);
                         if !is_fullpacket {
+                            let profile_started = self.profile.start();
                             self.collect_entities();
+                            self.profile.collected_entities(profile_started);
                         }
                     }
                     Ok(())
@@ -619,6 +722,7 @@ impl<'a> SecondPassParser<'a> {
                 }
                 _ => Ok(()),
             };
+            if let Some(phase) = phase { self.profile.phase(phase, started); }
             ok?
         }
         if !wrong_order_events.is_empty() {
@@ -641,55 +745,53 @@ impl<'a> SecondPassParser<'a> {
         for cmd in msg.commands {
             let player_slot = cmd.player_slot();
             if let Some(delta_data) = cmd.delta_data.as_ref().filter(|data| !data.is_empty()) {
-                let sanitized = match sanitize_codegen_delta_message(delta_data.as_ref(), DeltaMessageSchema::CsgoUserCmd) {
+                let decode_started = self.profile.start();
+                let user_cmd = match usercmd_delta::decode_command(delta_data.as_ref()) {
                     Some(value) => value,
                     None => continue,
                 };
-                let user_cmd = match DeltaCsgoUserCmdPb::decode(sanitized.as_slice()) {
-                    Ok(value) => value,
-                    Err(_) => continue,
-                };
+                self.profile.phase(4, decode_started);
+                let apply_started = self.profile.start();
                 self.apply_delta_user_cmd(user_cmd, player_slot);
+                self.profile.phase(7, apply_started);
                 continue;
             }
-            let user_cmd = match CsgoUserCmdPb::decode(cmd.data()) {
+            let decode_started = self.profile.start();
+            let mut user_cmd = match CsgoUserCmdPb::decode(cmd.data()) {
                 Ok(m) => m,
                 _ => return Ok(()),
             };
-
-            self.usercmd_input_history_baselines.insert(player_slot, user_cmd.input_history.clone());
-            self.usercmd_subtick_baselines.insert(
-                player_slot,
-                user_cmd.base.as_ref().map(|base| base.subtick_moves.clone()).unwrap_or_default(),
-            );
-
+            self.profile.phase(5, decode_started);
+            let apply_started = self.profile.start();
             let left_hand_desired = user_cmd.left_hand_desired();
             let attack1_start_history_index =
                 user_cmd.attack1_start_history_index.unwrap_or(-1);
             let attack2_start_history_index =
                 user_cmd.attack2_start_history_index.unwrap_or(-1);
+            let input_history_baseline = self.usercmd_input_history_baselines.entry(player_slot).or_default();
+            *input_history_baseline = user_cmd.input_history;
+            self.usercmd_history_cache.remove(&player_slot);
+            let subtick_baseline = self.usercmd_subtick_baselines.entry(player_slot).or_default();
+            *subtick_baseline = user_cmd.base.as_mut().map(|base| std::mem::take(&mut base.subtick_moves)).unwrap_or_default();
             if let Some(base) = user_cmd.base {
                 let entity_id = demo_network_ehandle_index(base.pawn_entity_handle());
                 if let Some(Some(ent)) = self.entities.get_mut(entity_id as usize) {
-                    let history = user_cmd
-                        .input_history
-                        .into_iter()
-                        .map(parse_input_history)
-                        .collect();
+                    let history = self.usercmd_history_cache.entry(player_slot)
+                        .or_insert_with(|| shared_input_history(input_history_baseline)).clone();
                     ent.props.insert(USERCMD_INPUT_HISTORY_BASEID, Variant::InputHistory(history));
-                    ent.props.insert(
+                    commit_usercmd_scalar!(self, ent,
                         USERCMD_ATTACK_START_HISTORY_INDEX_1,
-                        Variant::I32(attack1_start_history_index),
+                        Variant::I32(attack1_start_history_index)
                     );
-                    ent.props.insert(
+                    commit_usercmd_scalar!(self, ent,
                         USERCMD_ATTACK_START_HISTORY_INDEX_2,
-                        Variant::I32(attack2_start_history_index),
+                        Variant::I32(attack2_start_history_index)
                     );
                     if let Some(client_tick) = base.client_tick {
-                        ent.props.insert(USERCMD_CLIENT_TICK, Variant::I32(client_tick));
+                        commit_usercmd_scalar!(self, ent, USERCMD_CLIENT_TICK, Variant::I32(client_tick));
                     }
                     let mut subtick_moves = vec![];
-                    for subtick in &base.subtick_moves {
+                    for subtick in subtick_baseline.iter() {
                         subtick_moves.push(UserCmdSubtickMove {
                             when: subtick.when(),
                             button: subtick.button(),
@@ -700,69 +802,54 @@ impl<'a> SecondPassParser<'a> {
                             yaw_delta: subtick.yaw_delta(),
                         });
                     }
+                    let subtick_moves = if subtick_moves.is_empty() { self.empty_usercmd_subticks.clone() } else { into_shared_slice(subtick_moves) };
                     ent.props.insert(USERCMD_SUBTICK_MOVES_BASEID, Variant::UserCmdSubtickMoves(subtick_moves));
-                    ent.props.insert(USERCMD_LEFTMOVE, Variant::F32(base.leftmove()));
-                    ent.props.insert(USERCMD_FORWARDMOVE, Variant::F32(base.forwardmove()));
-                    ent.props.insert(USERCMD_UPMOVE, Variant::F32(base.upmove()));
-                    ent.props.insert(USERCMD_IMPULSE, Variant::I32(base.impulse()));
-                    ent.props.insert(USERCMD_MOUSE_DX, Variant::I32(base.mousedx()));
-                    ent.props.insert(USERCMD_MOUSE_DY, Variant::I32(base.mousedy()));
-                    ent.props.insert(USERCMD_WEAPON_SELECT, Variant::I32(base.weaponselect()));
-                    ent.props.insert(USERCMD_SUBTICK_LEFT_HAND_DESIRED, Variant::Bool(left_hand_desired));
+                    commit_usercmd_scalar!(self, ent, USERCMD_LEFTMOVE, Variant::F32(base.leftmove()));
+                    commit_usercmd_scalar!(self, ent, USERCMD_FORWARDMOVE, Variant::F32(base.forwardmove()));
+                    commit_usercmd_scalar!(self, ent, USERCMD_UPMOVE, Variant::F32(base.upmove()));
+                    commit_usercmd_scalar!(self, ent, USERCMD_IMPULSE, Variant::I32(base.impulse()));
+                    commit_usercmd_scalar!(self, ent, USERCMD_MOUSE_DX, Variant::I32(base.mousedx()));
+                    commit_usercmd_scalar!(self, ent, USERCMD_MOUSE_DY, Variant::I32(base.mousedy()));
+                    commit_usercmd_scalar!(self, ent, USERCMD_WEAPON_SELECT, Variant::I32(base.weaponselect()));
+                    commit_usercmd_scalar!(self, ent, USERCMD_SUBTICK_LEFT_HAND_DESIRED, Variant::Bool(left_hand_desired));
                     if let Some(viewangles) = base.viewangles {
-                        ent.props.insert(USERCMD_VIEWANGLE_X, Variant::F32(viewangles.x()));
-                        ent.props.insert(USERCMD_VIEWANGLE_Y, Variant::F32(viewangles.y()));
-                        ent.props.insert(USERCMD_VIEWANGLE_Z, Variant::F32(viewangles.z()));
+                        commit_usercmd_scalar!(self, ent, USERCMD_VIEWANGLE_X, Variant::F32(viewangles.x()));
+                        commit_usercmd_scalar!(self, ent, USERCMD_VIEWANGLE_Y, Variant::F32(viewangles.y()));
+                        commit_usercmd_scalar!(self, ent, USERCMD_VIEWANGLE_Z, Variant::F32(viewangles.z()));
                     }
                     if let Some(buttons_pb) = base.buttons_pb {
                         ent.props.insert(USERCMD_BUTTONSTATE_1, Variant::U64(buttons_pb.buttonstate1()));
                         ent.props.insert(USERCMD_BUTTONSTATE_2, Variant::U64(buttons_pb.buttonstate2()));
                         ent.props.insert(USERCMD_BUTTONSTATE_3, Variant::U64(buttons_pb.buttonstate3()));
                     }
-                    ent.props
-                        .insert(USERCMD_CONSUMED_SERVER_ANGLE_CHANGES, Variant::U32(base.consumed_server_angle_changes()));
+                    commit_usercmd_scalar!(self, ent,
+                        USERCMD_CONSUMED_SERVER_ANGLE_CHANGES, Variant::U32(base.consumed_server_angle_changes()));
                 }
             }
+            self.profile.phase(6, apply_started);
         }
         Ok(())
     }
 
     fn apply_delta_user_cmd(&mut self, user_cmd: DeltaCsgoUserCmdPb, player_slot: i32) {
-        let previous_input_history = self.usercmd_input_history_baselines.get(&player_slot).cloned().unwrap_or_default();
-        let decoded_input_history = decode_codegen_delta_repeated::<CsgoInputHistoryEntryPb>(
-            &user_cmd.input_history_delta,
-            DeltaMessageSchema::InputHistory,
-            &previous_input_history,
-        )
-        .unwrap_or(DecodedRepeatedDelta {
-            state: previous_input_history,
-            updates: Vec::new(),
-        });
-        self.usercmd_input_history_baselines.insert(player_slot, decoded_input_history.state.clone());
-        let input_history = decoded_input_history.state
-            .into_iter()
-            .map(parse_input_history)
-            .collect();
+        let input_history_baseline = self.usercmd_input_history_baselines.entry(player_slot).or_default();
+        // Invalid repeated deltas retain the preceding baseline, as before.
+        if usercmd_delta::apply_repeated_into(&user_cmd.input_history_delta, input_history_baseline,
+            &mut self.usercmd_history_scratch, |_, _| {}).unwrap_or(false) {
+            self.usercmd_history_cache.remove(&player_slot);
+        }
+        let input_history = self.usercmd_history_cache.entry(player_slot)
+            .or_insert_with(|| shared_input_history(input_history_baseline)).clone();
         let left_hand_desired = user_cmd.left_hand_desired;
         let attack1_start_history_index = user_cmd.attack1_start_history_index.unwrap_or(-1);
         let attack2_start_history_index = user_cmd.attack2_start_history_index.unwrap_or(-1);
         let Some(base) = user_cmd.base else {
             return;
         };
-        let previous_subticks = self.usercmd_subtick_baselines.get(&player_slot).cloned().unwrap_or_default();
-        let decoded_subticks = decode_codegen_delta_repeated::<CSubtickMoveStep>(
-            &base.subtick_moves_delta,
-            DeltaMessageSchema::SubtickMove,
-            &previous_subticks,
-        )
-        .unwrap_or(DecodedRepeatedDelta {
-            state: previous_subticks,
-            updates: Vec::new(),
-        });
-        self.usercmd_subtick_baselines.insert(player_slot, decoded_subticks.state);
-        let subtick_moves = decoded_subticks.updates
-            .into_iter()
-            .map(|subtick| UserCmdSubtickMove {
+        let subtick_baseline = self.usercmd_subtick_baselines.entry(player_slot).or_default();
+        let mut subtick_moves = Vec::new();
+        let _ = usercmd_delta::apply_repeated_into(&base.subtick_moves_delta, subtick_baseline,
+            &mut self.usercmd_subtick_scratch, |_, subtick| subtick_moves.push(UserCmdSubtickMove {
                 when: subtick.when(),
                 button: subtick.button(),
                 pressed: subtick.pressed(),
@@ -770,15 +857,15 @@ impl<'a> SecondPassParser<'a> {
                 analog_left: subtick.analog_left_delta(),
                 pitch_delta: subtick.pitch_delta(),
                 yaw_delta: subtick.yaw_delta(),
-            })
-            .collect();
+            }));
+        let subtick_moves = if subtick_moves.is_empty() { self.empty_usercmd_subticks.clone() } else { into_shared_slice(subtick_moves) };
 
         let explicit_pawn = base
             .pawn_entity_handle
             .filter(|handle| *handle != 0x00FF_FFFF)
             .map(demo_network_ehandle_index);
         let controller_entid = player_slot.checked_add(1);
-        let controller_pawn = controller_entid.and_then(|controller| {
+        let entity_id = explicit_pawn.or_else(|| controller_entid.and_then(|controller| {
             self.prop_controller
                 .special_ids
                 .player_pawn
@@ -786,14 +873,13 @@ impl<'a> SecondPassParser<'a> {
                     Ok(Variant::U32(handle)) => Some(demo_network_ehandle_index(handle)),
                     _ => None,
                 })
-        });
-        let metadata_pawn = controller_entid.and_then(|controller| {
+        })).or_else(|| controller_entid.and_then(|controller| {
             self.players
                 .values()
                 .find(|player| player.controller_entid == Some(controller))
                 .and_then(|player| player.player_entity_id)
-        });
-        let Some(entity_id) = explicit_pawn.or(controller_pawn).or(metadata_pawn) else {
+        }));
+        let Some(entity_id) = entity_id else {
             return;
         };
         let Some(Some(ent)) = self.entities.get_mut(entity_id as usize) else {
@@ -802,53 +888,53 @@ impl<'a> SecondPassParser<'a> {
 
         ent.props.insert(USERCMD_INPUT_HISTORY_BASEID, Variant::InputHistory(input_history));
         ent.props.insert(USERCMD_SUBTICK_MOVES_BASEID, Variant::UserCmdSubtickMoves(subtick_moves));
-        ent.props.insert(
+        commit_usercmd_scalar!(self, ent,
             USERCMD_ATTACK_START_HISTORY_INDEX_1,
-            Variant::I32(attack1_start_history_index),
+            Variant::I32(attack1_start_history_index)
         );
-        ent.props.insert(
+        commit_usercmd_scalar!(self, ent,
             USERCMD_ATTACK_START_HISTORY_INDEX_2,
-            Variant::I32(attack2_start_history_index),
+            Variant::I32(attack2_start_history_index)
         );
         if let Some(client_tick) = base.client_tick {
-            ent.props.insert(USERCMD_CLIENT_TICK, Variant::I32(client_tick));
+            commit_usercmd_scalar!(self, ent, USERCMD_CLIENT_TICK, Variant::I32(client_tick));
         }
         if let Some(value) = left_hand_desired {
-            ent.props.insert(USERCMD_SUBTICK_LEFT_HAND_DESIRED, Variant::Bool(value));
+            commit_usercmd_scalar!(self, ent, USERCMD_SUBTICK_LEFT_HAND_DESIRED, Variant::Bool(value));
         }
         if let Some(value) = base.leftmove {
-            ent.props.insert(USERCMD_LEFTMOVE, Variant::F32(value));
+            commit_usercmd_scalar!(self, ent, USERCMD_LEFTMOVE, Variant::F32(value));
         }
         if let Some(value) = base.forwardmove {
-            ent.props.insert(USERCMD_FORWARDMOVE, Variant::F32(value));
+            commit_usercmd_scalar!(self, ent, USERCMD_FORWARDMOVE, Variant::F32(value));
         }
         if let Some(value) = base.upmove {
-            ent.props.insert(USERCMD_UPMOVE, Variant::F32(value));
+            commit_usercmd_scalar!(self, ent, USERCMD_UPMOVE, Variant::F32(value));
         }
         if let Some(value) = base.impulse {
-            ent.props.insert(USERCMD_IMPULSE, Variant::I32(value));
+            commit_usercmd_scalar!(self, ent, USERCMD_IMPULSE, Variant::I32(value));
         }
         if let Some(value) = base.mousedx {
-            ent.props.insert(USERCMD_MOUSE_DX, Variant::I32(value));
+            commit_usercmd_scalar!(self, ent, USERCMD_MOUSE_DX, Variant::I32(value));
         }
         if let Some(value) = base.mousedy {
-            ent.props.insert(USERCMD_MOUSE_DY, Variant::I32(value));
+            commit_usercmd_scalar!(self, ent, USERCMD_MOUSE_DY, Variant::I32(value));
         }
         if let Some(value) = base.weaponselect {
-            ent.props.insert(USERCMD_WEAPON_SELECT, Variant::I32(value));
+            commit_usercmd_scalar!(self, ent, USERCMD_WEAPON_SELECT, Variant::I32(value));
         }
         if let Some(value) = base.consumed_server_angle_changes {
-            ent.props.insert(USERCMD_CONSUMED_SERVER_ANGLE_CHANGES, Variant::U32(value));
+            commit_usercmd_scalar!(self, ent, USERCMD_CONSUMED_SERVER_ANGLE_CHANGES, Variant::U32(value));
         }
         if let Some(viewangles) = base.viewangles {
             if let Some(value) = viewangles.x {
-                ent.props.insert(USERCMD_VIEWANGLE_X, Variant::F32(value));
+                commit_usercmd_scalar!(self, ent, USERCMD_VIEWANGLE_X, Variant::F32(value));
             }
             if let Some(value) = viewangles.y {
-                ent.props.insert(USERCMD_VIEWANGLE_Y, Variant::F32(value));
+                commit_usercmd_scalar!(self, ent, USERCMD_VIEWANGLE_Y, Variant::F32(value));
             }
             if let Some(value) = viewangles.z {
-                ent.props.insert(USERCMD_VIEWANGLE_Z, Variant::F32(value));
+                commit_usercmd_scalar!(self, ent, USERCMD_VIEWANGLE_Z, Variant::F32(value));
             }
         }
         if let Some(buttons) = base.buttons_pb {
@@ -945,6 +1031,142 @@ impl<'a> SecondPassParser<'a> {
     pub fn parse_user_command_cmd(&mut self, _data: &[u8]) -> Result<(), DemoParserError> {
         // Only in pov demos. Maybe implement sometime. Includes buttons etc.
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod sparse_usercmd_tests {
+    use super::*;
+    use crate::first_pass::parser_settings::ParserInputs;
+    use crate::first_pass::prop_controller::PropInfo;
+    use crate::parse_demo::DecodePlan;
+    use crate::second_pass::collect_data::PropType;
+    use crate::second_pass::entities::EntityType;
+    use crate::second_pass::sparse_scalar::SparseScalarColumns;
+    use crate::second_pass::variants::VarVec;
+    use std::sync::Arc;
+
+    fn sample(parser: &mut SecondPassParser<'_>, ids: &[u32], oracle: &mut [PropColumn]) {
+        for (&id, column) in ids.iter().zip(oracle) {
+            column.push(parser.entities[1].as_ref().unwrap().props.get(&id).cloned());
+        }
+        parser.sparse_scalar_columns.as_mut().unwrap().record_row(1, true);
+    }
+
+    #[test]
+    fn full_and_delta_scalar_writers_match_live_entity_state_with_missing_fields() {
+        let ids = [USERCMD_VIEWANGLE_X, USERCMD_VIEWANGLE_Y, USERCMD_VIEWANGLE_Z,
+            USERCMD_FORWARDMOVE, USERCMD_LEFTMOVE, USERCMD_UPMOVE, USERCMD_IMPULSE,
+            USERCMD_MOUSE_DX, USERCMD_MOUSE_DY, USERCMD_WEAPON_SELECT, USERCMD_CLIENT_TICK,
+            USERCMD_ATTACK_START_HISTORY_INDEX_1, USERCMD_ATTACK_START_HISTORY_INDEX_2,
+            USERCMD_SUBTICK_LEFT_HAND_DESIRED, USERCMD_CONSUMED_SERVER_ANGLE_CHANGES];
+        let huffman = Vec::new();
+        let settings = ParserInputs {
+            real_name_to_og_name: AHashMap::default(), wanted_players: vec![],
+            wanted_player_props: vec![], wanted_other_props: vec![],
+            wanted_prop_states: AHashMap::default(), wanted_ticks: vec![], wanted_events: vec![],
+            parse_ents: true, parse_projectiles: false, collect_projectile_records: false,
+            parse_grenades: false, only_header: false, only_convars: false,
+            huffman_lookup_table: &huffman, order_by_steamid: false, list_props: false,
+            fallback_bytes: None, cancelled: None,
+        };
+        let mut first = FirstPassParser::new(&settings);
+        first.cls_by_id = Some(Arc::new(vec![]));
+        first.prop_controller.prop_infos = ids.iter().map(|&id| PropInfo {
+            id, prop_type: PropType::Player, prop_name: format!("p{id}"),
+            prop_friendly_name: format!("p{id}"), is_player_prop: true,
+        }).collect();
+        let mut parser = SecondPassParser::new(first.create_first_pass_output().unwrap(), 0,
+            true, None, DecodePlan::FULL).unwrap();
+        parser.sparse_scalar_columns = SparseScalarColumns::from_schema(&first.prop_controller, &[]);
+        assert_eq!(parser.sparse_scalar_columns.as_ref().unwrap().column_count(), ids.len());
+        parser.entities[1] = Some(Entity {
+            cls_id: 0, entity_id: 1, serial: 0, props: Default::default(),
+            entity_type: EntityType::Normal, cosmetic_revision: 0,
+        });
+        parser.parse_usercmd = true;
+        let mut oracle: Vec<_> = ids.iter().map(|_| PropColumn::new()).collect();
+        sample(&mut parser, &ids, &mut oracle);
+        parser.apply_delta_user_cmd(DeltaCsgoUserCmdPb {
+            attack1_start_history_index: Some(2), left_hand_desired: Some(true),
+            base: Some(DeltaBaseUserCmdPb {
+                pawn_entity_handle: Some(1), client_tick: Some(10), forwardmove: Some(0.5),
+                viewangles: Some(CMsgQAngle { x: Some(90.0), ..Default::default() }),
+                ..Default::default()
+            }), ..Default::default()
+        }, 0);
+        sample(&mut parser, &ids, &mut oracle);
+        // Missing delta scalars retain the previous entity value; attack
+        // history indices are intentionally written as -1 by the real writer.
+        parser.apply_delta_user_cmd(DeltaCsgoUserCmdPb {
+            base: Some(DeltaBaseUserCmdPb { pawn_entity_handle: Some(1), ..Default::default() }),
+            ..Default::default()
+        }, 0);
+        sample(&mut parser, &ids, &mut oracle);
+        let full = CsgoUserCmdPb {
+            base: Some(csgoproto::CBaseUserCmdPb {
+                pawn_entity_handle: Some(1), viewangles: Some(CMsgQAngle::default()),
+                ..Default::default()
+            }), ..Default::default()
+        };
+        let message = CsvcMsgUserCommands {
+            commands: vec![csgoproto::CMsgServerUserCmd {
+                data: Some(full.encode_to_vec().into()), player_slot: Some(0), ..Default::default()
+            }],
+        };
+        parser.parse_user_cmd(&message.encode_to_vec()).unwrap();
+        sample(&mut parser, &ids, &mut oracle);
+        parser.apply_delta_user_cmd(DeltaCsgoUserCmdPb {
+            left_hand_desired: Some(true),
+            base: Some(DeltaBaseUserCmdPb {
+                pawn_entity_handle: Some(1), forwardmove: Some(-0.0), client_tick: Some(0),
+                ..Default::default()
+            }), ..Default::default()
+        }, 0);
+        sample(&mut parser, &ids, &mut oracle);
+        let mut actual: Vec<_> = ids.iter().map(|_| PropColumn::new()).collect();
+        parser.sparse_scalar_columns.take().unwrap().finish(&mut actual);
+        for (actual, expected) in actual.iter().zip(&oracle) {
+            assert_eq!(actual.num_nones, expected.num_nones);
+            match (&actual.data, &expected.data) {
+                (Some(VarVec::F32(actual)), Some(VarVec::F32(expected))) => {
+                    assert_eq!(actual.iter().map(|v| v.map(f32::to_bits)).collect::<Vec<_>>(),
+                        expected.iter().map(|v| v.map(f32::to_bits)).collect::<Vec<_>>());
+                }
+                _ => assert_eq!(actual, expected),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod packet_dispatch_tests {
+    use super::*;
+    use crate::parse_demo::DecodePlan;
+
+    #[test]
+    fn player_row_plan_keeps_stateful_metadata_and_only_requested_payloads() {
+        for message in [
+            svc_CreateStringTable, svc_UpdateStringTable, svc_ServerInfo,
+            CS_UM_PlayerStatsUpdate, net_Tick, svc_ClearAllStringTables,
+            svc_PacketEntities, svc_UserCmds,
+        ] {
+            assert!(packet_message_is_needed(&message, DecodePlan::PLAYER_ROWS_ONLY, true, true));
+        }
+        for message in [
+            CS_UM_SendPlayerItemDrops, CS_UM_EndOfMatchAllPlayersData,
+            svc_VoiceData, UM_SayText2, UM_SayText, net_SetConVar,
+            CS_UM_ServerRankUpdate, GE_Source1LegacyGameEvent,
+            GE_FireBulletsId, GE_PlayerBulletHitId,
+        ] {
+            assert!(!packet_message_is_needed(&message, DecodePlan::PLAYER_ROWS_ONLY, true, true));
+            assert!(packet_message_is_needed(&message, DecodePlan::FULL, true, true));
+        }
+        assert!(!packet_message_is_needed(&svc_PacketEntities, DecodePlan::FULL, true, false));
+        assert!(!packet_message_is_needed(&svc_UserCmds, DecodePlan::FULL, false, true));
+        for message in [Unknown, svc_Sounds, net_NOP] {
+            assert!(!packet_message_is_needed(&message, DecodePlan::FULL, true, true));
+        }
     }
 }
 

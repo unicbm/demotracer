@@ -47,6 +47,7 @@ pub struct ParserInputs<'a> {
 }
 
 pub struct FirstPassParser<'a> {
+    pub(crate) profile: crate::profile::PassProfile,
     pub added_temp_props: Vec<String>,
     pub real_name_to_og_name: AHashMap<String, String>,
     pub fullpacket_offsets: Vec<usize>,
@@ -103,6 +104,7 @@ pub fn needs_velocity(props: &[String]) -> bool {
 impl<'a> FirstPassParser<'a> {
     pub fn new(inputs: &'a ParserInputs<'a>) -> Self {
         FirstPassParser {
+            profile: crate::profile::PassProfile::new(),
             fallback_bytes: inputs.fallback_bytes.as_deref(),
             order_by_steamid: inputs.order_by_steamid,
             sendtable_message: None,

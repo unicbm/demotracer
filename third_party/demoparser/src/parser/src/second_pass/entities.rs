@@ -3,6 +3,7 @@ use crate::first_pass::prop_controller::GLOVE_ATTRIBUTE_DEF_INDEX_ID;
 use crate::first_pass::prop_controller::GLOVE_PAINT_ID;
 use crate::first_pass::prop_controller::WEAPON_ATTRIBUTE_DEF_INDEX_ID;
 use crate::first_pass::prop_controller::WEAPON_SKIN_ID;
+use crate::first_pass::prop_controller::{FLASHBANG_AMMO_ID, MY_WEAPONS_OFFSET};
 use crate::first_pass::prop_controller::is_grenade_or_weapon;
 use crate::first_pass::read_bits::Bitreader;
 use crate::first_pass::read_bits::DemoParserError;
@@ -84,6 +85,36 @@ fn is_cosmetic_prop(prop_id: u32, special_ids: &SpecialIDs) -> bool {
         .any(|id| id == prop_id)
 }
 
+fn changes_inventory_snapshot(
+    field: &Field,
+    field_info: Option<FieldInfo>,
+    updates_cosmetics: bool,
+    special_ids: &SpecialIDs,
+) -> bool {
+    let Some(fi) = field_info.filter(|fi| fi.should_parse) else {
+        return false;
+    };
+    updates_cosmetics
+        || fi.prop_id == MY_WEAPONS_OFFSET
+        || fi.prop_id == FLASHBANG_AMMO_ID
+        || [
+            special_ids.life_state,
+            special_ids.h_owner_entity,
+            special_ids.teamnum,
+            special_ids.player_name,
+            special_ids.steamid,
+            special_ids.player_pawn,
+        ].contains(&Some(fi.prop_id))
+        // get_propinfo flattens every inventory slot to a different property ID.
+        // Use the schema marker, without assuming a maximum inventory length.
+        || match field {
+            Field::Value(value) => value.prop_id == MY_WEAPONS_OFFSET,
+            Field::Vector(vector) => matches!(vector.field_enum.as_ref(),
+                Field::Value(value) if value.prop_id == MY_WEAPONS_OFFSET),
+            _ => false,
+        }
+}
+
 fn econ_attribute_vector_bases(field: &Field) -> Option<(u32, u32)> {
     let Field::Vector(vector) = field else {
         return None;
@@ -118,12 +149,12 @@ fn econ_attribute_vector_bases(field: &Field) -> Option<(u32, u32)> {
     }
 }
 
-fn truncate_econ_attribute_vector(entity: &mut Entity, field: &Field, result: &Variant) {
+fn truncate_econ_attribute_vector(entity: &mut Entity, field: &Field, result: &Variant) -> bool {
     let Some((value_base, definition_base)) = econ_attribute_vector_bases(field) else {
-        return;
+        return false;
     };
     let Variant::U32(length) = result else {
-        return;
+        return false;
     };
 
     let mut removed = false;
@@ -134,14 +165,18 @@ fn truncate_econ_attribute_vector(entity: &mut Entity, field: &Field, result: &V
     if removed {
         entity.cosmetic_revision = entity.cosmetic_revision.wrapping_add(1);
     }
+    removed
 }
 
 impl<'a> SecondPassParser<'a> {
+    pub(crate) fn invalidate_inventory_snapshots(&mut self) {
+        self.inventory_generation = self.inventory_generation.wrapping_add(1);
+    }
+
     pub fn parse_packet_ents(&mut self, bytes: &[u8], is_fullpacket: bool) -> Result<(), DemoParserError> {
         if !self.parse_entities {
             return Ok(());
         }
-        self.inventory_generation = self.inventory_generation.wrapping_add(1);
         let msg = match CsvcMsgPacketEntities::decode(bytes) {
             Err(_) => return Err(DemoParserError::MalformedMessage),
             Ok(msg) => msg,
@@ -163,9 +198,14 @@ impl<'a> SecondPassParser<'a> {
 
             match cmd {
                 EntityCmd::Delete => {
+                    self.invalidate_inventory_snapshots();
+                    if let Some(sparse) = self.sparse_scalar_columns.as_mut() {
+                        sparse.reset_entity(entity_id);
+                    }
                     self.projectiles.remove(&entity_id);
                     self.projectile_record_indices.remove(&entity_id);
                     self.weapon_econ_snapshot_cache.get_mut().remove(&entity_id);
+                    self.weapon_sticker_cache.get_mut().remove(&entity_id);
                     self.glove_attribute_cache.get_mut().remove(&entity_id);
                     if let Some(entry) = self.entities.get_mut(entity_id as usize) {
                         *entry = None;
@@ -330,12 +370,19 @@ impl<'a> SecondPassParser<'a> {
             let field = find_field(&path, &class.serializer)?;
             let field_info = get_propinfo(&field, path);
             let decoder = get_decoder_from_field(field)?;
+            if self.entity_projection.as_ref().is_some_and(|plan|
+                field_info.is_some_and(|info| !plan.keeps(info.prop_id))) {
+                bitreader.skip_value(&decoder, self.qf_mapper)?;
+                continue;
+            }
             let result = bitreader.decode(&decoder, self.qf_mapper)?;
 
             // A vector-of-serializer length has no FieldInfo, so the generic flattened-prop
             // path cannot retain it. Apply its shrink semantics directly or personalized econ
             // attributes from the class baseline survive past the instance vector's real end.
-            truncate_econ_attribute_vector(entity, field, &result);
+            if truncate_econ_attribute_vector(entity, field, &result) {
+                self.inventory_generation = self.inventory_generation.wrapping_add(1);
+            }
 
             // listen_to_props()
             if self.list_props {
@@ -377,9 +424,17 @@ impl<'a> SecondPassParser<'a> {
             let updates_cosmetics = field_info
                 .map(|fi| is_cosmetic_prop(fi.prop_id, &self.prop_controller.special_ids))
                 .unwrap_or(false);
+            if changes_inventory_snapshot(field, field_info, updates_cosmetics, &self.prop_controller.special_ids) {
+                self.inventory_generation = self.inventory_generation.wrapping_add(1);
+            }
             // Source 2 entity updates are deltas against the class baseline. Econ fields
             // that equal the baseline are intentionally omitted from the entity delta, so
             // the baseline must be applied before the entity-specific values overwrite it.
+            if let (Some(sparse), Some(fi)) = (self.sparse_scalar_columns.as_mut(), field_info) {
+                if fi.should_parse {
+                    sparse.record(entity_id, fi.prop_id, &result);
+                }
+            }
             SecondPassParser::insert_field(entity, result, field_info, updates_cosmetics);
         }
         Ok(n_updates)
@@ -448,6 +503,7 @@ impl<'a> SecondPassParser<'a> {
         let serial = bitreader.read_nbits(NSERIALBITS)?;
         let _unknown = bitreader.read_varint();
         let entity_type = self.check_entity_type(&cls_id)?;
+        self.invalidate_inventory_snapshots();
         match entity_type {
             EntityType::Projectile => {
                 self.projectiles.insert(*entity_id);
@@ -465,6 +521,7 @@ impl<'a> SecondPassParser<'a> {
             cosmetic_revision: 0,
         };
         self.weapon_econ_snapshot_cache.get_mut().remove(entity_id);
+        self.weapon_sticker_cache.get_mut().remove(entity_id);
         self.glove_attribute_cache.get_mut().remove(entity_id);
         if self.entities.len() as i32 <= *entity_id {
             // if corrupt, this can cause oom allocations
@@ -477,6 +534,9 @@ impl<'a> SecondPassParser<'a> {
             Some(entry) => *entry = Some(entity),
             None => return Err(DemoParserError::VectorResizeFailure),
         };
+        if let Some(sparse) = self.sparse_scalar_columns.as_mut() {
+            sparse.reset_entity(*entity_id);
+        }
         // Insert baselines
         if let Some(baseline_bytes) = self.baselines.get(&cls_id) {
             let b = &baseline_bytes.clone();
@@ -527,6 +587,116 @@ mod tests {
             fields: vec![Field::Value(definition), Field::Value(value)],
         };
         Field::Vector(VectorField::new(Field::Serializer(SerializerField::new(&attributes)), None))
+    }
+
+    #[test]
+    fn inventory_dependencies_cover_metadata_cosmetics_and_unbounded_weapon_slots() {
+        let mut ids = SpecialIDs::new();
+        ids.life_state = Some(101);
+        ids.h_owner_entity = Some(102);
+        ids.teamnum = Some(103);
+        ids.player_name = Some(104);
+        ids.steamid = Some(105);
+        ids.player_pawn = Some(106);
+        ids.item_def = Some(107);
+        ids.item_id_high = Some(108);
+        ids.item_id_low = Some(109);
+        ids.item_account_id = Some(110);
+        ids.orig_own_low = Some(111);
+        ids.orig_own_high = Some(112);
+        ids.entity_quality = Some(113);
+        ids.fallback_stattrak = Some(114);
+        ids.custom_name = Some(115);
+        let mut value = ValueField::new(Decoder::UnsignedDecoder, "test");
+        value.should_parse = true;
+        let field = Field::Value(value.clone());
+        for prop_id in (101..=115).chain([
+            MY_WEAPONS_OFFSET, FLASHBANG_AMMO_ID,
+            WEAPON_SKIN_ID, WEAPON_SKIN_ID + 1, WEAPON_SKIN_ID + 2,
+            WEAPON_SKIN_ID + 63, WEAPON_ATTRIBUTE_DEF_INDEX_ID + 63,
+            GLOVE_PAINT_ID + 63, GLOVE_ATTRIBUTE_DEF_INDEX_ID + 63,
+        ]) {
+            let info = FieldInfo { decoder: Decoder::UnsignedDecoder, should_parse: true, prop_id };
+            let cosmetic = is_cosmetic_prop(prop_id, &ids);
+            assert!(changes_inventory_snapshot(&field, Some(info), cosmetic, &ids), "{prop_id}");
+            assert!(!changes_inventory_snapshot(&field,
+                Some(FieldInfo { should_parse: false, ..info }), cosmetic, &ids));
+        }
+        for prop_id in [116, WEAPON_SKIN_ID + 64, WEAPON_ATTRIBUTE_DEF_INDEX_ID + 64] {
+            let info = FieldInfo { decoder: Decoder::UnsignedDecoder, should_parse: true, prop_id };
+            assert!(!changes_inventory_snapshot(&field, Some(info), is_cosmetic_prop(prop_id, &ids), &ids));
+        }
+        assert!(!changes_inventory_snapshot(&field, None, true, &ids));
+
+        value.prop_id = MY_WEAPONS_OFFSET;
+        let field = Field::Value(value.clone());
+        let mut path = generate_fp();
+        path.last = 2;
+        path.path[2] = 250_000;
+        let info = get_propinfo(&field, &path).unwrap();
+        assert_eq!(info.prop_id, MY_WEAPONS_OFFSET + 250_001);
+        assert!(changes_inventory_snapshot(&field, Some(info), false, &ids));
+        let vector = Field::Vector(VectorField::new(Field::Value(value), None));
+        path.last = 1;
+        assert!(changes_inventory_snapshot(&vector, get_propinfo(&vector, &path), false, &ids));
+    }
+
+    #[test]
+    fn inventory_epoch_survives_unrelated_updates_and_empty_packets() {
+        use crate::first_pass::parser_settings::{FirstPassParser, ParserInputs};
+        use crate::parse_demo::DecodePlan;
+        use std::sync::Arc;
+
+        let huffman = Vec::new();
+        let settings = ParserInputs {
+            real_name_to_og_name: AHashMap::default(), wanted_players: vec![],
+            wanted_player_props: vec![], wanted_other_props: vec![],
+            wanted_prop_states: AHashMap::default(), wanted_ticks: vec![], wanted_events: vec![],
+            parse_ents: true, parse_projectiles: false, collect_projectile_records: false,
+            parse_grenades: false, only_header: false, only_convars: false,
+            huffman_lookup_table: &huffman, order_by_steamid: false, list_props: false,
+            fallback_bytes: None, cancelled: None,
+        };
+        let mut first = FirstPassParser::new(&settings);
+        first.prop_controller.special_ids.life_state = Some(101);
+        let fields = [116, 101, WEAPON_SKIN_ID].into_iter().map(|id| {
+            let mut field = ValueField::new(Decoder::UnsignedDecoder, "test");
+            field.prop_id = id;
+            field.should_parse = true;
+            Field::Value(field)
+        }).collect();
+        first.cls_by_id = Some(Arc::new(vec![Class {
+            class_id: 0, name: "Test".to_string(),
+            serializer: Serializer { name: "Test".to_string(), fields },
+        }]));
+        let mut parser = SecondPassParser::new(first.create_first_pass_output().unwrap(),
+            0, false, None, DecodePlan::FULL).unwrap();
+        parser.entities[1] = Some(Entity {
+            cls_id: 0, entity_id: 1, serial: 1, props: AHashMap::default(),
+            entity_type: EntityType::Normal, cosmetic_revision: 0,
+        });
+        for (field_index, expected_epoch) in [(0, 0), (1, 1), (1, 2), (2, 3)] {
+            let mut path = generate_fp();
+            path.last = 0;
+            path.path[0] = field_index;
+            parser.paths[0] = path;
+            // Repeated equal life-state writes remain conservative invalidations.
+            parser.decode_entity_update(&mut Bitreader::new(&[0]), 1, 1,
+                false, true, &mut vec![]).unwrap();
+            assert_eq!(parser.inventory_generation, expected_epoch);
+        }
+        let empty = CsvcMsgPacketEntities::default().encode_to_vec();
+        parser.parse_packet_ents(&empty, false).unwrap();
+        assert_eq!(parser.inventory_generation, 3);
+
+        // Six low bits encode entity delta 1; the next two encode Delete.
+        let deletion = CsvcMsgPacketEntities {
+            updated_entries: Some(1), entity_data: Some(vec![0b0100_0001].into()),
+            ..Default::default()
+        }.encode_to_vec();
+        parser.parse_packet_ents(&deletion, false).unwrap();
+        assert!(parser.entities[1].is_none());
+        assert_eq!(parser.inventory_generation, 4);
     }
 
     #[test]
@@ -621,7 +791,7 @@ mod tests {
         entity.props.insert(42, Variant::U32(7));
 
         let field = econ_attribute_vector(WEAPON_SKIN_ID, WEAPON_ATTRIBUTE_DEF_INDEX_ID);
-        truncate_econ_attribute_vector(&mut entity, &field, &Variant::U32(3));
+        assert!(truncate_econ_attribute_vector(&mut entity, &field, &Variant::U32(3)));
 
         for slot in 0..3 {
             assert!(entity.props.contains_key(&(WEAPON_ATTRIBUTE_DEF_INDEX_ID + slot)));
@@ -633,6 +803,9 @@ mod tests {
         }
         assert_eq!(entity.props.get(&(GLOVE_PAINT_ID + 3)), Some(&Variant::F32(99.0)));
         assert_eq!(entity.props.get(&42), Some(&Variant::U32(7)));
+        assert_eq!(entity.cosmetic_revision, 1);
+        assert!(!truncate_econ_attribute_vector(&mut entity, &field, &Variant::U32(3)));
+        assert!(!truncate_econ_attribute_vector(&mut entity, &field, &Variant::U32(64)));
         assert_eq!(entity.cosmetic_revision, 1);
     }
 }

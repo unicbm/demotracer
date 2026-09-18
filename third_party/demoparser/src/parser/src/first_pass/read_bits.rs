@@ -3,6 +3,7 @@ use bitter::LittleEndianReader;
 use std::fmt;
 
 pub struct Bitreader<'a> {
+    source: &'a [u8],
     pub reader: LittleEndianReader<'a>,
     pub bits_left: u32,
     pub bits: u64,
@@ -32,6 +33,7 @@ pub fn read_varint(bytes: &[u8], ptr: &mut usize) -> Result<u32, DemoParserError
 impl<'a> Bitreader<'a> {
     pub fn new(bytes: &'a [u8]) -> Bitreader<'a> {
         let b = Bitreader {
+            source: bytes,
             reader: LittleEndianReader::new(bytes),
             bits: 0,
             bits_left: 0,
@@ -171,6 +173,31 @@ impl<'a> Bitreader<'a> {
             )),
         }
     }
+    /// Advance over a byte payload without copying it, preserving the current
+    /// bit alignment. Packet message payloads do not necessarily start on bytes.
+    pub fn skip_n_bytes(&mut self, n: usize) -> Result<(), DemoParserError> {
+        let remaining = self.reader.bits_remaining().ok_or(DemoParserError::MalformedMessage)?;
+        if n > remaining / 8 {
+            return Err(DemoParserError::FailedByteRead(format!(
+                "Failed to read message/command. bytes left in stream: {}, requested bytes: {}",
+                remaining / 8,
+                n,
+            )));
+        }
+        if n == 0 {
+            return Ok(());
+        }
+        let total_bits = self.source.len().checked_mul(8).ok_or(DemoParserError::MalformedMessage)?;
+        let consumed = total_bits.checked_sub(remaining).ok_or(DemoParserError::MalformedMessage)?;
+        let byte_offset = consumed / 8 + n;
+        let bit_offset = (consumed % 8) as u32;
+        self.reader = LittleEndianReader::new(&self.source[byte_offset..]);
+        self.refill();
+        if bit_offset != 0 {
+            self.consume(bit_offset);
+        }
+        Ok(())
+    }
     pub fn read_ubit_var_fp(&mut self) -> Result<u32, DemoParserError> {
         if self.read_boolean()? {
             return Ok(self.read_nbits(2)?);
@@ -257,5 +284,59 @@ impl std::error::Error for DemoParserError {}
 impl fmt::Display for DemoParserError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
+    }
+}
+
+#[cfg(test)]
+mod byte_skip_tests {
+    use super::*;
+
+    #[test]
+    fn skipping_matches_reading_at_every_bit_alignment() {
+        let bytes: Vec<u8> = (0..=255).collect();
+        for prefix_bits in 0..16 {
+            for len in [0, 1, 7, 8, 9, 31, 127, 250] {
+                let mut skipped = Bitreader::new(&bytes);
+                let mut copied = Bitreader::new(&bytes);
+                assert_eq!(skipped.read_nbits(prefix_bits), copied.read_nbits(prefix_bits));
+                skipped.skip_n_bytes(len).unwrap();
+                copied.read_n_bytes(len).unwrap();
+                assert_eq!(skipped.bits_remaining(), copied.bits_remaining());
+                assert_eq!(skipped.read_nbits(17), copied.read_nbits(17));
+                assert_eq!(skipped.read_n_bytes(1), copied.read_n_bytes(1));
+            }
+        }
+    }
+
+    #[test]
+    fn consecutive_skips_preserve_exact_tail_and_end_of_stream() {
+        let bytes = [0x8d, 0x35, 0x91, 0x77, 0xb4];
+        let mut skipped = Bitreader::new(&bytes);
+        let mut copied = Bitreader::new(&bytes);
+        assert_eq!(skipped.read_nbits(3), copied.read_nbits(3));
+        skipped.skip_n_bytes(1).unwrap();
+        skipped.skip_n_bytes(3).unwrap();
+        copied.read_n_bytes(4).unwrap();
+        assert_eq!(skipped.read_nbits(5), copied.read_nbits(5));
+        assert_eq!(skipped.bits_remaining(), Some(0));
+        skipped.skip_n_bytes(0).unwrap();
+
+        let mut aligned = Bitreader::new(&bytes);
+        aligned.skip_n_bytes(bytes.len()).unwrap();
+        assert_eq!(aligned.bits_remaining(), Some(0));
+    }
+
+    #[test]
+    fn oversized_skip_is_rejected_without_advancing() {
+        let bytes = [0xc5, 0xa4];
+        for requested in [2, usize::MAX] {
+            let mut skipped = Bitreader::new(&bytes);
+            let mut original = Bitreader::new(&bytes);
+            skipped.read_nbits(1).unwrap();
+            original.read_nbits(1).unwrap();
+            assert!(matches!(skipped.skip_n_bytes(requested), Err(DemoParserError::FailedByteRead(_))));
+            assert_eq!(skipped.bits_remaining(), original.bits_remaining());
+            assert_eq!(skipped.read_nbits(15), original.read_nbits(15));
+        }
     }
 }

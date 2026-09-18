@@ -6,7 +6,7 @@ use crate::first_pass::sendtables::Serializer;
 use crate::first_pass::stringtables::StringTable;
 use crate::first_pass::stringtables::UserInfo;
 use crate::parse_demo::DecodePlan;
-use crate::second_pass::collect_data::ProjectileRecord;
+use crate::second_pass::collect_data::{make_dense_column_slots, make_dense_player_columns, make_shared_string_sources, ProjectileRecord, SharedStringSource};
 use crate::second_pass::decoder::QfMapper;
 use crate::second_pass::entities::Entity;
 use crate::second_pass::entities::PlayerMetaData;
@@ -14,7 +14,8 @@ use crate::second_pass::game_events::GameEvent;
 use crate::second_pass::other_netmessages::Class;
 use crate::second_pass::parser::SecondPassOutput;
 use crate::second_pass::path_ops::FieldPath;
-use crate::second_pass::variants::{InventoryWeaponCosmetic, PropColumn, Variant};
+use crate::second_pass::variants::{InventoryWeaponCosmetic, PropColumn, Sticker, Variant};
+use crate::second_pass::sparse_scalar::SparseScalarColumns;
 use ahash::AHashMap;
 use ahash::AHashSet;
 use ahash::HashMap;
@@ -32,6 +33,9 @@ const HUF_LOOKUPTABLE_MAXVALUE: u32 = (1 << 17) - 1;
 const DEFAULT_MAX_ENTITY_ID: usize = 1024;
 
 pub struct SecondPassParser<'a> {
+    pub(crate) entity_projection: Option<super::entity_projection::EntityProjection>,
+    pub(crate) profile: crate::profile::PassProfile,
+    pub(crate) property_profile: Option<crate::profile::PropertyProfile>,
     pub cancelled: Option<&'a AtomicBool>,
     pub start_end_offset: Option<StartEndOffset>,
     pub qf_mapper: &'a QfMapper,
@@ -50,9 +54,10 @@ pub struct SecondPassParser<'a> {
     pub entities: Vec<Option<Entity>>,
     pub weapon_econ_snapshot_cache:
         RefCell<AHashMap<i32, ((u32, u64), Option<Arc<InventoryWeaponCosmetic>>)>>,
+    pub weapon_sticker_cache: RefCell<AHashMap<i32, ((u32, u64), Arc<[Sticker]>)>>,
     pub player_inventory_snapshot_cache: RefCell<AHashMap<i32, PlayerInventorySnapshot>>,
     pub inventory_generation: u64,
-    pub stable_agent_skin_cache: RefCell<AHashMap<(u64, u32), String>>,
+    pub stable_agent_skin_cache: RefCell<AHashMap<(u64, u32), u32>>,
     pub glove_attribute_cache: RefCell<AHashMap<i32, ((u32, u64), [Option<Variant>; 3])>>,
     pub tick: i32,
     pub players: BTreeMap<i32, PlayerMetaData>,
@@ -74,6 +79,10 @@ pub struct SecondPassParser<'a> {
     pub projectile_records: Vec<ProjectileRecord>,
     pub voice_data: Vec<(i32, CsvcMsgVoiceData)>,
     pub output: AHashMap<u32, PropColumn, RandomState>,
+    pub(crate) dense_player_columns: Option<Vec<PropColumn>>,
+    pub(crate) dense_column_slots: Vec<usize>,
+    pub(crate) shared_string_sources: Vec<Option<SharedStringSource>>,
+    pub(crate) sparse_scalar_columns: Option<SparseScalarColumns>,
     pub header: HashMap<String, String>,
     pub skins: Vec<EconItem>,
     pub item_drops: Vec<EconItem>,
@@ -93,6 +102,10 @@ pub struct SecondPassParser<'a> {
     pub parse_usercmd: bool,
     pub usercmd_input_history_baselines: AHashMap<i32, Vec<CsgoInputHistoryEntryPb>>,
     pub usercmd_subtick_baselines: AHashMap<i32, Vec<CSubtickMoveStep>>,
+    pub(crate) usercmd_history_scratch: Vec<(usize, CsgoInputHistoryEntryPb)>,
+    pub(crate) usercmd_subtick_scratch: Vec<(usize, CSubtickMoveStep)>,
+    pub(crate) usercmd_history_cache: AHashMap<i32, Arc<[super::variants::InputHistory]>>,
+    pub(crate) empty_usercmd_subticks: Arc<[super::variants::UserCmdSubtickMove]>,
     pub list_props: bool,
     pub decode_plan: DecodePlan,
 }
@@ -157,7 +170,21 @@ pub struct PlayerEndMetaData {
 }
 
 impl<'a> SecondPassParser<'a> {
-    pub fn create_output(self) -> SecondPassOutput {
+    pub fn create_output(mut self) -> SecondPassOutput {
+        if let Some(profile) = self.property_profile.take() {
+            profile.report(&self.prop_controller.prop_infos);
+        }
+        if let Some(mut columns) = self.dense_player_columns.take() {
+            if let Some(sparse) = self.sparse_scalar_columns.take() {
+                sparse.finish(&mut columns);
+            }
+            for (prop, column) in self.prop_controller.prop_infos.iter().zip(columns) {
+                // The legacy collector creates a column only after its first row.
+                if column.len() != 0 {
+                    self.output.insert(prop.id, column);
+                }
+            }
+        }
         SecondPassOutput {
             voice_data: self.voice_data,
             chat_messages: self.chat_messages,
@@ -201,13 +228,43 @@ impl<'a> SecondPassParser<'a> {
             .extend(vec!["tick".to_owned(), "steamid".to_owned(), "name".to_owned()]);
         let args: Vec<String> = env::args().collect();
         let debug = if args.len() > 2 { args[2] == "true" } else { false };
+        let dense_player_columns = make_dense_player_columns(
+            first_pass_output.prop_controller,
+            first_pass_output.order_by_steamid,
+            first_pass_output.settings.parse_projectiles,
+        );
+        let sparse_scalar_columns = dense_player_columns.as_ref().and_then(|_| {
+            SparseScalarColumns::new(first_pass_output.prop_controller, first_pass_output.cls_by_id)
+        });
+        let dense_column_slots = make_dense_column_slots(
+            first_pass_output.prop_controller.prop_infos.len(),
+            |slot| sparse_scalar_columns.as_ref().is_some_and(|sparse| sparse.is_deferred(slot)),
+        );
+        let shared_string_sources = make_shared_string_sources(first_pass_output.prop_controller);
+        let property_profile = dense_player_columns.as_ref().and_then(|_| {
+            let count = first_pass_output.prop_controller.prop_infos.len();
+            let deferred = sparse_scalar_columns.as_ref()
+                .map_or(0, |sparse| (0..count).filter(|&slot| sparse.is_deferred(slot)).count());
+            crate::profile::PropertyProfile::from_env(count, deferred)
+        });
 
         Ok(SecondPassParser {
+            entity_projection: (decode_plan.project_entity_state && !debug && !first_pass_output.list_props)
+                .then(|| super::entity_projection::EntityProjection::new(first_pass_output.prop_controller,
+                    !decode_plan.game_events && !decode_plan.voice_data && !decode_plan.item_drops && !decode_plan.end_of_match
+                    && !first_pass_output.settings.parse_projectiles && !first_pass_output.settings.collect_projectile_records
+                    && !first_pass_output.settings.parse_grenades)),
+            profile: crate::profile::PassProfile::new(),
+            property_profile,
             cancelled: first_pass_output.settings.cancelled,
             uniq_prop_names: AHashSet::default(),
             parse_usercmd: contains_usercmd_prop(&first_pass_output.settings.wanted_player_props),
             usercmd_input_history_baselines: AHashMap::default(),
             usercmd_subtick_baselines: AHashMap::default(),
+            usercmd_history_scratch: Vec::new(),
+            usercmd_subtick_scratch: Vec::new(),
+            usercmd_history_cache: AHashMap::default(),
+            empty_usercmd_subticks: Arc::default(),
             last_tick: 0,
             start_end_offset: start_end_offset,
             order_by_steamid: first_pass_output.order_by_steamid,
@@ -241,6 +298,7 @@ impl<'a> SecondPassParser<'a> {
             cls_by_id: &first_pass_output.cls_by_id,
             entities: vec![None; DEFAULT_MAX_ENTITY_ID],
             weapon_econ_snapshot_cache: RefCell::new(AHashMap::default()),
+            weapon_sticker_cache: RefCell::new(AHashMap::default()),
             player_inventory_snapshot_cache: RefCell::new(AHashMap::default()),
             inventory_generation: 0,
             stable_agent_skin_cache: RefCell::new(AHashMap::default()),
@@ -249,6 +307,10 @@ impl<'a> SecondPassParser<'a> {
             tick: -99999,
             players: BTreeMap::default(),
             output: AHashMap::default(),
+            dense_player_columns,
+            dense_column_slots,
+            shared_string_sources,
+            sparse_scalar_columns,
             game_events: vec![],
             wanted_events: first_pass_output.settings.wanted_events.clone(),
             parse_entities: first_pass_output.settings.parse_ents,
@@ -344,6 +406,50 @@ pub struct SpecialIDs {
     pub grenade_bounces: Option<u32>,
 }
 impl SpecialIDs {
+    /// Exhaustive destructuring makes a new dependency require updating this list.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = u32> {
+        let Self {
+            teamnum, player_name, steamid,
+            player_pawn, player_team_pointer, weapon_owner_pointer,
+            team_team_num, cell_x_player, cell_y_player,
+            cell_z_player, cell_x_offset_player, cell_y_offset_player,
+            cell_z_offset_player, active_weapon, item_def,
+            item_id_high, item_id_low, item_account_id,
+            entity_quality, fallback_stattrak, m_vec_x_grenade,
+            m_vec_y_grenade, m_vec_z_grenade, m_cell_x_grenade,
+            m_cell_y_grenade, m_cell_z_grenade, grenade_owner_id,
+            buttons, eye_angles, orig_own_low,
+            orig_own_high, life_state, h_owner_entity,
+            agent_skin_idx, total_rounds_played, round_win_reason,
+            round_start_count, round_end_count, match_end_count,
+            is_incendiary_grenade, sellback_entry_def_idx, sellback_entry_n_cost,
+            sellback_entry_prev_armor, sellback_entry_prev_helmet, sellback_entry_h_item,
+            weapon_purchase_count, in_buy_zone, custom_name,
+            is_airborn, grenade_initial_position, initial_velocity,
+            grenade_smoke_detonation_position, grenade_bounces,
+        } = self;
+        [
+            *teamnum, *player_name, *steamid,
+            *player_pawn, *player_team_pointer, *weapon_owner_pointer,
+            *team_team_num, *cell_x_player, *cell_y_player,
+            *cell_z_player, *cell_x_offset_player, *cell_y_offset_player,
+            *cell_z_offset_player, *active_weapon, *item_def,
+            *item_id_high, *item_id_low, *item_account_id,
+            *entity_quality, *fallback_stattrak, *m_vec_x_grenade,
+            *m_vec_y_grenade, *m_vec_z_grenade, *m_cell_x_grenade,
+            *m_cell_y_grenade, *m_cell_z_grenade, *grenade_owner_id,
+            *buttons, *eye_angles, *orig_own_low,
+            *orig_own_high, *life_state, *h_owner_entity,
+            *agent_skin_idx, *total_rounds_played, *round_win_reason,
+            *round_start_count, *round_end_count, *match_end_count,
+            *is_incendiary_grenade, *sellback_entry_def_idx, *sellback_entry_n_cost,
+            *sellback_entry_prev_armor, *sellback_entry_prev_helmet, *sellback_entry_h_item,
+            *weapon_purchase_count, *in_buy_zone, *custom_name,
+            *is_airborn, *grenade_initial_position, *initial_velocity,
+            *grenade_smoke_detonation_position, *grenade_bounces,
+        ].into_iter().flatten()
+    }
+
     pub fn new() -> Self {
         SpecialIDs {
             round_start_count: None,

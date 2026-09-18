@@ -2313,7 +2313,7 @@ mod tests {
                     vec![],
                     vec![],
                     vec![],
-                ])),
+                ].into_iter().map(Into::into).collect())),
                 num_nones: 0,
             },
         );
@@ -17741,7 +17741,7 @@ mod tests {
                         },
                         EventField {
                             name: "stickers".to_string(),
-                            data: Some(Stickers(vec![])),
+                            data: Some(Stickers(vec![].into())),
                         },
                         EventField {
                             name: "custom_name".to_string(),
@@ -17799,7 +17799,7 @@ mod tests {
                         },
                         EventField {
                             name: "stickers".to_string(),
-                            data: Some(Stickers(vec![])),
+                            data: Some(Stickers(vec![].into())),
                         },
                         EventField {
                             name: "custom_name".to_string(),

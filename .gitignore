@@ -52,6 +52,7 @@
 /.external/
 /output/
 /tmp/
+/desktop/converter/examples/parser_benchmark.rs
 # Publish only maintained documentation; keep research and audits local.
 /docs/*
 !/docs/README.md
