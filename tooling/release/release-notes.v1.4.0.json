@@ -1,0 +1,4 @@
+{
+  "zh": "1.4.0 大幅提升 Demo 解析性能，缩短 FACEIT 和赛事 Demo 的导入等待，保留完整解析数据。\n播放组件继续使用 1.3.0，无需 GPU 或额外运行环境。完整说明见 GitHub Release。",
+  "en": "1.4.0 substantially speeds up Demo parsing for FACEIT and tournament recordings while preserving complete parsed data.\nPlayback remains at 1.3.0. No GPU or additional runtime is required. Full notes are on GitHub Releases."
+}
