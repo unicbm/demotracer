@@ -431,7 +431,7 @@ mod demoparser_impl {
     };
     use parser::first_pass::prop_controller::{PropInfo, ENTITY_ID_ID, STEAMID_ID, TICK_ID};
     use parser::first_pass::read_bits::DemoParserError;
-    use parser::parse_demo::{DecodePlan, DemoOutput, Parser, ParsingMode};
+    use parser::parse_demo::{DecodePlan, DemoOutput, Parser, ParsingMode, ProfileTimer};
     use parser::second_pass::collect_data::ProjectileRecord;
     use parser::second_pass::game_events::GameEvent;
     use parser::second_pass::parser_settings::create_huffman_lookup_table;
@@ -468,6 +468,10 @@ mod demoparser_impl {
     const ENTITY_ID_PROP: &str = "entity_id";
     const ROUND_PROP: &str = "total_rounds_played";
     const SINGLE_THREADED_OVERLAY_PROPS: &[&str] = &[
+        "fall_velo",
+        "damage_total",
+        "CCSPlayerPawn.CCSPlayer_MovementServices.m_flLastDuckTime",
+        "CCSPlayerPawn.CCSPlayer_WeaponServices.m_flNextAttack",
         DUCKED_PROP,
         DUCKING_PROP,
         "usercmd_input_history",
@@ -627,6 +631,13 @@ mod demoparser_impl {
         fn get(&self, friendly_name: &'static str) -> Option<&PropColumn> {
             self.columns.get(friendly_name)
         }
+
+        fn get_by_real_name(&self, real: &str) -> Option<&PropColumn> {
+            self.columns.iter().find_map(|(friendly, column)| {
+                let names = rm_user_friendly_names(&vec![(*friendly).to_string()]).ok()?;
+                (names.first().map(String::as_str) == Some(real)).then_some(column)
+            })
+        }
     }
 
     struct SupplementalColumns {
@@ -696,7 +707,10 @@ mod demoparser_impl {
             ),
             Some(VarVec::F32(_)) => matches!(
                 friendly_name,
-                "usercmd_forward_move"
+                "fall_velo"
+                    | "CCSPlayerPawn.CCSPlayer_MovementServices.m_flLastDuckTime"
+                    | "CCSPlayerPawn.CCSPlayer_WeaponServices.m_flNextAttack"
+                    | "usercmd_forward_move"
                     | "usercmd_left_move"
                     | "usercmd_up_move"
                     | "usercmd_viewangle_x"
@@ -707,9 +721,11 @@ mod demoparser_impl {
                 friendly_name,
                 "usercmd_buttonstate_1" | "usercmd_buttonstate_2" | "usercmd_buttonstate_3"
             ),
+            Some(VarVec::U32(_)) => friendly_name == "damage_total",
             Some(VarVec::I32(_)) => matches!(
                 friendly_name,
-                "usercmd_mouse_dx"
+                "damage_total"
+                    | "usercmd_mouse_dx"
                     | "usercmd_mouse_dy"
                     | "usercmd_weapon_select"
                     | "usercmd_client_tick"
@@ -845,6 +861,16 @@ mod demoparser_impl {
         else {
             return parse_demo_once(bytes, settings, options).map(|output| (output, None));
         };
+        // Validate the remaining channel before starting either pass. New
+        // continuous-state fields must join the overlay before being split.
+        let mut primary_settings = settings.clone();
+        primary_settings
+            .wanted_player_props
+            .retain(|prop| !overlay_real_props.contains(prop));
+        if !check_multithreadability(&primary_settings.wanted_player_props) {
+            let _timer = ProfileTimer::new("converter.single.primary_not_parallel");
+            return parse_demo_once(bytes, settings, options).map(|output| (output, None));
+        }
         let mut supplemental_real_props = overlay_real_props.clone();
         supplemental_real_props.push(entity_id_real);
         supplemental_real_props.push(round_real);
@@ -859,36 +885,55 @@ mod demoparser_impl {
         supplemental_settings.collect_projectile_records = false;
         supplemental_settings.parse_grenades = false;
 
-        let supplemental_output = match parse_demo_once_with_decode_plan(
-            bytes,
-            supplemental_settings,
-            ParsingMode::ForceSingleThreaded,
-            DecodePlan::PLAYER_ROWS_ONLY,
-        ) {
+        let (supplemental_result, primary_result) = rayon::join(
+            || {
+                let _timer = ProfileTimer::new("converter.supplemental");
+                parse_demo_once_with_decode_plan(
+                    bytes,
+                    supplemental_settings,
+                    ParsingMode::ForceSingleThreaded,
+                    DecodePlan {
+                        project_entity_state: true,
+                        ..DecodePlan::PLAYER_ROWS_ONLY
+                    },
+                )
+            },
+            || {
+                let _timer = ProfileTimer::new("converter.primary");
+                parse_demo_once(bytes, primary_settings, options)
+            },
+        );
+        let supplemental_output = match supplemental_result {
             Ok(output) => output,
+            Err(DemoParserError::Cancelled) => return Err(DemoParserError::Cancelled),
             Err(_) => {
+                drop(primary_result);
+                let _timer = ProfileTimer::new("converter.fallback.supplemental_error");
                 return parse_demo_once(bytes, settings, options).map(|output| (output, None));
             }
         };
         let Some(supplemental) = SupplementalColumns::from_output(supplemental_output) else {
+            drop(primary_result);
+            let _timer = ProfileTimer::new("converter.fallback.supplemental_columns");
             return parse_demo_once(bytes, settings, options).map(|output| (output, None));
         };
 
-        let mut primary_settings = settings.clone();
-        primary_settings
-            .wanted_player_props
-            .retain(|prop| !overlay_real_props.contains(prop));
-        if !check_multithreadability(&primary_settings.wanted_player_props) {
-            return parse_demo_once(bytes, settings, options).map(|output| (output, None));
-        }
-
-        let primary = match parse_demo_once(bytes, primary_settings, options) {
+        let primary = match primary_result {
             Ok(output) => output,
+            Err(DemoParserError::Cancelled) => return Err(DemoParserError::Cancelled),
             Err(_) => {
+                drop(supplemental);
+                let _timer = ProfileTimer::new("converter.fallback.primary_error");
                 return parse_demo_once(bytes, settings, options).map(|output| (output, None));
             }
         };
-        let Some(overlay) = supplemental.align(&primary) else {
+        let overlay = {
+            let _timer = ProfileTimer::new("converter.alignment");
+            supplemental.align(&primary)
+        };
+        let Some(overlay) = overlay else {
+            drop(primary);
+            let _timer = ProfileTimer::new("converter.fallback.alignment");
             return parse_demo_once(bytes, settings, options).map(|output| (output, None));
         };
         Ok((primary, Some(overlay)))
@@ -914,6 +959,7 @@ mod demoparser_impl {
         // item drops are never exported. Honor opt-ins before decoding, rather
         // than retaining these payloads for the whole demo and discarding them.
         let decode_plan = DecodePlan {
+            project_entity_state: true,
             voice_data: options.collect_voice,
             item_drops: false,
             end_of_match: options.collect_cosmetics,
@@ -989,6 +1035,7 @@ mod demoparser_impl {
         options: ReadDemoOptions,
         cancelled: Option<&AtomicBool>,
     ) -> Result<ParsedDemo> {
+        let _total_timer = ProfileTimer::new("converter.total");
         let mut wanted_props = vec![
             "X",
             "Y",
@@ -1110,7 +1157,6 @@ mod demoparser_impl {
             real_name_to_og_name.insert(real.clone(), friendly.clone());
         }
 
-        let demo_sha256 = crate::demo_id::sha256_hex(bytes);
         let huf = create_huffman_lookup_table();
         let settings = ParserInputs {
             real_name_to_og_name,
@@ -1160,8 +1206,18 @@ mod demoparser_impl {
             fallback_bytes: None,
             cancelled,
         };
-        let (mut output, single_threaded_overlay) = parse_demo_channels(bytes, settings, options)
-            .map_err(|e| Error::Parser(format!("{e:?}")))?;
+        let (demo_sha256, parsed) = rayon::join(
+            || {
+                let _timer = ProfileTimer::new("converter.hash");
+                crate::demo_id::sha256_hex(bytes)
+            },
+            || {
+                let _timer = ProfileTimer::new("converter.parser_channels");
+                parse_demo_channels(bytes, settings, options)
+            },
+        );
+        let (mut output, single_threaded_overlay) =
+            parsed.map_err(|e| Error::Parser(format!("{e:?}")))?;
 
         // These nested columns are already owned by the parser output. Take them out so row
         // materialization can move their vectors and strings instead of deep-cloning every tick.
@@ -1197,6 +1253,12 @@ mod demoparser_impl {
         let source_columns: Vec<_> = source_real_props
             .iter()
             .map(|real| {
+                if let Some(column) = single_threaded_overlay
+                    .as_ref()
+                    .and_then(|overlay| overlay.get_by_real_name(real))
+                {
+                    return Some(column);
+                }
                 output
                     .prop_controller
                     .prop_infos
@@ -1215,6 +1277,8 @@ mod demoparser_impl {
             };
         }
         let subtick_moves_column = overlay_column!("usercmd_subtick_moves", columns.subtick_moves);
+        let fall_velocity_column = overlay_column!("fall_velo", columns.fall_velocity);
+        let scoreboard_damage_column = overlay_column!("damage_total", columns.scoreboard_damage);
         let input_history_column = overlay_column!("usercmd_input_history", columns.input_history);
         let usercmd_client_tick_column =
             overlay_column!("usercmd_client_tick", columns.usercmd_client_tick);
@@ -1247,6 +1311,7 @@ mod demoparser_impl {
         );
         let ducked_column = overlay_column!("ducked", columns.ducked);
         let ducking_column = overlay_column!("ducking", columns.ducking);
+        let sort_timer = ProfileTimer::new("converter.row_sort");
         let mut row_order = Vec::with_capacity(columns.len);
         for idx in 0..columns.len {
             let steam_id = get_u64(columns.steam_id, idx).unwrap_or_default();
@@ -1258,7 +1323,9 @@ mod demoparser_impl {
             row_order.push((idx, round, tick, steam_id));
         }
         row_order.sort_by_key(|(_, round, tick, steam_id)| (*round, *tick, *steam_id));
+        drop(sort_timer);
 
+        let materialization_timer = ProfileTimer::new("converter.row_materialization");
         let mut parsed_inventory_cache = ParsedInventoryCache::default();
         let row_materialization = row_order
             .into_iter()
@@ -1323,7 +1390,7 @@ mod demoparser_impl {
                         velocity: [
                             0.0,
                             0.0,
-                            -get_f32(columns.fall_velocity, idx).unwrap_or(f32::NAN),
+                            -get_f32(fall_velocity_column, idx).unwrap_or(f32::NAN),
                         ],
                         pitch: get_f32(columns.pitch, idx).unwrap_or_default(),
                         yaw: get_f32(columns.yaw, idx).unwrap_or_default(),
@@ -1415,7 +1482,7 @@ mod demoparser_impl {
                         scoreboard_deaths: get_u32(columns.scoreboard_deaths, idx),
                         scoreboard_assists: get_u32(columns.scoreboard_assists, idx),
                         scoreboard_headshot_kills: get_u32(columns.scoreboard_headshot_kills, idx),
-                        scoreboard_damage: get_u32(columns.scoreboard_damage, idx),
+                        scoreboard_damage: get_u32(scoreboard_damage_column, idx),
                         armor_value: get_u32(columns.armor_value, idx).unwrap_or_default(),
                         has_helmet: get_bool(columns.has_helmet, idx).unwrap_or(false),
                         has_defuser: get_bool(columns.has_defuser, idx).unwrap_or(false),
@@ -1449,6 +1516,8 @@ mod demoparser_impl {
             )
             .collect::<Vec<_>>();
 
+        drop(materialization_timer);
+        let _remaining_timer = ProfileTimer::new("converter.remaining");
         if let Some(row) = rows.iter().find(|row| {
             row.is_alive
                 && (!row.velocity[2].is_finite()
@@ -1461,14 +1530,23 @@ mod demoparser_impl {
             )));
         }
         drop(source_columns);
-        // Row materialization has consumed the columns. Release the duplicate
-        // per-tick storage before gap repair and event/projectile processing.
-        drop(output.df);
-        drop(single_threaded_overlay);
-        drop(parsed_inventory_cache);
-        repair_short_global_tick_gaps(&mut rows);
         let tick_rate = read_server_tick_rate(&header)?;
-        derive_observed_horizontal_velocities(&mut rows, tick_rate);
+        // These columns no longer contribute to the rows. Reclaim them while
+        // independent row repair runs, then join before continuing.
+        rayon::join(
+            || {
+                let _timer = ProfileTimer::new("converter.column_drop");
+                drop(output.df);
+                drop(single_threaded_overlay);
+                drop(parsed_inventory_cache);
+            },
+            || {
+                let _timer = ProfileTimer::new("converter.gaps_and_velocity");
+                repair_short_global_tick_gaps(&mut rows);
+                derive_observed_horizontal_velocities(&mut rows, tick_rate);
+            },
+        );
+        let events_timer = ProfileTimer::new("converter.events_and_projectiles");
         let mut round_freeze_end_ticks = output
             .game_events
             .iter()
@@ -1496,6 +1574,7 @@ mod demoparser_impl {
         let server_convars = parse_server_convars(&output.game_events);
         let projectiles =
             parse_projectile_records(&output.projectiles, tick_rate, &output.game_events);
+        drop(events_timer);
         let mut voice_frames = Vec::new();
         if options.collect_voice {
             for (tick, msg) in output.voice_data {
@@ -2297,12 +2376,14 @@ mod demoparser_impl {
             return 0;
         }
 
-        let global_ticks = rows
-            .iter()
-            .map(|row| row.tick)
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
+        let mut global_ticks = Vec::new();
+        for row in rows.iter() {
+            if global_ticks.last() != Some(&row.tick) {
+                global_ticks.push(row.tick);
+            }
+        }
+        global_ticks.sort_unstable();
+        global_ticks.dedup();
         let missing_tick_ranges = global_ticks
             .windows(2)
             .filter_map(|pair| {
@@ -2360,8 +2441,28 @@ mod demoparser_impl {
 
         let repaired = additions.len();
         if repaired > 0 {
-            rows.extend(additions);
-            rows.sort_by_key(|row| (row.round, row.tick, row.steam_id));
+            let key = |row: &ParsedPlayerTick| (row.round, row.tick, row.steam_id);
+            if rows.windows(2).all(|pair| key(&pair[0]) <= key(&pair[1])) {
+                // The production rows are already ordered. Move them once and
+                // merge the few repaired rows, keeping the stable tie order.
+                additions.sort_by_key(key);
+                let mut merged = Vec::with_capacity(rows.len() + repaired);
+                let mut existing = std::mem::take(rows).into_iter().peekable();
+                for addition in additions {
+                    while existing
+                        .peek()
+                        .is_some_and(|row| key(row) <= key(&addition))
+                    {
+                        merged.push(existing.next().unwrap());
+                    }
+                    merged.push(addition);
+                }
+                merged.extend(existing);
+                *rows = merged;
+            } else {
+                rows.extend(additions);
+                rows.sort_by_key(key);
+            }
         }
         repaired
     }
@@ -2375,10 +2476,12 @@ mod demoparser_impl {
             return;
         }
 
-        let mut previous = BTreeMap::<u64, (u32, i32, u8, bool, Option<i32>, [f32; 3])>::new();
+        let mut previous =
+            AHashMap::<u64, Option<(u32, i32, u8, bool, Option<i32>, [f32; 3])>>::default();
         for row in rows {
+            let previous = previous.entry(row.steam_id).or_default();
             let velocity = previous
-                .get(&row.steam_id)
+                .as_ref()
                 .and_then(|(round, tick, team_num, is_alive, entity_id, origin)| {
                     let tick_delta = row.tick.checked_sub(*tick)?;
                     let same_entity = match (*entity_id, row.player_entity_id) {
@@ -2411,17 +2514,14 @@ mod demoparser_impl {
                 .unwrap_or([0.0, 0.0]);
 
             row.velocity[..2].copy_from_slice(&velocity);
-            previous.insert(
-                row.steam_id,
-                (
-                    row.round,
-                    row.tick,
-                    row.team_num,
-                    row.is_alive,
-                    row.player_entity_id,
-                    row.origin,
-                ),
-            );
+            *previous = Some((
+                row.round,
+                row.tick,
+                row.team_num,
+                row.is_alive,
+                row.player_entity_id,
+                row.origin,
+            ));
         }
     }
 
@@ -2715,6 +2815,7 @@ mod demoparser_impl {
                 .get(idx)
                 .and_then(|v| v.as_ref())
                 .and_then(|v| v.parse::<u64>().ok()),
+            VarVec::SharedString(v) => v.get(idx).and_then(|v| v.parse::<u64>().ok()),
             _ => None,
         }
     }
@@ -2739,7 +2840,7 @@ mod demoparser_impl {
     ) -> Option<(Vec<SubtickMove>, usize)> {
         match column?.data.as_ref()? {
             VarVec::UserCmdSubtickMoves(v) => {
-                let raw = v.get(idx)?;
+                let raw = v.get(idx)?.as_ref();
                 let mut truncated = 0_usize;
                 let moves = raw
                     .iter()
@@ -2769,7 +2870,7 @@ mod demoparser_impl {
         idx: usize,
     ) -> Option<Vec<ReplayInputHistoryEntry>> {
         let raw = match column?.data.as_ref()? {
-            VarVec::InputHistory(values) => values.get(idx)?,
+            VarVec::InputHistory(values) => values.get(idx)?.as_ref(),
             _ => return None,
         };
         Some(raw.iter().map(map_input_history_entry).collect())
@@ -2918,6 +3019,7 @@ mod demoparser_impl {
     fn get_string(column: Option<&PropColumn>, idx: usize) -> Option<String> {
         match column?.data.as_ref()? {
             VarVec::String(v) => v.get(idx).cloned().flatten(),
+            VarVec::SharedString(v) => v.get(idx).map(str::to_owned),
             _ => None,
         }
     }
@@ -2931,7 +3033,7 @@ mod demoparser_impl {
             _ => return None,
         };
         let parsed = stickers
-            .into_iter()
+            .iter()
             .filter_map(|sticker| {
                 let slot = u8::try_from(sticker.slot).ok()?;
                 if slot > 4
@@ -2968,6 +3070,9 @@ mod demoparser_impl {
             VarVec::InventoryWeaponCosmetics(v) => std::mem::take(v.get_mut(idx)?),
             _ => return None,
         };
+        if weapons.is_empty() {
+            return None;
+        }
         let cache_key = (weapons.as_ptr() as usize, weapons.len());
         if let Some((cached_source, cached_parsed)) = cache.get(&cache_key) {
             debug_assert!(Arc::ptr_eq(cached_source, &weapons));
@@ -3127,6 +3232,28 @@ mod demoparser_impl {
 
         use super::*;
         use std::sync::atomic::AtomicBool;
+
+        #[test]
+        fn empty_inventory_snapshots_remain_absent_and_do_not_fill_the_cache() {
+            let empty: Arc<[ParserInventoryWeaponCosmetic]> = Arc::default();
+            let mut column = Some(PropColumn {
+                data: Some(VarVec::InventoryWeaponCosmetics(vec![
+                    Arc::clone(&empty),
+                    Arc::clone(&empty),
+                ])),
+                num_nones: 0,
+            });
+            let mut cache = ParsedInventoryCache::default();
+            for row in [0, 1, 0] {
+                assert!(take_inventory_weapon_cosmetics(&mut column, row, &mut cache).is_none());
+            }
+            assert!(cache.is_empty());
+            let Some(VarVec::InventoryWeaponCosmetics(rows)) = &column.as_ref().unwrap().data
+            else {
+                panic!("inventory column missing");
+            };
+            assert!(rows.iter().all(|row| row.is_empty()));
+        }
 
         fn projectile_record(tick: i32, entity_id: i32, serial: u32) -> ProjectileRecord {
             ProjectileRecord {
@@ -3634,6 +3761,67 @@ mod demoparser_impl {
                 assert!(overlay_column_type_is_valid(friendly_name, column));
                 assert_eq!(column.len(), 3);
             }
+        }
+
+        #[test]
+        fn overlay_covers_continuous_playback_state_and_resolves_source_aliases() {
+            let overlay = all_none_overlay(3);
+            let overlay_real = rm_user_friendly_names(
+                &SINGLE_THREADED_OVERLAY_PROPS
+                    .iter()
+                    .map(|name| (*name).to_string())
+                    .collect(),
+            )
+            .unwrap();
+            let source_names: Vec<_> = crate::model::source_state::SOURCE_FIELDS
+                .iter()
+                .enumerate()
+                .filter(|(id, _)| crate::model::source_state::is_playback_field(*id))
+                .map(|(_, field)| field.prop.to_string())
+                .chain(["fall_velo", "damage_total", "ducked", "ducking"].map(str::to_string))
+                .collect();
+            for real in rm_user_friendly_names(&source_names).unwrap() {
+                if !check_multithreadability(&[real.clone()]) {
+                    assert!(
+                        overlay_real.contains(&real),
+                        "uncovered continuous state: {real}"
+                    );
+                    assert_eq!(overlay.get_by_real_name(&real).unwrap().len(), 3);
+                }
+            }
+            assert!(overlay_column_type_is_valid(
+                "damage_total",
+                &i32_column(&[Some(42)])
+            ));
+            assert!(!overlay_column_type_is_valid(
+                "damage_total",
+                &u64_column(&[Some(42)])
+            ));
+        }
+
+        #[test]
+        fn gap_merge_preserves_order_with_unsorted_input_and_duplicate_evidence() {
+            let sorted = vec![
+                gap_row(70, 10, 0.0),
+                gap_row(70, 12, 4.0),
+                gap_row(90, 12, 5.0),
+            ];
+            let mut ordered = sorted.clone();
+            let mut reversed: Vec<_> = sorted.into_iter().rev().collect();
+            assert_eq!(repair_short_global_tick_gaps(&mut ordered), 1);
+            assert_eq!(repair_short_global_tick_gaps(&mut reversed), 1);
+            assert_eq!(
+                serde_json::to_value(ordered).unwrap(),
+                serde_json::to_value(reversed).unwrap()
+            );
+            let mut ambiguous = vec![
+                gap_row(70, 10, 0.0),
+                gap_row(70, 10, 1.0),
+                gap_row(70, 12, 4.0),
+            ];
+            assert_eq!(repair_short_global_tick_gaps(&mut ambiguous), 0);
+            assert_eq!(ambiguous[0].origin[0], 0.0);
+            assert_eq!(ambiguous[1].origin[0], 1.0);
         }
 
         #[test]
