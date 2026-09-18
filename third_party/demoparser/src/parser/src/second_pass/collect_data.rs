@@ -2566,7 +2566,7 @@ mod tests {
                     props: [(101, Variant::U32(32)), (102, Variant::F32(10.0)),
                             (120, Variant::F32(if entity_id == 7 { 1.0 } else { 2.0 }))].into_iter().collect(),
                     entity_type: EntityType::Normal,
-                    cosmetic_revision: 0,
+                    cosmetic_revision: 0, usercmd_scalar_cache: None,
                 });
             }
         }
@@ -2636,7 +2636,7 @@ mod tests {
             0, true, None, DecodePlan::FULL).unwrap();
         parser.entities[1] = Some(Entity {
             cls_id: 0, entity_id: 1, serial: 1, entity_type: EntityType::PlayerController,
-            cosmetic_revision: 0, props: AHashMap::from_iter([
+            cosmetic_revision: 0, usercmd_scalar_cache: None, props: AHashMap::from_iter([
                 (100, Variant::U32(2)), (101, Variant::String("first".into())),
                 (102, Variant::U64(70)), (103, Variant::U32(8)),
             ]),
@@ -2723,7 +2723,7 @@ mod tests {
                 ].into_iter().collect();
                 parser.entities[entity_id as usize] = Some(Entity {
                     cls_id: 0, entity_id, serial: 1, props,
-                    entity_type: EntityType::Normal, cosmetic_revision: 0,
+                    entity_type: EntityType::Normal, cosmetic_revision: 0, usercmd_scalar_cache: None,
                 });
             }
             match case {
@@ -2924,7 +2924,7 @@ mod tests {
         for entity_id in [7, 41, 42] {
             parser.entities[entity_id as usize] = Some(Entity {
                 cls_id: 0, entity_id, serial: 1, props: AHashMap::default(),
-                entity_type: EntityType::Normal, cosmetic_revision: 0,
+                entity_type: EntityType::Normal, cosmetic_revision: 0, usercmd_scalar_cache: None,
             });
         }
         let inventory = super::MY_WEAPONS_OFFSET;
@@ -3036,7 +3036,7 @@ mod tests {
                 (super::WEAPON_ATTRIBUTE_DEF_INDEX_ID, Variant::U32(113)),
                 (super::WEAPON_SKIN_ID, Variant::F32(f32::from_bits(477))),
             ]),
-            entity_type: EntityType::Normal, cosmetic_revision: 0,
+            entity_type: EntityType::Normal, cosmetic_revision: 0, usercmd_scalar_cache: None,
         });
         let snapshot = |parser: &SecondPassParser<'_>| {
             let Variant::Stickers(stickers) = parser.find_stickers(&41).unwrap() else { unreachable!() };

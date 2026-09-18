@@ -1622,13 +1622,13 @@ mod inventory_epoch_tests {
             0, false, None, DecodePlan::FULL).unwrap();
         parser.entities[1] = Some(Entity {
             cls_id: 0, entity_id: 1, serial: 1, entity_type: EntityType::PlayerController,
-            cosmetic_revision: 0, props: AHashMap::from_iter([
+            cosmetic_revision: 0, usercmd_scalar_cache: None, props: AHashMap::from_iter([
                 (101, Variant::U64(1001)), (102, Variant::U32(2)), (103, Variant::U32(8)),
             ]),
         });
         parser.entities[8] = Some(Entity {
             cls_id: 0, entity_id: 8, serial: 3, props: AHashMap::default(),
-            entity_type: EntityType::Normal, cosmetic_revision: 0,
+            entity_type: EntityType::Normal, cosmetic_revision: 0, usercmd_scalar_cache: None,
         });
         // The connecting player moves from pawn 7 onto pawn 8, which still has
         // another player's metadata while event extra props are collected.

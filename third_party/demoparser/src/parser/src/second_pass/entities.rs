@@ -27,6 +27,30 @@ const STOP_READING_SYMBOL: u8 = 39;
 const HUFFMAN_CODE_MAXLEN: u32 = 17;
 const ECON_ATTRIBUTE_SLOTS: u32 = 64;
 
+#[derive(Clone, Copy)]
+pub(crate) struct ResolvedEntityField<'a> {
+    field: &'a Field,
+    info: Option<FieldInfo>,
+    decoder: super::decoder::Decoder,
+    skip: bool,
+}
+
+fn field_cache_key(path: &FieldPath) -> Option<u64> {
+    if path.last > 5 {
+        return None;
+    }
+    let mut key = path.last as u64;
+    // Preserve every component used by get_propinfo, including components
+    // beyond last; dynamic vector indices must never alias a cached field.
+    for &component in &path.path[..6] {
+        if !(0..1024).contains(&component) {
+            return None;
+        }
+        key = (key << 10) | component as u64;
+    }
+    Some(key)
+}
+
 #[derive(Debug, Clone)]
 pub struct Entity {
     pub cls_id: u32,
@@ -35,6 +59,8 @@ pub struct Entity {
     pub props: AHashMap<u32, Variant>,
     pub entity_type: EntityType,
     pub cosmetic_revision: u64,
+    // Synthetic usercmd scalars are written separately from network fields.
+    pub usercmd_scalar_cache: Option<Box<[u64; 23]>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -367,11 +393,26 @@ impl<'a> SecondPassParser<'a> {
         };
 
         for path in self.paths.iter().take(n_updates) {
-            let field = find_field(&path, &class.serializer)?;
-            let field_info = get_propinfo(&field, path);
-            let decoder = get_decoder_from_field(field)?;
-            if self.entity_projection.as_ref().is_some_and(|plan|
-                field_info.is_some_and(|info| !plan.keeps(info.prop_id))) {
+            let key = field_cache_key(path);
+            let cache = &mut self.entity_field_cache[entity.cls_id as usize];
+            let resolved = match key.and_then(|key| cache.get(&key)).copied() {
+                Some(resolved) => resolved,
+                None => {
+                    let field = find_field(path, &class.serializer)?;
+                    let info = get_propinfo(field, path);
+                    let decoder = get_decoder_from_field(field)?;
+                    let skip = self.entity_projection.as_ref().is_some_and(|plan|
+                        info.is_some_and(|info| !plan.keeps(info.prop_id)));
+                    let resolved = ResolvedEntityField { field, info, decoder, skip };
+                    if let Some(key) = key {
+                        // Bound memory on demos containing large dynamic arrays.
+                        if cache.len() < 4096 { cache.insert(key, resolved); }
+                    }
+                    resolved
+                }
+            };
+            let ResolvedEntityField { field, info: field_info, decoder, skip } = resolved;
+            if skip {
                 bitreader.skip_value(&decoder, self.qf_mapper)?;
                 continue;
             }
@@ -465,6 +506,12 @@ impl<'a> SecondPassParser<'a> {
     ) {
         if let Some(fi) = field_info {
             if fi.should_parse {
+                if fi.prop_id == crate::first_pass::prop_controller::USERCMD_CLIENT_TICK
+                    || fi.prop_id.checked_sub(crate::first_pass::prop_controller::USERCMD_VIEWANGLE_X)
+                        .is_some_and(|slot| slot < 22)
+                {
+                    entity.usercmd_scalar_cache = None;
+                }
                 entity.props.insert(fi.prop_id, result);
                 if updates_cosmetics {
                     entity.cosmetic_revision = entity.cosmetic_revision.wrapping_add(1);
@@ -518,7 +565,7 @@ impl<'a> SecondPassParser<'a> {
             serial,
             props: AHashMap::with_capacity(0),
             entity_type,
-            cosmetic_revision: 0,
+            cosmetic_revision: 0, usercmd_scalar_cache: None,
         };
         self.weapon_econ_snapshot_cache.get_mut().remove(entity_id);
         self.weapon_sticker_cache.get_mut().remove(entity_id);
@@ -574,6 +621,30 @@ mod tests {
     use super::*;
     use crate::first_pass::sendtables::{Serializer, SerializerField, ValueField, VectorField};
     use crate::second_pass::decoder::Decoder;
+
+    #[test]
+    fn field_cache_keys_distinguish_depth_and_dynamic_indices() {
+        let mut path = generate_fp();
+        path.path = [0; 7];
+        let mut keys = ahash::AHashSet::default();
+        for depth in 0..6 {
+            path.last = depth;
+            for component in 0..6 {
+                for value in [1, 255, 1023] {
+                    path.path[component] = value;
+                    assert!(keys.insert(field_cache_key(&path).unwrap()));
+                    path.path[component] = 0;
+                }
+            }
+        }
+        path.last = 6;
+        assert!(field_cache_key(&path).is_none());
+        path.last = 0;
+        for value in [-1, 1024] {
+            path.path[2] = value;
+            assert!(field_cache_key(&path).is_none());
+        }
+    }
 
     fn econ_attribute_vector(value_prop_id: u32, definition_prop_id: u32) -> Field {
         let mut definition = ValueField::new(Decoder::UnsignedDecoder, "m_iAttributeDefinitionIndex");
@@ -673,7 +744,7 @@ mod tests {
             0, false, None, DecodePlan::FULL).unwrap();
         parser.entities[1] = Some(Entity {
             cls_id: 0, entity_id: 1, serial: 1, props: AHashMap::default(),
-            entity_type: EntityType::Normal, cosmetic_revision: 0,
+            entity_type: EntityType::Normal, cosmetic_revision: 0, usercmd_scalar_cache: None,
         });
         for (field_index, expected_epoch) in [(0, 0), (1, 1), (1, 2), (2, 3)] {
             let mut path = generate_fp();
@@ -732,7 +803,7 @@ mod tests {
             serial: 1,
             props: AHashMap::with_capacity(0),
             entity_type: EntityType::Normal,
-            cosmetic_revision: 0,
+            cosmetic_revision: 0, usercmd_scalar_cache: None,
         };
         let field = |prop_id| FieldInfo {
             decoder: crate::second_pass::decoder::Decoder::NoscaleDecoder,
@@ -781,7 +852,7 @@ mod tests {
             serial: 1,
             props: AHashMap::with_capacity(0),
             entity_type: EntityType::Normal,
-            cosmetic_revision: 0,
+            cosmetic_revision: 0, usercmd_scalar_cache: None,
         };
         for slot in 0..11 {
             entity.props.insert(WEAPON_ATTRIBUTE_DEF_INDEX_ID + slot, Variant::U32(6 + slot));

@@ -29,6 +29,7 @@ use csgoproto::CnetMsgTick;
 use csgoproto::CsgoInputHistoryEntryPb;
 use csgoproto::CsgoUserCmdPb;
 use csgoproto::CsvcMsgServerInfo;
+#[cfg(test)]
 use csgoproto::CsvcMsgUserCommands;
 use csgoproto::CsvcMsgVoiceData;
 use csgoproto::EDemoCommands::*;
@@ -40,7 +41,10 @@ use std::sync::atomic::Ordering;
 use super::variants::{into_shared_slice, InputHistory, InputHistoryInterpolation, UserCmdSubtickMove};
 
 #[path = "usercmd_delta.rs"]
-mod usercmd_delta;
+pub(crate) mod usercmd_delta;
+
+#[path = "usercmd_wire.rs"]
+pub(crate) mod usercmd_wire;
 
 const OUTER_BUF_DEFAULT_LEN: usize = 400_000;
 const INNER_BUF_DEFAULT_LEN: usize = 8192 * 15;
@@ -53,6 +57,22 @@ fn commit_usercmd_scalar(
     value: Variant,
 ) {
     use std::collections::hash_map::Entry;
+    let slot = if property_id == USERCMD_CLIENT_TICK { Some(22) }
+        else { property_id.checked_sub(USERCMD_VIEWANGLE_X).filter(|slot| *slot < 22).map(|slot| slot as usize) };
+    let bits = match &value {
+        Variant::Bool(value) => Some(u64::from(*value)),
+        Variant::I32(value) => Some((1_u64 << 32) | u64::from(*value as u32)),
+        Variant::U32(value) => Some((2_u64 << 32) | u64::from(*value)),
+        Variant::F32(value) => Some((3_u64 << 32) | u64::from(value.to_bits())),
+        _ => None,
+    };
+    if let (Some(slot), Some(bits)) = (slot, bits) {
+        let cache = entity.usercmd_scalar_cache.get_or_insert_with(|| Box::new([u64::MAX; 23]));
+        if cache[slot] == bits { return; }
+        cache[slot] = bits;
+    } else if let Some(slot) = slot {
+        if let Some(cache) = entity.usercmd_scalar_cache.as_mut() { cache[slot] = u64::MAX; }
+    }
     match entity.props.entry(property_id) {
         Entry::Occupied(mut entry) => {
             let unchanged = match (entry.get(), &value) {
@@ -738,29 +758,38 @@ impl<'a> SecondPassParser<'a> {
             return Ok(());
         }
 
-        let msg = match CsvcMsgUserCommands::decode(bytes) {
-            Ok(m) => m,
-            _ => return Ok(()),
-        };
-        for cmd in msg.commands {
-            let player_slot = cmd.player_slot();
-            if let Some(delta_data) = cmd.delta_data.as_ref().filter(|data| !data.is_empty()) {
+        if usercmd_wire::decode_commands(bytes, &mut self.usercmd_command_scratch).is_err() {
+            return Ok(());
+        }
+        for index in 0..self.usercmd_command_scratch.len() {
+            let cmd = self.usercmd_command_scratch[index];
+            let player_slot = cmd.player_slot;
+            if cmd.delta.1 != 0 {
+                let delta_data = &bytes[cmd.delta.0..cmd.delta.0 + cmd.delta.1];
                 let decode_started = self.profile.start();
-                let user_cmd = match usercmd_delta::decode_command(delta_data.as_ref()) {
-                    Some(value) => value,
-                    None => continue,
-                };
+                let mut payloads = std::mem::take(&mut self.usercmd_delta_payload_scratch);
+                let decoded = usercmd_delta::decode_borrowed_command(delta_data, &mut payloads);
                 self.profile.phase(4, decode_started);
-                let apply_started = self.profile.start();
-                self.apply_delta_user_cmd(user_cmd, player_slot);
-                self.profile.phase(7, apply_started);
+                if let Some(user_cmd) = decoded {
+                    let apply_started = self.profile.start();
+                    self.apply_delta_user_cmd_payloads(user_cmd, player_slot,
+                        payloads.history.iter().map(|&(start, len)| &delta_data[start..start + len]),
+                        payloads.subticks.iter().map(|&(start, len)| &delta_data[start..start + len]));
+                    self.profile.phase(7, apply_started);
+                }
+                self.usercmd_delta_payload_scratch = payloads;
                 continue;
             }
             let decode_started = self.profile.start();
-            let mut user_cmd = match CsgoUserCmdPb::decode(cmd.data()) {
-                Ok(m) => m,
-                _ => return Ok(()),
+            self.usercmd_full_history_scratch.clear();
+            let mut user_cmd = CsgoUserCmdPb {
+                input_history: std::mem::take(&mut self.usercmd_full_history_scratch),
+                ..Default::default()
             };
+            if user_cmd.merge(&bytes[cmd.data.0..cmd.data.0 + cmd.data.1]).is_err() {
+                self.usercmd_full_history_scratch = user_cmd.input_history;
+                return Ok(());
+            }
             self.profile.phase(5, decode_started);
             let apply_started = self.profile.start();
             let left_hand_desired = user_cmd.left_hand_desired();
@@ -768,16 +797,15 @@ impl<'a> SecondPassParser<'a> {
                 user_cmd.attack1_start_history_index.unwrap_or(-1);
             let attack2_start_history_index =
                 user_cmd.attack2_start_history_index.unwrap_or(-1);
-            let input_history_baseline = self.usercmd_input_history_baselines.entry(player_slot).or_default();
-            *input_history_baseline = user_cmd.input_history;
-            self.usercmd_history_cache.remove(&player_slot);
-            let subtick_baseline = self.usercmd_subtick_baselines.entry(player_slot).or_default();
+            let UserCmdPlayerState { history: input_history_baseline, subticks: subtick_baseline, history_output } =
+                self.usercmd_players.entry(player_slot).or_default();
+            self.usercmd_full_history_scratch = std::mem::replace(input_history_baseline, user_cmd.input_history);
+            *history_output = None;
             *subtick_baseline = user_cmd.base.as_mut().map(|base| std::mem::take(&mut base.subtick_moves)).unwrap_or_default();
             if let Some(base) = user_cmd.base {
                 let entity_id = demo_network_ehandle_index(base.pawn_entity_handle());
                 if let Some(Some(ent)) = self.entities.get_mut(entity_id as usize) {
-                    let history = self.usercmd_history_cache.entry(player_slot)
-                        .or_insert_with(|| shared_input_history(input_history_baseline)).clone();
+                    let history = history_output.get_or_insert_with(|| shared_input_history(input_history_baseline)).clone();
                     ent.props.insert(USERCMD_INPUT_HISTORY_BASEID, Variant::InputHistory(history));
                     commit_usercmd_scalar!(self, ent,
                         USERCMD_ATTACK_START_HISTORY_INDEX_1,
@@ -831,24 +859,35 @@ impl<'a> SecondPassParser<'a> {
         Ok(())
     }
 
-    fn apply_delta_user_cmd(&mut self, user_cmd: DeltaCsgoUserCmdPb, player_slot: i32) {
-        let input_history_baseline = self.usercmd_input_history_baselines.entry(player_slot).or_default();
+    #[cfg(test)]
+    fn apply_delta_user_cmd(&mut self, mut user_cmd: DeltaCsgoUserCmdPb, player_slot: i32) {
+        let history = std::mem::take(&mut user_cmd.input_history_delta);
+        let subticks = user_cmd.base.as_mut().map(|base| std::mem::take(&mut base.subtick_moves_delta)).unwrap_or_default();
+        self.apply_delta_user_cmd_payloads(user_cmd, player_slot,
+            history.iter().map(AsRef::as_ref), subticks.iter().map(AsRef::as_ref));
+    }
+
+    fn apply_delta_user_cmd_payloads<'b>(
+        &mut self, user_cmd: DeltaCsgoUserCmdPb, player_slot: i32,
+        history_payloads: impl IntoIterator<Item = &'b [u8]>,
+        subtick_payloads: impl IntoIterator<Item = &'b [u8]>,
+    ) {
+        let UserCmdPlayerState { history: input_history_baseline, subticks: subtick_baseline, history_output } =
+            self.usercmd_players.entry(player_slot).or_default();
         // Invalid repeated deltas retain the preceding baseline, as before.
-        if usercmd_delta::apply_repeated_into(&user_cmd.input_history_delta, input_history_baseline,
+        if usercmd_delta::apply_repeated_iter(history_payloads, input_history_baseline,
             &mut self.usercmd_history_scratch, |_, _| {}).unwrap_or(false) {
-            self.usercmd_history_cache.remove(&player_slot);
+            *history_output = None;
         }
-        let input_history = self.usercmd_history_cache.entry(player_slot)
-            .or_insert_with(|| shared_input_history(input_history_baseline)).clone();
+        let input_history = history_output.get_or_insert_with(|| shared_input_history(input_history_baseline)).clone();
         let left_hand_desired = user_cmd.left_hand_desired;
         let attack1_start_history_index = user_cmd.attack1_start_history_index.unwrap_or(-1);
         let attack2_start_history_index = user_cmd.attack2_start_history_index.unwrap_or(-1);
         let Some(base) = user_cmd.base else {
             return;
         };
-        let subtick_baseline = self.usercmd_subtick_baselines.entry(player_slot).or_default();
         let mut subtick_moves = Vec::new();
-        let _ = usercmd_delta::apply_repeated_into(&base.subtick_moves_delta, subtick_baseline,
+        let _ = usercmd_delta::apply_repeated_iter(subtick_payloads, subtick_baseline,
             &mut self.usercmd_subtick_scratch, |_, subtick| subtick_moves.push(UserCmdSubtickMove {
                 when: subtick.when(),
                 button: subtick.button(),
@@ -1037,6 +1076,29 @@ impl<'a> SecondPassParser<'a> {
 #[cfg(test)]
 mod sparse_usercmd_tests {
     use super::*;
+
+    #[test]
+    fn scalar_cache_preserves_bits_types_and_network_overwrites() {
+        let mut entity = Entity {
+            cls_id: 0, entity_id: 1, serial: 1, props: AHashMap::default(),
+            entity_type: EntityType::Normal, cosmetic_revision: 0, usercmd_scalar_cache: None,
+        };
+        for bits in [0_u32, 0x80000000, 0x7fc00001, 0x7fc00002, 0x7fc00002] {
+            commit_usercmd_scalar(&mut entity, None, USERCMD_VIEWANGLE_X, Variant::F32(f32::from_bits(bits)));
+            let Variant::F32(value) = entity.props[&USERCMD_VIEWANGLE_X] else { panic!("wrong scalar type") };
+            assert_eq!(value.to_bits(), bits);
+        }
+        SecondPassParser::insert_field(&mut entity, Variant::F32(19.0), Some(crate::first_pass::sendtables::FieldInfo {
+            decoder: super::super::decoder::Decoder::NoscaleDecoder,
+            should_parse: true, prop_id: USERCMD_VIEWANGLE_X,
+        }), false);
+        commit_usercmd_scalar(&mut entity, None, USERCMD_VIEWANGLE_X, Variant::F32(f32::from_bits(0x7fc00002)));
+        let Variant::F32(value) = entity.props[&USERCMD_VIEWANGLE_X] else { panic!("wrong scalar type") };
+        assert_eq!(value.to_bits(), 0x7fc00002);
+        commit_usercmd_scalar(&mut entity, None, USERCMD_VIEWANGLE_X, Variant::U64(8));
+        commit_usercmd_scalar(&mut entity, None, USERCMD_VIEWANGLE_X, Variant::F32(f32::from_bits(0x7fc00002)));
+        assert!(matches!(entity.props[&USERCMD_VIEWANGLE_X], Variant::F32(_)));
+    }
     use crate::first_pass::parser_settings::ParserInputs;
     use crate::first_pass::prop_controller::PropInfo;
     use crate::parse_demo::DecodePlan;
@@ -1082,7 +1144,7 @@ mod sparse_usercmd_tests {
         assert_eq!(parser.sparse_scalar_columns.as_ref().unwrap().column_count(), ids.len());
         parser.entities[1] = Some(Entity {
             cls_id: 0, entity_id: 1, serial: 0, props: Default::default(),
-            entity_type: EntityType::Normal, cosmetic_revision: 0,
+            entity_type: EntityType::Normal, cosmetic_revision: 0, usercmd_scalar_cache: None,
         });
         parser.parse_usercmd = true;
         let mut oracle: Vec<_> = ids.iter().map(|_| PropColumn::new()).collect();

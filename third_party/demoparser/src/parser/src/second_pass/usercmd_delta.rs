@@ -121,9 +121,95 @@ fn merge_message<M: DeltaMessage>(message: &mut M, mut bytes: &[u8]) -> Option<(
     Some(())
 }
 
+#[cfg(test)]
 pub(super) fn decode_command(bytes: &[u8]) -> Option<DeltaCsgoUserCmdPb> {
     let mut command = DeltaCsgoUserCmdPb::default();
     merge_message(&mut command, bytes)?;
+    Some(command)
+}
+
+#[derive(Default)]
+pub(crate) struct BorrowedPayloads {
+    pub history: Vec<(usize, usize)>,
+    pub subticks: Vec<(usize, usize)>,
+}
+
+// Repeated delta fields are wire payloads rather than protobuf messages. Keep
+// their offsets in reusable scratch storage instead of allocating Bytes per field.
+fn merge_borrowed<M: DeltaMessage>(
+    message: &mut M, mut bytes: &[u8], input: &[u8], payloads: &mut Vec<(usize, usize)>,
+    repeated_tag: u64,
+) -> Option<()> {
+    while !bytes.is_empty() {
+        let key = read_delta_varint(&mut bytes)?;
+        let field = key >> 3;
+        if field == 0 || field > 0x1fff_ffff { return None; }
+        let wire = (key & 7) as u8;
+        if field == repeated_tag {
+            if wire == 7 {
+                // A scalar bytes reset merges an empty repeated item, matching
+                // the original prost merge path; it does not clear the list.
+                payloads.push((0, 0));
+            } else {
+                if wire != 2 { return None; }
+                let len = usize::try_from(read_delta_varint(&mut bytes)?).ok()?;
+                let (payload, rest) = bytes.split_at_checked(len)?;
+                payloads.push((payload.as_ptr() as usize - input.as_ptr() as usize, len));
+                bytes = rest;
+            }
+        } else if wire == 7 {
+            reset_field(message, field)?;
+        } else if M::SCHEMA.child(field).is_some() {
+            if wire != 2 { return None; }
+            let len = usize::try_from(read_delta_varint(&mut bytes)?).ok()?;
+            let (child, rest) = bytes.split_at_checked(len)?;
+            message.merge_child(field, ChildValue::Message(child))?;
+            bytes = rest;
+        } else {
+            if !matches!(wire, 0 | 1 | 2 | 5) { return None; }
+            message.merge_field(field as u32, WireType::try_from(u64::from(wire)).ok()?,
+                &mut bytes, DecodeContext::default()).ok()?;
+        }
+    }
+    Some(())
+}
+
+pub(super) fn decode_borrowed_command(
+    input: &[u8], payloads: &mut BorrowedPayloads,
+) -> Option<DeltaCsgoUserCmdPb> {
+    payloads.history.clear();
+    payloads.subticks.clear();
+    let mut command = DeltaCsgoUserCmdPb::default();
+    let mut bytes = input;
+    while !bytes.is_empty() {
+        let start = bytes;
+        let key = read_delta_varint(&mut bytes)?;
+        let field = key >> 3;
+        let wire = (key & 7) as u8;
+        if field == 1 && wire == 2 {
+            let len = usize::try_from(read_delta_varint(&mut bytes)?).ok()?;
+            let (child, rest) = bytes.split_at_checked(len)?;
+            let base = command.base.get_or_insert_with(DeltaBaseUserCmdPb::default);
+            merge_borrowed(base, child, input, &mut payloads.subticks, 18)?;
+            bytes = rest;
+        } else {
+            // Isolate one top-level field. Delegate resets, unknown fields and
+            // scalar wire semantics to the same merger as the reference path.
+            match wire {
+                7 => {},
+                0 => { read_delta_varint(&mut bytes)?; },
+                1 => { bytes = bytes.get(8..)?; },
+                5 => { bytes = bytes.get(4..)?; },
+                2 => {
+                    let len = usize::try_from(read_delta_varint(&mut bytes)?).ok()?;
+                    bytes = bytes.get(len..)?;
+                }
+                _ => return None,
+            }
+            merge_borrowed(&mut command, &start[..start.len() - bytes.len()], input,
+                &mut payloads.history, 2)?;
+        }
+    }
     Some(command)
 }
 
@@ -140,15 +226,23 @@ pub(super) fn apply_repeated<M: DeltaMessage + Clone>(payloads: &[prost::bytes::
 
 /// Reuse staging storage across commands. Callbacks run only after the entire
 /// delta validates, preserving atomic failure and first-update ordering.
+#[cfg(test)]
 pub(super) fn apply_repeated_into<M: DeltaMessage + Clone>(
     payloads: &[prost::bytes::Bytes], baseline: &mut Vec<M>,
+    updates: &mut Vec<(usize, M)>, on_update: impl FnMut(usize, &M),
+) -> Option<bool> {
+    apply_repeated_iter(payloads.iter().map(AsRef::as_ref), baseline, updates, on_update)
+}
+
+pub(super) fn apply_repeated_iter<'a, M: DeltaMessage + Clone>(
+    payloads: impl IntoIterator<Item = &'a [u8]>, baseline: &mut Vec<M>,
     updates: &mut Vec<(usize, M)>, mut on_update: impl FnMut(usize, &M),
 ) -> Option<bool> {
     updates.clear();
     let mut count = baseline.len();
     let mut declared_count = None;
     for payload in payloads {
-        let mut bytes = payload.as_ref();
+        let mut bytes = payload;
         if !bytes.is_empty() {
             let mut after_marker = bytes;
             let marker = read_delta_varint(&mut after_marker)?;
@@ -213,8 +307,44 @@ mod tests {
     }
 
     fn reference_command(bytes: &[u8]) -> Option<DeltaCsgoUserCmdPb> {
-        let sanitized = sanitize_codegen_delta_message(bytes, DeltaMessageSchema::CsgoUserCmd)?;
-        DeltaCsgoUserCmdPb::decode(sanitized.as_slice()).ok()
+        let expected = sanitize_codegen_delta_message(bytes, DeltaMessageSchema::CsgoUserCmd)
+            .and_then(|sanitized| DeltaCsgoUserCmdPb::decode(sanitized.as_slice()).ok());
+        let mut payloads = BorrowedPayloads::default();
+        let actual = decode_borrowed_command(bytes, &mut payloads).map(|mut command| {
+            command.input_history_delta = payloads.history.iter()
+                .map(|&(start, len)| prost::bytes::Bytes::copy_from_slice(&bytes[start..start + len])).collect();
+            if let Some(base) = command.base.as_mut() {
+                base.subtick_moves_delta = payloads.subticks.iter()
+                    .map(|&(start, len)| prost::bytes::Bytes::copy_from_slice(&bytes[start..start + len])).collect();
+            }
+            command
+        });
+        // Encoded comparison checks float bit patterns and field presence too.
+        assert_eq!(actual.as_ref().map(Message::encode_to_vec), expected.as_ref().map(Message::encode_to_vec));
+        expected
+    }
+
+    #[test]
+    fn borrowed_repeated_payloads_match_legacy_resets_duplicates_and_truncation() {
+        let mut base = DeltaBaseUserCmdPb { client_tick: Some(42), ..Default::default() }.encode_to_vec();
+        field(18, &[7], &mut base);
+        field(18, &[15, 2, 0], &mut base);
+        reset(18, &mut base);
+        let mut command = Vec::new();
+        field(1, &base, &mut command);
+        field(2, &[7], &mut command);
+        reset(1, &mut command);
+        field(2, &[15, 2, 0], &mut command);
+        reset(2, &mut command);
+        reference_command(&command).unwrap();
+        for end in 0..command.len() { reference_command(&command[..end]); }
+        for index in 0..command.len() {
+            for byte in [0, 7, 0x80, 0xff] {
+                let mut corrupt = command.clone();
+                corrupt[index] = byte;
+                reference_command(&corrupt);
+            }
+        }
     }
 
     #[test]
@@ -514,7 +644,7 @@ mod tests {
                 serial: 0,
                 props: AHashMap::default(),
                 entity_type: EntityType::Normal,
-                cosmetic_revision: 0,
+                cosmetic_revision: 0, usercmd_scalar_cache: None,
             });
             parser.parse_usercmd = true;
             let full_command = csgoproto::CsgoUserCmdPb {
@@ -540,8 +670,8 @@ mod tests {
                 }],
             };
             parser.parse_user_cmd(&network_message.encode_to_vec()).unwrap();
-            assert_eq!(parser.usercmd_input_history_baselines[&0], full_command.input_history);
-            assert_eq!(parser.usercmd_subtick_baselines[&0], full_command.base.unwrap().subtick_moves);
+            assert_eq!(parser.usercmd_players[&0].history, full_command.input_history);
+            assert_eq!(parser.usercmd_players[&0].subticks, full_command.base.unwrap().subtick_moves);
             let full_props = &parser.entities[1].as_ref().unwrap().props;
             let Variant::InputHistory(history) = &full_props[&USERCMD_INPUT_HISTORY_BASEID] else {
                 panic!("expected full-command history")
@@ -576,8 +706,8 @@ mod tests {
             );
             let expected_tick = if invalid_history { 7 } else { 17 };
             let expected_button = if invalid_history { 4 } else { 2 };
-            assert_eq!(parser.usercmd_input_history_baselines[&0][0].render_tick_count, Some(expected_tick));
-            assert_eq!(parser.usercmd_subtick_baselines[&0][0].button, Some(expected_button));
+            assert_eq!(parser.usercmd_players[&0].history[0].render_tick_count, Some(expected_tick));
+            assert_eq!(parser.usercmd_players[&0].subticks[0].button, Some(expected_button));
             let props = &parser.entities[1].as_ref().unwrap().props;
             let Variant::InputHistory(history) = &props[&USERCMD_INPUT_HISTORY_BASEID] else {
                 panic!("expected complete history")
@@ -598,8 +728,8 @@ mod tests {
                 }],
             };
             parser.parse_user_cmd(&no_base_message.encode_to_vec()).unwrap();
-            assert!(parser.usercmd_input_history_baselines[&0].is_empty());
-            assert!(parser.usercmd_subtick_baselines[&0].is_empty());
+            assert!(parser.usercmd_players[&0].history.is_empty());
+            assert!(parser.usercmd_players[&0].subticks.is_empty());
             assert_eq!(parser.entities[1].as_ref().unwrap().props, previous_props);
         }
     }

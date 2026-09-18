@@ -54,6 +54,16 @@ preserve atomic malformed-delta failure, reuse unchanged history projections and
 initialize history slices directly in their final shared allocation. Scalar
 equality uses raw float bits, preserving NaNs and signed zero.
 
+Usercmd envelopes and opaque repeated delta payloads now borrow packet bytes;
+reusable command descriptors and history buffers avoid per-command copies.
+Per-player baselines and cached history projections share one state entry, and
+unchanged synthetic scalars bypass property-map writes. The bit reader advances
+one lookahead buffer per small read and synchronizes its byte reader on refill.
+Differential tests retain protobuf validation, reset and malformed-input behavior.
+Entity decoding caches resolved schema fields per class with bounded storage;
+dynamic field-path indices remain part of the key and large paths use the
+original resolver.
+
 The opt-in `DecodePlan::project_entity_state` retains output/filter properties,
 all parser dependencies and dynamic namespaces while consuming unused wire
 values without storing them. A restricted direct-row plan omits unrelated links;

@@ -45,7 +45,18 @@ impl<'a> Bitreader<'a> {
     pub fn consume(&mut self, n: u32) {
         self.bits_left -= n;
         self.bits >>= n;
-        self.reader.consume(n);
+    }
+    // Small reads advance only the local lookahead. Synchronize bitter when
+    // refilling or reading bytes instead of shifting both buffers per field.
+    #[inline(always)]
+    fn sync_reader(&mut self) {
+        let consumed = self.reader.lookahead_bits() - self.bits_left;
+        if consumed == 64 {
+            self.reader.consume(32);
+            self.reader.consume(32);
+        } else {
+            self.reader.consume(consumed);
+        }
     }
     #[inline(always)]
     pub fn peek(&mut self, n: u32) -> u64 {
@@ -53,6 +64,11 @@ impl<'a> Bitreader<'a> {
     }
     #[inline(always)]
     pub fn refill(&mut self) {
+        self.sync_reader();
+        self.refill_from_reader();
+    }
+    #[inline(always)]
+    fn refill_from_reader(&mut self) {
         self.reader.refill_lookahead();
         let refilled = self.reader.lookahead_bits();
         if refilled > 0 {
@@ -62,7 +78,7 @@ impl<'a> Bitreader<'a> {
     }
     #[inline(always)]
     pub fn bits_remaining(&mut self) -> Option<usize> {
-        Some(self.reader.bits_remaining()?)
+        self.reader.bits_remaining()?.checked_sub((self.reader.lookahead_bits() - self.bits_left) as usize)
     }
     #[inline(always)]
     pub fn read_nbits(&mut self, n: u32) -> Result<u32, DemoParserError> {
@@ -139,9 +155,10 @@ impl<'a> Bitreader<'a> {
     }
     pub fn read_n_bytes(&mut self, n: usize) -> Result<Vec<u8>, DemoParserError> {
         let mut bytes = vec![0_u8; n];
+        self.sync_reader();
         match self.reader.read_bytes(&mut bytes) {
             true => {
-                self.refill();
+                self.refill_from_reader();
                 Ok(bytes)
             }
             false => Err(DemoParserError::FailedByteRead(
@@ -158,9 +175,10 @@ impl<'a> Bitreader<'a> {
         if buf.len() < n {
             return Err(DemoParserError::MalformedMessage);
         }
+        self.sync_reader();
         match self.reader.read_bytes(&mut buf[..n]) {
             true => {
-                self.refill();
+                self.refill_from_reader();
                 Ok(())
             }
             false => Err(DemoParserError::FailedByteRead(
@@ -176,7 +194,7 @@ impl<'a> Bitreader<'a> {
     /// Advance over a byte payload without copying it, preserving the current
     /// bit alignment. Packet message payloads do not necessarily start on bytes.
     pub fn skip_n_bytes(&mut self, n: usize) -> Result<(), DemoParserError> {
-        let remaining = self.reader.bits_remaining().ok_or(DemoParserError::MalformedMessage)?;
+        let remaining = self.bits_remaining().ok_or(DemoParserError::MalformedMessage)?;
         if n > remaining / 8 {
             return Err(DemoParserError::FailedByteRead(format!(
                 "Failed to read message/command. bytes left in stream: {}, requested bytes: {}",
@@ -192,7 +210,7 @@ impl<'a> Bitreader<'a> {
         let byte_offset = consumed / 8 + n;
         let bit_offset = (consumed % 8) as u32;
         self.reader = LittleEndianReader::new(&self.source[byte_offset..]);
-        self.refill();
+        self.refill_from_reader();
         if bit_offset != 0 {
             self.consume(bit_offset);
         }
@@ -292,6 +310,42 @@ mod byte_skip_tests {
     use super::*;
 
     #[test]
+    fn mixed_reads_match_bitwise_reference_across_refills() {
+        let bytes: Vec<u8> = (0..4096).map(|n| ((n * 73 + n / 17) & 255) as u8).collect();
+        let expected = |start: usize, count: usize| -> u32 {
+            (0..count).fold(0, |value, offset| {
+                value | (((bytes[(start + offset) / 8] >> ((start + offset) % 8)) & 1) as u32) << offset
+            })
+        };
+        for prefix in 0..8 {
+            let mut reader = Bitreader::new(&bytes);
+            assert_eq!(reader.read_nbits(prefix as u32).unwrap(), expected(0, prefix));
+            let mut position = prefix;
+            for step in 0..160 {
+                for width in [1, 0, 7, 32, 2, 17, 5] {
+                    assert_eq!(reader.read_nbits(width).unwrap(), expected(position, width as usize));
+                    position += width as usize;
+                }
+                let len = step % 9;
+                if step % 3 == 0 {
+                    reader.skip_n_bytes(len).unwrap();
+                } else {
+                    let reference: Vec<u8> = (0..len).map(|offset| expected(position + offset * 8, 8) as u8).collect();
+                    if step % 3 == 1 {
+                        assert_eq!(reader.read_n_bytes(len).unwrap(), reference);
+                    } else {
+                        let mut output = vec![0; len];
+                        reader.read_n_bytes_mut(len, &mut output).unwrap();
+                        assert_eq!(output, reference);
+                    }
+                }
+                position += len * 8;
+                assert_eq!(reader.bits_remaining(), Some(bytes.len() * 8 - position));
+            }
+        }
+    }
+
+    #[test]
     fn skipping_matches_reading_at_every_bit_alignment() {
         let bytes: Vec<u8> = (0..=255).collect();
         for prefix_bits in 0..16 {
@@ -337,6 +391,23 @@ mod byte_skip_tests {
             assert!(matches!(skipped.skip_n_bytes(requested), Err(DemoParserError::FailedByteRead(_))));
             assert_eq!(skipped.bits_remaining(), original.bits_remaining());
             assert_eq!(skipped.read_nbits(15), original.read_nbits(15));
+        }
+    }
+
+    #[test]
+    fn failed_byte_reads_leave_deferred_bits_readable() {
+        for use_buffer in [false, true] {
+            let bytes = [0xc5, 0xa4];
+            let mut reader = Bitreader::new(&bytes);
+            assert_eq!(reader.read_nbits(3).unwrap(), 5);
+            let result = if use_buffer {
+                reader.read_n_bytes_mut(2, &mut [0; 2])
+            } else {
+                reader.read_n_bytes(2).map(|_| ())
+            };
+            assert!(matches!(result, Err(DemoParserError::FailedByteRead(_))));
+            assert_eq!(reader.bits_remaining(), Some(13));
+            assert_eq!(reader.read_nbits(13).unwrap(), 0xa4c5 >> 3);
         }
     }
 }

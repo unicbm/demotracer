@@ -1348,173 +1348,178 @@ mod demoparser_impl {
         drop(inventory_weapon_cosmetics_column);
         drop(weapon_stickers_column);
 
-        let mut rows = row_materialization
-            .into_par_iter()
-            .map(
-                |(
-                    idx,
-                    round,
+        let materialize_row =
+            |(idx, round, tick, steam_id, inventory_weapon_cosmetics, active_weapon_stickers)| {
+                let team_num = get_u32(columns.team_num, idx).unwrap_or_default() as u8;
+                let explicit_flags = get_u32(columns.entity_flags, idx);
+                let (subtick_moves, subtick_button_truncated) =
+                    get_subtick_moves(subtick_moves_column, idx).unwrap_or_default();
+                let buttonstate1 = get_u64(buttonstate1_column, idx);
+                let buttonstate2 = get_u64(buttonstate2_column, idx);
+                let buttonstate3 = get_u64(buttonstate3_column, idx);
+                ParsedPlayerTick {
+                    source_state: read_source_state(&source_columns, idx),
                     tick,
                     steam_id,
+                    name: get_string(columns.name, idx).unwrap_or_default(),
+                    team_num,
+                    is_alive: get_bool(columns.is_alive, idx).unwrap_or(false),
+                    round,
+                    round_in_progress: get_bool(columns.round_in_progress, idx).unwrap_or(false),
+                    is_freeze_period: get_bool(columns.is_freeze_period, idx).unwrap_or(false),
+                    game_time: get_f32(columns.game_time, idx),
+                    origin: [
+                        get_f32(columns.origin_x, idx).unwrap_or_default(),
+                        get_f32(columns.origin_y, idx).unwrap_or_default(),
+                        get_f32(columns.origin_z, idx).unwrap_or_default(),
+                    ],
+                    // FinishMove publishes -CMoveData.velocity.z as
+                    // m_flFallVelocity. Origin deltas also contain duck hull
+                    // shifts, stairs and landing corrections, not just motion.
+                    // Only horizontal velocity is derived below.
+                    velocity: [
+                        0.0,
+                        0.0,
+                        -get_f32(fall_velocity_column, idx).unwrap_or(f32::NAN),
+                    ],
+                    pitch: get_f32(columns.pitch, idx).unwrap_or_default(),
+                    yaw: get_f32(columns.yaw, idx).unwrap_or_default(),
+                    buttons: get_u64(columns.buttons, idx).unwrap_or_default(),
+                    buttonstates_present: buttonstate1.is_some()
+                        || buttonstate2.is_some()
+                        || buttonstate3.is_some(),
+                    buttonstate1: buttonstate1.unwrap_or_default(),
+                    buttonstate2: buttonstate2.unwrap_or_default(),
+                    buttonstate3: buttonstate3.unwrap_or_default(),
+                    usercmd_forward_move: get_f32(usercmd_forward_move_column, idx),
+                    usercmd_left_move: get_f32(usercmd_left_move_column, idx),
+                    usercmd_up_move: get_f32(usercmd_up_move_column, idx),
+                    usercmd_pitch: get_f32(usercmd_pitch_column, idx),
+                    usercmd_yaw: get_f32(usercmd_yaw_column, idx),
+                    usercmd_roll: get_f32(usercmd_roll_column, idx),
+                    usercmd_mouse_dx: get_i32(usercmd_mouse_dx_column, idx),
+                    usercmd_mouse_dy: get_i32(usercmd_mouse_dy_column, idx),
+                    usercmd_weapon_select: get_i32(usercmd_weapon_select_column, idx),
+                    usercmd_left_hand_desired: get_bool(usercmd_left_hand_desired_column, idx),
+                    usercmd_client_tick: get_i32(usercmd_client_tick_column, idx),
+                    usercmd_attack1_start_history_index: get_i32(
+                        usercmd_attack1_start_history_index_column,
+                        idx,
+                    )
+                    .unwrap_or(-1),
+                    usercmd_attack2_start_history_index: get_i32(
+                        usercmd_attack2_start_history_index_column,
+                        idx,
+                    )
+                    .unwrap_or(-1),
+                    input_history: get_input_history(input_history_column, idx).unwrap_or_default(),
+                    item_def_idx: get_i32(columns.item_def_idx, idx)
+                        .or_else(|| get_u32(columns.item_def_idx, idx).map(|v| v as i32))
+                        .unwrap_or(-1),
+                    inventory_as_ids: get_u32_vec(columns.inventory_as_ids, idx)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|v| v as i32)
+                        .collect(),
                     inventory_weapon_cosmetics,
-                    active_weapon_stickers,
-                )| {
-                    let team_num = get_u32(columns.team_num, idx).unwrap_or_default() as u8;
-                    let explicit_flags = get_u32(columns.entity_flags, idx);
-                    let (subtick_moves, subtick_button_truncated) =
-                        get_subtick_moves(subtick_moves_column, idx).unwrap_or_default();
-                    let buttonstate1 = get_u64(buttonstate1_column, idx);
-                    let buttonstate2 = get_u64(buttonstate2_column, idx);
-                    let buttonstate3 = get_u64(buttonstate3_column, idx);
-                    ParsedPlayerTick {
-                        source_state: read_source_state(&source_columns, idx),
-                        tick,
-                        steam_id,
-                        name: get_string(columns.name, idx).unwrap_or_default(),
-                        team_num,
-                        is_alive: get_bool(columns.is_alive, idx).unwrap_or(false),
-                        round,
-                        round_in_progress: get_bool(columns.round_in_progress, idx)
-                            .unwrap_or(false),
-                        is_freeze_period: get_bool(columns.is_freeze_period, idx).unwrap_or(false),
-                        game_time: get_f32(columns.game_time, idx),
-                        origin: [
-                            get_f32(columns.origin_x, idx).unwrap_or_default(),
-                            get_f32(columns.origin_y, idx).unwrap_or_default(),
-                            get_f32(columns.origin_z, idx).unwrap_or_default(),
-                        ],
-                        // FinishMove publishes -CMoveData.velocity.z as
-                        // m_flFallVelocity. Origin deltas also contain duck hull
-                        // shifts, stairs and landing corrections, not just motion.
-                        // Only horizontal velocity is derived below.
-                        velocity: [
-                            0.0,
-                            0.0,
-                            -get_f32(fall_velocity_column, idx).unwrap_or(f32::NAN),
-                        ],
-                        pitch: get_f32(columns.pitch, idx).unwrap_or_default(),
-                        yaw: get_f32(columns.yaw, idx).unwrap_or_default(),
-                        buttons: get_u64(columns.buttons, idx).unwrap_or_default(),
-                        buttonstates_present: buttonstate1.is_some()
-                            || buttonstate2.is_some()
-                            || buttonstate3.is_some(),
-                        buttonstate1: buttonstate1.unwrap_or_default(),
-                        buttonstate2: buttonstate2.unwrap_or_default(),
-                        buttonstate3: buttonstate3.unwrap_or_default(),
-                        usercmd_forward_move: get_f32(usercmd_forward_move_column, idx),
-                        usercmd_left_move: get_f32(usercmd_left_move_column, idx),
-                        usercmd_up_move: get_f32(usercmd_up_move_column, idx),
-                        usercmd_pitch: get_f32(usercmd_pitch_column, idx),
-                        usercmd_yaw: get_f32(usercmd_yaw_column, idx),
-                        usercmd_roll: get_f32(usercmd_roll_column, idx),
-                        usercmd_mouse_dx: get_i32(usercmd_mouse_dx_column, idx),
-                        usercmd_mouse_dy: get_i32(usercmd_mouse_dy_column, idx),
-                        usercmd_weapon_select: get_i32(usercmd_weapon_select_column, idx),
-                        usercmd_left_hand_desired: get_bool(usercmd_left_hand_desired_column, idx),
-                        usercmd_client_tick: get_i32(usercmd_client_tick_column, idx),
-                        usercmd_attack1_start_history_index: get_i32(
-                            usercmd_attack1_start_history_index_column,
-                            idx,
-                        )
-                        .unwrap_or(-1),
-                        usercmd_attack2_start_history_index: get_i32(
-                            usercmd_attack2_start_history_index_column,
-                            idx,
-                        )
-                        .unwrap_or(-1),
-                        input_history: get_input_history(input_history_column, idx)
-                            .unwrap_or_default(),
-                        item_def_idx: get_i32(columns.item_def_idx, idx)
-                            .or_else(|| get_u32(columns.item_def_idx, idx).map(|v| v as i32))
-                            .unwrap_or(-1),
-                        inventory_as_ids: get_u32_vec(columns.inventory_as_ids, idx)
-                            .unwrap_or_default()
-                            .into_iter()
-                            .map(|v| v as i32)
-                            .collect(),
-                        inventory_weapon_cosmetics,
-                        music_kit_id: get_u32(columns.music_kit_id, idx)
-                            .filter(|value| *value != 0),
-                        scoreboard_flair: get_scoreboard_flair(columns.scoreboard_flair, idx),
-                        agent_item_def_index: get_u32(columns.agent_item_def_index, idx)
-                            .filter(|value| *value != 0),
-                        agent_skin: get_string(columns.agent_skin, idx)
-                            .and_then(normalize_agent_skin),
-                        active_weapon_paint_kit: get_u32(columns.active_weapon_paint_kit, idx),
-                        active_weapon_paint_seed: get_u32(columns.active_weapon_paint_seed, idx),
-                        active_weapon_paint_wear: get_f32(columns.active_weapon_paint_wear, idx),
-                        active_weapon_original_owner_steam_id: get_string(
-                            columns.active_weapon_original_owner,
-                            idx,
-                        )
-                        .and_then(|value| value.parse::<u64>().ok())
+                    music_kit_id: get_u32(columns.music_kit_id, idx).filter(|value| *value != 0),
+                    scoreboard_flair: get_scoreboard_flair(columns.scoreboard_flair, idx),
+                    agent_item_def_index: get_u32(columns.agent_item_def_index, idx)
                         .filter(|value| *value != 0),
-                        active_weapon_item_account_id: get_u32(
-                            columns.active_weapon_item_account_id,
-                            idx,
-                        )
-                        .filter(|value| *value != 0),
-                        active_weapon_item_id: combine_item_id(
-                            get_u32(columns.active_weapon_item_id_high, idx),
-                            get_u32(columns.active_weapon_item_id_low, idx),
-                        )
-                        .filter(|value| *value != 0),
-                        active_weapon_custom_name: get_string(
-                            columns.active_weapon_custom_name,
-                            idx,
-                        )
+                    agent_skin: get_string(columns.agent_skin, idx).and_then(normalize_agent_skin),
+                    active_weapon_paint_kit: get_u32(columns.active_weapon_paint_kit, idx),
+                    active_weapon_paint_seed: get_u32(columns.active_weapon_paint_seed, idx),
+                    active_weapon_paint_wear: get_f32(columns.active_weapon_paint_wear, idx),
+                    active_weapon_original_owner_steam_id: get_string(
+                        columns.active_weapon_original_owner,
+                        idx,
+                    )
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .filter(|value| *value != 0),
+                    active_weapon_item_account_id: get_u32(
+                        columns.active_weapon_item_account_id,
+                        idx,
+                    )
+                    .filter(|value| *value != 0),
+                    active_weapon_item_id: combine_item_id(
+                        get_u32(columns.active_weapon_item_id_high, idx),
+                        get_u32(columns.active_weapon_item_id_low, idx),
+                    )
+                    .filter(|value| *value != 0),
+                    active_weapon_custom_name: get_string(columns.active_weapon_custom_name, idx)
                         .and_then(normalize_custom_name),
-                        active_weapon_stickers,
-                        glove_item_def_index: get_i32(columns.glove_item_def_index, idx),
-                        glove_paint_kit: get_u32(columns.glove_paint_kit, idx),
-                        glove_paint_seed: get_u32(columns.glove_paint_seed, idx),
-                        glove_paint_wear: get_f32(columns.glove_paint_wear, idx),
-                        crosshair_code: get_string(columns.crosshair_code, idx)
-                            .and_then(normalize_crosshair_code),
-                        viewmodel_left_handed: get_bool(columns.viewmodel_left_handed, idx),
-                        viewmodel_fov: get_f32(columns.viewmodel_fov, idx),
-                        viewmodel_offset_x: get_f32(columns.viewmodel_offset_x, idx),
-                        viewmodel_offset_y: get_f32(columns.viewmodel_offset_y, idx),
-                        viewmodel_offset_z: get_f32(columns.viewmodel_offset_z, idx),
-                        scoreboard_score: get_i32(columns.scoreboard_score, idx),
-                        scoreboard_mvps: get_u32(columns.scoreboard_mvps, idx),
-                        scoreboard_kills: get_u32(columns.scoreboard_kills, idx),
-                        scoreboard_deaths: get_u32(columns.scoreboard_deaths, idx),
-                        scoreboard_assists: get_u32(columns.scoreboard_assists, idx),
-                        scoreboard_headshot_kills: get_u32(columns.scoreboard_headshot_kills, idx),
-                        scoreboard_damage: get_u32(scoreboard_damage_column, idx),
-                        armor_value: get_u32(columns.armor_value, idx).unwrap_or_default(),
-                        has_helmet: get_bool(columns.has_helmet, idx).unwrap_or(false),
-                        has_defuser: get_bool(columns.has_defuser, idx).unwrap_or(false),
-                        round_start_equip_value: get_u32(columns.round_start_equip_value, idx)
-                            .unwrap_or_default(),
-                        equipment_value_total: get_u32(columns.equipment_value_total, idx)
-                            .unwrap_or_default(),
-                        money_saved_total: get_u32(columns.money_saved_total, idx)
-                            .unwrap_or_default(),
-                        cash_spent_this_round: get_u32(columns.cash_spent_this_round, idx)
-                            .unwrap_or_default(),
-                        account_balance: get_u32(columns.account_balance, idx),
-                        entity_flags: explicit_flags.unwrap_or(u32::MAX),
-                        move_type: get_u32(columns.move_type, idx).unwrap_or(255) as u8,
-                        duck_amount: get_f32(columns.duck_amount, idx),
-                        duck_speed: get_f32(columns.duck_speed, idx),
-                        ladder_normal: get_vec3(columns.ladder_normal, idx),
-                        ducked: get_bool(ducked_column, idx),
-                        ducking: get_bool(ducking_column, idx),
-                        desires_duck: get_bool(columns.desires_duck, idx),
-                        subtick_moves,
-                        subtick_button_truncated,
-                        player_user_id: get_i32(columns.player_user_id, idx),
-                        player_entity_id: get_i32(columns.player_entity_id, idx),
-                        player_color: get_string(columns.player_color, idx),
-                        team_rounds_total: get_u32(columns.team_rounds_total, idx),
-                        team_name: get_string(columns.team_name, idx),
-                        team_clan_name: get_string(columns.team_clan_name, idx),
-                    }
-                },
-            )
+                    active_weapon_stickers,
+                    glove_item_def_index: get_i32(columns.glove_item_def_index, idx),
+                    glove_paint_kit: get_u32(columns.glove_paint_kit, idx),
+                    glove_paint_seed: get_u32(columns.glove_paint_seed, idx),
+                    glove_paint_wear: get_f32(columns.glove_paint_wear, idx),
+                    crosshair_code: get_string(columns.crosshair_code, idx)
+                        .and_then(normalize_crosshair_code),
+                    viewmodel_left_handed: get_bool(columns.viewmodel_left_handed, idx),
+                    viewmodel_fov: get_f32(columns.viewmodel_fov, idx),
+                    viewmodel_offset_x: get_f32(columns.viewmodel_offset_x, idx),
+                    viewmodel_offset_y: get_f32(columns.viewmodel_offset_y, idx),
+                    viewmodel_offset_z: get_f32(columns.viewmodel_offset_z, idx),
+                    scoreboard_score: get_i32(columns.scoreboard_score, idx),
+                    scoreboard_mvps: get_u32(columns.scoreboard_mvps, idx),
+                    scoreboard_kills: get_u32(columns.scoreboard_kills, idx),
+                    scoreboard_deaths: get_u32(columns.scoreboard_deaths, idx),
+                    scoreboard_assists: get_u32(columns.scoreboard_assists, idx),
+                    scoreboard_headshot_kills: get_u32(columns.scoreboard_headshot_kills, idx),
+                    scoreboard_damage: get_u32(scoreboard_damage_column, idx),
+                    armor_value: get_u32(columns.armor_value, idx).unwrap_or_default(),
+                    has_helmet: get_bool(columns.has_helmet, idx).unwrap_or(false),
+                    has_defuser: get_bool(columns.has_defuser, idx).unwrap_or(false),
+                    round_start_equip_value: get_u32(columns.round_start_equip_value, idx)
+                        .unwrap_or_default(),
+                    equipment_value_total: get_u32(columns.equipment_value_total, idx)
+                        .unwrap_or_default(),
+                    money_saved_total: get_u32(columns.money_saved_total, idx).unwrap_or_default(),
+                    cash_spent_this_round: get_u32(columns.cash_spent_this_round, idx)
+                        .unwrap_or_default(),
+                    account_balance: get_u32(columns.account_balance, idx),
+                    entity_flags: explicit_flags.unwrap_or(u32::MAX),
+                    move_type: get_u32(columns.move_type, idx).unwrap_or(255) as u8,
+                    duck_amount: get_f32(columns.duck_amount, idx),
+                    duck_speed: get_f32(columns.duck_speed, idx),
+                    ladder_normal: get_vec3(columns.ladder_normal, idx),
+                    ducked: get_bool(ducked_column, idx),
+                    ducking: get_bool(ducking_column, idx),
+                    desires_duck: get_bool(columns.desires_duck, idx),
+                    subtick_moves,
+                    subtick_button_truncated,
+                    player_user_id: get_i32(columns.player_user_id, idx),
+                    player_entity_id: get_i32(columns.player_entity_id, idx),
+                    player_color: get_string(columns.player_color, idx),
+                    team_rounds_total: get_u32(columns.team_rounds_total, idx),
+                    team_name: get_string(columns.team_name, idx),
+                    team_clan_name: get_string(columns.team_clan_name, idx),
+                }
+            };
+        // Plan the few interpolated rows from lightweight keys before allocating
+        // the large output table. Materialize only their endpoints twice.
+        let row_keys = row_materialization
+            .iter()
+            .map(|(_, round, tick, steam_id, _, _)| (*round, *tick, *steam_id))
             .collect::<Vec<_>>();
+        let additions = plan_short_global_tick_gaps(&row_keys, |index| {
+            materialize_row(row_materialization[index].clone())
+        });
+        let mut rows = if additions.is_empty() {
+            row_materialization
+                .into_par_iter()
+                .map(materialize_row)
+                .collect::<Vec<_>>()
+        } else {
+            merge_player_row_inputs(row_materialization, &row_keys, additions)
+                .into_par_iter()
+                .map(|input| match input {
+                    PlayerRowInput::Original(input) => materialize_row(input),
+                    PlayerRowInput::Repaired(row) => *row,
+                })
+                .collect::<Vec<_>>()
+        };
+        drop(row_keys);
 
         drop(materialization_timer);
         let _remaining_timer = ProfileTimer::new("converter.remaining");
@@ -1541,8 +1546,7 @@ mod demoparser_impl {
                 drop(parsed_inventory_cache);
             },
             || {
-                let _timer = ProfileTimer::new("converter.gaps_and_velocity");
-                repair_short_global_tick_gaps(&mut rows);
+                let _timer = ProfileTimer::new("converter.velocity");
                 derive_observed_horizontal_velocities(&mut rows, tick_rate);
             },
         );
@@ -2371,15 +2375,18 @@ mod demoparser_impl {
     /// Per-player holes, lifecycle changes, and longer gaps remain untouched so
     /// replay synthesis can still fail closed instead of inventing an unsafe
     /// trajectory.
-    fn repair_short_global_tick_gaps(rows: &mut Vec<ParsedPlayerTick>) -> usize {
-        if rows.len() < 2 {
-            return 0;
+    fn plan_short_global_tick_gaps(
+        keys: &[(u32, i32, u64)],
+        row_at: impl Fn(usize) -> ParsedPlayerTick,
+    ) -> Vec<ParsedPlayerTick> {
+        if keys.len() < 2 {
+            return Vec::new();
         }
 
         let mut global_ticks = Vec::new();
-        for row in rows.iter() {
-            if global_ticks.last() != Some(&row.tick) {
-                global_ticks.push(row.tick);
+        for &(_, tick, _) in keys {
+            if global_ticks.last() != Some(&tick) {
+                global_ticks.push(tick);
             }
         }
         global_ticks.sort_unstable();
@@ -2394,7 +2401,7 @@ mod demoparser_impl {
             })
             .collect::<Vec<_>>();
         if missing_tick_ranges.is_empty() {
-            return 0;
+            return Vec::new();
         }
 
         // Only endpoints of repairable gaps can contribute interpolation
@@ -2405,11 +2412,11 @@ mod demoparser_impl {
             .collect::<BTreeSet<_>>();
         let mut row_index = BTreeMap::new();
         let mut ambiguous = BTreeSet::new();
-        for (index, row) in rows.iter().enumerate() {
-            if row.steam_id == 0 || !boundary_ticks.contains(&row.tick) {
+        for (index, &(_, tick, steam_id)) in keys.iter().enumerate() {
+            if steam_id == 0 || !boundary_ticks.contains(&tick) {
                 continue;
             }
-            let key = (row.tick, row.steam_id);
+            let key = (tick, steam_id);
             if row_index.insert(key, index).is_some() {
                 ambiguous.insert(key);
             }
@@ -2428,41 +2435,60 @@ mod demoparser_impl {
                 let Some(&after_index) = row_index.get(&after_key) else {
                     continue;
                 };
-                let before = &rows[before_index];
-                let after = &rows[after_index];
-                if !stable_across_missing_tick(before, after) {
+                let before = row_at(before_index);
+                let after = row_at(after_index);
+                if !stable_across_missing_tick(&before, &after) {
                     continue;
                 }
                 for missing_tick in before_tick + 1..after_tick {
-                    additions.push(interpolate_missing_tick(before, after, missing_tick));
+                    additions.push(interpolate_missing_tick(&before, &after, missing_tick));
                 }
             }
         }
 
+        additions
+    }
+
+    enum PlayerRowInput<T> {
+        Original(T),
+        Repaired(Box<ParsedPlayerTick>),
+    }
+
+    // Merge compact materialization inputs, not multi-gigabyte player rows.
+    // Original inputs must already be stably sorted by (round, tick, SteamID).
+    fn merge_player_row_inputs<T>(
+        inputs: Vec<T>,
+        keys: &[(u32, i32, u64)],
+        mut additions: Vec<ParsedPlayerTick>,
+    ) -> Vec<PlayerRowInput<T>> {
+        additions.sort_by_key(|row| (row.round, row.tick, row.steam_id));
+        let mut merged = Vec::with_capacity(inputs.len() + additions.len());
+        let mut existing = inputs.into_iter().zip(keys).peekable();
+        for addition in additions {
+            let key = (addition.round, addition.tick, addition.steam_id);
+            while existing
+                .peek()
+                .is_some_and(|(_, original_key)| **original_key <= key)
+            {
+                merged.push(PlayerRowInput::Original(existing.next().unwrap().0));
+            }
+            merged.push(PlayerRowInput::Repaired(Box::new(addition)));
+        }
+        merged.extend(existing.map(|(input, _)| PlayerRowInput::Original(input)));
+        merged
+    }
+
+    #[cfg(test)]
+    fn repair_short_global_tick_gaps(rows: &mut Vec<ParsedPlayerTick>) -> usize {
+        let keys = rows
+            .iter()
+            .map(|row| (row.round, row.tick, row.steam_id))
+            .collect::<Vec<_>>();
+        let additions = plan_short_global_tick_gaps(&keys, |index| rows[index].clone());
         let repaired = additions.len();
         if repaired > 0 {
-            let key = |row: &ParsedPlayerTick| (row.round, row.tick, row.steam_id);
-            if rows.windows(2).all(|pair| key(&pair[0]) <= key(&pair[1])) {
-                // The production rows are already ordered. Move them once and
-                // merge the few repaired rows, keeping the stable tie order.
-                additions.sort_by_key(key);
-                let mut merged = Vec::with_capacity(rows.len() + repaired);
-                let mut existing = std::mem::take(rows).into_iter().peekable();
-                for addition in additions {
-                    while existing
-                        .peek()
-                        .is_some_and(|row| key(row) <= key(&addition))
-                    {
-                        merged.push(existing.next().unwrap());
-                    }
-                    merged.push(addition);
-                }
-                merged.extend(existing);
-                *rows = merged;
-            } else {
-                rows.extend(additions);
-                rows.sort_by_key(key);
-            }
+            rows.extend(additions);
+            rows.sort_by_key(|row| (row.round, row.tick, row.steam_id));
         }
         repaired
     }
@@ -3521,6 +3547,7 @@ mod demoparser_impl {
                 entity_id: 8,
                 serial: 1,
                 cosmetic_revision: 1,
+                usercmd_scalar_cache: None,
                 entity_type: EntityType::Normal,
                 props: AHashMap::from_iter([
                     (101, Variant::U32(16)),
@@ -3550,6 +3577,7 @@ mod demoparser_impl {
                 entity_id: 7,
                 serial: 1,
                 cosmetic_revision: 1,
+                usercmd_scalar_cache: None,
                 entity_type: EntityType::Normal,
                 props: AHashMap::from_iter([
                     (103, Variant::U32(0)),
@@ -3797,6 +3825,40 @@ mod demoparser_impl {
                 "damage_total",
                 &u64_column(&[Some(42)])
             ));
+        }
+
+        #[test]
+        fn planned_gap_rows_match_post_materialization_repair() {
+            // Multiple players, multiple gaps and owned fields exercise both
+            // the lightweight merge and the materialized endpoint copies.
+            let mut original = vec![];
+            for tick in [10, 12, 16, 17] {
+                for steam_id in [70, 90] {
+                    let mut row = gap_row(steam_id, tick, tick as f32);
+                    row.name = format!("player-{steam_id}");
+                    row.inventory_as_ids = vec![7, 9];
+                    original.push(row);
+                }
+            }
+            let mut expected = original.clone();
+            let repaired = repair_short_global_tick_gaps(&mut expected);
+            assert_eq!(repaired, 8);
+            let keys = original
+                .iter()
+                .map(|row| (row.round, row.tick, row.steam_id))
+                .collect::<Vec<_>>();
+            let additions = plan_short_global_tick_gaps(&keys, |index| original[index].clone());
+            let actual = merge_player_row_inputs((0..original.len()).collect(), &keys, additions)
+                .into_iter()
+                .map(|input| match input {
+                    PlayerRowInput::Original(index) => original[index].clone(),
+                    PlayerRowInput::Repaired(row) => *row,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                serde_json::to_value(actual).unwrap(),
+                serde_json::to_value(expected).unwrap()
+            );
         }
 
         #[test]

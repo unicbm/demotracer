@@ -41,6 +41,7 @@ pub struct SecondPassParser<'a> {
     pub qf_mapper: &'a QfMapper,
     pub prop_controller: &'a PropController,
     pub cls_by_id: &'a Vec<Class>,
+    pub(crate) entity_field_cache: Vec<AHashMap<u64, super::entities::ResolvedEntityField<'a>>>,
     pub stringtable_players: BTreeMap<i32, UserInfo>,
     pub net_tick: u32,
     pub tick_interval: Option<f32>,
@@ -100,14 +101,22 @@ pub struct SecondPassParser<'a> {
     pub order_by_steamid: bool,
     pub last_tick: i32,
     pub parse_usercmd: bool,
-    pub usercmd_input_history_baselines: AHashMap<i32, Vec<CsgoInputHistoryEntryPb>>,
-    pub usercmd_subtick_baselines: AHashMap<i32, Vec<CSubtickMoveStep>>,
+    pub(crate) usercmd_command_scratch: Vec<super::parser::usercmd_wire::CommandRange>,
+    pub(crate) usercmd_delta_payload_scratch: super::parser::usercmd_delta::BorrowedPayloads,
+    pub(crate) usercmd_full_history_scratch: Vec<CsgoInputHistoryEntryPb>,
+    pub(crate) usercmd_players: AHashMap<i32, UserCmdPlayerState>,
     pub(crate) usercmd_history_scratch: Vec<(usize, CsgoInputHistoryEntryPb)>,
     pub(crate) usercmd_subtick_scratch: Vec<(usize, CSubtickMoveStep)>,
-    pub(crate) usercmd_history_cache: AHashMap<i32, Arc<[super::variants::InputHistory]>>,
     pub(crate) empty_usercmd_subticks: Arc<[super::variants::UserCmdSubtickMove]>,
     pub list_props: bool,
     pub decode_plan: DecodePlan,
+}
+
+#[derive(Default)]
+pub(crate) struct UserCmdPlayerState {
+    pub history: Vec<CsgoInputHistoryEntryPb>,
+    pub subticks: Vec<CSubtickMoveStep>,
+    pub history_output: Option<Arc<[super::variants::InputHistory]>>,
 }
 #[derive(Debug, Clone)]
 pub struct Teams {
@@ -259,11 +268,12 @@ impl<'a> SecondPassParser<'a> {
             cancelled: first_pass_output.settings.cancelled,
             uniq_prop_names: AHashSet::default(),
             parse_usercmd: contains_usercmd_prop(&first_pass_output.settings.wanted_player_props),
-            usercmd_input_history_baselines: AHashMap::default(),
-            usercmd_subtick_baselines: AHashMap::default(),
+            usercmd_command_scratch: Vec::new(),
+            usercmd_delta_payload_scratch: Default::default(),
+            usercmd_full_history_scratch: Vec::new(),
+            usercmd_players: AHashMap::default(),
             usercmd_history_scratch: Vec::new(),
             usercmd_subtick_scratch: Vec::new(),
-            usercmd_history_cache: AHashMap::default(),
             empty_usercmd_subticks: Arc::default(),
             last_tick: 0,
             start_end_offset: start_end_offset,
@@ -296,6 +306,7 @@ impl<'a> SecondPassParser<'a> {
             ptr: offset,
             ge_list: first_pass_output.ge_list,
             cls_by_id: &first_pass_output.cls_by_id,
+            entity_field_cache: (0..first_pass_output.cls_by_id.len()).map(|_| AHashMap::default()).collect(),
             entities: vec![None; DEFAULT_MAX_ENTITY_ID],
             weapon_econ_snapshot_cache: RefCell::new(AHashMap::default()),
             weapon_sticker_cache: RefCell::new(AHashMap::default()),
