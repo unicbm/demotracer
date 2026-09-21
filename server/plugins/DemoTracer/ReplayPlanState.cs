@@ -51,9 +51,7 @@ internal sealed class ReplayPlanState
     public bool PlayoffPreparePending { get; set; }
     public bool PlayoffPendingCanLoad { get; set; }
     public int PlayoffPrepareToken { get; set; }
-    public int PlayoffPendingTRound { get; set; } = -1;
-    public int PlayoffPendingCtRound { get; set; } = -1;
-    public string PlayoffPendingReason { get; set; } = string.Empty;
+    public PlayoffSourceSelection? PlayoffPendingSources { get; set; }
     public string PlayoffPendingPrepareReason { get; set; } = string.Empty;
     public bool PlayoffPrepared { get; set; }
     public int PlayoffPreparedTRound { get; set; } = -1;
@@ -98,9 +96,7 @@ internal sealed class ReplayPlanState
         PlayoffPreparePending = false;
         PlayoffPendingCanLoad = false;
         PlayoffPrepareToken++;
-        PlayoffPendingTRound = -1;
-        PlayoffPendingCtRound = -1;
-        PlayoffPendingReason = string.Empty;
+        PlayoffPendingSources = null;
         PlayoffPendingPrepareReason = string.Empty;
         return wasPending;
     }

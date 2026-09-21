@@ -82,6 +82,30 @@ public sealed class ReplayLifecycleBoundaryTests
     }
 
     [Fact]
+    public void SpawnAssignmentWaitsForTheWholeRoundSpawnBatch()
+    {
+        var plugin = CreatePlugin();
+        var session = GetField<object>(plugin, "_session");
+        GetProperty<ReplaySlotRegistry>(session, "ReplaySlots").LoadAndClaim(4);
+        session.GetType().GetProperty("RoundSpawnsPending")!.SetValue(session, true);
+
+        // A bot's player_spawn can precede the human's respawn. Neither the
+        // event path nor a direct start may place bots or latch completion yet.
+        Invoke<object?>(plugin, "ScheduleInitialRoundSpawnAssignment");
+        object?[] arguments = [null];
+        Assert.False(Invoke<bool>(plugin, "TryAssignInitialRoundSpawns", arguments));
+        Assert.Contains("round_start", Assert.IsType<string>(arguments[0]));
+        Assert.False(GetProperty<bool>(session, "InitialSpawnAssignmentComplete"));
+        Assert.False(GetProperty<bool>(session, "InitialSpawnAssignmentScheduled"));
+
+        // Loading a new source during prestart invalidates placement state but
+        // must not reopen the gate while the engine is still respawning players.
+        Invoke<object?>(plugin, "InvalidateInitialSpawnAssignment");
+        Assert.True(GetProperty<bool>(session, "RoundSpawnsPending"));
+        Assert.False(Invoke<bool>(plugin, "TryAssignInitialRoundSpawns", arguments));
+    }
+
+    [Fact]
     public void StopCancelsQueuedStartsAndSpawnRetriesBeforeAnotherStartCanBeQueued()
     {
         var plugin = CreatePlugin();

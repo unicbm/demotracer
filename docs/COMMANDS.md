@@ -23,13 +23,21 @@ uses the same plan without restarting.
 | `dtr_go seq <manifest.json> [from_source_round]` | Replay the manifest from a source round onward. |
 | `dtr_go round <manifest.json> <source_round>` | Replay exactly one source round. |
 | `dtr_arm seq|round ...` | Arm the same plan without restarting the server round. |
-| `dtr_playoff <true|false>` | Continue an exhausted sequence with SteamID-matched full-buy openings. |
+| `dtr_playoff <true|false>` | Continue an exhausted sequence with SteamID-matched rifle/sniper openings. |
 | `dtr_retain <t-order-code> <ct-order-code>` | Set per-side bot retention priority for the next manifest plan; use `clear` to reset. |
 | `dtr_stop sequence|replay|slot <slot>|all` | Stop the selected scheduler or replay state. |
 
 `from_source_round` is a demo round index. Mixed playoff rounds do not replay
-scoreboard, chat, or voice metadata because they can draw the two sides from
-different source rounds.
+match statistics, chat, or voice metadata because they can draw the two sides
+from different source rounds. Recorded teammate colors remain available.
+
+Continuation, including overtime, selects the long-gun pool from recorded
+live-start inventories: every recorded player on the selected side must have a
+rifle or sniper rifle. Pistol rounds, SMG/shotgun/machine-gun or mixed pools, and
+missing loadout evidence are excluded. Cash balances, economy labels, and the
+balance-alignment setting do not affect selection. Both teams need at least two
+eligible source rounds on each side; both side assignments are prefetched so an
+overtime team swap can use the matching sources immediately.
 
 ## Desktop Preset
 
@@ -95,6 +103,12 @@ projectile to an effect point or forces detonation.
 Use identity `name` or `off` when the original demo player is also connected to
 the local server. `steam` is the normal mode. `avatar` additionally applies a
 valid manifest PNG when available.
+
+Replacement DTR bots with an unassigned TAB/HUD teammate color are repaired
+after spawning, independently of match-statistics synchronization. A recorded
+color is preferred; if it is occupied, the bot takes a free team color. Existing
+colors and human players are left unchanged. Missing recorded color evidence
+does not invent an override.
 
 ### Cosmetics
 

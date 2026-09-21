@@ -43,7 +43,7 @@ const enumField = (
 export const SERVER_CONFIG_GUIDE: readonly ServerConfigGuideField[] = [
   enumField("identity", "general", ["off", "name", "steam", "avatar", "full"], "steam", "回放选手身份同步级别。", "Replay player identity sync level."),
   booleanField("allow_partial", "general", true, "安全 Bot 数量不足时允许部分回放。", "Allow a partial replay when too few safe bot slots exist."),
-  booleanField("playoff", "general", false, "序列耗尽后继续调度同一 Manifest 的长枪局开局。", "Keep scheduling full-buy openings after a sequence is exhausted."),
+  booleanField("playoff", "general", false, "序列耗尽后按录像开局主武器选择长枪池续播，不依赖余额或经济同步。", "Continue from recorded rifle/sniper openings after a sequence is exhausted, independently of cash or balance alignment."),
   booleanField("chat_auto", "general", true, "按 Demo 时间线自动回放文字聊天。", "Replay demo chat on the recorded timeline."),
   booleanField("round_banner", "general", true, "回合开始时显示 Demo 回合提示。", "Show the demo round banner when playback starts."),
 

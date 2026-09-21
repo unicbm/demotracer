@@ -66,9 +66,9 @@ public sealed class ReplayPlanStateTests
             PlayoffPreparePending = true,
             PlayoffPendingCanLoad = true,
             PlayoffPrepareToken = 2,
-            PlayoffPendingTRound = 10,
-            PlayoffPendingCtRound = 11,
-            PlayoffPendingReason = "selected",
+            PlayoffPendingSources = new PlayoffSourceSelection(
+                new HashSet<ulong> { 101 }, new HashSet<ulong> { 201 },
+                new(10, 11, "same"), new(20, 21, "swapped")),
             PlayoffPendingPrepareReason = "round_start"
         };
 
@@ -76,9 +76,7 @@ public sealed class ReplayPlanStateTests
         Assert.False(state.PlayoffPreparePending);
         Assert.False(state.PlayoffPendingCanLoad);
         Assert.Equal(3, state.PlayoffPrepareToken);
-        Assert.Equal(-1, state.PlayoffPendingTRound);
-        Assert.Equal(-1, state.PlayoffPendingCtRound);
-        Assert.Empty(state.PlayoffPendingReason);
+        Assert.Null(state.PlayoffPendingSources);
         Assert.Empty(state.PlayoffPendingPrepareReason);
         Assert.False(state.ClearPlayoffPending());
     }

@@ -32,6 +32,7 @@ public sealed partial class DemoTracerPlugin
         // round_start. BotRandomizer must therefore receive the complete replay
         // plan here so its GiveNamedItem hook can build the correct item views.
         BeginReplayRoundWorkEpoch();
+        _session.RoundSpawnsPending = true;
         ResetDtrRoundBannerForRound();
         BeginBotHiderPresentationTransition();
         BeginBotRandomizerCosmeticLeaseTransition();
@@ -104,12 +105,18 @@ public sealed partial class DemoTracerPlugin
     [GameEventHandler]
     public HookResult OnRoundStart(EventRoundStart @event, GameEventInfo info)
     {
+        _session.RoundSpawnsPending = false;
         if ((_session.Plan.SequenceActive || _session.Plan.Armed || HasPlayoffSchedulingState()) && IsWarmupPeriod())
         {
             Server.PrintToConsole("[DTR ERR] 热身阶段无法进行回放");
             StopAllState("warmup_block");
             return HookResult.Continue;
         }
+
+        // player_spawn runs once per pawn, while surviving players can still
+        // expose their previous pawn/origin. Only round_start closes the whole
+        // spawn batch, before any replay bot vacates its native spawn position.
+        ScheduleInitialRoundSpawnAssignment();
 
         // Preparation after this event is too late for spawn-time cosmetic
         // construction. Only schedule playback for a plan accepted in
@@ -239,6 +246,9 @@ public sealed partial class DemoTracerPlugin
 
         if (IsHumanAvatarOverrideCandidate(player))
             ScheduleHumanTeamAvatarOverrideReconciliation();
+
+        if (_session.LoadedSlots.Count > 0)
+            ScheduleReplayPlayerColorReconciliation();
 
         return HookResult.Continue;
     }

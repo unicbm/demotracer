@@ -4,6 +4,9 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+using System.Reflection;
+using System.Runtime.CompilerServices;
+
 namespace DemoTracer.Tests;
 
 public sealed class DtrReplayPrefetchTests : IDisposable
@@ -61,6 +64,33 @@ public sealed class DtrReplayPrefetchTests : IDisposable
         Assert.True(prefetch.HasGeneration);
         prefetch.Cancel();
         Assert.False(prefetch.HasGeneration);
+    }
+
+    [Fact]
+    public void SwappedSidePrefetchCanBeConsumedAndBothOrientationsAreCancelled()
+    {
+        Directory.CreateDirectory(tempDirectory);
+        var path = Path.Combine(tempDirectory, "swapped.dtr");
+        File.WriteAllBytes(path, [1, 2, 3]);
+        var replay = new DtrReplayFile(11, [], [], ReplayHighFidelityMetadata.Empty, [], [], [], [], [], 64, 0);
+        var normal = new DtrReplayPrefetch(_ => replay);
+        var swapped = new DtrReplayPrefetch(_ => replay);
+        var plugin = (DemoTracerPlugin)RuntimeHelpers.GetUninitializedObject(typeof(DemoTracerPlugin));
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        typeof(DemoTracerPlugin).GetField("_dtrReplayPrefetch", flags)!.SetValue(plugin, normal);
+        typeof(DemoTracerPlugin).GetField("_playoffSwappedReplayPrefetch", flags)!.SetValue(plugin, swapped);
+
+        normal.Begin([]);
+        swapped.Begin([path]);
+        Assert.True(SpinWait.SpinUntil(swapped.AllPendingCompleted, TimeSpan.FromSeconds(5)));
+        object?[] args = [path, null];
+        var status = typeof(DemoTracerPlugin).GetMethod("TryTakePrefetchedReplay", flags)!.Invoke(plugin, args);
+        Assert.Equal(DtrReplayPrefetchTakeStatus.Success, Assert.IsType<DtrReplayPrefetchTakeStatus>(status));
+        Assert.Equal(64f, Assert.IsType<DtrReplayFile>(args[1]).TickRate);
+
+        typeof(DemoTracerPlugin).GetMethod("FinishReplayPrefetchRound", flags)!.Invoke(plugin, null);
+        Assert.False(normal.HasGeneration);
+        Assert.False(swapped.HasGeneration);
     }
 
     public void Dispose()

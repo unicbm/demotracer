@@ -12,6 +12,9 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin
 {
     private readonly DtrReplayPrefetch _dtrReplayPrefetch = new();
+    // Each orientation keeps the existing per-round decoded-memory budget.
+    // Neither speculative orientation may evict the other's usable replays.
+    private readonly DtrReplayPrefetch _playoffSwappedReplayPrefetch = new();
     private string _prefetchedManifestPath = string.Empty;
     private ReplayFileStamp _prefetchedManifestStamp;
     private ConversionManifest? _prefetchedManifest;
@@ -99,19 +102,22 @@ public sealed partial class DemoTracerPlugin
     private void PrefetchPlayoffRoundReplays(
         string manifestPath,
         ConversionManifest manifest,
-        int tRound,
-        int ctRound,
-        IReadOnlySet<ulong> tSteamIds,
-        IReadOnlySet<ulong> ctSteamIds)
+        PlayoffSourceSelection sources)
     {
         var resolvedManifestPath = ResolveReadableManifestPath(manifestPath);
         var manifestDir = Path.GetDirectoryName(resolvedManifestPath) ?? ".";
-        var paths = new List<string>(tSteamIds.Count + ctSteamIds.Count);
-        AddSide("t", tRound, tSteamIds);
-        AddSide("ct", ctRound, ctSteamIds);
-        _dtrReplayPrefetch.Begin(paths);
+        _dtrReplayPrefetch.Begin(PathsFor(sources.SameSides, sources.TRoster, sources.CtRoster));
+        _playoffSwappedReplayPrefetch.Begin(PathsFor(sources.SwappedSides, sources.CtRoster, sources.TRoster));
 
-        void AddSide(string side, int round, IReadOnlySet<ulong> steamIds)
+        List<string> PathsFor(PlayoffRoundSources rounds, IReadOnlySet<ulong> tRoster, IReadOnlySet<ulong> ctRoster)
+        {
+            var paths = new List<string>(tRoster.Count + ctRoster.Count);
+            AddSide(paths, "t", rounds.TRound, tRoster);
+            AddSide(paths, "ct", rounds.CtRound, ctRoster);
+            return paths;
+        }
+
+        void AddSide(List<string> paths, string side, int round, IReadOnlySet<ulong> steamIds)
         {
             if (round < 0 || steamIds.Count == 0)
                 return;
@@ -131,20 +137,28 @@ public sealed partial class DemoTracerPlugin
     private DtrReplayPrefetchTakeStatus TryTakePrefetchedReplay(
         string path,
         out DtrReplayFile replay)
-        => _dtrReplayPrefetch.TryTake(path, out replay);
+    {
+        var status = _dtrReplayPrefetch.TryTake(path, out replay);
+        return status == DtrReplayPrefetchTakeStatus.Missing
+            ? _playoffSwappedReplayPrefetch.TryTake(path, out replay)
+            : status;
+    }
 
     private bool ReplayPrefetchReady()
-        => _dtrReplayPrefetch.AllPendingCompleted();
+        => _dtrReplayPrefetch.AllPendingCompleted() && _playoffSwappedReplayPrefetch.AllPendingCompleted();
 
     private bool ReplayPrefetchActive()
         => _dtrReplayPrefetch.HasGeneration;
 
     private void FinishReplayPrefetchRound()
-        => _dtrReplayPrefetch.Cancel();
+    {
+        _dtrReplayPrefetch.Cancel();
+        _playoffSwappedReplayPrefetch.Cancel();
+    }
 
     private void CancelReplayPrefetch()
     {
-        _dtrReplayPrefetch.Cancel();
+        FinishReplayPrefetchRound();
         _prefetchedManifestPath = string.Empty;
         _prefetchedManifestStamp = default;
         _prefetchedManifest = null;

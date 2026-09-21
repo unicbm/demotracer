@@ -50,6 +50,7 @@ public sealed partial class DemoTracerPlugin
         public ReplayPlanState Plan { get; } = new();
 
         public bool SafeC4Aligned { get; set; }
+        public bool RoundSpawnsPending { get; set; }
         public int InitialSpawnAssignmentToken { get; set; }
         public bool InitialSpawnAssignmentComplete { get; set; }
         public bool InitialSpawnAssignmentScheduled { get; set; }

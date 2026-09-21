@@ -117,6 +117,7 @@ public sealed partial class DemoTracerPlugin
                 ReleaseReplaySlot(slot, "start_failed");
             }
         }
+        RepairMissingReplayPlayerColors();
         timing.Mark("slots");
         // A partial loop must not restart the round's media for a stopped or
         // handed-off speaker. An independent voice test also keeps its clock.
@@ -158,7 +159,8 @@ public sealed partial class DemoTracerPlugin
 
     private void ScheduleInitialRoundSpawnAssignment()
     {
-        if (_session.InitialSpawnAssignmentComplete ||
+        if (_session.RoundSpawnsPending ||
+            _session.InitialSpawnAssignmentComplete ||
             _session.InitialSpawnAssignmentScheduled ||
             _session.LoadedSlots.Count == 0)
         {
@@ -204,6 +206,12 @@ public sealed partial class DemoTracerPlugin
 
     private bool TryAssignInitialRoundSpawns(out string reason)
     {
+        if (_session.RoundSpawnsPending)
+        {
+            reason = "waiting for round_start to finish the player spawn batch";
+            return false;
+        }
+
         if (_session.InitialSpawnAssignmentComplete)
         {
             reason = string.Empty;

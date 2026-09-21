@@ -89,6 +89,7 @@ public sealed partial class DemoTracerPlugin
         }
 
         ApplyLoadedReplayScoreboards();
+        RepairMissingReplayPlayerColors();
         AlignSafeC4OwnerForLoadedReplays();
         timing.Mark("presentation_c4");
     }

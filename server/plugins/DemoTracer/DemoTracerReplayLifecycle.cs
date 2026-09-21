@@ -89,6 +89,7 @@ public sealed partial class DemoTracerPlugin
         _lifecycleResetInProgress = true;
         try
         {
+            _session.RoundSpawnsPending = false;
             CancelAllReplayDeferredWork();
             CancelReplayPrefetch();
             InvalidateInitialSpawnAssignment();
