@@ -104,7 +104,7 @@ public sealed partial class DemoTracerPlugin
         if (_session.Plan.PlayoffPrepared)
             return $"prepared:T=r{_session.Plan.PlayoffPreparedTRound},CT=r{_session.Plan.PlayoffPreparedCtRound}";
         if (_session.Plan.PlayoffPreparePending)
-            return $"decoding:T=r{_session.Plan.PlayoffPendingTRound},CT=r{_session.Plan.PlayoffPendingCtRound}";
+            return $"decoding:T=r{_session.Plan.PlayoffPendingSources?.SameSides.TRound},CT=r{_session.Plan.PlayoffPendingSources?.SameSides.CtRound} (both side assignments)";
         if (IsPlayoffPlanReady())
             return $"ready:extra_round={_session.Plan.PlayoffRoundIndex + 1}";
         if (_session.Plan.SequenceActive && _playoffEnabled)
@@ -176,10 +176,12 @@ public sealed partial class DemoTracerPlugin
 
         var hasTRoster = TryGetPlayoffRosterSteamIds(
             CsTeam.Terrorist,
+            switchingTeamsAtRoundReset,
             out var tSteamIds,
             out var tRosterError);
         var hasCtRoster = TryGetPlayoffRosterSteamIds(
             CsTeam.CounterTerrorist,
+            switchingTeamsAtRoundReset,
             out var ctSteamIds,
             out var ctRosterError);
         if (!hasTRoster || !hasCtRoster)
@@ -201,65 +203,47 @@ public sealed partial class DemoTracerPlugin
             _playoffEnabled = false;
             ResetPlayoffProgress();
             Server.PrintToConsole(
-                "[DTR WARN] playoff disabled: insufficient non-pistol full-buy coverage " +
+                "[DTR WARN] playoff disabled: insufficient non-pistol long-gun coverage " +
                 $"(required={MinimumPlayoffRoundsPerRosterSide} per roster/side; " +
                 $"first T={coverage.FirstRosterAsT}/CT={coverage.FirstRosterAsCt}, " +
                 $"second T={coverage.SecondRosterAsT}/CT={coverage.SecondRosterAsCt})");
             return false;
         }
 
-        var hasTRound = TryChoosePlayoffSourceRound(
-                manifest,
-                "t",
-                tSteamIds,
-                out var tRound,
-                out var tCandidateCount,
-                out var tChooseError);
-        var hasCtRound = TryChoosePlayoffSourceRound(
-                manifest,
-                "ct",
-                ctSteamIds,
-                out var ctRound,
-                out var ctCandidateCount,
-                out var ctChooseError);
-        if (!hasTRound || !hasCtRound)
+        if (!TryChoosePlayoffSources(manifest, tSteamIds, ctSteamIds, out var sameSides, out var chooseError) ||
+            !TryChoosePlayoffSources(manifest, ctSteamIds, tSteamIds, out var swappedSides, out chooseError))
         {
-            var chooseError = !string.IsNullOrWhiteSpace(tChooseError) ? tChooseError : ctChooseError;
             Server.PrintToConsole(
                 $"dtr: playoff skipped extra round {_session.Plan.PlayoffRoundIndex + 1}: {chooseError}");
             return false;
         }
 
-        PrefetchPlayoffRoundReplays(
-            manifestPath,
-            manifest,
-            tRound,
-            ctRound,
-            tSteamIds,
-            ctSteamIds);
+        // The next round's swap flag is not known at live prefetch time.
+        // Decode both orientations now; choose by retained roster identity at
+        // round_prestart, using the same upcoming-team rule as bot assignment.
+        var sources = new PlayoffSourceSelection(tSteamIds, ctSteamIds, sameSides, swappedSides);
+        PrefetchPlayoffRoundReplays(manifestPath, manifest, sources);
         _session.Plan.PlayoffPreparePending = true;
         _session.Plan.PlayoffPendingCanLoad = allowLoad;
-        _session.Plan.PlayoffPendingTRound = tRound;
-        _session.Plan.PlayoffPendingCtRound = ctRound;
-        _session.Plan.PlayoffPendingReason =
-            $"T=r{tRound} from {tCandidateCount} full-buy candidate(s), " +
-            $"CT=r{ctRound} from {ctCandidateCount} full-buy candidate(s)";
+        _session.Plan.PlayoffPendingSources = sources;
         _session.Plan.PlayoffPendingPrepareReason = prepareReason;
         _session.Plan.PlayoffPrepareToken++;
         Server.PrintToConsole(
             $"dtr: playoff extra round {_session.Plan.PlayoffRoundIndex + 1} selected on {prepareReason}; " +
-            $"{_session.Plan.PlayoffPendingReason}; decoding replay data off-thread");
+            $"same sides: {sameSides.Reason}; swapped sides: {swappedSides.Reason}; decoding replay data off-thread");
         return false;
     }
 
     private bool TryGetPlayoffRosterSteamIds(
         CsTeam team,
+        bool switchingTeamsAtRoundReset,
         out HashSet<ulong> steamIds,
         out string error)
     {
         steamIds = new HashSet<ulong>();
         error = string.Empty;
-        var targets = FindReplayTargets().Where(bot => bot.Team == team).ToList();
+        var targets = FindReplayTargets().Where(bot => ReplayTeamAssignmentPolicy.ResolveUpcomingTeam(
+            bot.Team, switchingTeamsAtRoundReset) == team).ToList();
         foreach (var bot in targets)
         {
             ulong steamId = 0;
@@ -282,6 +266,25 @@ public sealed partial class DemoTracerPlugin
         return true;
     }
 
+    private static bool TryChoosePlayoffSources(
+        ConversionManifest manifest,
+        IReadOnlySet<ulong> tSteamIds,
+        IReadOnlySet<ulong> ctSteamIds,
+        out PlayoffRoundSources sources,
+        out string error)
+    {
+        sources = default;
+        if (!TryChoosePlayoffSourceRound(manifest, "t", tSteamIds,
+                out var tRound, out var tCount, out error) ||
+            !TryChoosePlayoffSourceRound(manifest, "ct", ctSteamIds,
+                out var ctRound, out var ctCount, out error))
+            return false;
+
+        sources = new PlayoffRoundSources(tRound, ctRound,
+            $"T=r{tRound} from {tCount} long-gun candidate(s), CT=r{ctRound} from {ctCount} long-gun candidate(s)");
+        return true;
+    }
+
     private static bool TryChoosePlayoffSourceRound(
         ConversionManifest manifest,
         string side,
@@ -300,7 +303,7 @@ public sealed partial class DemoTracerPlugin
         candidateCount = candidates.Length;
         if (candidates.Length == 0)
         {
-            error = $"side={side} has no full-buy source round covering every retained SteamID";
+            error = $"side={side} has no long-gun source round covering every retained SteamID";
             return false;
         }
 
@@ -323,22 +326,20 @@ public sealed partial class DemoTracerPlugin
         string side,
         IReadOnlySet<ulong> steamIds)
     {
-        var replaySteamIdsByRound = manifest.Files
+        var replayPlayersByRound = manifest.Files
             .Where(file => file.Side.Equals(side, StringComparison.OrdinalIgnoreCase))
             .GroupBy(file => file.Round)
             .ToDictionary(
                 group => group.Key,
-                group => (IReadOnlyList<ulong>)group.Select(file => file.SteamId).ToArray());
+                group => (IReadOnlyList<PlayoffPlayerLoadout>)group.Select(file =>
+                    new PlayoffPlayerLoadout(file.SteamId, file.Loadout?.WeaponDefIndices)).ToArray());
         return PlayoffRoundSelectionPolicy.FindEligibleRounds(
             manifest.Rounds.Select(round => new PlayoffRoundCandidate(
                 round.Round,
                 round.PistolRound,
-                side.Equals("t", StringComparison.OrdinalIgnoreCase)
-                    ? round.TEconomy?.Class
-                    : round.CtEconomy?.Class,
-                replaySteamIdsByRound.TryGetValue(round.Round, out var replaySteamIds)
-                    ? replaySteamIds
-                    : Array.Empty<ulong>())),
+                replayPlayersByRound.TryGetValue(round.Round, out var replayPlayers)
+                    ? replayPlayers
+                    : Array.Empty<PlayoffPlayerLoadout>())),
             steamIds);
     }
 
@@ -349,9 +350,24 @@ public sealed partial class DemoTracerPlugin
         if (!ReplayPrefetchReady())
             return false;
 
-        var tRound = _session.Plan.PlayoffPendingTRound;
-        var ctRound = _session.Plan.PlayoffPendingCtRound;
-        var reason = _session.Plan.PlayoffPendingReason;
+        var pending = _session.Plan.PlayoffPendingSources;
+        if (!TryGetPlayoffRosterSteamIds(CsTeam.Terrorist, switchingTeamsAtRoundReset,
+                out var tSteamIds, out var rosterError) ||
+            !TryGetPlayoffRosterSteamIds(CsTeam.CounterTerrorist, switchingTeamsAtRoundReset,
+                out var ctSteamIds, out rosterError))
+        {
+            Server.PrintToConsole($"[DTR ERR] playoff upcoming roster unavailable: {rosterError}");
+            return false;
+        }
+        if (pending == null || !pending.TryResolve(tSteamIds, ctSteamIds, out var sources))
+        {
+            ClearPlayoffPendingPreparation(cancelDecode: true);
+            Server.PrintToConsole("[DTR WARN] playoff roster changed since prefetch; selecting new sources");
+            return PrepareNextPlayoffRound("roster changed", switchingTeamsAtRoundReset: switchingTeamsAtRoundReset);
+        }
+        var tRound = sources.TRound;
+        var ctRound = sources.CtRound;
+        var reason = sources.Reason;
         var prepareReason = _session.Plan.PlayoffPendingPrepareReason;
         ClearPlayoffPendingPreparation(cancelDecode: false);
         if (!IsPlayoffPlanReady())

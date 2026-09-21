@@ -298,7 +298,7 @@ public sealed partial class DemoTracerPlugin
                 file.ScoreboardFlair,
                 file.Cosmetics,
                 file.View,
-                includeScoreboardEvidence ? file.Scoreboard : null,
+                SelectReplayScoreboardEvidence(file.Scoreboard, includeScoreboardEvidence),
                 manifestTeam: ReplayTeamFromManifestSide(file.Side),
                 replayMetadata: replayMetadata,
                 retentionRank: assignment.RetentionRank);

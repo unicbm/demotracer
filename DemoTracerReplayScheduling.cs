@@ -19,6 +19,7 @@ internal enum ReplayRoundWorkKind
 {
     Start,
     PresentationSync,
+    PlayerColorReconcile,
     C4EarlyReconcile,
     C4LateReconcile,
     C4PostMutationReconcile,
@@ -153,6 +154,7 @@ public sealed partial class DemoTracerPlugin
 
     private void ScheduleRoundBoundarySpawnReconciliation()
     {
+        ScheduleReplayPlayerColorReconciliation();
         ScheduleReplayRoundNextFrame(
             ReplayRoundWorkKind.PresentationSync,
             () => SyncBotHiderPresentationLease(announce: false));
@@ -165,6 +167,11 @@ public sealed partial class DemoTracerPlugin
             0.20f,
             () => AlignSafeC4OwnerForLoadedReplays(forceReconcile: true));
     }
+
+    private void ScheduleReplayPlayerColorReconciliation()
+        => ScheduleReplayRoundNextFrame(
+            ReplayRoundWorkKind.PlayerColorReconcile,
+            RepairMissingReplayPlayerColors);
 
     private void ScheduleReplayRoundNextFrame(ReplayRoundWorkKind kind, Action callback)
     {

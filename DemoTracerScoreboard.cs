@@ -49,6 +49,61 @@ public sealed partial class DemoTracerPlugin
         return value.Value;
     }
 
+    private static ReplayPlayerScoreboard SelectReplayScoreboardEvidence(
+        ReplayPlayerScoreboard? scoreboard,
+        bool includeMatchStats)
+    {
+        var normalized = NormalizeReplayScoreboard(scoreboard);
+        // A mixed continuation round has no coherent match statistics, but
+        // the recorded player's teammate color is still identity evidence.
+        return includeMatchStats ? normalized : new ReplayPlayerScoreboard
+        {
+            PlayerColor = normalized.PlayerColor
+        };
+    }
+
+    private void RepairMissingReplayPlayerColors()
+    {
+        if (_session.RoundSpawnsPending || _session.LoadedSlots.Count == 0)
+            return;
+
+        var players = FindTeamPlayers();
+        var colors = new Dictionary<int, int>();
+        foreach (var player in players)
+        {
+            try
+            {
+                colors[player.Slot] = player.CompTeammateColor;
+            }
+            catch
+            {
+                // Missing schema/controller evidence is not an unassigned color.
+                return;
+            }
+        }
+
+        foreach (var player in players)
+        {
+            var slot = player.Slot;
+            if (!_session.ReplaySlots.IsOwned(slot) ||
+                !_session.LoadedReplays.TryGetValue(slot, out var replay) ||
+                !IsReplayTargetBot(player) ||
+                !ReplayTeamAssignmentPolicy.LiveTeamMatches(replay.ManifestTeam, player.Team))
+                continue;
+
+            var occupied = players.Where(teammate => teammate.Team == player.Team && teammate.Slot != slot)
+                .Select(teammate => colors[teammate.Slot]).ToHashSet();
+            var replacement = ReplayPlayerColorPolicy.ChooseMissingColor(
+                colors[slot], ReplayPlayerColorSchemaIndex(replay.Scoreboard.PlayerColor), occupied);
+            if (replacement is not { } color || !TryApplyReplayPlayerColor(player, color))
+                continue;
+
+            colors[slot] = color;
+            Server.PrintToConsole(
+                $"dtr: missing teammate color repaired slot={slot} team={player.Team} color={color} recorded={replay.Scoreboard.PlayerColor}");
+        }
+    }
+
     private static bool HasScoreboardEvidence(ReplayPlayerScoreboard scoreboard)
         => scoreboard.PlayerColor != null ||
            scoreboard.Score.HasValue ||
@@ -250,5 +305,24 @@ public sealed partial class DemoTracerPlugin
             // Scoreboard fields vary across game/CSS builds. The schema value
             // write is still useful when the engine owns publication.
         }
+    }
+}
+
+internal static class ReplayPlayerColorPolicy
+{
+    internal static int? ChooseMissingColor(int currentColor, int recordedColor, IReadOnlySet<int> occupied)
+    {
+        // Keep existing server colors, including humans'. Only a replay with
+        // positive color evidence may fill a vacancy left by a departing player.
+        if (currentColor is >= 0 and < 5 || recordedColor is < 0 or >= 5)
+            return null;
+        if (!occupied.Contains(recordedColor))
+            return recordedColor;
+        for (var color = 0; color < 5; color++)
+        {
+            if (!occupied.Contains(color))
+                return color;
+        }
+        return null;
     }
 }
