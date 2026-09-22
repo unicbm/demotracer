@@ -57,6 +57,14 @@ that already own policy and target selection:
 - `BotController_ClearUsercmdMovementIntent`
 - `BotController_SetLeftHandIntent`
 - `BotController_ClearLeftHandIntent`
+- `BotController_GetMovementIntentContractVersion`
+
+ABI minor 44 preserves movement input contract 1: positive forward is W and
+positive left is A in both usercmd and CMoveData. Consumers can query the version
+before acquiring control. Owned button transitions are encoded against the
+previous engine-held state, preserving single-tick jump presses and unrelated
+native input; button-only modifiers retain native movement axes. This includes
+the input-boundary fix previously validated by the Bot Improver consumer.
 
 The `LeftHandIntent` names are compatibility aliases. The native primitive
 writes short-lived button and analog movement intent into the usercmd/movedata

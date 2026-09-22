@@ -12,7 +12,8 @@
   },
   "bot_controller": {
     "abi_major": 21,
-    "min_abi_minor": 43,
+    "min_abi_minor": 44,
+    "movement_intent_version": 1,
     "public_control_api": 20,
     "replay_tick_bytes": 228,
     "replay_tick_event_tail": "reserved_zero",

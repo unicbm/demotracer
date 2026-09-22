@@ -86,6 +86,17 @@ int main()
 {
     TestAllButtonStateCodes();
     TestAdjacentHeldEncoding();
+    constexpr uint64_t jump = 1ULL << 1, attack = 1ULL;
+    const auto pressed = BotController::ButtonState::OverrideOwnedEdges(
+        {jump | attack, attack, attack | jump}, attack, jump);
+    Check((Decode(pressed.state1, pressed.state2, pressed.state3).pressed & jump) != 0,
+          "owned single-tick jump lost its press edge");
+    Check((pressed.state2 & attack) != 0 && (pressed.state3 & attack) != 0,
+          "movement intent changed unowned attack edges");
+    const auto released = BotController::ButtonState::OverrideOwnedEdges(
+        {attack, attack, jump | attack}, jump | attack, jump);
+    Check((Decode(released.state1, released.state2, released.state3).released & jump) != 0,
+          "owned jump lost its release edge");
     std::puts("BotController button-state tests passed");
     return 0;
 }

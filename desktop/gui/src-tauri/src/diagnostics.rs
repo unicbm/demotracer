@@ -239,6 +239,8 @@ pub(crate) struct BotControllerContractWire {
     pub(crate) abi_major: i32,
     pub(crate) min_abi_minor: i32,
     #[serde(default)]
+    pub(crate) movement_intent_version: i32,
+    #[serde(default)]
     pub(crate) public_control_api: i32,
     #[serde(default)]
     pub(crate) replay_tick_bytes: u32,
@@ -1535,6 +1537,8 @@ fn contract_errors(receipt: &InstallReceiptWire) -> Vec<String> {
         errors.push("BotController required capability contract differs".to_string());
     }
     if actual.bot_controller.public_control_api != expected.bot_controller.public_control_api
+        || actual.bot_controller.movement_intent_version
+            != expected.bot_controller.movement_intent_version
         || actual.bot_controller.replay_tick_bytes != expected.bot_controller.replay_tick_bytes
         || actual.bot_controller.replay_tick_event_tail
             != expected.bot_controller.replay_tick_event_tail
@@ -2749,7 +2753,7 @@ mod tests {
             "counterStrikeSharpVersion": "1.0.371.0",
             "botController": {
                 "abiMajor": 21,
-                "abiMinor": 43,
+                "abiMinor": 44,
                 "capabilities": "0x7ffff",
                 "buildId": "fixture",
                 "compatible": true,

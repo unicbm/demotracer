@@ -226,6 +226,7 @@ fn install_rejects_changed_event_semantics_even_when_tick_size_and_abi_match() {
         .unwrap();
     for key in [
         "public_control_api",
+        "movement_intent_version",
         "replay_tick_bytes",
         "replay_tick_event_tail",
         "managed_provider_version",

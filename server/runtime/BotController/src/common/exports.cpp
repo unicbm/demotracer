@@ -24,7 +24,7 @@
 namespace
 {
     constexpr int kBotControllerAbiMajor = 21;
-    constexpr int kBotControllerAbiMinor = 43;
+    constexpr int kBotControllerAbiMinor = 44;
     constexpr uint64_t kCapabilityAvatarPublication = 1ULL << 18;
     constexpr uint64_t kCapabilityReplaySlotState = 1ULL << 0;
     constexpr uint64_t kCapabilityStartReplayAt = 1ULL << 1;
@@ -335,6 +335,11 @@ extern "C" __declspec(dllexport) int BotController_GetReplayPawnEquipmentState(
     if (!out || size != static_cast<int>(sizeof(*out)))
         return -1;
     return BotController::ReplayPawnEquipment::GetState(slot, *out) ? 0 : -1;
+}
+
+extern "C" __declspec(dllexport) int BotController_GetMovementIntentContractVersion()
+{
+    return 1;
 }
 
 extern "C" __declspec(dllexport) int BotController_SetUsercmdMovementIntent(
