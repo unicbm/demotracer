@@ -34,6 +34,8 @@ namespace BotController
         // Short-lived, per-slot movement input lease. This is a low-level
         // usercmd/movedata primitive; policy lives in the caller. Only
         // movement button bits (WASD/duck/jump/walk) are applied.
+        // Contract 1: +forward is W and +left is A in both command and movedata.
+        // Owned button edges preserve single-tick presses and native unowned input.
         //
         // kUsercmdMovementIntentPreserveMoveAxes applies buttons without
         // replacing the engine-authored forward/left/up axes. This is useful

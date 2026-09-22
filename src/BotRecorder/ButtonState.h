@@ -34,4 +34,13 @@ namespace BotController::ButtonState
     {
         return {currentHeld, currentHeld ^ previousHeld, 0};
     }
+
+    constexpr Planes OverrideOwnedEdges(Planes states, std::uint64_t previousHeld,
+                                       std::uint64_t ownedMask) noexcept
+    {
+        const auto adjacent = EncodeAdjacentHeld(states.state1, previousHeld);
+        return {states.state1,
+                (states.state2 & ~ownedMask) | (adjacent.state2 & ownedMask),
+                states.state3 & ~ownedMask};
+    }
 } // namespace BotController::ButtonState

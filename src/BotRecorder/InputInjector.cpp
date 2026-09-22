@@ -7,6 +7,7 @@
 #include "playercommand.h"
 
 #include "InputInjector.h"
+#include "ButtonState.h"
 #include "LeftHandDesiredLatch.h"
 #include "UsercmdRequests.h"
 #include "BotController.h"
@@ -286,7 +287,8 @@ namespace BotController
                     leftMove -= kCommandMoveSpeed;
             }
 
-            sideMove = -leftMove;
+            // CMoveData and usercmd both use positive left (A).
+            sideMove = leftMove;
         }
 
         static void ApplyUsercmdMovementIntentToMoveData(
@@ -294,7 +296,8 @@ namespace BotController
             void *moveData,
             const UsercmdMovementIntentFrame &intent)
         {
-            if (services && tg::kServices_Buttons > 0)
+            if ((intent.flags & kUsercmdMovementIntentPreserveMoveAxes) != 0 &&
+                services && tg::kServices_Buttons > 0)
             {
                 uint64_t buttons = 0;
                 if (SafeRead(services, tg::kServices_Buttons, buttons))
@@ -322,6 +325,7 @@ namespace BotController
         }
 
         static void ApplyUsercmdMovementIntentToCommand(
+            void *services,
             PlayerCommand *pc,
             CBaseUserCmdPB *base,
             const UsercmdMovementIntentFrame &intent)
@@ -334,6 +338,28 @@ namespace BotController
             CInButtonStatePB *bp = base->mutable_buttons_pb();
             bp->set_buttonstate1(buttons0);
             pc->buttonstates.m_pButtonStates[0] = buttons0;
+
+            // Keep the previous engine-held state until this command consumes
+            // the edge; pre-writing it loses single-tick jump presses.
+            uint64_t previous = 0;
+            if (services && SafeRead(services, tg::kServices_Buttons, previous))
+            {
+                const auto mask = intent.buttonsSet | intent.buttonsClear;
+                auto &planes = pc->buttonstates.m_pButtonStates;
+                const auto edges = ButtonState::OverrideOwnedEdges(
+                    {buttons0, planes[1], planes[2]}, previous, mask);
+                planes[1] = edges.state2;
+                planes[2] = edges.state3;
+                bp->set_buttonstate2(planes[1]);
+                bp->set_buttonstate3(planes[2]);
+                for (int i = 0; i < base->subtick_moves_size(); ++i)
+                {
+                    auto *step = base->mutable_subtick_moves(i);
+                    step->set_button(step->button() & ~mask);
+                    if (step->button() == 0)
+                        step->set_pressed(false);
+                }
+            }
 
             if ((intent.flags & kUsercmdMovementIntentPreserveMoveAxes) != 0)
                 return;
@@ -938,7 +964,7 @@ namespace BotController
                 }
 
                 if (hasMovementIntent)
-                    ApplyUsercmdMovementIntentToCommand(pc, base, movementIntent);
+                    ApplyUsercmdMovementIntentToCommand(services, pc, base, movementIntent);
                 if (hasPublicControl && !hasMovementIntent)
                     ApplyPublicControl(slot, pc, base);
             }
