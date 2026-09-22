@@ -5,16 +5,12 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useEffect, useState } from "react";
-import type {
-  BatchConcurrency,
-  BatchJobPhase,
-  BatchRunState,
-} from "./components/BatchWorkspace";
+import type { BatchConcurrency } from "./batchSession";
 import type { ActivityLogRange } from "./components/LogsWorkspace";
 import {
   DEFAULT_PLAYBACK_ADVANCED_OPTIONS,
   type PlaybackPresetOptions,
-} from "./components/PlaybackCommandBuilder";
+} from "./playbackCommand";
 import {
   CUSTOM_CSS_PROFILES_STORAGE_KEY,
   CUSTOM_CSS_STORAGE_KEY,
@@ -36,8 +32,6 @@ import { storedLibraryPreferences, uniqueLibraryRoots } from "./library";
 import { readStoredLibrarySession } from "./librarySession";
 import type {
   AppLogEntry,
-  BatchItemPhase,
-  BatchLedger,
   CommandErrorDto,
   ConverterSettings,
   DemoLibraryEntry,
@@ -46,18 +40,12 @@ import type {
   LocalEnvironmentSettings,
   ManifestArchive,
   PlaybackUpdateStatus,
-  ProgressPhase,
-  ProgressState,
-  TaskEvent,
-  TaskPhase,
 } from "./types";
 import { detailedAnalysisErrorMessage } from "./errorPresentation";
 
 export const DEFAULT_SETTINGS: ConverterSettings = {
   side: "both",
   fullRound: false,
-  freezePrerollSeconds: 120,
-  subtickMode: "auto",
   maxRoundSeconds: 240,
   exportVoice: true,
   exportCosmetics: false,
@@ -94,17 +82,7 @@ export function activityLogSinceMs(range: ActivityLogRange): number | null {
 export const INITIAL_LIBRARY_SESSION = readStoredLibrarySession(localStorage);
 
 export interface StoredBatchPreferences {
-  folderPath: string;
   concurrency: BatchConcurrency;
-}
-
-export interface BatchItemProgress {
-  progress?: number | null;
-  stage?: string | null;
-  startedAtMs?: number;
-  finishedAtMs?: number;
-  written: number;
-  estimated: number;
 }
 
 export interface DemoPreflightProgress {
@@ -172,78 +150,12 @@ export function storedBatchPreferences(): StoredBatchPreferences {
     const saved = JSON.parse(localStorage.getItem(BATCH_PREFERENCES_STORAGE_KEY) ?? "null") as Partial<StoredBatchPreferences> | null;
     const concurrency = saved?.concurrency;
     return {
-      folderPath: typeof saved?.folderPath === "string" ? saved.folderPath : "",
       concurrency: concurrency === "auto" || concurrency === 2 || concurrency === 4 || concurrency === 6 || concurrency === 8
         ? concurrency
         : "auto",
     };
   } catch {
-    return { folderPath: "", concurrency: "auto" };
-  }
-}
-
-export function batchJobPhase(phase: BatchItemPhase): BatchJobPhase {
-  if (phase === "complete") return "completed";
-  if (phase === "voice") return "converting";
-  return phase;
-}
-
-export function batchRunState(status: BatchLedger["status"] | undefined, invocationActive: boolean): BatchRunState {
-  if (invocationActive) {
-    if (status === "stopping") return "stopping";
-    return "running";
-  }
-  if (status === "completed" || status === "completedWithErrors") return "complete";
-  if (status === "paused") return "interrupted";
-  if (status === "running" || status === "stopping" || status === "pending") return "interrupted";
-  return "idle";
-}
-
-export function nextBatchItemProgress(current: BatchItemProgress | undefined, task: TaskEvent): BatchItemProgress {
-  const next: BatchItemProgress = current ?? { written: 0, estimated: 0, startedAtMs: Date.now() };
-  if (task.kind === "phase") {
-    return { ...next, progress: task.phase === "complete" ? 1 : next.progress };
-  }
-  if (task.kind === "log") {
-    return task.level === "info" ? next : { ...next, stage: task.message };
-  }
-
-  const event = task.progress;
-  switch (event.event) {
-    case "analysisStarted":
-      return { ...next, progress: 0.02 };
-    case "analysisFinished":
-      return { ...next, progress: 0.05, written: 0, estimated: Math.max(1, event.estimatedFiles) };
-    case "roundStarted":
-      return { ...next, stage: `Round ${event.round}` };
-    case "roundSkipped":
-      return { ...next, stage: `Round ${event.round}: ${event.reason}` };
-    case "playerSkipped":
-      return { ...next, stage: `${event.steamId}: ${event.reason}` };
-    case "playerWritten": {
-      const written = next.written + 1;
-      return {
-        ...next,
-        written,
-        progress: Math.min(0.88, 0.05 + 0.83 * (written / Math.max(1, next.estimated))),
-        stage: event.playerName,
-      };
-    }
-    case "artifactsWritingStarted":
-      return { ...next, progress: 0.9, written: 0, estimated: Math.max(1, event.artifacts), stage: undefined };
-    case "artifactWritten": {
-      const written = next.written + 1;
-      return {
-        ...next,
-        written,
-        progress: Math.min(0.99, 0.9 + 0.09 * (written / Math.max(1, next.estimated))),
-        stage: fileName(event.path),
-      };
-    }
-    case "finished":
-      return { ...next, progress: 1, stage: fileName(event.manifestPath), finishedAtMs: Date.now() };
-    default:
-      return next;
+    return { concurrency: "auto" };
   }
 }
 
@@ -256,21 +168,6 @@ export const DEFAULT_PLAYBACK_PRESET: PlaybackPresetOptions = {
   playoff: false,
   ...DEFAULT_PLAYBACK_ADVANCED_OPTIONS,
 };
-
-export function emptyProgress(): ProgressState {
-  return {
-    phase: "preparing",
-    message: "",
-    written: 0,
-    estimated: 0,
-    unit: null,
-    completedRounds: 0,
-    selectedRounds: 0,
-    log: [],
-    warnings: [],
-    announcement: "",
-  };
-}
 
 export function storedLanguage(): Language {
   const saved = localStorage.getItem("demotracer.language");
@@ -302,12 +199,6 @@ export function storedSettings(): ConverterSettings {
       ...DEFAULT_SETTINGS,
       side: saved.side === "both" || saved.side === "t" || saved.side === "ct" ? saved.side : DEFAULT_SETTINGS.side,
       fullRound: typeof saved.fullRound === "boolean" ? saved.fullRound : DEFAULT_SETTINGS.fullRound,
-      // Freeze pre-roll is demo-derived now. Ignore the legacy user-selected
-      // value and keep only the internal safety ceiling.
-      freezePrerollSeconds: DEFAULT_SETTINGS.freezePrerollSeconds,
-      subtickMode: saved.subtickMode === "auto" || saved.subtickMode === "off"
-        ? saved.subtickMode
-        : DEFAULT_SETTINGS.subtickMode,
       maxRoundSeconds: typeof saved.maxRoundSeconds === "number"
         && Number.isFinite(saved.maxRoundSeconds)
         && saved.maxRoundSeconds >= 30
@@ -386,15 +277,8 @@ export function storedLocalEnvironment(): LocalEnvironmentSettings {
   }
 }
 
-export {
-  ENVIRONMENT_REPORT_STORAGE_KEY,
-  type StoredEnvironmentReport,
-  normalizedDiagnosticPath,
-  storedEnvironmentReport,
-} from "./environmentReport";
-
-export function fileName(path: string): string {
-  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+export function normalizedDiagnosticPath(path: string): string {
+  return path.trim().replace(/\\/g, "/").replace(/\/+$/, "").toLocaleLowerCase();
 }
 
 export function isDemoFilePath(path: string): boolean {
@@ -420,14 +304,6 @@ export function commonParentDirectory(paths: string[]): string {
   if (common.length === 0) return parents[0];
   const drive = common[0].endsWith(":");
   return `${common.join("\\")}${drive && common.length === 1 ? "\\" : ""}`;
-}
-
-export function formatBytes(value: number | string): string {
-  const bytes = Number(value);
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  const power = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${(bytes / 1024 ** power).toFixed(power === 0 ? 0 : 1)} ${units[power]}`;
 }
 
 export function parseCommandError(error: unknown): CommandErrorDto {
@@ -527,16 +403,6 @@ export function userFacingErrorTitle(error: { code: string }, language: Language
   }
   if (code.includes("not_found") || code.includes("missing")) return words.errorFileNotFoundTitle;
   return words.errorTitle;
-}
-
-export function phaseFromBackend(phase: TaskPhase, current: ProgressPhase): ProgressPhase {
-  if (phase === "decompressing") return "decompressing";
-  if (phase === "parsing") return "parsing";
-  if (phase === "analyzing") return "analyzing";
-  if (phase === "voice") return "voice";
-  if (phase === "validating") return "validating";
-  if (phase === "complete") return "complete";
-  return current;
 }
 
 export function consentIsValid(phrase: string): boolean {

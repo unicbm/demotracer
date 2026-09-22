@@ -133,9 +133,7 @@
 .batch-candidate:hover { background: var(--hover-row); }
 .batch-candidate.is-selected { background: var(--selected-row); }
 
-.batch-candidate.is-imported,
-.batch-candidate.is-duplicate,
-.batch-candidate.is-unsupported {
+.batch-candidate.is-imported {
   cursor: default;
   opacity: .58;
 }

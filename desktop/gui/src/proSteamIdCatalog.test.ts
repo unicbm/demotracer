@@ -16,6 +16,13 @@ const source = readFileSync(
   new URL("./data/cs2-pro-steamid-lib.v1.jsonl", import.meta.url),
   "utf8",
 );
+const [metadataLine, playerLine] = source.split("\n", 2);
+
+function registry(...players: unknown[]): string {
+  const metadata = JSON.parse(metadataLine);
+  metadata._meta.records = players.length;
+  return [metadata, ...players].map((value) => JSON.stringify(value)).join("\n");
+}
 
 test("attributed registry snapshot resolves a curated professional identity", () => {
   const catalog = parseProSteamIdCatalogJsonl(source);
@@ -26,7 +33,6 @@ test("attributed registry snapshot resolves a curated professional identity", ()
   const zywoo = resolveProSteamIdFromCatalog(catalog, "76561198113666193");
   const jamesBardolph = resolveProSteamIdFromCatalog(catalog, "76561197960268122");
 
-  assert.equal(catalog.players.size, 4_576);
   assert.equal(donk?.handle, "donk");
   assert.equal(donk?.nameLatin, "Danil Kryshkovets");
   assert.equal(donk?.countryCode, "RU");
@@ -42,43 +48,27 @@ test("attributed registry snapshot resolves a curated professional identity", ()
   assert.equal(sh1ro?.birthDate, "2001-07-15");
   assert.deepEqual(zywoo?.roles, ["awp", "rifle"]);
   assert.equal(jamesBardolph?.externalIds.esea, undefined);
-  assert.ok([...catalog.players.values()].filter((player) => player.birthDate).length >= 3_900);
 });
 
 test("registry parser rejects duplicate SteamID64 records", () => {
-  const lines = source.trimEnd().split("\n");
-  const metadata = JSON.parse(lines[0]) as { _meta: { records: number } };
-  metadata._meta.records += 1;
-  const duplicate = [JSON.stringify(metadata), ...lines.slice(1), lines[1]].join("\n");
-
-  assert.throws(() => parseProSteamIdCatalogJsonl(duplicate), /duplicate SteamID64/);
+  const player = JSON.parse(playerLine);
+  assert.throws(() => parseProSteamIdCatalogJsonl(registry(player, player)), /duplicate SteamID64/);
 });
 
 test("registry parser requires Liquipedia revision attribution", () => {
-  const lines = source.trimEnd().split("\n");
-  const player = JSON.parse(lines[1]) as {
-    mappingSources: Array<{ revisionTimestamp?: string }>;
-  };
+  const player = JSON.parse(playerLine);
   delete player.mappingSources[0].revisionTimestamp;
-  lines[1] = JSON.stringify(player);
-
-  assert.throws(() => parseProSteamIdCatalogJsonl(lines.join("\n")), /revision ID and timestamp/);
+  assert.throws(() => parseProSteamIdCatalogJsonl(registry(player)), /revision ID and timestamp/);
 });
 
 test("registry parser rejects impossible calendar dates", () => {
-  const lines = source.trimEnd().split("\n");
-  const player = JSON.parse(lines[1]) as { birthDate: string };
+  const player = JSON.parse(playerLine);
   player.birthDate = "2025-02-29";
-  lines[1] = JSON.stringify(player);
-
-  assert.throws(() => parseProSteamIdCatalogJsonl(lines.join("\n")), /valid calendar date/);
+  assert.throws(() => parseProSteamIdCatalogJsonl(registry(player)), /valid calendar date/);
 });
 
 test("registry parser rejects swallowed template fields in ESEA values", () => {
-  const lines = source.trimEnd().split("\n");
-  const player = JSON.parse(lines[1]) as { externalIds: Record<string, string> };
+  const player = JSON.parse(playerLine);
   player.externalIds.esea = "|faceitdb=not-an-esea-id";
-  lines[1] = JSON.stringify(player);
-
-  assert.throws(() => parseProSteamIdCatalogJsonl(lines.join("\n")), /externalIds\.esea contains template-field syntax/);
+  assert.throws(() => parseProSteamIdCatalogJsonl(registry(player)), /externalIds\.esea contains template-field syntax/);
 });

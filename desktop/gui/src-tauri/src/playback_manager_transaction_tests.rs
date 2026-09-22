@@ -251,10 +251,45 @@ fn inspection_and_installation_agree_on_matching_and_newer_package_contracts() {
     newer_native.compatibility.bot_controller.min_abi_minor += 1;
     let mut newer_reader = receipt.clone();
     newer_reader.compatibility.dtr_reader.max += 1;
+    let mut changed_hider = receipt.clone();
+    changed_hider.compatibility.bot_hider.native_abi += 1;
+    let mut changed_layout = receipt.clone();
+    changed_layout.compatibility.bot_hider.native_slot_bytes += 1;
+    let mut changed_codec = receipt.clone();
+    changed_codec.compatibility.dtr_section_writer_codec = "unsupported".to_string();
     let mut newer_css = receipt;
     newer_css.compatibility.counterstrikesharp.minimum_version = "99.0.0".to_string();
-    for changed in [newer_native, newer_reader, newer_css] {
+    for changed in [
+        newer_native,
+        newer_reader,
+        newer_css,
+        changed_hider,
+        changed_layout,
+        changed_codec,
+    ] {
         assert!(!receipt_contract_errors(&changed).is_empty());
         assert!(validate_receipt_contract(&changed, "1.2.2").is_err());
     }
+
+    // Older desktop builds discarded these declarations when saving receipts.
+    // Keep those receipts readable for backup/rollback, but do not certify them.
+    let mut legacy = serde_json::to_value(
+        extract_and_validate_package(&package_bytes("1.2.2"), &fixture.0.join("legacy"), "1.2.2")
+            .unwrap()
+            .receipt,
+    )
+    .unwrap();
+    for field in [
+        "native_abi",
+        "native_slot_bytes",
+        "native_provider_version",
+        "managed_provider_version",
+    ] {
+        legacy["compatibility"]["bot_hider"]
+            .as_object_mut()
+            .unwrap()
+            .remove(field);
+    }
+    let legacy: InstallReceiptWire = serde_json::from_value(legacy).unwrap();
+    assert!(validate_receipt_contract(&legacy, "1.2.2").is_err());
 }

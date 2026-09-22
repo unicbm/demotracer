@@ -4,11 +4,8 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import type { FriendlyFireSummary } from "./types";
-
 export type PlaybackToggleOverride = "on" | "off";
 export type PlaybackMatchOverride = "off" | "scoreboard";
-export type PlaybackFriendlyFireOverride = "auto" | "on" | "off";
 export type PlaybackHandoffMode = "off" | "death" | "contact" | "death_or_contact" | "death_contact_c4";
 
 export interface PlaybackPresetOptions {
@@ -28,7 +25,7 @@ export interface PlaybackPresetOptions {
   threat360: PlaybackToggleOverride;
   threat360Range: number;
   threat360Los: boolean;
-  friendlyFire: PlaybackFriendlyFireOverride;
+  friendlyFire: PlaybackToggleOverride;
 }
 
 type PlaybackAdvancedOptions = Omit<PlaybackPresetOptions, "weapons" | "cosmetics" | "steamIdentity" | "avatar" | "voice" | "playoff">;
@@ -56,19 +53,12 @@ export function buildPlaybackCommand(
   mask: number,
   options: PlaybackPresetOptions,
   retentionCommand?: string | null,
-  friendlyFire?: FriendlyFireSummary | null,
 ): string {
   const defaults = DEFAULT_PLAYBACK_ADVANCED_OPTIONS;
-  const commands: string[] = [];
-  const friendlyFireEnabled = options.friendlyFire === "on"
-    ? true
-    : options.friendlyFire === "off"
-      ? false
-      : friendlyFire?.enabled;
-  if (friendlyFireEnabled !== null && friendlyFireEnabled !== undefined) {
-    commands.push(`mp_friendlyfire ${friendlyFireEnabled ? 1 : 0}`);
-  }
-  commands.push(`dtr_preset ${formatPlaybackPreset(mask)}`);
+  const commands = [
+    `mp_friendlyfire ${options.friendlyFire === "on" ? 1 : 0}`,
+    `dtr_preset ${formatPlaybackPreset(mask)}`,
+  ];
   if (options.projectileAlignment !== defaults.projectileAlignment) commands.push(`dtr_align projectiles ${options.projectileAlignment}`);
   if (options.crosshairAlignment !== defaults.crosshairAlignment) commands.push(`dtr_align crosshair ${options.crosshairAlignment}`);
   if (options.leftHandAlignment !== defaults.leftHandAlignment) commands.push(`dtr_align left_hand ${options.leftHandAlignment}`);

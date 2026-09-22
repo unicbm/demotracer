@@ -9,8 +9,7 @@ use crate::target_lock::TargetFileLock;
 use cs2_demotracer::browser_analysis::BrowserDemoSource;
 use cs2_demotracer::demo_id::sha256_hex;
 use cs2_demotracer::demo_series::{group_demo_sources, resolve_demo_source};
-use cs2_demotracer::export::DEFAULT_FREEZE_PREROLL_SECONDS;
-use cs2_demotracer::model::{Side, SubtickMode};
+use cs2_demotracer::model::Side;
 use cs2_demotracer::quality::AnalysisOptions;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -164,12 +163,8 @@ pub(crate) struct BatchConversionSettingsDto {
     pub full_round: bool,
     #[serde(default)]
     pub side: Side,
-    #[serde(default)]
-    pub subtick_mode: SubtickMode,
     #[serde(default = "default_max_round_seconds")]
     pub max_round_seconds: f32,
-    #[serde(default = "default_freeze_preroll_seconds")]
-    pub freeze_preroll_seconds: f32,
     #[serde(default = "default_true")]
     pub export_voice: bool,
     #[serde(default)]
@@ -186,9 +181,7 @@ impl Default for BatchConversionSettingsDto {
             include_suspicious: false,
             full_round: false,
             side: Side::Both,
-            subtick_mode: SubtickMode::Auto,
             max_round_seconds: default_max_round_seconds(),
-            freeze_preroll_seconds: DEFAULT_FREEZE_PREROLL_SECONDS,
             export_voice: true,
             export_cosmetics: false,
             export_stickers: false,
@@ -466,10 +459,6 @@ fn default_true() -> bool {
 
 fn default_max_round_seconds() -> f32 {
     AnalysisOptions::default().max_round_seconds
-}
-
-fn default_freeze_preroll_seconds() -> f32 {
-    DEFAULT_FREEZE_PREROLL_SECONDS
 }
 
 #[tauri::command]
@@ -771,13 +760,6 @@ fn validate_batch_settings(settings: &BatchConversionSettingsDto) -> CommandResu
         return Err(CommandErrorDto::new(
             "invalid_max_round_seconds",
             "Maximum round duration must be between 30 and 1800 seconds.",
-        ));
-    }
-    let freeze = settings.freeze_preroll_seconds;
-    if !freeze.is_finite() || !(0.0..=120.0).contains(&freeze) {
-        return Err(CommandErrorDto::new(
-            "invalid_freeze_preroll",
-            "Freeze pre-roll must be between 0 and 120 seconds.",
         ));
     }
     Ok(())
@@ -1985,14 +1967,14 @@ mod tests {
     }
 
     #[test]
-    fn legacy_batch_settings_default_cosmetic_export_off() {
+    fn legacy_batch_settings_drop_retired_options_and_default_cosmetics_off() {
         let settings: BatchConversionSettingsDto = serde_json::from_value(serde_json::json!({
             "includeSuspicious": false,
             "fullRound": false,
             "side": "both",
-            "subtickMode": "auto",
+            "subtickMode": "off",
             "maxRoundSeconds": 240.0,
-            "freezePrerollSeconds": 10.0,
+            "freezePrerollSeconds": -1.0,
             "exportVoice": true
         }))
         .unwrap();
@@ -2000,6 +1982,10 @@ mod tests {
         assert!(!settings.export_cosmetics);
         assert!(!settings.export_stickers);
         assert!(!settings.export_charms);
+        validate_batch_settings(&settings).unwrap();
+        let saved = serde_json::to_value(&settings).unwrap();
+        assert!(saved.get("subtickMode").is_none());
+        assert!(saved.get("freezePrerollSeconds").is_none());
     }
 
     #[test]

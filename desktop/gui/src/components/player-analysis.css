@@ -525,8 +525,7 @@
 }
 
 .player-analysis-dossier .roster-profile-facts code,
-.player-analysis-dossier .player-config-command-list code,
-.player-analysis-dossier .roster-attachments code {
+.player-analysis-dossier .player-config-command-list code {
   font-size: var(--type-support);
   line-height: 19px;
 }

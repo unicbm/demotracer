@@ -6,8 +6,7 @@
 
 use crate::model::{
     Cs2Rec, Cs2RecHeader, ParsedPlayerTick, ParsedProjectile, ReplayInputHistoryEntry,
-    ReplayInputHistoryTick, ReplayProjectile, ReplayTick, SubtickMode, SubtickMove,
-    INPUT_HISTORY_FIELDS_ALL,
+    ReplayInputHistoryTick, ReplayProjectile, ReplayTick, SubtickMove, INPUT_HISTORY_FIELDS_ALL,
 };
 use crate::{Error, Result};
 use std::collections::BTreeMap;
@@ -18,7 +17,6 @@ const MAX_PLAYER_VELOCITY_COMPONENT: f32 = 4096.0;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SynthesisOptions {
-    pub subtick_mode: SubtickMode,
     pub play_start_tick_index: u32,
 }
 
@@ -195,11 +193,10 @@ fn synthesize_player_rec_with_projectile_iter<'a>(
         normalize_impossible_player_velocity(&mut pre);
         normalize_impossible_player_velocity(&mut post);
         command_frames.push(pre_row.command_frame());
-        let (input_history_tick, mut tick_input_history) =
-            sanitize_input_history(pre_row, options.subtick_mode);
+        let (input_history_tick, mut tick_input_history) = sanitize_input_history(pre_row);
         input_history_ticks.push(input_history_tick);
         input_history_entries.append(&mut tick_input_history);
-        let mut tick_subticks = sanitize_subticks(pre_row, options.subtick_mode, &mut stats);
+        let mut tick_subticks = sanitize_subticks(pre_row, &mut stats);
         let num_subtick = tick_subticks.len() as u32;
         subticks.append(&mut tick_subticks);
         ticks.push(ReplayTick {
@@ -240,12 +237,7 @@ fn synthesize_player_rec_with_projectile_iter<'a>(
 
 fn sanitize_input_history(
     row: &ParsedPlayerTick,
-    subtick_mode: SubtickMode,
 ) -> (ReplayInputHistoryTick, Vec<ReplayInputHistoryEntry>) {
-    if subtick_mode == SubtickMode::Off {
-        return (ReplayInputHistoryTick::default(), Vec::new());
-    }
-
     // Only attack start indexes consume replay input history. Keeping every
     // command entry would duplicate several high-entropy snapshots on nearly
     // every player tick even though no shot references them.
@@ -363,15 +355,7 @@ fn synthesize_projectiles<'a>(
     out
 }
 
-fn sanitize_subticks(
-    row: &ParsedPlayerTick,
-    subtick_mode: SubtickMode,
-    stats: &mut SynthesisStats,
-) -> Vec<SubtickMove> {
-    if subtick_mode == SubtickMode::Off {
-        return Vec::new();
-    }
-
+fn sanitize_subticks(row: &ParsedPlayerTick, stats: &mut SynthesisStats) -> Vec<SubtickMove> {
     stats.source_subticks += row.subtick_moves.len();
     stats.truncated_button_subticks += row.subtick_button_truncated;
     if !row.subtick_moves.is_empty() {
@@ -690,7 +674,7 @@ mod tests {
     }
 
     #[test]
-    fn synthesis_can_disable_subticks() {
+    fn synthesis_always_preserves_available_subticks() {
         let mut r0 = row(10, 7);
         r0.subtick_moves = vec![subtick(0.25, 1)];
         let r1 = row(11, 7);
@@ -700,16 +684,15 @@ mod tests {
             "de_nuke",
             64.0,
             1,
-            SynthesisOptions {
-                subtick_mode: SubtickMode::Off,
-                ..SynthesisOptions::default()
-            },
+            SynthesisOptions::default(),
         )
         .unwrap();
 
-        assert_eq!(rec.ticks[0].num_subtick, 0);
-        assert!(rec.subticks.is_empty());
-        assert_eq!(stats, SynthesisStats::default());
+        assert_eq!(rec.ticks[0].num_subtick, 1);
+        assert_eq!(rec.subticks.len(), 1);
+        assert_eq!(rec.subticks[0].when, 0.25);
+        assert_eq!(stats.source_subticks, 1);
+        assert_eq!(stats.written_subticks, 1);
     }
 
     #[test]

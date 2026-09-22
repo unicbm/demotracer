@@ -6,6 +6,7 @@
 
 import { useMemo } from "react";
 import type { TextDictionary } from "../i18n";
+import { formatBytes, formatDuration } from "../displayFormat";
 import {
   AlertIcon,
   ArrowIcon,
@@ -15,46 +16,28 @@ import {
   ReplayIcon,
 } from "../icons";
 import type { Language } from "../types";
+import { BATCH_SELECTION_LIMIT, type BatchConcurrency, type BatchJobPhase, type BatchRunState } from "../batchSession";
 import { SwitchControl } from "./SwitchControl";
 import "./batch-workspace.css";
 
-export const BATCH_SELECTION_LIMIT = 8;
-
-export type BatchConcurrency = "auto" | 2 | 4 | 6 | 8;
-export type BatchCandidateStatus = "ready" | "imported" | "duplicate" | "unsupported";
-export type BatchRunState = "idle" | "running" | "stopping" | "interrupted" | "complete";
-export type BatchJobPhase =
-  | "queued"
-  | "decompressing"
-  | "parsing"
-  | "analyzing"
-  | "selecting"
-  | "converting"
-  | "validating"
-  | "completed"
-  | "failed"
-  | "skipped";
+export type BatchCandidateStatus = "ready" | "imported";
 
 export interface BatchImportCandidate {
   id: string;
   path: string;
   fileName: string;
   sizeBytes: number | string;
-  compressed?: boolean;
-  modifiedAtMs?: number | null;
   status: BatchCandidateStatus;
   reason?: string | null;
 }
 
 export interface BatchJobItem {
   id: string;
-  candidateId: string;
   path: string;
   fileName: string;
   phase: BatchJobPhase;
   /** Normalized 0..1 progress. Omit when the active phase is indeterminate. */
   progress?: number | null;
-  stage?: string | null;
   elapsedSeconds?: number | null;
   error?: string | null;
   outputPath?: string | null;
@@ -64,7 +47,6 @@ export interface BatchRunSummary {
   total: number;
   completed: number;
   failed: number;
-  skipped: number;
 }
 
 export interface BatchWorkspaceProps {
@@ -121,13 +103,10 @@ interface BatchCopy {
   charms: string;
   sound: string;
   progress: string;
-  notStarted: string;
   completed: string;
   failed: string;
-  skipped: string;
   processed: string;
   phase: Record<BatchJobPhase, string>;
-  elapsed: string;
   retry: string;
   openArchive: string;
   start: string;
@@ -150,8 +129,6 @@ const COPY: Record<Language, BatchCopy> = {
     candidateStatus: {
       ready: "可转换",
       imported: "已入库",
-      duplicate: "重复",
-      unsupported: "不支持",
     },
     replace: "替换",
     settings: "设置",
@@ -161,24 +138,19 @@ const COPY: Record<Language, BatchCopy> = {
     charms: "挂件",
     sound: "完成提醒",
     progress: "进度",
-    notStarted: "尚未开始",
     completed: "已入库",
     failed: "失败",
-    skipped: "跳过",
     processed: "{done} / {total}",
     phase: {
       queued: "等待",
       decompressing: "解压",
       parsing: "解析",
       analyzing: "分析",
-      selecting: "准备",
       converting: "写入",
       validating: "验证",
       completed: "已入库",
       failed: "失败",
-      skipped: "已跳过",
     },
-    elapsed: "{time}",
     retry: "重试",
     openArchive: "打开",
     start: "导入 {count} 个 Demo",
@@ -199,8 +171,6 @@ const COPY: Record<Language, BatchCopy> = {
     candidateStatus: {
       ready: "Ready",
       imported: "Imported",
-      duplicate: "Duplicate",
-      unsupported: "Unsupported",
     },
     replace: "Replace",
     settings: "Settings",
@@ -210,24 +180,19 @@ const COPY: Record<Language, BatchCopy> = {
     charms: "Charms",
     sound: "Completion sound",
     progress: "Progress",
-    notStarted: "Not started",
     completed: "Imported",
     failed: "Failed",
-    skipped: "Skipped",
     processed: "{done} / {total}",
     phase: {
       queued: "Queued",
       decompressing: "Decompressing",
       parsing: "Parsing",
       analyzing: "Analyzing",
-      selecting: "Preparing",
       converting: "Writing",
       validating: "Validating",
       completed: "Imported",
       failed: "Failed",
-      skipped: "Skipped",
     },
-    elapsed: "{time}",
     retry: "Retry",
     openArchive: "Open",
     start: "Import {count} demos",
@@ -237,30 +202,6 @@ const COPY: Record<Language, BatchCopy> = {
     finish: "Finish and return to library",
   },
 };
-
-function formatBytes(value: number | string): string {
-  const bytes = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(bytes) || bytes < 0) return String(value);
-  if (bytes < 1024) return `${Math.round(bytes)} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let amount = bytes / 1024;
-  let unit = 0;
-  while (amount >= 1024 && unit < units.length - 1) {
-    amount /= 1024;
-    unit += 1;
-  }
-  return `${amount >= 10 ? amount.toFixed(1) : amount.toFixed(2)} ${units[unit]}`;
-}
-
-function formatDuration(seconds: number | null | undefined): string {
-  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return "—";
-  const total = Math.max(0, Math.round(seconds));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const remainder = total % 60;
-  if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
-  return `${minutes}:${String(remainder).padStart(2, "0")}`;
-}
 
 function clampProgress(value: number | null | undefined): number | null {
   if (value === null || value === undefined || !Number.isFinite(value)) return null;
@@ -272,7 +213,7 @@ function isCandidateSelectable(candidate: BatchImportCandidate): boolean {
 }
 
 function isJobActive(phase: BatchJobPhase): boolean {
-  return ["decompressing", "parsing", "analyzing", "selecting", "converting", "validating"].includes(phase);
+  return ["decompressing", "parsing", "analyzing", "converting", "validating"].includes(phase);
 }
 
 export function BatchWorkspace({
@@ -314,7 +255,7 @@ export function BatchWorkspace({
   const working = runState === "running" || runState === "stopping";
   const selectableCandidates = candidates.filter(isCandidateSelectable);
   const atLimit = selected.size >= BATCH_SELECTION_LIMIT;
-  const processed = Math.min(summary.total, summary.completed + summary.failed + summary.skipped);
+  const processed = Math.min(summary.total, summary.completed + summary.failed);
   const overallProgress = summary.total > 0 ? Math.min(1, processed / summary.total) : 0;
 
   function toggleCandidate(candidate: BatchImportCandidate) {
@@ -451,7 +392,6 @@ export function BatchWorkspace({
                   <>
                     <span className="is-complete">{copy.completed} <b>{summary.completed}</b></span>
                     {summary.failed > 0 ? <span className="is-failed">{copy.failed} <b>{summary.failed}</b></span> : null}
-                    {summary.skipped > 0 ? <span>{copy.skipped} <b>{summary.skipped}</b></span> : null}
                     <span>{copy.processed.replace("{done}", String(processed)).replace("{total}", String(summary.total))}</span>
                   </>
                 ) : null}
@@ -468,7 +408,6 @@ export function BatchWorkspace({
               {jobs.length > 0 ? jobs.map((job) => {
                 const progress = clampProgress(job.progress);
                 const active = isJobActive(job.phase);
-                const stage = job.stage && job.stage !== copy.phase[job.phase] ? job.stage : null;
                 return (
                   <article className={`batch-job is-${job.phase}`} key={job.id}>
                     <span className="batch-job-state" aria-hidden="true">
@@ -482,12 +421,9 @@ export function BatchWorkspace({
                       <div className={`batch-job-progress${progress === null && active ? " is-indeterminate" : ""}`} aria-hidden="true">
                         <span style={progress !== null ? { width: `${progress * 100}%` } : undefined} />
                       </div>
-                      {(stage || job.elapsedSeconds !== null && job.elapsedSeconds !== undefined) ? (
+                      {job.elapsedSeconds !== null && job.elapsedSeconds !== undefined ? (
                         <div className="batch-job-meta">
-                          {stage ? <span>{stage}</span> : null}
-                          {job.elapsedSeconds !== null && job.elapsedSeconds !== undefined
-                            ? <small>{copy.elapsed.replace("{time}", formatDuration(job.elapsedSeconds))}</small>
-                            : null}
+                          <small>{formatDuration(job.elapsedSeconds) ?? "—"}</small>
                         </div>
                       ) : null}
                       {job.error ? <p className="batch-job-error" role="alert">{job.error}</p> : null}

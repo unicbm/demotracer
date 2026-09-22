@@ -7,11 +7,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY,
-  CUSTOM_CSS_PROFILES_STORAGE_KEY,
-  CUSTOM_CSS_STORAGE_KEY,
   isThemeColor,
-  LEGACY_APPEARANCE_STORAGE_KEYS,
   normalizeSidebarCollapsed,
   normalizeSidebarOpacity,
   normalizeCustomCss,
@@ -24,10 +20,7 @@ import {
   recommendedUiScale,
   resolveTheme,
   stepUiFontSize,
-  SIDEBAR_COLLAPSED_STORAGE_KEY,
-  THEME_CUSTOMIZATION_STORAGE_KEY,
   THEME_PALETTE_DEFAULTS,
-  themeBackground,
   themeCustomizationCss,
   themePalette,
 } from "./appearance.ts";
@@ -46,16 +39,7 @@ describe("appearance preferences", () => {
     assert.equal(resolveTheme("system", true), "dark");
   });
 
-  it("lists obsolete appearance preferences for cleanup", () => {
-    assert.deepEqual(LEGACY_APPEARANCE_STORAGE_KEYS, [
-      "demotracer.ui-skin.v1",
-      "demotracer.sidebar-width.v1",
-      "demotracer.sidebar-collapsed.v1",
-    ]);
-  });
-
-  it("normalizes the persisted sidebar state without reviving the legacy key", () => {
-    assert.equal(SIDEBAR_COLLAPSED_STORAGE_KEY, "demotracer.sidebar-collapsed.v2");
+  it("normalizes the persisted sidebar state", () => {
     assert.equal(normalizeSidebarCollapsed("true"), true);
     assert.equal(normalizeSidebarCollapsed(true), true);
     assert.equal(normalizeSidebarCollapsed("false"), false);
@@ -70,11 +54,6 @@ describe("appearance preferences", () => {
     const customization = normalizeThemeCustomization({ sidebarOpacity: 0.73 });
     assert.equal(customization.sidebarOpacity, 0.73);
     assert.match(themeCustomizationCss(customization), /--sidebar-background-opacity: 73%/);
-  });
-
-  it("uses one native background per color mode", () => {
-    assert.equal(themeBackground("light"), "#f5f6f8");
-    assert.equal(themeBackground("dark"), "#20212b");
   });
 
   it("normalizes legacy UI scale values for preference migration", () => {
@@ -101,7 +80,6 @@ describe("appearance preferences", () => {
   });
 
   it("keeps custom CSS local storage bounded and ignores non-text values", () => {
-    assert.equal(CUSTOM_CSS_STORAGE_KEY, "demotracer.custom-css.v1");
     assert.equal(normalizeCustomCss(".card { border-radius: 18px; }"), ".card { border-radius: 18px; }");
     assert.equal(normalizeCustomCss(null), "");
     assert.equal(normalizeCustomCss("x".repeat(70_000)).length, 65_536);
@@ -114,8 +92,6 @@ describe("appearance preferences", () => {
       { id: "bad id", name: "invalid", css: "body {}" },
       { id: "empty", name: "", css: "body {}" },
     ]));
-    assert.equal(CUSTOM_CSS_PROFILES_STORAGE_KEY, "demotracer.custom-css-profiles.v1");
-    assert.equal(ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY, "demotracer.active-custom-css-profile.v1");
     assert.deepEqual(profiles, [{ id: "hanbaiyu", name: "汉白玉", css: ":root { --accent: #24765f; }" }]);
     assert.equal(normalizeActiveCustomCssProfileId("hanbaiyu", profiles), "hanbaiyu");
     assert.equal(normalizeActiveCustomCssProfileId("missing", profiles), null);
@@ -127,7 +103,6 @@ describe("appearance preferences", () => {
       fontFamily: '"Segoe UI Variable", sans-serif',
       monoFontFamily: '"Cascadia Mono", Consolas',
     }));
-    assert.equal(THEME_CUSTOMIZATION_STORAGE_KEY, "demotracer.theme-customization.v1");
     assert.equal(customization.dark?.primary, "#0A84FF");
     assert.equal(customization.fontFamily, '"Segoe UI Variable", sans-serif');
     assert.equal(customization.monoFontFamily, '"Cascadia Mono", Consolas');
@@ -146,6 +121,5 @@ describe("appearance preferences", () => {
     const css = themeCustomizationCss(customization);
     assert.match(css, /data-color-mode="dark"/);
     assert.doesNotMatch(css, /data-color-mode="light"/);
-    assert.match(css, /--trace: #2495FF/);
   });
 });

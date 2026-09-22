@@ -4,6 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+use crate::diagnostics::resolve_install_paths;
 use crate::{CommandErrorDto, CommandResult};
 use cs2_demotracer::demo_id::sha256_hex;
 use serde::{Deserialize, Serialize};
@@ -76,27 +77,17 @@ pub(crate) struct ServerConfigValidationDto {
     pub errors: Vec<ServerConfigIssueDto>,
     pub warnings: Vec<ServerConfigIssueDto>,
     pub unknown_paths: Vec<String>,
-    pub has_legacy_align: bool,
-    pub has_new_sections: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ServerConfigDocumentDto {
-    pub cs2_root: String,
-    pub game_csgo_path: String,
     pub config_path: String,
     pub source: ServerConfigSourceDto,
-    pub exists: bool,
     pub json: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub normalized_json: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fingerprint: Option<String>,
     pub validation: ServerConfigValidationDto,
-    /// This module edits an offline file. A fresh runtime heartbeat or
-    /// `dtr_config_status` is still required to prove the effective settings.
-    pub runtime_verified: bool,
     pub reload_command: String,
 }
 
@@ -110,36 +101,11 @@ pub(crate) struct ValidateServerConfigRequestDto {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SaveServerConfigRequestDto {
     pub cs2_path: String,
-    /// A JSON/JSONC object. By default it is recursively merged into the
-    /// current document so fields unknown to this GUI survive the edit.
+    /// The complete JSON/JSONC editor document, including unknown fields.
     pub json: String,
     /// The fingerprint returned by `load_server_config`. `None` means that the
     /// caller observed no installed config file.
     pub expected_fingerprint: Option<String>,
-    /// Explicit import/raw-editor mode. This replaces the document instead of
-    /// preserving fields omitted by the submitted object.
-    #[serde(default)]
-    pub replace_existing: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct SaveServerConfigResultDto {
-    pub document: ServerConfigDocumentDto,
-    pub requires_reload: bool,
-    pub reload_command: String,
-}
-
-#[derive(Debug)]
-struct InstallPaths {
-    cs2_root: PathBuf,
-    game_csgo: PathBuf,
-}
-
-#[derive(Debug)]
-struct ParsedConfig {
-    value: Value,
-    normalized_json: String,
 }
 
 #[derive(Debug)]
@@ -164,7 +130,7 @@ pub(crate) fn validate_server_config(
 #[tauri::command]
 pub(crate) fn save_server_config(
     request: SaveServerConfigRequestDto,
-) -> CommandResult<SaveServerConfigResultDto> {
+) -> CommandResult<ServerConfigDocumentDto> {
     save_server_config_for(&request)
 }
 
@@ -179,29 +145,30 @@ fn load_server_config_for(cs2_path: &str) -> CommandResult<ServerConfigDocumentD
             &config_path,
         )
     })?;
-    let validation = validate_config_text(&json);
-    let normalized_json = parse_config_text(&json)
-        .ok()
-        .map(|parsed| parsed.normalized_json);
+    let (json, validation) = match parse_config_text(&json) {
+        Ok(value) => {
+            let validation = validate_config_value(&value);
+            let normalized =
+                serde_json::to_string_pretty(&value).expect("parsed JSON values can be serialized");
+            (format!("{normalized}\n"), validation)
+        }
+        // Preserve invalid source text so the editor can show and repair it.
+        Err(message) => (json, invalid_json_validation(message)),
+    };
 
     Ok(ServerConfigDocumentDto {
-        cs2_root: paths.cs2_root.display().to_string(),
-        game_csgo_path: paths.game_csgo.display().to_string(),
         config_path: config_path.display().to_string(),
-        exists: source.source == ServerConfigSourceDto::Installed,
         source: source.source,
         json,
-        normalized_json,
         fingerprint: source.fingerprint,
         validation,
-        runtime_verified: false,
         reload_command: "dtr_config_reload".to_string(),
     })
 }
 
 fn save_server_config_for(
     request: &SaveServerConfigRequestDto,
-) -> CommandResult<SaveServerConfigResultDto> {
+) -> CommandResult<ServerConfigDocumentDto> {
     let paths = resolve_install_paths(Path::new(request.cs2_path.trim()))?;
     let config_path = config_path(&paths.game_csgo);
     let config_directory = config_path
@@ -226,46 +193,9 @@ fn save_server_config_for(
         ));
     }
 
-    let submitted = parse_config_text(&request.json).map_err(|message| {
+    let mut value = parse_config_text(&request.json).map_err(|message| {
         CommandErrorDto::at_path("server_config_invalid_json", message, &config_path)
     })?;
-    let submitted_validation = validate_config_value(&submitted.value);
-    if !submitted_validation.valid {
-        return Err(CommandErrorDto::at_path(
-            "server_config_invalid",
-            summarize_validation_errors(&submitted_validation),
-            &config_path,
-        ));
-    }
-
-    let mut submitted_value = submitted.value;
-    canonicalize_known_field_names(&mut submitted_value);
-    let mut value = if request.replace_existing {
-        submitted_value
-    } else {
-        let source = read_config_source(&paths.game_csgo, &config_path)?;
-        let text = String::from_utf8(source.raw).map_err(|error| {
-            CommandErrorDto::at_path(
-                "server_config_not_utf8",
-                format!("The DemoTracer config is not UTF-8: {error}"),
-                &config_path,
-            )
-        })?;
-        let mut current = parse_config_text(&text).map_err(|message| {
-            CommandErrorDto::at_path(
-                "server_config_merge_unavailable",
-                format!(
-                    "The existing config cannot be merged safely ({message}). Repair it or use explicit replacement mode."
-                ),
-                &config_path,
-            )
-        })?;
-        canonicalize_known_field_names(&mut current.value);
-        merge_json_objects_case_insensitive(&mut current.value, submitted_value);
-        current.value
-    };
-
-    canonicalize_known_field_names(&mut value);
     let validation = validate_config_value(&value);
     if !validation.valid {
         return Err(CommandErrorDto::at_path(
@@ -274,6 +204,7 @@ fn save_server_config_for(
             &config_path,
         ));
     }
+    canonicalize_known_field_names(&mut value);
 
     let mut bytes = serde_json::to_vec_pretty(&value).map_err(|error| {
         CommandErrorDto::at_path(
@@ -292,12 +223,7 @@ fn save_server_config_for(
     }
     atomic_write_config(&paths.game_csgo, &config_path, &bytes)?;
 
-    let document = load_server_config_for(request.cs2_path.trim())?;
-    Ok(SaveServerConfigResultDto {
-        document,
-        requires_reload: true,
-        reload_command: "dtr_config_reload".to_string(),
-    })
+    load_server_config_for(request.cs2_path.trim())
 }
 
 fn config_path(game_csgo: &Path) -> PathBuf {
@@ -398,61 +324,6 @@ fn read_bounded_normal_file(root: &Path, path: &Path) -> CommandResult<Vec<u8>> 
         ));
     }
     Ok(bytes)
-}
-
-fn resolve_install_paths(input: &Path) -> CommandResult<InstallPaths> {
-    if input.as_os_str().is_empty() {
-        return Err(CommandErrorDto::new(
-            "cs2_path_empty",
-            "Choose or enter a local CS2 folder before opening server settings.",
-        ));
-    }
-    if !input.is_absolute() {
-        return Err(CommandErrorDto::at_path(
-            "cs2_path_not_absolute",
-            "The CS2 path must be absolute.",
-            input,
-        ));
-    }
-    let metadata = fs::symlink_metadata(input).map_err(|error| {
-        CommandErrorDto::at_path("cs2_path_unavailable", error.to_string(), input)
-    })?;
-    if !metadata.is_dir() || crate::catalog::is_symlink_or_reparse(&metadata) {
-        return Err(CommandErrorDto::at_path(
-            "cs2_path_not_normal_directory",
-            "The selected CS2 path must be a normal local directory, not a link or junction.",
-            input,
-        ));
-    }
-
-    let candidates = [
-        input.to_path_buf(),
-        input.join("csgo"),
-        input.join("game").join("csgo"),
-    ];
-    let game_csgo = candidates
-        .into_iter()
-        .find(|candidate| {
-            metadata_below_without_reparse(input, &candidate.join("gameinfo.gi"))
-                .ok()
-                .is_some_and(|metadata| metadata.is_file())
-        })
-        .ok_or_else(|| {
-            CommandErrorDto::at_path(
-                "cs2_game_directory_not_found",
-                "The selected folder does not contain game/csgo/gameinfo.gi.",
-                input,
-            )
-        })?;
-    let cs2_root = game_csgo
-        .parent()
-        .and_then(Path::parent)
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| input.to_path_buf());
-    Ok(InstallPaths {
-        cs2_root,
-        game_csgo,
-    })
 }
 
 fn metadata_below_without_reparse(root: &Path, path: &Path) -> Result<fs::Metadata, String> {
@@ -606,7 +477,7 @@ pub(crate) fn atomic_replace(source: &Path, target: &Path) -> io::Result<()> {
     }
 }
 
-fn parse_config_text(text: &str) -> Result<ParsedConfig, String> {
+fn parse_config_text(text: &str) -> Result<Value, String> {
     if text.len() > MAX_CONFIG_BYTES {
         return Err(format!(
             "The config exceeds the {MAX_CONFIG_BYTES}-byte safety limit."
@@ -624,13 +495,7 @@ fn parse_config_text(text: &str) -> Result<ParsedConfig, String> {
     if !value.is_object() {
         return Err("The DemoTracer config root must be a JSON object.".to_string());
     }
-    let mut normalized_json = serde_json::to_string_pretty(&value)
-        .map_err(|error| format!("Could not normalize the config: {error}"))?;
-    normalized_json.push('\n');
-    Ok(ParsedConfig {
-        value,
-        normalized_json,
-    })
+    Ok(value)
 }
 
 fn strip_json_comments(text: &str) -> Result<String, String> {
@@ -743,15 +608,17 @@ fn strip_trailing_commas(text: &str) -> String {
 
 fn validate_config_text(text: &str) -> ServerConfigValidationDto {
     match parse_config_text(text) {
-        Ok(parsed) => validate_config_value(&parsed.value),
-        Err(message) => ServerConfigValidationDto {
-            valid: false,
-            errors: vec![issue("$", "invalid_json", message)],
-            warnings: Vec::new(),
-            unknown_paths: Vec::new(),
-            has_legacy_align: false,
-            has_new_sections: false,
-        },
+        Ok(value) => validate_config_value(&value),
+        Err(message) => invalid_json_validation(message),
+    }
+}
+
+fn invalid_json_validation(message: String) -> ServerConfigValidationDto {
+    ServerConfigValidationDto {
+        valid: false,
+        errors: vec![issue("$", "invalid_json", message)],
+        warnings: Vec::new(),
+        unknown_paths: Vec::new(),
     }
 }
 
@@ -766,8 +633,6 @@ fn validate_config_value(value: &Value) -> ServerConfigValidationDto {
             )],
             warnings: Vec::new(),
             unknown_paths: Vec::new(),
-            has_legacy_align: false,
-            has_new_sections: false,
         };
     };
 
@@ -870,8 +735,6 @@ fn validate_config_value(value: &Value) -> ServerConfigValidationDto {
         errors,
         warnings,
         unknown_paths: unknown_paths.into_iter().collect(),
-        has_legacy_align,
-        has_new_sections,
     }
 }
 
@@ -1251,36 +1114,6 @@ fn summarize_validation_errors(validation: &ServerConfigValidationDto) -> String
         .join("; ")
 }
 
-fn merge_json_objects_case_insensitive(target: &mut Value, patch: Value) {
-    let Value::Object(patch) = patch else {
-        *target = patch;
-        return;
-    };
-    if !target.is_object() {
-        *target = Value::Object(patch);
-        return;
-    }
-    let target = target
-        .as_object_mut()
-        .expect("the target was checked to be a JSON object");
-    for (patch_key, patch_value) in patch {
-        let target_key = target
-            .keys()
-            .find(|key| key.eq_ignore_ascii_case(&patch_key))
-            .cloned()
-            .unwrap_or_else(|| patch_key.clone());
-        if let Some(target_value) = target.get_mut(&target_key) {
-            if target_value.is_object() && patch_value.is_object() {
-                merge_json_objects_case_insensitive(target_value, patch_value);
-            } else {
-                *target_value = patch_value;
-            }
-        } else {
-            target.insert(patch_key, patch_value);
-        }
-    }
-}
-
 fn canonicalize_known_field_names(value: &mut Value) {
     let Some(root) = value.as_object_mut() else {
         return;
@@ -1449,19 +1282,16 @@ mod tests {
         let document = load_server_config_for(tree.root().to_str().expect("UTF-8 path"))
             .expect("load example");
         assert_eq!(document.source, ServerConfigSourceDto::Example);
-        assert!(!document.exists);
         assert!(document.fingerprint.is_none());
         assert!(document.validation.valid);
         assert_eq!(document.validation.unknown_paths, ["$.future_option"]);
-        assert!(document
-            .normalized_json
-            .expect("normalized JSON")
-            .contains("future_option"));
+        let editor_json: Value = serde_json::from_str(&document.json).expect("normalized JSON");
+        assert_eq!(editor_json["future_option"]["enabled"], true);
     }
 
     #[test]
-    fn merge_save_preserves_unknown_fields_and_detects_runtime_reload_boundary() {
-        let tree = TempTree::new("merge");
+    fn save_editor_document_preserves_unknown_fields_and_applies_deletions() {
+        let tree = TempTree::new("editor");
         fs::write(
             tree.config(),
             br#"{
@@ -1473,23 +1303,46 @@ mod tests {
         .expect("write config");
         let loaded =
             load_server_config_for(tree.root().to_str().expect("UTF-8 path")).expect("load config");
+        let mut draft: Value = serde_json::from_str(&loaded.json).expect("editor JSON");
+        draft["identity"] = serde_json::json!("name");
+        draft["handoff"].as_object_mut().unwrap().remove("scope");
 
         let saved = save_server_config_for(&SaveServerConfigRequestDto {
             cs2_path: tree.root().display().to_string(),
-            json: r#"{"identity":"name","handoff":{"scope":"all"}}"#.to_string(),
+            json: serde_json::to_string(&draft).unwrap(),
             expected_fingerprint: loaded.fingerprint,
-            replace_existing: false,
         })
-        .expect("save merged config");
-        assert!(saved.requires_reload);
-        assert!(!saved.document.runtime_verified);
+        .expect("save editor document");
+        assert_eq!(saved.reload_command, "dtr_config_reload");
+        assert_eq!(saved.source, ServerConfigSourceDto::Installed);
 
         let value: Value = serde_json::from_slice(&fs::read(tree.config()).expect("read config"))
             .expect("parse saved config");
         assert_eq!(value["identity"], "name");
-        assert_eq!(value["handoff"]["scope"], "all");
+        assert!(value["handoff"].get("scope").is_none());
         assert_eq!(value["handoff"]["future_nested"], 42);
         assert_eq!(value["future_top"]["kept"], true);
+    }
+
+    #[test]
+    fn save_rejects_invalid_editor_content_without_changing_the_file() {
+        let tree = TempTree::new("invalid-editor");
+        let original = r#"{"identity":"steam","future_option":42}"#;
+        fs::write(tree.config(), original).expect("write config");
+        let loaded = load_server_config_for(tree.root().to_str().unwrap()).unwrap();
+        for (draft, code) in [
+            ("{ broken", "server_config_invalid_json"),
+            (r#"{"allow_partial":"yes"}"#, "server_config_invalid"),
+        ] {
+            let error = save_server_config_for(&SaveServerConfigRequestDto {
+                cs2_path: tree.root().display().to_string(),
+                json: draft.to_string(),
+                expected_fingerprint: loaded.fingerprint.clone(),
+            })
+            .expect_err("invalid editor contents must not be saved");
+            assert_eq!(error.code, code);
+            assert_eq!(fs::read_to_string(tree.config()).unwrap(), original);
+        }
     }
 
     #[test]
@@ -1504,7 +1357,6 @@ mod tests {
             cs2_path: tree.root().display().to_string(),
             json: r#"{"identity":"name"}"#.to_string(),
             expected_fingerprint: loaded.fingerprint,
-            replace_existing: false,
         })
         .expect_err("stale save must fail");
         assert_eq!(error.code, "server_config_changed");
@@ -1568,26 +1420,27 @@ mod tests {
             }"#,
         )
         .expect("parse JSONC strings");
-        assert_eq!(parsed.value["future_url"], "https://example.invalid/a/*b*/");
-        assert_eq!(parsed.value["future_text"], "// still text");
+        assert_eq!(parsed["future_url"], "https://example.invalid/a/*b*/");
+        assert_eq!(parsed["future_text"], "// still text");
     }
 
     #[test]
-    fn replacement_mode_can_repair_an_invalid_existing_document() {
+    fn save_can_repair_an_invalid_existing_document() {
         let tree = TempTree::new("repair");
         fs::write(tree.config(), b"{ invalid").expect("write invalid config");
         let loaded = load_server_config_for(tree.root().to_str().expect("UTF-8 path"))
             .expect("load invalid config");
         assert!(!loaded.validation.valid);
+        assert_eq!(loaded.json, "{ invalid");
+        assert_eq!(loaded.validation.errors[0].code, "invalid_json");
 
         let saved = save_server_config_for(&SaveServerConfigRequestDto {
             cs2_path: tree.root().display().to_string(),
             json: r#"{"identity":"steam"}"#.to_string(),
             expected_fingerprint: loaded.fingerprint,
-            replace_existing: true,
         })
         .expect("replace invalid config");
-        assert!(saved.document.validation.valid);
+        assert!(saved.validation.valid);
     }
 
     #[test]

@@ -14,7 +14,6 @@ import {
   applyThemeCustomization,
   CUSTOM_CSS_PROFILES_STORAGE_KEY,
   CUSTOM_CSS_STORAGE_KEY,
-  LEGACY_APPEARANCE_STORAGE_KEYS,
   normalizeActiveCustomCssProfileId,
   normalizeCustomCssProfiles,
   normalizeThemeCustomization,
@@ -112,10 +111,6 @@ export function useAppearanceRuntime({
   }, [language, resolvedTheme, theme]);
 
   useEffect(() => {
-    for (const key of LEGACY_APPEARANCE_STORAGE_KEYS) localStorage.removeItem(key);
-  }, []);
-
-  useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
     void invoke<WorkspaceBackground | null>("read_workspace_background")
       .then(setWorkspaceBackground)
@@ -170,8 +165,7 @@ export function useAppearanceRuntime({
     else localStorage.removeItem(ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY);
     const activeCss = normalizedProfiles.find((profile) => profile.id === normalizedActiveId)?.css ?? "";
     applyCustomCss(activeCss);
-    if (activeCss) localStorage.setItem(CUSTOM_CSS_STORAGE_KEY, activeCss);
-    else localStorage.removeItem(CUSTOM_CSS_STORAGE_KEY);
+    localStorage.removeItem(CUSTOM_CSS_STORAGE_KEY);
   }, [activeCustomCssProfileId, customCssProfiles]);
 
   useEffect(() => {

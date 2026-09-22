@@ -6,6 +6,7 @@
 
 import { readdirSync, readFileSync } from "node:fs";
 import { extname, join, relative, resolve } from "node:path";
+import ts from "typescript";
 
 const sourceRoot = resolve(import.meta.dirname, "..", "src");
 const failures = [];
@@ -41,13 +42,40 @@ const zhDictionarySource = dictionarySource
   .slice(dictionarySource.indexOf("const zh = {"), dictionarySource.indexOf("const en: typeof zh = {"));
 const localizedKeys = [...zhDictionarySource.matchAll(/^  ([A-Za-z][A-Za-z0-9]*):/gm)]
   .map((match) => match[1]);
-const appSource = appSourceFiles
-  .filter((path) => path !== dictionaryPath)
-  .map((path) => readFileSync(path, "utf8"))
-  .join("\n");
+const configPath = resolve(sourceRoot, "..", "tsconfig.json");
+const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
+const config = ts.parseJsonConfigFileContent(configFile.config, ts.sys, resolve(sourceRoot, ".."));
+const program = ts.createProgram(config.fileNames, config.options);
+const checker = program.getTypeChecker();
+const usedKeys = new Set();
+
+function markDictionaryProperty(symbol) {
+  for (const declaration of symbol?.declarations ?? []) {
+    if (resolve(declaration.getSourceFile().fileName) === dictionaryPath) usedKeys.add(symbol.name);
+  }
+}
+
+for (const path of appSourceFiles) {
+  if (path === dictionaryPath) continue;
+  const source = program.getSourceFile(path);
+  if (!source) continue;
+  function visit(node) {
+    if (ts.isPropertyAccessExpression(node)) markDictionaryProperty(checker.getSymbolAtLocation(node.name));
+    if (ts.isElementAccessExpression(node)) {
+      const keyType = checker.getTypeAtLocation(node.argumentExpression);
+      const keys = keyType.isUnion() ? keyType.types : [keyType];
+      const owner = checker.getTypeAtLocation(node.expression);
+      for (const key of keys) {
+        if (key.isStringLiteral()) markDictionaryProperty(owner.getProperty(key.value));
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+}
 
 for (const key of localizedKeys) {
-  if (new RegExp(`\\b${key}\\b`).test(appSource)) continue;
+  if (usedKeys.has(key)) continue;
   failures.push(`i18n.ts unused localized copy key: ${key}`);
 }
 

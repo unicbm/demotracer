@@ -7,21 +7,12 @@
 import { Group, SimpleGrid, Stack, Tabs, Text, Tooltip } from "@mantine/core";
 import { CheckIcon, CopyIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
-import type { ConversionSummary, FriendlyFireSummary } from "../types";
+import type { ConversionSummary } from "../types";
 import { SwitchControl, type SwitchControlProps } from "./SwitchControl";
 import {
   buildPlaybackCommand,
   formatPlaybackPreset,
   type PlaybackPresetOptions,
-} from "../playbackCommand";
-export {
-  buildPlaybackCommand,
-  DEFAULT_PLAYBACK_ADVANCED_OPTIONS,
-  type PlaybackFriendlyFireOverride,
-  type PlaybackHandoffMode,
-  type PlaybackMatchOverride,
-  type PlaybackPresetOptions,
-  type PlaybackToggleOverride,
 } from "../playbackCommand";
 
 type CommandMode = "sequence" | "round";
@@ -33,7 +24,6 @@ interface PlaybackCommandBuilderProps {
   commandMode: CommandMode;
   sequenceDisabled?: boolean;
   retentionCommand?: string | null;
-  friendlyFire?: FriendlyFireSummary | null;
   copied: boolean;
   onOptionsChange: (patch: Partial<PlaybackPresetOptions>) => void;
   onCommandModeChange: (mode: CommandMode) => void;
@@ -71,7 +61,6 @@ export function PlaybackCommandBuilder({
   commandMode,
   sequenceDisabled = false,
   retentionCommand = null,
-  friendlyFire = null,
   copied,
   onOptionsChange,
   onCommandModeChange,
@@ -102,12 +91,8 @@ export function PlaybackCommandBuilder({
   const goCommand = effectiveCommandMode === "round"
     ? result.commands.goRound
     : result.commands.goSequence;
-  const command = buildPlaybackCommand(goCommand, mask, options, retentionCommand, friendlyFire);
-  const effectiveFriendlyFire = options.friendlyFire === "on"
-    ? true
-    : options.friendlyFire === "off"
-      ? false
-      : friendlyFire?.enabled ?? null;
+  const command = buildPlaybackCommand(goCommand, mask, options, retentionCommand);
+  const effectiveFriendlyFire = options.friendlyFire === "on";
   const friendlyFireStatus = effectiveFriendlyFire ? words.friendlyFireOn : words.friendlyFireOff;
 
   return (
@@ -189,7 +174,7 @@ export function PlaybackCommandBuilder({
               <Text span size="xs" c="var(--text-tertiary)">{friendlyFireStatus}</Text>
             </Stack>
             <SwitchControl
-              checked={effectiveFriendlyFire ?? false}
+              checked={effectiveFriendlyFire}
               label={words.friendlyFirePlayback}
               onChange={(checked) => onOptionsChange({ friendlyFire: checked ? "on" : "off" })}
             />

@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { AlertIcon, CheckIcon, ChevronIcon, FolderIcon, RefreshIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
+import { fileName, formatDuration } from "../displayFormat";
 import type { InventorySimulatorItem } from "../inventorySimulator";
 import { useInventorySimulatorSelection } from "../inventorySimulatorSelection";
 import { rosterOpeningSide } from "../openingSide";
@@ -22,7 +23,8 @@ import {
 import type { ConversionSummary, DemoLibraryEntry, Language, ManifestArchive, ManifestArchiveRound, PlayerSummary } from "../types";
 import { displayMap, MapArtwork, mapArtworkStyle } from "./MapArtwork";
 import { useArchiveTeamAvatar } from "./archiveTeamAvatar";
-import { PlaybackCommandBuilder, type PlaybackPresetOptions } from "./PlaybackCommandBuilder";
+import type { PlaybackPresetOptions } from "../playbackCommand";
+import { PlaybackCommandBuilder } from "./PlaybackCommandBuilder";
 import { PlayerAnalysisWorkspace, type PlayerAnalysisTeam } from "./PlayerAnalysisWorkspace";
 import { RosterTeam, type PlayerSelection } from "./PlayerRoster";
 import { SteamAvatar, teamRepresentative, useSteamProfiles } from "./SteamProfile";
@@ -56,26 +58,9 @@ interface ArchiveWorkspaceProps {
   onChooseManifest: () => void;
 }
 
-function fileName(path: string): string {
-  const parts = path.split(/[\\/]/);
-  return parts.at(-1) || path;
-}
-
 function sameManifestPath(left: string, right: string): boolean {
   const normalize = (value: string) => value.trim().replace(/\\/g, "/").toLocaleLowerCase();
   return normalize(left) === normalize(right);
-}
-
-function formatDuration(seconds: number | null | undefined): string {
-  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return "—";
-  const totalSeconds = Math.max(0, Math.round(seconds));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const remainder = totalSeconds % 60;
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
-  }
-  return `${minutes}:${String(remainder).padStart(2, "0")}`;
 }
 
 function formatDate(value: number | null | undefined): string {
@@ -434,7 +419,7 @@ export function ArchiveWorkspace({
           <dl className="archive-match-facts">
             <div><dt>{words.demoSource}</dt><dd>{archive.demoSource ? platformName(archive.demoSource.name) : "—"}</dd></div>
             <div><dt>{words.demoFileTime}</dt><dd>{formatDate(archive.sourceModifiedAtMs)}</dd></div>
-            <div><dt>{words.demoDuration}</dt><dd>{formatDuration(archive.durationSeconds)}</dd></div>
+            <div><dt>{words.demoDuration}</dt><dd>{formatDuration(archive.durationSeconds) ?? "—"}</dd></div>
             <div><dt>{words.playableRounds}</dt><dd>{playableRounds.length}</dd></div>
           </dl>
         </div>
@@ -526,7 +511,6 @@ export function ArchiveWorkspace({
                 sequenceDisabled={sequenceDisabled}
                 copied={copiedTarget === "playback"}
                 retentionCommand={retentionCommand}
-                friendlyFire={archive.friendlyFire}
                 onOptionsChange={onPlaybackPresetChange}
                 onCommandModeChange={onCommandModeChange}
                 onCopy={(command) => onCopy(command, "playback")}

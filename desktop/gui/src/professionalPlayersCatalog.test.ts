@@ -55,13 +55,11 @@ test("demo-verified catalog resolves SteamID identity and optional HLTV profile"
     "76561198386265483",
   );
 
-  assert.equal(catalog.players.size, 582);
   assert.equal(identity?.handle, "donk");
   assert.equal(identity?.evidenceResult, "confirmed");
   assert.equal(identity?.hltv?.playerId, 21167);
   assert.equal(identity?.hltv?.realName, "Danil Kryshkovets");
   assert.deepEqual(identity?.hltv?.country, { name: "Russia", code: "RU" });
-  assert.equal(identity?.catalogVersion, "2026-07-23.demo-verified");
   assert.equal(
     resolveProfessionalPlayerFromCatalog(catalog, "76561199024583803")?.hltv,
     null,

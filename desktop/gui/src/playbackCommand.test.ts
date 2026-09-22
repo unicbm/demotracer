@@ -21,53 +21,19 @@ function preset(friendlyFire: PlaybackPresetOptions["friendlyFire"]): PlaybackPr
   };
 }
 
-describe("playback command friendly-fire evidence", () => {
-  it("defaults to friendly fire off even when the demo observed team damage", () => {
+describe("playback command friendly fire", () => {
+  it("explicitly disables friendly fire by default", () => {
     assert.equal(DEFAULT_PLAYBACK_ADVANCED_OPTIONS.friendlyFire, "off");
     assert.equal(
-      buildPlaybackCommand("dtr_go 3", 1, preset(DEFAULT_PLAYBACK_ADVANCED_OPTIONS.friendlyFire), null, {
-        enabled: true,
-        evidence: "observedDamage",
-        damageEvents: 6,
-        damage: 15,
-      }),
+      buildPlaybackCommand("dtr_go 3", 1, preset(DEFAULT_PLAYBACK_ADVANCED_OPTIONS.friendlyFire)),
       "mp_friendlyfire 0; dtr_preset 0x01; dtr_go 3",
     );
   });
 
-  it("uses a known demo conclusion in auto mode", () => {
+  it("enables friendly fire only when selected", () => {
     assert.equal(
-      buildPlaybackCommand("dtr_go 3", 1, preset("auto"), null, {
-        enabled: true,
-        evidence: "observedDamage",
-        damageEvents: 1,
-        damage: 12,
-      }),
+      buildPlaybackCommand("dtr_go 3", 1, preset("on")),
       "mp_friendlyfire 1; dtr_preset 0x01; dtr_go 3",
-    );
-  });
-
-  it("emits no guess when the demo conclusion is unknown", () => {
-    assert.equal(
-      buildPlaybackCommand("dtr_go 3", 1, preset("auto"), null, {
-        enabled: null,
-        evidence: "unavailable",
-        damageEvents: 0,
-        damage: 0,
-      }),
-      "dtr_preset 0x01; dtr_go 3",
-    );
-  });
-
-  it("lets an explicit user override replace the demo conclusion", () => {
-    assert.equal(
-      buildPlaybackCommand("dtr_go 3", 1, preset("off"), null, {
-        enabled: true,
-        evidence: "serverConVar",
-        damageEvents: 0,
-        damage: 0,
-      }),
-      "mp_friendlyfire 0; dtr_preset 0x01; dtr_go 3",
     );
   });
 });

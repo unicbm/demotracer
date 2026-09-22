@@ -17,7 +17,6 @@ import {
   INVENTORY_SIMULATOR_PANEL_DEFAULT_WIDTH,
   INITIAL_LIBRARY_SESSION,
   type StoredBatchPreferences,
-  type BatchItemProgress,
   type DemoPreflightProgress,
   type DuplicateDemoConflictState,
   type SaveArchiveNoteResult,
@@ -27,32 +26,24 @@ import {
   normalizeInventorySimulatorPanelWidth,
   storedInventorySimulatorPanelWidth,
   storedBatchPreferences,
-  batchJobPhase,
-  batchRunState,
-  nextBatchItemProgress,
-  emptyProgress,
   storedLanguage,
   storedUiFontSize,
   storedCosmeticConsent,
   storedSettings,
   storedPlaybackPreset,
   storedLocalEnvironment,
-  ENVIRONMENT_REPORT_STORAGE_KEY,
-  type StoredEnvironmentReport,
   normalizedDiagnosticPath,
-  storedEnvironmentReport,
-  fileName,
   isDemoFilePath,
   commonParentDirectory,
-  formatBytes,
   parseCommandError,
   userFacingErrorMessage,
   userFacingErrorTitle,
-  phaseFromBackend,
   useElapsed,
   useMediaQuery,
   loadCustomCssProfiles,
 } from "./appSupport";
+import { fileName } from "./displayFormat";
+import { collectTaskWarning, emptyProgress, nextTaskProgress, type ProgressState } from "./taskProgress";
 import { AppChrome, AppSidebar } from "./components/AppChrome";
 import {
   CloseTaskDialog,
@@ -63,13 +54,20 @@ import {
   ReparseDialog,
   UpdateDialog,
 } from "./components/AppDialogs";
-import { activeBatchItemCount, findRestorableBatch } from "./batchSession";
+import {
+  activeBatchItemCount,
+  BATCH_SELECTION_LIMIT,
+  batchJobPhase,
+  batchRunState,
+  findRestorableBatch,
+  nextBatchItemProgress,
+  type BatchConcurrency,
+  type BatchItemProgress,
+} from "./batchSession";
 import { ArchiveWorkspace } from "./components/ArchiveWorkspace";
 import type { InventorySimulatorItem } from "./inventorySimulator";
 import {
-  BATCH_SELECTION_LIMIT,
   BatchWorkspace,
-  type BatchConcurrency,
   type BatchJobItem,
   type BatchImportCandidate,
 } from "./components/BatchWorkspace";
@@ -78,7 +76,7 @@ import { FaqWorkspace } from "./components/FaqWorkspace";
 import { LibraryWorkspace, type LibrarySort } from "./components/LibraryWorkspace";
 import { LogsWorkspace } from "./components/LogsWorkspace";
 import { InventorySimulatorPanel } from "./components/InventorySimulatorPanel";
-import type { PlaybackPresetOptions } from "./components/PlaybackCommandBuilder";
+import type { PlaybackPresetOptions } from "./playbackCommand";
 import { playerSelectionKey } from "./components/PlayerRoster";
 import { RoundWorkspace } from "./components/RoundWorkspace";
 import { SettingsWorkspace } from "./components/SettingsWorkspace";
@@ -152,7 +150,6 @@ import type {
   BatchList,
   Cs2InstallCandidate,
   CommandErrorDto,
-  ConversionProgressEvent,
   ConversionSummary,
   ConverterSettings,
   DemoLibraryEntry,
@@ -165,12 +162,10 @@ import type {
   ManifestArchive,
   OutputPreflight,
   Phase,
-  ProgressState,
   RefreshArchiveMetadataResult,
   RefreshLibraryMetadataResult,
   ResolveArchiveSourceResult,
   RoundInfo,
-  SaveServerConfigResult,
   ServerConfigDocument,
   ServerConfigValidation,
   TaskEvent,
@@ -235,12 +230,8 @@ function App() {
   const [libraryPlatform, setLibraryPlatform] = useState("");
   const [librarySort, setLibrarySort] = useState<LibrarySort>("recent");
   const [savingArchiveNote, setSavingArchiveNote] = useState(false);
-  const [batchFolderPath, setBatchFolderPath] = useState(() => storedBatchPreferences().folderPath);
   const [batchNotice, setBatchNotice] = useState("");
-  const [batchSelection, setBatchSelection] = useState<{
-    root: string;
-    sources: DemoSourcePreflight[];
-  } | null>(null);
+  const [batchSources, setBatchSources] = useState<DemoSourcePreflight[]>([]);
   const [batchSelectedIds, setBatchSelectedIds] = useState<string[]>([]);
   const [batchReplaceSourceIds, setBatchReplaceSourceIds] = useState<string[]>([]);
   const [batchConcurrency, setBatchConcurrency] = useState<BatchConcurrency>(() => storedBatchPreferences().concurrency);
@@ -263,9 +254,7 @@ function App() {
   );
   const [installCandidates, setInstallCandidates] = useState<Cs2InstallCandidate[]>([]);
   const [installDetectionCompleted, setInstallDetectionCompleted] = useState(false);
-  const [environmentReport, setEnvironmentReport] = useState<EnvironmentDiagnosticReport | null>(
-    () => storedEnvironmentReport(storedLocalEnvironment().cs2Path),
-  );
+  const [environmentReport, setEnvironmentReport] = useState<EnvironmentDiagnosticReport | null>(null);
   const [detectingInstallations, setDetectingInstallations] = useState(false);
   const [inspectingEnvironment, setInspectingEnvironment] = useState(false);
   const [serverConfigDocument, setServerConfigDocument] = useState<ServerConfigDocument | null>(null);
@@ -324,12 +313,13 @@ function App() {
   const conversionStartLockRef = useRef(false);
   const analyzedMaxRoundSecondsRef = useRef(DEFAULT_SETTINGS.maxRoundSeconds);
   const environmentInspectionTokenRef = useRef(0);
+  const serverConfigRequestRef = useRef(0);
+  const selectedCs2PathRef = useRef(localEnvironment.cs2Path);
   const batchIdRef = useRef("");
   const batchGenerationRef = useRef(0);
   const batchStopPendingRef = useRef(false);
   const batchCancelGenerationRef = useRef(-1);
   const taskSoundContextRef = useRef<AudioContext | null>(null);
-  const startupServerConfigPathRef = useRef(localEnvironment.cs2Path.trim());
   const soundNotificationsRef = useRef(localEnvironment.soundNotifications);
   const retryButtonRef = useRef<HTMLButtonElement | null>(null);
   const resultHeadingRef = useRef<HTMLHeadingElement | null>(null);
@@ -513,7 +503,7 @@ function App() {
     [archivePath, libraryScan],
   );
   const batchCandidates = useMemo<BatchImportCandidate[]>(() => {
-    return (batchSelection?.sources ?? []).map((source) => {
+    return batchSources.map((source) => {
       const sourceId = normalizedDiagnosticPath(source.sourcePath);
       const replacing = batchReplaceSources.has(sourceId);
       const imported = importedBatchSources.has(sourceId) && !replacing;
@@ -522,8 +512,6 @@ function App() {
         path: source.sourcePath,
         fileName: fileName(source.sourcePath),
         sizeBytes: source.sourceSizeBytes,
-        compressed: source.compressed,
-        modifiedAtMs: source.sourceModifiedAtMs,
         status: imported ? "imported" : "ready",
         reason: replacing
           ? words.batchCandidateReplacing
@@ -532,12 +520,11 @@ function App() {
             : null,
       };
     });
-  }, [batchReplaceSources, batchSelection, importedBatchSources, words]);
+  }, [batchReplaceSources, batchSources, importedBatchSources, words]);
   const batchJobs = useMemo<BatchJobItem[]>(() => {
     if (!batchLedger) {
       return batchStartingCandidates.map((candidate) => ({
         id: candidate.id,
-        candidateId: candidate.id,
         path: candidate.path,
         fileName: candidate.fileName,
         phase: "queued",
@@ -557,7 +544,6 @@ function App() {
         : null;
       return {
         id: item.itemId,
-        candidateId: normalizedDiagnosticPath(item.sourcePath),
         path: item.sourcePath,
         fileName: item.fileName,
         phase,
@@ -570,12 +556,11 @@ function App() {
   }, [batchClock, batchLedger, batchProgressByItem, batchStartingCandidates, language]);
   const batchSummary = useMemo(() => {
     const items = batchLedger?.items;
-    if (!items) return { total: batchStartingCandidates.length, completed: 0, failed: 0, skipped: 0 };
+    if (!items) return { total: batchStartingCandidates.length, completed: 0, failed: 0 };
     return {
       total: items.length,
       completed: items.filter((item) => item.status === "completed").length,
       failed: items.filter((item) => item.status === "failed").length,
-      skipped: 0,
     };
   }, [batchLedger, batchStartingCandidates.length]);
   const currentBatchRunState = batchStopPending && batchInvocationActive
@@ -722,29 +707,10 @@ function App() {
   }, [archive, archivePath, commandMode, selectedArchiveRound, selectedPlayer]);
 
   useEffect(() => {
-    const cs2Path = startupServerConfigPathRef.current;
-    if (!cs2Path || !("__TAURI_INTERNALS__" in window)) return;
-    let disposed = false;
-    setLoadingServerConfig(true);
-    void invoke<ServerConfigDocument>("load_server_config", { cs2Path }).then((document) => {
-      if (disposed) return;
-      setServerConfigDocument(document);
-      setServerConfigDraft(document.normalizedJson || document.json);
-      setServerConfigValidation(document.validation);
-    }).catch(() => {
-      // Startup probing is silent; the Settings page still exposes an explicit retry.
-    }).finally(() => {
-      if (!disposed) setLoadingServerConfig(false);
-    });
-    return () => { disposed = true; };
-  }, []);
-
-  useEffect(() => {
     localStorage.setItem(BATCH_PREFERENCES_STORAGE_KEY, JSON.stringify({
-      folderPath: batchFolderPath,
       concurrency: batchConcurrency,
     } satisfies StoredBatchPreferences));
-  }, [batchConcurrency, batchFolderPath]);
+  }, [batchConcurrency]);
 
   useEffect(() => {
     const ready = new Set(batchCandidates.filter((candidate) => candidate.status === "ready").map((candidate) => candidate.id));
@@ -772,7 +738,6 @@ function App() {
       const latest = resumable;
       batchIdRef.current = latest.batchId;
       setBatchLedger(latest);
-      setBatchFolderPath((current) => current || latest.sourceRoot);
       setBatchConcurrency(latest.requestedConcurrency && [2, 4, 6, 8].includes(latest.requestedConcurrency)
         ? latest.requestedConcurrency as 2 | 4 | 6 | 8
         : "auto");
@@ -784,19 +749,6 @@ function App() {
     });
     return () => { disposed = true; };
   }, []);
-
-  useEffect(() => {
-    if (environmentReport?.cached) return;
-    if (!environmentReport) {
-      localStorage.removeItem(ENVIRONMENT_REPORT_STORAGE_KEY);
-      return;
-    }
-    const saved: StoredEnvironmentReport = {
-      cs2Path: environmentReport.cs2Root,
-      report: environmentReport,
-    };
-    localStorage.setItem(ENVIRONMENT_REPORT_STORAGE_KEY, JSON.stringify(saved));
-  }, [environmentReport]);
 
   useEffect(() => {
     persistLibraryPreferences(libraryPreferences);
@@ -845,96 +797,15 @@ function App() {
 
     if (raw.kind === "phase") {
       recordActivityLog("debug", source, `phase=${raw.phase}`);
-      setProgress((current) => ({
-        ...current,
-        phase: phaseFromBackend(raw.phase, current.phase),
-        unit: raw.phase === "voice" || raw.phase === "validating" ? null : current.unit,
-        currentItem: raw.phase === "voice" || raw.phase === "validating" ? undefined : current.currentItem,
-        announcement: raw.phase,
-      }));
-      return;
-    }
-
-    if (raw.kind === "log") {
+    } else if (raw.kind === "log") {
       recordActivityLog(
         raw.level === "warning" ? "warn" : raw.level,
         source,
         raw.message,
       );
-      if (raw.level === "warning" && !taskWarningsRef.current.includes(raw.message) && taskWarningsRef.current.length < 6) {
-        taskWarningsRef.current = [...taskWarningsRef.current, raw.message];
-      }
-      setProgress((current) => ({
-        ...current,
-        log: [...current.log.slice(-199), { level: raw.level, message: raw.message }],
-        warnings: taskWarningsRef.current,
-      }));
-      return;
     }
-
-    const event: ConversionProgressEvent = raw.progress;
-    setProgress((current) => {
-      switch (event.event) {
-        case "analysisStarted":
-          return { ...current, phase: "preparing", announcement: words.preparing };
-        case "analysisFinished":
-          return {
-            ...current,
-            phase: "writing",
-            written: 0,
-            estimated: event.estimatedFiles,
-            unit: "playerFiles",
-            selectedRounds: event.selectedRounds,
-            announcement: words.writingPlayers,
-          };
-        case "roundStarted":
-          return { ...current, phase: "writing", currentRound: event.round, currentItem: undefined };
-        case "playerWritten":
-          return { ...current, written: current.written + 1, currentItem: `${event.playerName} · ${event.side}` };
-        case "roundFinished":
-          return {
-            ...current,
-            completedRounds: current.completedRounds + 1,
-            announcement: `Round ${event.round}`,
-          };
-        case "roundSkipped": {
-          if (event.reason === "not selected") return current;
-          const message = `Round ${event.round}: ${event.reason}`;
-          const policySkip = event.reason.startsWith("suspicious (");
-          if (!taskWarningsRef.current.includes(message) && taskWarningsRef.current.length < 6) taskWarningsRef.current = [...taskWarningsRef.current, message];
-          return {
-            ...current,
-            completedRounds: current.completedRounds + (policySkip ? 0 : 1),
-            log: [...current.log.slice(-199), { level: "warning", message }],
-            warnings: taskWarningsRef.current,
-            announcement: `Round ${event.round}`,
-          };
-        }
-        case "playerSkipped": {
-          const message = `Round ${event.round}: ${event.reason}`;
-          if (!taskWarningsRef.current.includes(message) && taskWarningsRef.current.length < 6) taskWarningsRef.current = [...taskWarningsRef.current, message];
-          return {
-            ...current,
-            log: [...current.log.slice(-199), { level: "warning", message }],
-            warnings: taskWarningsRef.current,
-          };
-        }
-        case "artifactsWritingStarted":
-          return {
-            ...current,
-            phase: "artifacts",
-            written: 0,
-            estimated: event.artifacts,
-            unit: "artifacts",
-            currentItem: event.root,
-            announcement: words.writingArtifacts,
-          };
-        case "artifactWritten":
-          return { ...current, written: current.written + 1, currentItem: fileName(event.path) };
-        case "finished":
-          return { ...current, currentItem: fileName(event.manifestPath) };
-      }
-    });
+    taskWarningsRef.current = collectTaskWarning(taskWarningsRef.current, raw);
+    if (raw.kind !== "log") setProgress((current) => nextTaskProgress(current, raw, words));
   }, [recordActivityLog, words]);
 
   const runAnalysis = useCallback(async (
@@ -1106,9 +977,7 @@ function App() {
     mergedSegments: number,
     relinkedDuplicates: number,
   ) {
-    const root = commonParentDirectory(selections.map((item) => item.sourcePath));
-    setBatchFolderPath(root);
-    setBatchSelection({ root, sources: selections });
+    setBatchSources(selections);
     setBatchReplaceSourceIds(replaceSourceIds);
     setBatchSelectedIds(selections.map((source) => normalizedDiagnosticPath(source.sourcePath)));
     setBatchLedger(null);
@@ -1377,7 +1246,6 @@ function App() {
       if (!current || current.batchId !== next.batchId || next.revision > current.revision) return next;
       return current;
     });
-    setBatchFolderPath((current) => current || next.sourceRoot);
   }
 
   async function refreshBatchLedger(batchId: string, generation: number) {
@@ -1431,10 +1299,10 @@ function App() {
             `${event.itemId}: ${event.task.message}`,
           );
         }
-        setBatchProgressByItem((current) => ({
-          ...current,
-          [event.itemId]: nextBatchItemProgress(current[event.itemId], event.task),
-        }));
+        setBatchProgressByItem((current) => {
+          const next = nextBatchItemProgress(current[event.itemId], event.task);
+          return next === current[event.itemId] ? current : { ...current, [event.itemId]: next };
+        });
         break;
       case "estimateUpdated":
         void refreshBatchLedger(event.batchId, generation);
@@ -1556,7 +1424,7 @@ function App() {
     try {
       const next = await invoke<BatchLedger>("start_batch_import", {
         request: {
-          sourceRoot: batchSelection?.root ?? batchFolderPath,
+          sourceRoot: commonParentDirectory(candidates.map((candidate) => candidate.path)),
           libraryRoot: destination,
           demoPaths: candidates.map((candidate) => candidate.path),
           replaceDemoPaths,
@@ -1565,9 +1433,7 @@ function App() {
             includeSuspicious: settings.includeSuspicious,
             fullRound: settings.fullRound,
             side: settings.side,
-            subtickMode: settings.subtickMode,
             maxRoundSeconds: settings.maxRoundSeconds,
-            freezePrerollSeconds: settings.freezePrerollSeconds,
             exportVoice: settings.exportVoice,
             exportCosmetics: settings.exportCosmetics,
             exportStickers: settings.exportCosmetics && settings.exportStickers,
@@ -1683,7 +1549,7 @@ function App() {
     setBatchLedger(null);
     setBatchProgressByItem({});
     setBatchStartingCandidates([]);
-    setBatchSelection(null);
+    setBatchSources([]);
     setBatchNotice("");
     setBatchSelectedIds([]);
     setBatchReplaceSourceIds([]);
@@ -2248,16 +2114,31 @@ function App() {
   }
 
 
+  function changeCs2Path(cs2Path: string) {
+    setLocalEnvironment((current) => ({ ...current, cs2Path }));
+    const previousPath = selectedCs2PathRef.current;
+    selectedCs2PathRef.current = cs2Path;
+    if (normalizedDiagnosticPath(cs2Path) === normalizedDiagnosticPath(previousPath)) return;
+    environmentInspectionTokenRef.current += 1;
+    serverConfigRequestRef.current += 1;
+    setInspectingEnvironment(false);
+    setEnvironmentReport(null);
+    setServerConfigDocument(null);
+    setServerConfigDraft("");
+    setServerConfigValidation(null);
+  }
+
   async function runEnvironmentInspection(path = localEnvironment.cs2Path) {
     const candidate = path.trim();
     if (!candidate || inspectingEnvironment) return;
     const token = ++environmentInspectionTokenRef.current;
     setGlobalError(null);
     setInspectingEnvironment(true);
+    setEnvironmentReport(null);
     try {
       const report = await invoke<EnvironmentDiagnosticReport>("inspect_cs2_install", { path: candidate });
       if (token !== environmentInspectionTokenRef.current) return;
-      setLocalEnvironment((current) => ({ ...current, cs2Path: report.cs2Root || candidate }));
+      changeCs2Path(report.cs2Root || candidate);
       setEnvironmentReport(report);
     } catch (reason) {
       if (token !== environmentInspectionTokenRef.current) return;
@@ -2274,8 +2155,7 @@ function App() {
         initialPath: localEnvironment.cs2Path.trim() || null,
       });
       if (!path) return;
-      setLocalEnvironment((current) => ({ ...current, cs2Path: path }));
-      setEnvironmentReport(null);
+      changeCs2Path(path);
       await runEnvironmentInspection(path);
     } catch (reason) {
       setGlobalError(parseCommandError(reason));
@@ -2294,8 +2174,7 @@ function App() {
       setInstallDetectionCompleted(true);
       if (candidates.length === 1) {
         const [candidate] = candidates;
-        setLocalEnvironment((current) => ({ ...current, cs2Path: candidate.path }));
-        setEnvironmentReport(null);
+        changeCs2Path(candidate.path);
         await runEnvironmentInspection(candidate.path);
       }
     } catch (reason) {
@@ -2306,8 +2185,7 @@ function App() {
   }
 
   function useCs2Candidate(candidate: Cs2InstallCandidate) {
-    setLocalEnvironment((current) => ({ ...current, cs2Path: candidate.path }));
-    setEnvironmentReport(null);
+    changeCs2Path(candidate.path);
     void runEnvironmentInspection(candidate.path);
   }
 
@@ -2338,15 +2216,18 @@ function App() {
   async function loadServerConfig(): Promise<boolean> {
     const cs2Path = localEnvironment.cs2Path.trim();
     if (!cs2Path || loadingServerConfig || savingServerConfig) return false;
+    const token = ++serverConfigRequestRef.current;
     setLoadingServerConfig(true);
     setGlobalError(null);
     try {
       const document = await invoke<ServerConfigDocument>("load_server_config", { cs2Path });
+      if (token !== serverConfigRequestRef.current) return false;
       setServerConfigDocument(document);
-      setServerConfigDraft(document.normalizedJson || document.json);
+      setServerConfigDraft(document.json);
       setServerConfigValidation(document.validation);
       return true;
     } catch (reason) {
+      if (token !== serverConfigRequestRef.current) return false;
       setGlobalError(parseCommandError(reason));
       return false;
     } finally {
@@ -2356,14 +2237,17 @@ function App() {
 
   async function validateServerConfigDraft(): Promise<ServerConfigValidation | null> {
     if (!serverConfigDraft.trim()) return null;
+    const token = ++serverConfigRequestRef.current;
     setGlobalError(null);
     try {
       const validation = await invoke<ServerConfigValidation>("validate_server_config", {
         request: { json: serverConfigDraft },
       });
+      if (token !== serverConfigRequestRef.current) return null;
       setServerConfigValidation(validation);
       return validation;
     } catch (reason) {
+      if (token !== serverConfigRequestRef.current) return null;
       setGlobalError(parseCommandError(reason));
       return null;
     }
@@ -2371,25 +2255,27 @@ function App() {
 
   async function saveServerConfig(): Promise<boolean> {
     const cs2Path = localEnvironment.cs2Path.trim();
-    if (!cs2Path || !serverConfigDocument || savingServerConfig || !serverConfigDraft.trim()) return false;
+    if (!cs2Path || !serverConfigDocument || loadingServerConfig || savingServerConfig || !serverConfigDraft.trim()) return false;
+    const token = ++serverConfigRequestRef.current;
     primeTaskSound();
     setSavingServerConfig(true);
     setGlobalError(null);
     try {
-      const saved = await invoke<SaveServerConfigResult>("save_server_config", {
+      const document = await invoke<ServerConfigDocument>("save_server_config", {
         request: {
           cs2Path,
           json: serverConfigDraft,
           expectedFingerprint: serverConfigDocument.fingerprint ?? null,
-          replaceExisting: false,
         },
       });
-      setServerConfigDocument(saved.document);
-      setServerConfigDraft(saved.document.normalizedJson || saved.document.json);
-      setServerConfigValidation(saved.document.validation);
+      if (token !== serverConfigRequestRef.current) return false;
+      setServerConfigDocument(document);
+      setServerConfigDraft(document.json);
+      setServerConfigValidation(document.validation);
       playTaskSound("success");
       return true;
     } catch (reason) {
+      if (token !== serverConfigRequestRef.current) return false;
       setGlobalError(parseCommandError(reason));
       playTaskSound("failure");
       return false;
@@ -2523,8 +2409,6 @@ function App() {
           includeSuspicious: settings.includeSuspicious,
           fullRound: settings.fullRound,
           side: settings.side,
-          subtickMode: settings.subtickMode,
-          freezePrerollSeconds: settings.freezePrerollSeconds,
           maxRoundSeconds: analyzedMaxRoundSecondsRef.current,
           exportVoice: settings.exportVoice,
           exportCosmetics: settings.exportCosmetics,
@@ -2925,7 +2809,6 @@ function App() {
             inspecting={inspectingEnvironment}
             appVersion={appVersion}
             guiUpdate={guiUpdate}
-            updateAvailable={actionableUpdateAvailable}
             playbackRelease={playbackRelease}
             playbackUpdate={playbackUpdate}
             playbackReleaseError={playbackReleaseError}
@@ -2953,13 +2836,7 @@ function App() {
             }}
             onLanguageChange={setLanguage}
             onThemeChange={setTheme}
-            onCs2PathChange={(cs2Path) => {
-              setLocalEnvironment((current) => ({ ...current, cs2Path }));
-              setEnvironmentReport(null);
-              setServerConfigDocument(null);
-              setServerConfigDraft("");
-              setServerConfigValidation(null);
-            }}
+            onCs2PathChange={changeCs2Path}
             onBrowseCs2={() => void chooseCs2Directory()}
             onDetectCs2={() => void detectCs2Installations()}
             onUseCandidate={useCs2Candidate}
@@ -2972,6 +2849,7 @@ function App() {
             onRollbackPlayback={() => void rollbackPlaybackInstall()}
             onLoadServerConfig={loadServerConfig}
             onServerConfigDraftChange={(json) => {
+              serverConfigRequestRef.current += 1;
               setServerConfigDraft(json);
               setServerConfigValidation(null);
             }}
@@ -2983,7 +2861,6 @@ function App() {
             onAddDemoRoot={() => void addDemoRoot()}
             onRemoveDemoRoot={removeDemoRoot}
             onOpenPath={(path) => void openPath(path)}
-            onOpenLogDirectory={openActivityLogDirectory}
             onOpenExternal={(url) => void openExternal(url)}
             onEnvironmentChange={(patch) => setLocalEnvironment((current) => ({ ...current, ...patch }))}
             onAggregateTelemetryEnabledChange={setAggregateTelemetryEnabled}
@@ -3132,7 +3009,6 @@ function App() {
             onBack={() => setPhase("selecting")}
             onNewDemo={resetSession}
             formatNumber={(value) => numberFormat.format(value)}
-            formatBytes={formatBytes}
           />
         ) : null}
           </>

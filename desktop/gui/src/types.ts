@@ -8,7 +8,6 @@ export type Language = "zh" | "en";
 export type Theme = "system" | "light" | "dark";
 export type SideChoice = "both" | "t" | "ct";
 export type WorkspaceSection = "library" | "analysis" | "batch" | "logs" | "settings" | "faq";
-export type SubtickMode = "auto" | "off";
 
 export type ActivityLogLevel = "debug" | "info" | "warn" | "error";
 
@@ -52,17 +51,6 @@ export type Phase =
   | "selecting"
   | "converting"
   | "validationFailed"
-  | "complete";
-
-export type ProgressPhase =
-  | "preparing"
-  | "decompressing"
-  | "parsing"
-  | "analyzing"
-  | "writing"
-  | "artifacts"
-  | "voice"
-  | "validating"
   | "complete";
 
 export interface RoundInfo {
@@ -509,8 +497,6 @@ export interface ManifestArchive {
 export interface ConverterSettings {
   side: SideChoice;
   fullRound: boolean;
-  freezePrerollSeconds: number;
-  subtickMode: SubtickMode;
   maxRoundSeconds: number;
   exportVoice: boolean;
   exportCosmetics: boolean;
@@ -589,8 +575,7 @@ export interface GuiUpdateStatus {
 }
 
 export type EnvironmentOverallStatus = "pass" | "warning" | "error" | "unverified";
-export type EnvironmentCheckStatus = EnvironmentOverallStatus | "notApplicable";
-export type RuntimeVerificationStatus = "verified" | "incompatible" | "notRunning" | "unavailable" | "unknown";
+export type EnvironmentCheckStatus = EnvironmentOverallStatus;
 
 export interface EnvironmentDiagnosticCheck {
   id: string;
@@ -608,7 +593,6 @@ export interface EnvironmentInstallReceipt {
   found: boolean;
   path?: string | null;
   bundleVersion?: string | null;
-  manifestAbi?: number | null;
   botControllerAbi?: number | null;
   botControllerMinor?: number | null;
   botHiderApi?: number | null;
@@ -619,14 +603,9 @@ export interface EnvironmentInstallReceipt {
 }
 
 export interface EnvironmentDiagnosticReport {
-  /** Frontend-only marker for a report restored from local storage. */
-  cached?: boolean;
   checkedAtMs: number;
-  requestedPath: string;
   cs2Root: string;
-  gameCsgoPath: string;
   overall: EnvironmentOverallStatus;
-  runtimeVerification: RuntimeVerificationStatus;
   checks: EnvironmentDiagnosticCheck[];
   receipt: EnvironmentInstallReceipt;
 }
@@ -642,51 +621,18 @@ export interface ServerConfigValidation {
   errors: ServerConfigIssue[];
   warnings: ServerConfigIssue[];
   unknownPaths: string[];
-  hasLegacyAlign: boolean;
-  hasNewSections: boolean;
 }
 
 export interface ServerConfigDocument {
-  cs2Root: string;
-  gameCsgoPath: string;
   configPath: string;
   source: "installed" | "example" | "builtInDefault";
-  exists: boolean;
   json: string;
-  normalizedJson?: string | null;
   fingerprint?: string | null;
   validation: ServerConfigValidation;
-  runtimeVerified: boolean;
-  reloadCommand: string;
-}
-
-export interface SaveServerConfigResult {
-  document: ServerConfigDocument;
-  requiresReload: boolean;
   reloadCommand: string;
 }
 
 export type LogLevel = "info" | "warning" | "error";
-
-export interface ActivityLogEntry {
-  level: LogLevel;
-  message: string;
-}
-
-export interface ProgressState {
-  phase: ProgressPhase;
-  message: string;
-  written: number;
-  estimated: number;
-  unit: "playerFiles" | "artifacts" | null;
-  currentRound?: number;
-  completedRounds: number;
-  selectedRounds: number;
-  currentItem?: string;
-  log: ActivityLogEntry[];
-  warnings: string[];
-  announcement: string;
-}
 
 export type TaskPhase = "decompressing" | "parsing" | "analyzing" | "exporting" | "voice" | "validating" | "complete";
 
@@ -784,9 +730,7 @@ export interface BatchLedger {
     includeSuspicious: boolean;
     fullRound: boolean;
     side: SideChoice;
-    subtickMode: SubtickMode;
     maxRoundSeconds: number;
-    freezePrerollSeconds: number;
     exportVoice: boolean;
     exportCosmetics: boolean;
     exportStickers: boolean;

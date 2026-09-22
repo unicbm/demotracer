@@ -44,11 +44,11 @@ use cs2_demotracer::demo_series::{
 use cs2_demotracer::dtr::read_rec_file;
 use cs2_demotracer::export::{
     export_demo_to_root_with_analysis_and_progress, ConversionArtifactKind, ConversionProgress,
-    ConversionReport, ConvertOptions, DEFAULT_FREEZE_PREROLL_SECONDS,
+    ConversionReport, ConvertOptions, MAX_FREEZE_PREROLL_SECONDS,
 };
 use cs2_demotracer::model::{
-    public_demo_path, ConvertedFile, DemoAnalysis, ParsedDemo, RoundStatus, Side, SubtickMode,
-    DEMOTRACER_ABI, DTR_FORMAT_VERSION,
+    public_demo_path, ConvertedFile, DemoAnalysis, ParsedDemo, RoundStatus, Side, DEMOTRACER_ABI,
+    DTR_FORMAT_VERSION,
 };
 use cs2_demotracer::quality::AnalysisOptions;
 use cs2_demotracer::validate::validate_dtr_path;
@@ -74,7 +74,6 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 
 const COSMETIC_CONFIRMATION_PHRASE: &str = "I ACCEPT COSMETIC EXPORT RISK";
-const MAX_FREEZE_PREROLL_SECONDS: f32 = 120.0;
 const MIN_MAX_ROUND_SECONDS: f32 = 30.0;
 const MAX_MAX_ROUND_SECONDS: f32 = 1800.0;
 const MAX_MANIFEST_BYTES: u64 = 32 * 1024 * 1024;
@@ -407,12 +406,8 @@ pub struct ConvertDemoRequest {
     pub full_round: bool,
     #[serde(default)]
     pub side: Side,
-    #[serde(default)]
-    pub subtick_mode: SubtickMode,
     #[serde(default = "default_max_round_seconds")]
     pub max_round_seconds: f32,
-    #[serde(default = "default_freeze_preroll_seconds")]
-    pub freeze_preroll_seconds: f32,
     #[serde(default = "default_true")]
     pub export_voice: bool,
     #[serde(default)]
@@ -425,10 +420,6 @@ pub struct ConvertDemoRequest {
     pub cosmetic_consent: Option<CosmeticConsentDto>,
     #[serde(default)]
     pub overwrite: OverwriteModeDto,
-}
-
-fn default_freeze_preroll_seconds() -> f32 {
-    DEFAULT_FREEZE_PREROLL_SECONDS
 }
 
 fn default_max_round_seconds() -> f32 {
@@ -3994,14 +3985,6 @@ fn prepare_conversion_with_cosmetics(
             "Round analysis settings changed. Analyze the demo again before converting.",
         ));
     }
-    if !request.freeze_preroll_seconds.is_finite()
-        || !(0.0..=MAX_FREEZE_PREROLL_SECONDS).contains(&request.freeze_preroll_seconds)
-    {
-        return Err(CommandErrorDto::new(
-            "invalid_freeze_preroll",
-            "Freeze pre-roll must be between 0 and 120 seconds.",
-        ));
-    }
 
     let selected_rounds = request
         .selected_rounds
@@ -4021,8 +4004,6 @@ fn prepare_conversion_with_cosmetics(
         selected_rounds: Some(selected_rounds),
         include_suspicious: request.include_suspicious,
         cut_before_bomb_plant: !request.full_round,
-        subtick_mode: request.subtick_mode,
-        freeze_preroll_seconds: request.freeze_preroll_seconds,
         export_cosmetics: cosmetics.cosmetics,
         export_stickers: cosmetics.stickers,
         export_charms: cosmetics.charms,
@@ -4569,7 +4550,7 @@ fn run_conversion_with_sink(
         side: request.side.to_string(),
         full_round: request.full_round,
         include_suspicious: request.include_suspicious,
-        freeze_preroll_seconds: request.freeze_preroll_seconds,
+        freeze_preroll_seconds: MAX_FREEZE_PREROLL_SECONDS,
         voice: request.export_voice,
         cosmetics: cosmetics.cosmetics,
         stickers: cosmetics.stickers,
@@ -4791,9 +4772,7 @@ fn process_batch_demo(
         include_suspicious: request.settings.include_suspicious,
         full_round: request.settings.full_round,
         side: request.settings.side,
-        subtick_mode: request.settings.subtick_mode,
         max_round_seconds: request.settings.max_round_seconds,
-        freeze_preroll_seconds: request.settings.freeze_preroll_seconds,
         export_voice: request.settings.export_voice,
         export_cosmetics: request.settings.export_cosmetics,
         export_stickers: request.settings.export_stickers,
@@ -5961,6 +5940,23 @@ mod tests {
         }
     }
 
+    #[test]
+    fn conversion_request_ignores_retired_export_options() {
+        let request: ConvertDemoRequest = serde_json::from_value(serde_json::json!({
+            "analysisId": "test",
+            "outputDir": "output",
+            "selectedRounds": [1, 2],
+            "side": "ct",
+            "subtickMode": "off",
+            "freezePrerollSeconds": 0.0
+        }))
+        .unwrap();
+
+        assert_eq!(request.selected_rounds, vec![1, 2]);
+        assert_eq!(request.side, Side::Ct);
+        assert_eq!(request.max_round_seconds, default_max_round_seconds());
+    }
+
     fn request() -> ConvertDemoRequest {
         ConvertDemoRequest {
             analysis_id: "analysis-1".to_string(),
@@ -5969,9 +5965,7 @@ mod tests {
             include_suspicious: false,
             full_round: false,
             side: Side::Both,
-            subtick_mode: SubtickMode::Auto,
             max_round_seconds: default_max_round_seconds(),
-            freeze_preroll_seconds: DEFAULT_FREEZE_PREROLL_SECONDS,
             export_voice: true,
             export_cosmetics: false,
             export_stickers: true,

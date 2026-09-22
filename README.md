@@ -26,6 +26,22 @@
   <sub>Inspect a converted match, choose where playback starts, and copy the ready-to-run server command.</sub>
 </p>
 
+## KHook Migration on `main`
+
+The development branch now uses Metamod's shared **KHook** engine for
+BotController and BotHider function and virtual hooks. Hook registration,
+chaining, and removal use the same engine as other KHook consumers, replacing
+the runtimes' separate hook implementations.
+
+This source update requires **Metamod 2.0 build 1469+ (plugin API 18)** and a
+**KHook-enabled CounterStrikeSharp build**. Older API 17 Metamod installations
+cannot load these native plugins. Playback orchestration still uses
+CounterStrikeSharp; see the pinned [server requirements](server/README.md#shared-hook-runtime)
+before building or installing from source.
+
+The KHook migration has **not yet been published as an official release**.
+Existing release downloads and the stable update channel remain unchanged.
+
 ## From Demo to Replay
 
 DemoTracer is a matched Windows desktop app and CS2 playback bundle. Parsing,
@@ -79,6 +95,10 @@ Depending on the source demo and selected options, a replay can preserve:
 - demo-backed avatars, agents, crosshairs, viewmodels, knives, gloves, weapon
   finishes, stickers, charms, music kits, and scoreboard details.
 
+Valid subtick input and referenced shooting history are always exported when
+present. Freeze-time pre-roll follows the demo's contiguous freeze phase, with
+an internal 120-second safety cap; neither behavior requires a user setting.
+
 Movement playback uses maintained movement and input hooks rather than
 teleporting bots along a drawn route. If a source demo omits essential raw
 input, the desktop app reports that limitation before conversion.
@@ -125,13 +145,14 @@ To play an exported replay, use a local Windows x64 CS2 server with
 [CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp).
 Use Metamod 2.0 build 1469+ and the KHook-enabled CounterStrikeSharp source
 baseline listed in the [playback server requirements](server/README.md#shared-hook-runtime).
-In **Settings → Install & environment**, select the CS2 folder, inspect the
+In **Settings → CS2**, select the CS2 folder, inspect the
 installation, and install the matched playback bundle. Inspection reports file
 integrity and fresh DemoTracer ABI/API heartbeat evidence separately. It does
 not automatically verify the installed Metamod plugin API, CSS KHook backend,
 or compatibility with other plugins; those remain unverified. A successful
 bundle installation confirms the package was installed, not that the server
-can load it.
+can load it. Inspection results show their check time and are not restored
+from an earlier desktop session.
 
 ## Local-First and Defensive
 

@@ -7,6 +7,7 @@
 import { type KeyboardEvent, useRef } from "react";
 import { Badge, Checkbox, Table, Text } from "@mantine/core";
 import type { RoundInfo } from "../types";
+import { formatDuration } from "../displayFormat";
 
 export interface RoundTableLabels {
   caption: string;
@@ -21,11 +22,6 @@ export interface RoundTableLabels {
   suspicious: string;
   noProblems: string;
   suspiciousLocked: string;
-}
-
-function formatDuration(seconds: number): string {
-  const totalSeconds = Math.max(0, Math.round(seconds));
-  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
 }
 
 interface RoundTableProps {
@@ -119,7 +115,7 @@ export function RoundTable({
                     {String(round.round).padStart(2, "0")}
                   </Text>
                 </Table.Th>
-                <Table.Td>{formatDuration(round.durationSeconds)}</Table.Td>
+                <Table.Td>{formatDuration(round.durationSeconds) ?? "—"}</Table.Td>
                 <Table.Td>{round.tPlayers}v{round.ctPlayers}</Table.Td>
                 <Table.Td>
                   <Badge color={statusColor} variant="light" size="sm">{statusLabel}</Badge>

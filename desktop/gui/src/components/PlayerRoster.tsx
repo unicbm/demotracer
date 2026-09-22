@@ -40,7 +40,6 @@ export interface RosterPlayer {
   name: string;
   steamId: string;
   playerColor?: string | null;
-  score?: number | null;
   kills?: number | null;
   deaths?: number | null;
   assists?: number | null;

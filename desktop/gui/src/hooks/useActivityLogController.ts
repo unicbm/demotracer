@@ -5,7 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ACTIVITY_LOG_LIMIT,
   activityLogSinceMs,
@@ -40,7 +40,6 @@ export function useActivityLogController({
   const [loading, setLoading] = useState(false);
   const [range, setRange] = useState<ActivityLogRange>("today");
   const [gsiStatus, setGsiStatus] = useState<GsiStatus | null>(null);
-  const browserPreviewSeededRef = useRef(false);
 
   const record = useCallback((level: ActivityLogLevel, source: string, message: string) => {
     if (!message.trim()) return;
@@ -100,33 +99,6 @@ export function useActivityLogController({
       onError(parseCommandError(reason));
     }).finally(() => setLoading(false));
   }, [language, onError]);
-
-  useEffect(() => {
-    if ("__TAURI_INTERNALS__" in window || !import.meta.env.DEV || browserPreviewSeededRef.current) return;
-    browserPreviewSeededRef.current = true;
-    const now = Date.now();
-    setEntries([
-      { id: "preview-1", timestampMs: now - 42_000, level: "info", source: "app", message: "CS2 DemoTracer 1.2.0 started" },
-      { id: "preview-2", timestampMs: now - 31_000, level: "debug", source: "analysis", message: "phase=parsing" },
-      { id: "preview-3", timestampMs: now - 24_000, level: "info", source: "analysis", message: "Parsed match.dem.zst: 24 rounds · 10 players" },
-      { id: "preview-4", timestampMs: now - 15_000, level: "warn", source: "conversion", message: "Round 12: partial player evidence was preserved" },
-      { id: "preview-5", timestampMs: now - 4_000, level: "info", source: "gsi", message: "map=de_anubis · round=7 · roundPhase=freezetime · activity=playing" },
-    ]);
-    setGsiStatus({
-      listening: true,
-      configured: true,
-      connected: true,
-      port: 32123,
-      lastUpdateMs: now - 4_000,
-      provider: "Counter-Strike 2",
-      map: "de_anubis",
-      mapPhase: "live",
-      round: 7,
-      roundPhase: "freezetime",
-      playerActivity: "playing",
-      playerHealth: 100,
-    });
-  }, []);
 
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;

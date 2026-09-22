@@ -16,6 +16,7 @@ import {
 } from "../icons";
 import type { TextDictionary } from "../i18n";
 import type { ConversionSummary } from "../types";
+import { formatBytes } from "../displayFormat";
 
 export type CopyTarget =
   | "playback"
@@ -105,7 +106,6 @@ interface ResultViewProps {
   onBack: () => void;
   onNewDemo: () => void;
   formatNumber: (value: number) => string;
-  formatBytes: (value: number | string) => string;
 }
 
 export function ResultView({
@@ -120,7 +120,6 @@ export function ResultView({
   onBack,
   onNewDemo,
   formatNumber,
-  formatBytes,
 }: ResultViewProps) {
   const visibleWarnings = [...new Set(warnings)];
   const voiceState = result.voice.sidecars > 0

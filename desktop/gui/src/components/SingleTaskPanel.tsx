@@ -6,7 +6,8 @@
 
 import { ChevronIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
-import type { ProgressPhase, ProgressState } from "../types";
+import type { ProgressPhase, ProgressState } from "../taskProgress";
+import { fileName } from "../displayFormat";
 import "./single-task-panel.css";
 
 type SingleTaskKind = "preflight" | "analysis" | "conversion";
@@ -22,10 +23,6 @@ interface SingleTaskPanelProps {
   onCancelAnalysis: () => void;
   onMinimize: () => void;
   preflightProgress?: { current: number; total: number };
-}
-
-function fileName(path: string): string {
-  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 }
 
 function formatElapsed(seconds: number): string {

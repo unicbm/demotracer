@@ -7,7 +7,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertIcon,
-  ArrowIcon,
   CheckIcon,
   ChevronIcon,
   CloseIcon,
@@ -54,24 +53,14 @@ import type {
 } from "../types";
 import { releaseNotesForLanguage } from "../releaseNotes";
 import { SERVER_CONFIG_GUIDE, type ServerConfigGuideGroup } from "../serverConfigGuide";
-import type { PlaybackHandoffMode, PlaybackPresetOptions } from "./PlaybackCommandBuilder";
+import type { PlaybackHandoffMode, PlaybackPresetOptions } from "../playbackCommand";
 import { DialogPrimitive } from "./Dialog";
 import { SelectControl, type SelectControlOption } from "./SelectControl";
 import { SwitchControl } from "./SwitchControl";
 import "./settings-workspace.css";
 
-type SettingsModal =
-  | "desktopUpdate"
-  | "playbackInstall"
-  | "environment"
-  | "storage"
-  | "conversion"
-  | "playback"
-  | "serverConfig"
-  | "about"
-  | "theme"
-  | "customCss"
-  | null;
+type SettingsSection = "general" | "cs2" | "storage" | "conversion" | "playback" | "serverConfig" | "about";
+type SettingsModal = "theme" | "customCss" | null;
 
 type ThemeColorKey = keyof ThemePalette;
 
@@ -136,7 +125,6 @@ interface SettingsWorkspaceProps {
   inspecting: boolean;
   appVersion: string;
   guiUpdate: GuiUpdateStatus;
-  updateAvailable: boolean;
   playbackRelease: PlaybackReleaseStatus | null;
   playbackUpdate: PlaybackUpdateStatus;
   playbackReleaseError: string;
@@ -173,7 +161,6 @@ interface SettingsWorkspaceProps {
   onAddDemoRoot: () => void;
   onRemoveDemoRoot: (root: string) => void;
   onOpenPath: (path: string) => void;
-  onOpenLogDirectory: () => void;
   onOpenExternal: (url: string) => void;
   onEnvironmentChange: (patch: Partial<LocalEnvironmentSettings>) => void;
   onAggregateTelemetryEnabledChange: (enabled: boolean) => void;
@@ -193,7 +180,6 @@ function statusLabel(words: TextDictionary, status: EnvironmentCheckStatus): str
   if (status === "pass") return words.diagnosticStatusPass;
   if (status === "warning") return words.diagnosticStatusWarning;
   if (status === "error") return words.diagnosticStatusError;
-  if (status === "notApplicable") return words.diagnosticStatusNotApplicable;
   return words.diagnosticStatusUnverified;
 }
 
@@ -205,7 +191,6 @@ function overallCopy(words: TextDictionary, status: EnvironmentOverallStatus) {
 }
 
 function diagnosticGroupLabel(words: TextDictionary, group: string): string {
-  if (group === "cs2") return "CS2";
   if (group === "dependencies") return words.diagnosticGroupDependencies;
   if (group === "demotracer") return "DemoTracer";
   if (group === "runtime") return words.diagnosticGroupRuntime;
@@ -322,44 +307,16 @@ function EditableNumberInput({
   );
 }
 
-function SettingsSubpageRow({
-  title,
-  status,
-  tone,
-  kind = "subpage",
-  disabled = false,
-  onClick,
-}: {
-  title: string;
-  status?: string;
-  tone?: "update";
-  kind?: "subpage" | "folder" | "external";
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button className={`settings-subpage-row is-${kind}${tone === "update" ? " has-update" : ""}`} type="button" disabled={disabled} onClick={onClick}>
-      <span><strong>{title}</strong></span>
-      {status ? <em>{status}</em> : null}
-      {kind === "folder" ? <FolderIcon size={14} /> : kind === "external" ? <ExternalLinkIcon size={14} /> : <ChevronIcon size={15} />}
-    </button>
-  );
-}
-
 function PathRow({
   path,
-  badge,
   removeLabel,
   openLabel,
-  removable,
   onOpen,
   onRemove,
 }: {
   path: string;
-  badge?: string;
   removeLabel: string;
   openLabel: string;
-  removable: boolean;
   onOpen: () => void;
   onRemove: () => void;
 }) {
@@ -368,11 +325,8 @@ function PathRow({
       <button className="settings-path-open-target" type="button" onClick={onOpen} aria-label={`${openLabel}: ${path}`} title={path}>
         <FolderIcon size={16} />
         <code>{path}</code>
-        {badge ? <span>{badge}</span> : null}
       </button>
-      {removable ? (
-        <button className="text-button" type="button" onClick={onRemove}>{removeLabel}</button>
-      ) : null}
+      <button className="text-button" type="button" onClick={onRemove} aria-label={`${removeLabel}: ${path}`}>{removeLabel}</button>
     </div>
   );
 }
@@ -407,7 +361,6 @@ export function SettingsWorkspace({
   inspecting,
   appVersion,
   guiUpdate,
-  updateAvailable,
   playbackRelease,
   playbackUpdate,
   playbackReleaseError,
@@ -444,7 +397,6 @@ export function SettingsWorkspace({
   onAddDemoRoot,
   onRemoveDemoRoot,
   onOpenPath,
-  onOpenLogDirectory,
   onOpenExternal,
   onEnvironmentChange,
   onAggregateTelemetryEnabledChange,
@@ -453,6 +405,7 @@ export function SettingsWorkspace({
   onRequestCosmetics,
   onPlaybackChange,
 }: SettingsWorkspaceProps) {
+  const [activeSection, setActiveSection] = useState<SettingsSection>("general");
   const [settingsModal, setSettingsModal] = useState<SettingsModal>(null);
   const [themeDraft, setThemeDraft] = useState<ThemeEditorDraft>(() => themeEditorDraft(themeCustomization, resolvedTheme));
   const [customCssDraft, setCustomCssDraft] = useState("");
@@ -464,6 +417,7 @@ export function SettingsWorkspace({
   const autoLoadedConfigPath = useRef("");
   const reportCopy = report ? overallCopy(words, report.overall) : null;
   const defaultRootKey = exportRoot.replace(/\\/g, "/").toLocaleLowerCase();
+  const additionalArchiveRoots = archiveRoots.filter((root) => root.replace(/\\/g, "/").toLocaleLowerCase() !== defaultRootKey);
   const normalizedGuideQuery = serverGuideQuery.trim().toLocaleLowerCase();
   const serverGuideGroups = useMemo(() => {
     const groups = new Map<ServerConfigGuideGroup, Array<(typeof SERVER_CONFIG_GUIDE)[number]>>();
@@ -488,13 +442,9 @@ export function SettingsWorkspace({
 
   const handleValidateServerConfig = async () => {
     setValidatingServerConfig(true);
-    setServerConfigFeedback({ tone: "progress", message: words.validatingServerConfig });
-    const validation = await onValidateServerConfig();
+    setServerConfigFeedback(null);
+    await onValidateServerConfig();
     setValidatingServerConfig(false);
-    setServerConfigFeedback({
-      tone: validation ? (validation.valid ? "success" : "error") : "error",
-      message: validation ? (validation.valid ? words.serverConfigValid : words.serverConfigInvalid) : words.serverConfigValidationFailed,
-    });
   };
 
   const handleSaveServerConfig = async () => {
@@ -508,11 +458,11 @@ export function SettingsWorkspace({
 
   useEffect(() => {
     const path = environment.cs2Path.trim();
-    if (settingsModal !== "serverConfig" || !path || serverConfigDocument || loadingServerConfig) return;
+    if (activeSection !== "serverConfig" || !path || serverConfigDocument || loadingServerConfig) return;
     if (autoLoadedConfigPath.current === path) return;
     autoLoadedConfigPath.current = path;
     void handleLoadServerConfig();
-  }, [environment.cs2Path, loadingServerConfig, onLoadServerConfig, serverConfigDocument, settingsModal]);
+  }, [environment.cs2Path, loadingServerConfig, onLoadServerConfig, serverConfigDocument, activeSection]);
 
   const serverGuideGroupLabel = (group: ServerConfigGuideGroup): string => {
     if (group === "general") return words.serverConfigGroupGeneral;
@@ -651,7 +601,7 @@ export function SettingsWorkspace({
           onChange={onPresenceTelemetryEnabledChange}
         />
         <button
-          className="settings-subpage-row"
+          className="settings-theme-entry"
           type="button"
           onClick={openThemeEditor}
         >
@@ -661,6 +611,156 @@ export function SettingsWorkspace({
         </button>
       </section>
     </div>
+  );
+
+  const releaseBusy = releaseAction !== null;
+  const playbackUpdateBusy = releaseBusy || playbackUpdate.phase === "checking"
+    || guiUpdate.phase === "checking" || guiUpdate.phase === "downloading" || guiUpdate.phase === "installing";
+  const playbackUpdateLabel = playbackUpdate.phase === "checking" ? words.releaseChecking
+    : playbackUpdate.phase === "current" ? words.releaseUpToDate
+      : playbackUpdate.phase === "available" ? words.releaseUpdateAvailable
+        : playbackUpdate.phase === "unavailable" ? words.releasePlaybackUnavailable
+          : playbackUpdate.phase === "error" ? words.releaseCheckUnavailable
+            : words.releaseNotChecked;
+  const playbackInstallLabel = playbackInstallProgress?.phase === "downloading" ? words.releaseDownloading
+    : playbackInstallProgress?.phase === "verifying" ? words.releaseVerifying
+      : playbackInstallProgress?.phase === "installing" ? words.releaseInstalling
+        : words.releaseChecking;
+  const guiUpdateBusy = guiUpdate.phase === "checking"
+    || guiUpdate.phase === "downloading"
+    || guiUpdate.phase === "installing";
+  const guiStatus = guiUpdate.phase === "checking" ? words.releaseChecking
+    : guiUpdate.phase === "current" ? words.releaseUpToDate
+      : guiUpdate.phase === "available" ? words.releaseUpdateAvailable
+        : guiUpdate.phase === "downloading" ? words.releaseDownloading
+          : guiUpdate.phase === "installing" ? words.releaseInstalling
+            : guiUpdate.phase === "error" ? words.releaseCheckUnavailable
+              : words.releaseNotChecked;
+  const guiReleaseNotes = releaseNotesForLanguage(guiUpdate.notes, language);
+  const guiProgressPercent = guiUpdate.totalBytes && guiUpdate.downloadedBytes != null
+    ? Math.min(100, Math.round((guiUpdate.downloadedBytes / guiUpdate.totalBytes) * 100))
+    : null;
+  const desktopUpdateView = (
+    <div className="settings-pane release-manager-pane">
+      {releaseNotice ? <div className="release-notice" role="status"><CheckIcon size={16} /><span>{releaseNotice}</span></div> : null}
+
+      <section
+        className={`settings-card release-card desktop-release-card is-${guiUpdate.phase}`}
+        data-update-phase={guiUpdate.phase}
+        aria-labelledby="desktop-release-title"
+      >
+        <div className="release-product-hero">
+          <span className="release-product-mark" aria-hidden="true"><TraceMark size={27} /></span>
+          <div className="release-product-copy">
+            <h3 id="desktop-release-title">DemoTracer <code>v{guiUpdate.currentVersion || appVersion || playbackRelease?.appVersion || "1.0.0"}</code></h3>
+            <p>{words.releaseAutomaticUpdates}</p>
+          </div>
+          <span className={`release-status-pill is-${guiUpdate.phase}`} role="status">
+            <i aria-hidden="true" />{guiStatus}
+          </span>
+        </div>
+
+        {guiReleaseNotes ? (
+          <section className="release-notes-panel" aria-label={words.releaseUpdateNotes}>
+            <strong>{words.releaseUpdateNotes}</strong>
+            <p>{guiReleaseNotes}</p>
+          </section>
+        ) : null}
+        {guiUpdate.phase === "downloading" || guiUpdate.phase === "installing" ? (
+          <div className="release-download-feedback" role="status" aria-live="polite">
+            <div>
+              <span>{guiUpdate.phase === "installing" ? words.releaseInstalling : words.releaseDownloading}</span>
+              <strong>{guiProgressPercent != null ? `${guiProgressPercent}%` : "…"}</strong>
+            </div>
+            <div className={`release-progress${guiProgressPercent == null ? " is-indeterminate" : ""}`}>
+              <span style={{ width: `${guiProgressPercent ?? 36}%` }} />
+            </div>
+          </div>
+        ) : null}
+        {guiUpdate.phase === "error" ? <p className="release-error"><AlertIcon size={15} />{words.releaseCheckUnavailable}</p> : null}
+        <footer className="release-actions">
+          <button className="secondary-button" type="button" disabled={guiUpdateBusy} onClick={onCheckGuiUpdate}>
+            <RefreshIcon className={guiUpdate.phase === "checking" ? "release-spin" : undefined} size={15} />
+            {guiUpdate.phase === "checking" ? words.releaseChecking : words.releaseCheckNow}
+          </button>
+          {guiUpdate.phase === "available" ? (
+            <button className="primary-button" type="button" onClick={onInstallGuiUpdate}>
+              <ReplayIcon size={15} />{words.releaseInstallNow} v{guiUpdate.availableVersion}
+            </button>
+          ) : (
+            <button className="text-button" type="button" onClick={() => onOpenExternal("https://github.com/unicbm/demotracer/releases")}>
+              <ExternalLinkIcon size={15} />{words.releaseOpenGithub}
+            </button>
+          )}
+        </footer>
+      </section>
+    </div>
+  );
+
+  const playbackInstallView = (
+    <section className="settings-card playback-install-card" aria-label={words.releasePlayback}>
+      <div className="settings-card-heading"><h3>{words.releasePlayback}</h3></div>
+      {releaseNotice ? <div className="release-notice" role="status"><CheckIcon size={16} /><span>{releaseNotice}</span></div> : null}
+      <div className="playback-settings-list">
+        {!environment.cs2Path.trim() ? (
+          <div className="release-callout"><FolderIcon size={18} /><span>{words.releaseChooseCs2Folder}</span></div>
+        ) : (
+          <>
+            <div className={`playback-settings-row is-action is-update-status${playbackUpdate.phase === "available" ? " has-update" : ""}${playbackUpdate.error ? " has-error" : ""}`}>
+              <div>
+                <span>{playbackUpdateLabel}</span>
+                {playbackUpdate.phase === "available" && playbackUpdate.latestVersion ? (
+                  <small className="playback-update-route">
+                    {playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy} → v{playbackUpdate.latestVersion}
+                  </small>
+                ) : playbackUpdate.error ? <small>{playbackUpdate.error}</small> : null}
+              </div>
+              {playbackUpdate.phase === "available" ? (
+                <button className="primary-button" type="button" disabled={playbackUpdateBusy} onClick={onInstallLatestPlayback}>
+                  <ReplayIcon size={15} />{releaseAction === "installingOnline" ? playbackInstallLabel
+                    : guiUpdate.phase === "available" ? words.releaseUpdateAll : words.releaseInstallPlaybackUpdate}
+                </button>
+              ) : (
+                <button className="secondary-button" type="button" disabled={playbackUpdateBusy} onClick={onCheckPlaybackUpdate}>
+                  <RefreshIcon className={playbackUpdate.phase === "checking" ? "release-spin" : undefined} size={15} />
+                  {playbackUpdate.phase === "checking" ? words.releaseChecking : words.releaseCheckNow}
+                </button>
+              )}
+            </div>
+            <div className="playback-settings-row">
+              <span>{words.releaseInstalledBundle}</span>
+              <strong>{playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy}</strong>
+            </div>
+            <div className="playback-settings-row">
+              <div>
+                <span>{words.releaseLoadedPlugin}</span>
+              </div>
+              <strong>{playbackRelease?.loadedPluginVersion ? `v${playbackRelease.loadedPluginVersion}` : words.releaseNotRunning}</strong>
+            </div>
+            {playbackReleaseError ? (
+              <div className="playback-settings-row has-error" role="alert">
+                <div><span>{words.errorPlaybackTitle}</span><small>{playbackReleaseError}</small></div>
+              </div>
+            ) : null}
+            <details className="playback-maintenance">
+              <summary>{words.playbackMaintenance}<ChevronIcon size={15} /></summary>
+              <div className="playback-settings-row is-action">
+                <span>{words.releaseLocalPackage}</span>
+                <button className="secondary-button" type="button" disabled={releaseBusy} onClick={onInstallPlaybackBundle}>
+                  <FolderIcon size={15} />{releaseAction === "installingFile" ? words.releaseInstalling : words.releaseInstallFromZip}
+                </button>
+              </div>
+              <div className="playback-settings-row is-action">
+                <span>{words.releaseRollback}</span>
+                <button className="secondary-button" type="button" disabled={releaseBusy || !playbackRelease?.canRollback} onClick={onRollbackPlayback}>
+                  {releaseAction === "rollingBack" ? words.releaseRollingBack : words.releaseRollbackAction}
+                </button>
+              </div>
+            </details>
+          </>
+        )}
+      </div>
+    </section>
   );
 
   const environmentView = (
@@ -722,6 +822,13 @@ export function SettingsWorkspace({
         </div>
       </section>
 
+      {playbackInstallView}
+
+      <p className="settings-environment-scope">
+        {words.environmentInspectionScope}{" "}
+        <button className="text-button" type="button" onClick={() => onOpenExternal("https://github.com/unicbm/demotracer/blob/main/server/README.md#shared-hook-runtime")}>{words.environmentRequirementsLink}</button>
+      </p>
+
       {report ? (
         <>
           <details className={`diagnostic-detail-bundle is-${report.overall}`}>
@@ -729,13 +836,14 @@ export function SettingsWorkspace({
               <span className="diagnostic-detail-mark"><StatusMark status={report.overall} /></span>
               <span className="diagnostic-detail-title">
                 <strong>{reportCopy?.[0]}</strong>
-                <small>{report.cached ? words.cachedDiagnosticBadge : reportCopy?.[1]}</small>
+                <small>{words.diagnosticCheckedAt.replace("{time}", new Date(report.checkedAtMs).toLocaleString(language === "zh" ? "zh-CN" : "en-US"))}</small>
               </span>
               <b>{words.environmentDetailCount
                 .replace("{checks}", String(report.checks.length))}</b>
               <ChevronIcon size={15} />
             </summary>
             <div className="diagnostic-detail-content">
+              <p className="settings-environment-scope">{reportCopy?.[1]}</p>
           <section className="settings-card install-receipt" aria-labelledby="install-receipt-title">
             <div className="settings-card-heading">
               <div>
@@ -817,161 +925,6 @@ export function SettingsWorkspace({
     </div>
   );
 
-  const releaseBusy = releaseAction !== null;
-  const playbackUpdateBusy = releaseBusy || playbackUpdate.phase === "checking"
-    || guiUpdate.phase === "checking" || guiUpdate.phase === "downloading" || guiUpdate.phase === "installing";
-  const playbackUpdateLabel = playbackUpdate.phase === "checking" ? words.releaseChecking
-    : playbackUpdate.phase === "current" ? words.releaseUpToDate
-      : playbackUpdate.phase === "available" ? words.releaseUpdateAvailable
-        : playbackUpdate.phase === "unavailable" ? words.releasePlaybackUnavailable
-          : playbackUpdate.phase === "error" ? words.releaseCheckUnavailable
-            : words.releaseNotChecked;
-  const playbackInstallLabel = playbackInstallProgress?.phase === "downloading" ? words.releaseDownloading
-    : playbackInstallProgress?.phase === "verifying" ? words.releaseVerifying
-      : playbackInstallProgress?.phase === "installing" ? words.releaseInstalling
-        : words.releaseChecking;
-  const guiUpdateBusy = guiUpdate.phase === "checking"
-    || guiUpdate.phase === "downloading"
-    || guiUpdate.phase === "installing";
-  const guiStatus = guiUpdate.phase === "checking" ? words.releaseChecking
-    : guiUpdate.phase === "current" ? words.releaseUpToDate
-      : guiUpdate.phase === "available" ? words.releaseUpdateAvailable
-        : guiUpdate.phase === "downloading" ? words.releaseDownloading
-          : guiUpdate.phase === "installing" ? words.releaseInstalling
-            : guiUpdate.phase === "error" ? words.releaseCheckUnavailable
-              : words.releaseNotChecked;
-  const guiReleaseNotes = releaseNotesForLanguage(guiUpdate.notes, language);
-  const guiProgressPercent = guiUpdate.totalBytes && guiUpdate.downloadedBytes != null
-    ? Math.min(100, Math.round((guiUpdate.downloadedBytes / guiUpdate.totalBytes) * 100))
-    : null;
-  const desktopUpdateView = (
-    <div className="settings-pane release-manager-pane">
-      {releaseNotice ? <div className="release-notice" role="status"><CheckIcon size={16} /><span>{releaseNotice}</span></div> : null}
-
-      <section
-        className={`settings-card release-card desktop-release-card is-${guiUpdate.phase}`}
-        data-update-phase={guiUpdate.phase}
-        aria-labelledby="desktop-release-title"
-      >
-        <div className="release-product-hero">
-          <span className="release-product-mark" aria-hidden="true"><TraceMark size={27} /></span>
-          <div className="release-product-copy">
-            <h3 id="desktop-release-title">DemoTracer <code>v{guiUpdate.currentVersion || appVersion || playbackRelease?.appVersion || "1.0.0"}</code></h3>
-            <p>{words.releaseAutomaticUpdates}</p>
-          </div>
-          <span className={`release-status-pill is-${guiUpdate.phase}`} role="status">
-            <i aria-hidden="true" />{guiStatus}
-          </span>
-        </div>
-
-        <div className="release-version-route" aria-label={words.releaseUpdateStatus}>
-          <div><span>{words.releaseCurrentVersion}</span><strong>v{guiUpdate.currentVersion || appVersion || "—"}</strong></div>
-          <span className="release-version-arrow" aria-hidden="true"><ArrowIcon size={17} /></span>
-          <div><span>{words.releaseLatestVersion}</span><strong>{guiUpdate.availableVersion ? `v${guiUpdate.availableVersion}` : "—"}</strong></div>
-        </div>
-
-        {guiReleaseNotes ? (
-          <section className="release-notes-panel" aria-label={words.releaseUpdateNotes}>
-            <strong>{words.releaseUpdateNotes}</strong>
-            <p>{guiReleaseNotes}</p>
-          </section>
-        ) : null}
-        {guiUpdate.phase === "downloading" || guiUpdate.phase === "installing" ? (
-          <div className="release-download-feedback" role="status" aria-live="polite">
-            <div>
-              <span>{guiUpdate.phase === "installing" ? words.releaseInstalling : words.releaseDownloading}</span>
-              <strong>{guiProgressPercent != null ? `${guiProgressPercent}%` : "…"}</strong>
-            </div>
-            <div className={`release-progress${guiProgressPercent == null ? " is-indeterminate" : ""}`}>
-              <span style={{ width: `${guiProgressPercent ?? 36}%` }} />
-            </div>
-          </div>
-        ) : null}
-        {guiUpdate.phase === "error" ? <p className="release-error"><AlertIcon size={15} />{words.releaseCheckUnavailable}</p> : null}
-        <footer className="release-actions">
-          <button className="secondary-button" type="button" disabled={guiUpdateBusy} onClick={onCheckGuiUpdate}>
-            <RefreshIcon className={guiUpdate.phase === "checking" ? "release-spin" : undefined} size={15} />
-            {guiUpdate.phase === "checking" ? words.releaseChecking : words.releaseCheckNow}
-          </button>
-          {guiUpdate.phase === "available" ? (
-            <button className="primary-button" type="button" onClick={onInstallGuiUpdate}>
-              <ReplayIcon size={15} />{words.releaseInstallNow}
-            </button>
-          ) : (
-            <button className="text-button" type="button" onClick={() => onOpenExternal("https://github.com/unicbm/demotracer/releases")}>
-              <ExternalLinkIcon size={15} />{words.releaseOpenGithub}
-            </button>
-          )}
-        </footer>
-      </section>
-    </div>
-  );
-
-  const playbackInstallView = (
-    <div className="settings-pane release-manager-pane">
-      <section className="playback-settings-list" aria-label={words.releasePlayback}>
-        {!environment.cs2Path.trim() ? (
-          <div className="release-callout"><FolderIcon size={18} /><span>{words.releaseChooseCs2Folder}</span></div>
-        ) : (
-          <>
-            <div className="playback-settings-row is-path">
-              <span>{words.releaseCs2Directory}</span>
-              <code title={environment.cs2Path}>{environment.cs2Path}</code>
-            </div>
-            <div className={`playback-settings-row is-action is-update-status${playbackUpdate.phase === "available" ? " has-update" : ""}${playbackUpdate.error ? " has-error" : ""}`}>
-              <div>
-                <span>{playbackUpdateLabel}</span>
-                {playbackUpdate.phase === "available" && playbackUpdate.latestVersion ? (
-                  <small className="playback-update-route">
-                    {playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy} → v{playbackUpdate.latestVersion}
-                  </small>
-                ) : playbackUpdate.error ? <small>{playbackUpdate.error}</small> : null}
-              </div>
-              {playbackUpdate.phase === "available" ? (
-                <button className="primary-button" type="button" disabled={playbackUpdateBusy} onClick={onInstallLatestPlayback}>
-                  <ReplayIcon size={15} />{releaseAction === "installingOnline" ? playbackInstallLabel
-                    : guiUpdate.phase === "available" ? words.releaseUpdateAll : words.releaseInstallPlaybackUpdate}
-                </button>
-              ) : (
-                <button className="secondary-button" type="button" disabled={playbackUpdateBusy} onClick={onCheckPlaybackUpdate}>
-                  <RefreshIcon className={playbackUpdate.phase === "checking" ? "release-spin" : undefined} size={15} />
-                  {playbackUpdate.phase === "checking" ? words.releaseChecking : words.releaseCheckNow}
-                </button>
-              )}
-            </div>
-            <div className="playback-settings-row">
-              <span>{words.releaseInstalledBundle}</span>
-              <strong>{playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy}</strong>
-            </div>
-            <div className="playback-settings-row">
-              <div>
-                <span>{words.releaseLoadedPlugin}</span>
-              </div>
-              <strong>{playbackRelease?.loadedPluginVersion ? `v${playbackRelease.loadedPluginVersion}` : words.releaseNotRunning}</strong>
-            </div>
-            {playbackReleaseError ? (
-              <div className="playback-settings-row has-error" role="alert">
-                <div><span>{words.errorPlaybackTitle}</span><small>{playbackReleaseError}</small></div>
-              </div>
-            ) : null}
-            <div className="playback-settings-row is-action">
-              <span>{words.releaseLocalPackage}</span>
-              <button className="secondary-button" type="button" disabled={releaseBusy} onClick={onInstallPlaybackBundle}>
-                <FolderIcon size={15} />{releaseAction === "installingFile" ? words.releaseInstalling : words.releaseInstallFromZip}
-              </button>
-            </div>
-            <div className="playback-settings-row is-action">
-              <span>{words.releaseRollback}</span>
-              <button className="secondary-button" type="button" disabled={releaseBusy || !playbackRelease?.canRollback} onClick={onRollbackPlayback}>
-                {releaseAction === "rollingBack" ? words.releaseRollingBack : words.releaseRollbackAction}
-              </button>
-            </div>
-          </>
-        )}
-      </section>
-    </div>
-  );
-
   const pathsView = (
     <div className="settings-pane settings-paths-pane">
       <section className="settings-card" aria-labelledby="default-output-title">
@@ -999,23 +952,13 @@ export function SettingsWorkspace({
             <FolderIcon size={15} />{words.addFolder}
           </button>
         </div>
-        <div className="settings-path-list">
-          {archiveRoots.map((root) => {
-            const isDefault = root.replace(/\\/g, "/").toLocaleLowerCase() === defaultRootKey;
-            return (
-              <PathRow
-                key={root}
-                path={root}
-                 badge={isDefault ? words.defaultExport : undefined}
-                 removeLabel={words.removeFolder}
-                 openLabel={words.openFolder}
-                 removable={!isDefault}
-                 onOpen={() => onOpenPath(root)}
-                 onRemove={() => onRemoveArchiveRoot(root)}
-              />
-            );
-          })}
-        </div>
+        {additionalArchiveRoots.length > 0 ? (
+          <div className="settings-path-list">
+            {additionalArchiveRoots.map((root) => (
+              <PathRow key={root} path={root} removeLabel={words.removeFolder} openLabel={words.openFolder} onOpen={() => onOpenPath(root)} onRemove={() => onRemoveArchiveRoot(root)} />
+            ))}
+          </div>
+        ) : <p className="settings-empty-list">{words.noDemoDirectories}</p>}
       </section>
 
       <section className="settings-card" aria-labelledby="demo-roots-title">
@@ -1030,7 +973,7 @@ export function SettingsWorkspace({
         {environment.demoRoots.length > 0 ? (
           <div className="settings-path-list">
             {environment.demoRoots.map((root) => (
-              <PathRow key={root} path={root} removeLabel={words.removeFolder} openLabel={words.openFolder} removable onOpen={() => onOpenPath(root)} onRemove={() => onRemoveDemoRoot(root)} />
+              <PathRow key={root} path={root} removeLabel={words.removeFolder} openLabel={words.openFolder} onOpen={() => onOpenPath(root)} onRemove={() => onRemoveDemoRoot(root)} />
             ))}
           </div>
         ) : <p className="settings-empty-list">{words.noDemoDirectories}</p>}
@@ -1042,7 +985,6 @@ export function SettingsWorkspace({
   const exportView = (
     <div className="settings-pane settings-export-pane">
       <section className="settings-card settings-form-card">
-        <div className="settings-card-heading settings-inline-card-heading"><h3>{words.settingsNavExport}</h3></div>
         <div className="settings-choice-row">
           <div><strong>{words.side}</strong></div>
           <div className="segmented-control" role="group" aria-label={words.side}>
@@ -1082,28 +1024,18 @@ export function SettingsWorkspace({
           </div>
         ) : null}
 
-        <div className="playback-settings-advanced conversion-settings-advanced">
-          <div className="playback-settings-advanced-heading">{words.compatibilityOptions}</div>
-          <div className="playback-settings-advanced-body">
-            <div className="settings-number-row settings-readonly-row">
-              <div><strong>{words.freezePreroll}</strong><small>{words.freezePrerollDefaultHelp}</small></div>
-              <span className="setting-value-badge">{words.freezePrerollAutoValue}</span>
-            </div>
-            <SettingLine title={words.subtickCapture} description={words.subtickCaptureHelp} checked={converter.subtickMode === "auto"} onChange={(enabled) => onConverterChange({ subtickMode: enabled ? "auto" : "off" })} />
-            <div className="settings-number-row">
-              <div><strong>{words.maxRoundDuration}</strong><small>{words.maxRoundDurationHelp}</small></div>
-              <label>
-                <EditableNumberInput
-                  min={30}
-                  max={1800}
-                  step={10}
-                  value={converter.maxRoundSeconds}
-                  onChange={(maxRoundSeconds) => onConverterChange({ maxRoundSeconds })}
-                />
-                <span>{words.seconds}</span>
-              </label>
-            </div>
-          </div>
+        <div className="settings-number-row">
+          <div><strong>{words.maxRoundDuration}</strong><small>{words.maxRoundDurationHelp}</small></div>
+          <label>
+            <EditableNumberInput
+              min={30}
+              max={1800}
+              step={10}
+              value={converter.maxRoundSeconds}
+              onChange={(maxRoundSeconds) => onConverterChange({ maxRoundSeconds })}
+            />
+            <span>{words.seconds}</span>
+          </label>
         </div>
       </section>
 
@@ -1113,7 +1045,6 @@ export function SettingsWorkspace({
   const playbackView = (
     <div className="settings-pane settings-playback-pane">
       <section className="settings-card settings-form-card playback-defaults-card">
-        <div className="settings-card-heading settings-inline-card-heading"><h3>{words.settingsNavPlayback}</h3></div>
         <SettingLine
           title={words.syncWeapons}
           checked={playback.weapons || playback.cosmetics}
@@ -1192,7 +1123,6 @@ export function SettingsWorkspace({
     </div>
   );
 
-  const effectiveServerValidation = serverConfigValidation ?? serverConfigDocument?.validation ?? null;
   const serverConfigView = (
     <div className="settings-pane server-config-pane">
       <header className="settings-card settings-pane-toolbar">
@@ -1203,7 +1133,7 @@ export function SettingsWorkspace({
           <button className="secondary-button" type="button" disabled={!serverConfigDraft.trim() || loadingServerConfig || savingServerConfig || validatingServerConfig} onClick={() => void handleValidateServerConfig()}>
             <CheckIcon size={16} />{validatingServerConfig ? words.validatingServerConfig : words.validateServerConfig}
           </button>
-          <button className="primary-button" type="button" disabled={!serverConfigDocument || !serverConfigDraft.trim() || loadingServerConfig || savingServerConfig || validatingServerConfig || effectiveServerValidation?.valid === false} onClick={() => void handleSaveServerConfig()}>
+          <button className="primary-button" type="button" disabled={!serverConfigDocument || !serverConfigDraft.trim() || loadingServerConfig || savingServerConfig || validatingServerConfig || serverConfigValidation?.valid === false} onClick={() => void handleSaveServerConfig()}>
             <SlidersIcon size={16} />{savingServerConfig ? words.savingServerConfig : words.saveServerConfig}
           </button>
         </div>
@@ -1233,7 +1163,7 @@ export function SettingsWorkspace({
                 <h3>{words.serverConfigEditor}</h3>
                 <p>{words.serverConfigEditorHelp}</p>
               </div>
-              <span className={`count-badge${serverConfigDocument.exists ? "" : " is-warning"}`}>
+              <span className={`count-badge${serverConfigDocument.source === "installed" ? "" : " is-warning"}`}>
                 {serverConfigDocument.source === "installed"
                   ? words.serverConfigInstalled
                   : serverConfigDocument.source === "example"
@@ -1247,8 +1177,12 @@ export function SettingsWorkspace({
                 className="server-config-editor"
                 value={serverConfigDraft}
                 spellCheck={false}
+                disabled={loadingServerConfig || savingServerConfig}
                 aria-label={words.serverConfigEditor}
-                onChange={(event) => onServerConfigDraftChange(event.target.value)}
+                onChange={(event) => {
+                  setServerConfigFeedback(null);
+                  onServerConfigDraftChange(event.target.value);
+                }}
               />
               <aside className="server-config-guide" aria-label={words.serverConfigFieldReference}>
                 <header>
@@ -1282,31 +1216,31 @@ export function SettingsWorkspace({
             </div>
           </section>
 
-          {effectiveServerValidation ? (
-            <section className={`settings-card server-config-validation is-${effectiveServerValidation.valid ? "valid" : "invalid"}`}>
+          {serverConfigValidation ? (
+            <section className={`settings-card server-config-validation is-${serverConfigValidation.valid ? "valid" : "invalid"}`}>
               <div className="settings-card-heading">
                 <div>
-                  <h3>{effectiveServerValidation.valid ? words.serverConfigValid : words.serverConfigInvalid}</h3>
+                  <h3>{serverConfigValidation.valid ? words.serverConfigValid : words.serverConfigInvalid}</h3>
                   <p>{words.serverConfigValidationHelp}</p>
                 </div>
-                <span className={`count-badge${effectiveServerValidation.valid ? "" : " is-warning"}`}>
-                  {effectiveServerValidation.errors.length} / {effectiveServerValidation.warnings.length}
+                <span className={`count-badge${serverConfigValidation.valid ? "" : " is-warning"}`}>
+                  {serverConfigValidation.errors.length} / {serverConfigValidation.warnings.length}
                 </span>
               </div>
-              {[...effectiveServerValidation.errors, ...effectiveServerValidation.warnings].length > 0 ? (
+              {[...serverConfigValidation.errors, ...serverConfigValidation.warnings].length > 0 ? (
                 <ul className="server-config-issues">
-                  {[...effectiveServerValidation.errors, ...effectiveServerValidation.warnings].map((issue) => (
+                  {[...serverConfigValidation.errors, ...serverConfigValidation.warnings].map((issue) => (
                     <li key={`${issue.code}:${issue.path}:${issue.message}`}>
-                      <AlertIcon size={15} /><div><code>{issue.path || "$"}</code><span>{words.serverConfigFieldIssue}</span></div>
+                      <AlertIcon size={15} /><div><code>{issue.path || "$"}</code><span>{issue.message}</span></div>
                     </li>
                   ))}
                 </ul>
               ) : <p className="settings-empty-list">{words.serverConfigNoIssues}</p>}
-              {effectiveServerValidation.unknownPaths.length > 0 ? (
+              {serverConfigValidation.unknownPaths.length > 0 ? (
                 <details className="server-config-unknown">
-                  <summary>{words.serverConfigUnknownFields.replace("{count}", String(effectiveServerValidation.unknownPaths.length))}</summary>
+                  <summary>{words.serverConfigUnknownFields.replace("{count}", String(serverConfigValidation.unknownPaths.length))}</summary>
                   <p>{words.serverConfigUnknownFieldsHelp}</p>
-                  <div>{effectiveServerValidation.unknownPaths.map((path) => <code key={path}>{path}</code>)}</div>
+                  <div>{serverConfigValidation.unknownPaths.map((path) => <code key={path}>{path}</code>)}</div>
                 </details>
               ) : null}
             </section>
@@ -1322,21 +1256,12 @@ export function SettingsWorkspace({
     </div>
   );
 
-  const aboutVersion = appVersion || playbackRelease?.appVersion || "1.0.0";
   const creditedPeople = [
     DEMOTRACER_CREDITS.creator,
     ...DEMOTRACER_CREDITS.contributors,
   ];
   const aboutView = (
     <div className="settings-pane settings-about-pane">
-      <header className="credits-product-hero">
-        <TraceMark size={36} />
-        <span className="credits-product-copy">
-          <strong>{words.appName}</strong>
-          <code className="credits-version">v{aboutVersion}</code>
-        </span>
-      </header>
-
       <section className="credits-section is-contributors" aria-labelledby="credits-contributors-title">
         <header className="credits-section-heading">
           <h3 id="credits-contributors-title">{words.creditsContributorsTitle}</h3>
@@ -1533,132 +1458,48 @@ export function SettingsWorkspace({
     </div>
   );
 
-  const compactPathStatus = (path: string) => {
-    const normalized = path.trim().replace(/[\\/]+$/, "");
-    return normalized.split(/[\\/]/).at(-1) || words.notSelected;
+  const sections: Array<{ id: SettingsSection; label: string; hasUpdate?: boolean }> = [
+    { id: "general", label: words.settingsNavAppearance },
+    { id: "cs2", label: words.settingsNavCs2, hasUpdate: playbackUpdate.phase === "available" },
+    { id: "storage", label: words.settingsNavPaths },
+    { id: "conversion", label: words.settingsNavExport },
+    { id: "playback", label: words.settingsNavPlayback },
+    { id: "serverConfig", label: words.serverConfigTitle },
+    { id: "about", label: words.settingsAboutUpdates, hasUpdate: guiUpdate.phase === "available" },
+  ];
+  const sectionContent = {
+    general: appearanceView,
+    cs2: environmentView,
+    storage: pathsView,
+    conversion: exportView,
+    playback: playbackView,
+    serverConfig: serverConfigView,
+    about: <>{desktopUpdateView}{aboutView}</>,
   };
-  const playbackReleaseStatus = !environment.cs2Path.trim()
-    ? words.releaseUnverified
-    : playbackUpdate.phase === "available" && playbackUpdate.latestVersion
-      ? `${playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy} → v${playbackUpdate.latestVersion}`
-      : playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy;
-  const modalTitle = settingsModal === "desktopUpdate" ? words.releaseDesktopApp
-    : settingsModal === "playbackInstall" ? words.releasePlayback
-      : settingsModal === "environment" ? words.advancedEnvironmentDiagnostics
-        : settingsModal === "storage" ? words.advancedStorage
-          : settingsModal === "conversion" ? words.advancedConversion
-            : settingsModal === "playback" ? words.advancedPlayback
-              : settingsModal === "serverConfig" ? words.serverConfigTitle
-                : settingsModal === "about" ? words.settingsNavAbout
-                  : settingsModal === "theme" ? words.themeSettingsTitle
-                    : words.customCssEditorTitle;
-  const modalContent = settingsModal === "desktopUpdate" ? desktopUpdateView
-    : settingsModal === "playbackInstall" ? playbackInstallView
-      : settingsModal === "environment" ? environmentView
-        : settingsModal === "storage" ? pathsView
-          : settingsModal === "conversion" ? exportView
-            : settingsModal === "playback" ? playbackView
-              : settingsModal === "serverConfig" ? serverConfigView
-                : settingsModal === "about" ? aboutView
-                  : null;
 
   return (
     <section className="settings-workspace" aria-label={words.settingsTitle}>
-      <div className="settings-content">
-        <div className="settings-dashboard">
-          <div className="settings-dashboard-column">
-            <section className="settings-dashboard-panel is-general">
-              <header><strong>{words.settingsNavAppearance}</strong></header>
-              <div className="settings-dashboard-panel-body">{appearanceView}</div>
-            </section>
-            <section className="settings-dashboard-panel">
-              <header><strong>CS2</strong></header>
-              <div className="settings-subpage-list">
-                <SettingsSubpageRow
-                  title={words.releaseCs2Directory}
-                  status={compactPathStatus(environment.cs2Path)}
-                  kind="folder"
-                  disabled={!environment.cs2Path.trim()}
-                  onClick={() => onOpenPath(environment.cs2Path)}
-                />
-                <SettingsSubpageRow
-                  title={words.advancedEnvironmentDiagnostics}
-                  status={reportCopy?.[0] ?? (environment.cs2Path.trim() ? words.releaseUnverified : words.notSelected)}
-                  onClick={() => setSettingsModal("environment")}
-                />
-              </div>
-            </section>
-            <section className="settings-dashboard-panel">
-              <header><strong>{words.settingsNavPaths}</strong></header>
-              <div className="settings-subpage-list">
-                <SettingsSubpageRow
-                  title={words.defaultOutputDirectory}
-                  status={compactPathStatus(exportRoot)}
-                  kind="folder"
-                  disabled={!exportRoot.trim()}
-                  onClick={() => onOpenPath(exportRoot)}
-                />
-                <SettingsSubpageRow
-                  title={words.archiveLibraryDirectories}
-                  status={(archiveRoots.length === 1 ? words.libraryFolderCountOne : words.libraryFolderCountMany).replace("{count}", String(archiveRoots.length))}
-                  onClick={() => setSettingsModal("storage")}
-                />
-                <SettingsSubpageRow
-                  title={words.rawDemoDirectories}
-                  status={(environment.demoRoots.length === 1 ? words.libraryFolderCountOne : words.libraryFolderCountMany).replace("{count}", String(environment.demoRoots.length))}
-                  onClick={() => setSettingsModal("storage")}
-                />
-              </div>
-            </section>
-          </div>
-          <div className="settings-dashboard-column">
-            <section className="settings-dashboard-panel is-environment">
-              <header>
-                <strong>{words.settingsNavEnvironment}</strong>
-                {updateAvailable ? <i className="settings-nav-update-dot" title={words.releaseUpdateAvailable} aria-hidden="true" /> : null}
-              </header>
-              <div className="settings-subpage-list">
-                <SettingsSubpageRow title={`${words.releaseDesktopApp} · v${guiUpdate.currentVersion || appVersion || "—"}`} status={guiStatus} onClick={() => setSettingsModal("desktopUpdate")} />
-                <SettingsSubpageRow
-                  title={words.releasePlayback}
-                  status={playbackReleaseStatus}
-                  tone={playbackUpdate.phase === "available" ? "update" : undefined}
-                  onClick={() => setSettingsModal("playbackInstall")}
-                />
-              </div>
-            </section>
-            <section className="settings-dashboard-panel" aria-label={words.demoTracerAdvancedSettings}>
-              <header><strong>{words.demoTracerAdvancedSettings}</strong></header>
-              <div className="settings-subpage-list">
-                <SettingsSubpageRow title={words.advancedServerConfig} onClick={() => setSettingsModal("serverConfig")} />
-                <SettingsSubpageRow title={words.advancedConversion} onClick={() => setSettingsModal("conversion")} />
-                <SettingsSubpageRow title={words.advancedPlayback} onClick={() => setSettingsModal("playback")} />
-                <SettingsSubpageRow title={words.advancedLogDirectory} kind="folder" onClick={onOpenLogDirectory} />
-              </div>
-            </section>
-            <section className="settings-dashboard-panel" aria-label={words.settingsNavAbout}>
-              <header><strong>{words.settingsNavAbout}</strong></header>
-              <div className="settings-subpage-list">
-                <SettingsSubpageRow title={words.aboutTitle} status={`v${aboutVersion}`} onClick={() => setSettingsModal("about")} />
-                <SettingsSubpageRow title="GitHub" kind="external" onClick={() => onOpenExternal("https://github.com/unicbm/demotracer")} />
-              </div>
-            </section>
-          </div>
-        </div>
+      <nav className="settings-section-nav" aria-label={words.settingsTitle}>
+        {sections.map(({ id, label, hasUpdate }) => (
+          <button
+            key={id}
+            type="button"
+            className={activeSection === id ? "is-active" : undefined}
+            aria-current={activeSection === id ? "page" : undefined}
+            aria-controls="settings-section-content"
+            onClick={() => setActiveSection(id)}
+          >
+            <span>{label}</span>
+            {hasUpdate ? <span className="settings-section-update">{words.releaseUpdateAvailable}</span> : null}
+          </button>
+        ))}
+      </nav>
+      <div className={`settings-content is-${activeSection}`} id="settings-section-content" key={activeSection}>
+        <header className="settings-section-heading">
+          <h1>{sections.find(({ id }) => id === activeSection)?.label}</h1>
+        </header>
+        {sectionContent[activeSection]}
       </div>
-
-      {settingsModal && settingsModal !== "theme" && settingsModal !== "customCss" ? (
-        <DialogPrimitive labelledBy="settings-modal-title" onDismiss={() => setSettingsModal(null)} className={`dialog-surface settings-modal is-${settingsModal}${settingsModal === "serverConfig" ? " is-advanced" : ""}`}>
-          <header className="settings-modal-header">
-            <h2 id="settings-modal-title">{modalTitle}</h2>
-            <button className="icon-button" type="button" onClick={() => setSettingsModal(null)} aria-label={words.close} title={words.close}><CloseIcon size={16} /></button>
-          </header>
-          <div className="settings-modal-body">{modalContent}</div>
-          {settingsModal === "playbackInstall" || settingsModal === "about" ? null : (
-            <footer className="settings-modal-footer"><button className="secondary-button" type="button" onClick={() => setSettingsModal(null)}>{words.close}</button></footer>
-          )}
-        </DialogPrimitive>
-      ) : null}
 
       {settingsModal === "theme" ? (
         <DialogPrimitive labelledBy="theme-settings-modal-title" onDismiss={() => setSettingsModal(null)} className="dialog-surface settings-modal settings-theme-modal">

@@ -118,35 +118,6 @@ impl FromStr for Side {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum SubtickMode {
-    #[default]
-    Auto,
-    Off,
-}
-
-impl fmt::Display for SubtickMode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SubtickMode::Auto => f.write_str("auto"),
-            SubtickMode::Off => f.write_str("off"),
-        }
-    }
-}
-
-impl FromStr for SubtickMode {
-    type Err = String;
-
-    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
-        match value.to_ascii_lowercase().as_str() {
-            "auto" | "on" | "1" | "true" => Ok(SubtickMode::Auto),
-            "off" | "0" | "false" => Ok(SubtickMode::Off),
-            _ => Err(format!("unknown subtick mode: {value}")),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct MovementSnapshot {
     pub origin: [f32; 3],

@@ -8,9 +8,9 @@ import { Badge, Button, Group, Paper, Progress, Stack, Text } from "@mantine/cor
 import type { RefObject } from "react";
 import {
   consentIsValid,
-  fileName,
   type DuplicateDemoConflictState,
 } from "../appSupport";
+import { fileName } from "../displayFormat";
 import { AlertIcon, ArrowIcon, CheckIcon, CloseIcon, CopyIcon, FolderIcon } from "../icons";
 import { COSMETIC_PHRASE, TEXT } from "../i18n";
 import { releaseNotesForLanguage } from "../releaseNotes";

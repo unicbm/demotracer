@@ -11,7 +11,6 @@ import {
   isReusableDemoArchive,
   librarySeriesForManifest,
   normalizeSourceLinkNoteDismissed,
-  SOURCE_LINK_NOTE_DISMISSED_STORAGE_KEY,
 } from "./library.ts";
 import type { DemoLibraryEntry } from "./types.ts";
 
@@ -32,7 +31,6 @@ function seriesEntry(
 }
 
 test("the source-link hint uses a persistent explicit acknowledgement", () => {
-  assert.equal(SOURCE_LINK_NOTE_DISMISSED_STORAGE_KEY, "demotracer.library-source-link-note-dismissed.v1");
   assert.equal(normalizeSourceLinkNoteDismissed("true"), true);
   assert.equal(normalizeSourceLinkNoteDismissed(true), true);
   assert.equal(normalizeSourceLinkNoteDismissed("false"), false);

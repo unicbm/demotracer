@@ -4,7 +4,6 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { type RefObject, useRef } from "react";
 import { Button, Group, Stack, Text } from "@mantine/core";
 import { ArrowIcon, FolderIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
@@ -31,22 +30,19 @@ function compactPath(path: string, limit = 42): string {
   return `${path.slice(0, keep)}…${path.slice(-keep)}`;
 }
 
-function InspectorContents({
+export function ExportInspector({
   words,
   settings,
   selectedRoundCount,
   outputDir,
   outputRoot,
-  firstControlRef,
   disabled,
   onChange,
   onRequestCosmetics,
   onRestoreDefaults,
   onChooseOutput,
   onConvert,
-}: ExportInspectorProps & {
-  firstControlRef: RefObject<HTMLButtonElement | null>;
-}) {
+}: ExportInspectorProps) {
   const sideOptions: Array<{ value: SideChoice; label: string }> = [
     { value: "both", label: words.both },
     { value: "t", label: words.t },
@@ -55,7 +51,7 @@ function InspectorContents({
   const canConvert = selectedRoundCount > 0 && Boolean(outputDir) && !disabled;
 
   return (
-    <>
+    <aside className="export-inspector is-docked" aria-labelledby="export-inspector-title">
       <header className="inspector-header">
         <h2 id="export-inspector-title">{words.inspectorTitle}</h2>
       </header>
@@ -67,9 +63,8 @@ function InspectorContents({
           <div className="field-group">
             <span className="field-label">{words.side}</span>
             <div className="segmented-control" role="group" aria-label={words.side}>
-              {sideOptions.map(({ value, label }, index) => (
+              {sideOptions.map(({ value, label }) => (
                 <button
-                  ref={index === 0 ? firstControlRef : undefined}
                   className={settings.side === value ? "is-selected" : ""}
                   type="button"
                   aria-pressed={settings.side === value}
@@ -117,14 +112,6 @@ function InspectorContents({
             <SwitchControl checked={settings.exportVoice} label={words.exportVoice} onChange={(exportVoice) => onChange({ exportVoice })} />
           </div>
         </section>
-
-        <details className="inspector-disclosure">
-          <summary>{words.advanced}</summary>
-          <div className="setting-line">
-            <div><strong>{words.freezePreroll}</strong><small>{words.freezePrerollDefaultHelp}</small></div>
-            <span className="setting-value-badge">{words.freezePrerollAutoValue}</span>
-          </div>
-        </details>
 
         <section className="inspector-section risk-section">
           <h3>{words.highRisk}</h3>
@@ -198,19 +185,6 @@ function InspectorContents({
         </Stack>
       </footer>
       </fieldset>
-    </>
-  );
-}
-
-export function ExportInspector(props: ExportInspectorProps) {
-  const firstControlRef = useRef<HTMLButtonElement | null>(null);
-
-  return (
-    <aside
-      className="export-inspector is-docked"
-      aria-labelledby="export-inspector-title"
-    >
-      <InspectorContents {...props} firstControlRef={firstControlRef} />
     </aside>
   );
 }

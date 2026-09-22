@@ -14,6 +14,7 @@ import {
 } from "react";
 import { AlertIcon, ArrowIcon, CloseIcon, CopyIcon, FolderIcon, NoteIcon, PlusIcon, RefreshIcon, ReplayIcon, SearchIcon, TraceMark, TrashIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
+import { formatBytes, formatDuration } from "../displayFormat";
 import {
   demoLibraryTimestamp,
   normalizeSourceLinkNoteDismissed,
@@ -88,31 +89,6 @@ function playedAtTimestamp(value: string | null | undefined): number {
   if (!value?.trim()) return 0;
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
-function formatDuration(value: number | null | undefined): string | null {
-  if (!value || !Number.isFinite(value)) return null;
-  const totalSeconds = Math.max(0, Math.round(value));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
-    : `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
-function formatBytes(value: number | string): string {
-  const bytes = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(bytes) || bytes < 0) return String(value);
-  if (bytes < 1024) return `${Math.round(bytes)} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let amount = bytes / 1024;
-  let unit = 0;
-  while (amount >= 1024 && unit < units.length - 1) {
-    amount /= 1024;
-    unit += 1;
-  }
-  return `${amount >= 10 ? amount.toFixed(1) : amount.toFixed(2)} ${units[unit]}`;
 }
 
 function formatTickRate(value: number): string {
@@ -288,7 +264,7 @@ function LibraryRow({
   const secondRepresentative = representativeWithLoadedAvatar(secondName, secondPlayers, profiles);
   const firstPlayerNames = firstPlayers.map((player) => player.name);
   const secondPlayerNames = secondPlayers.map((player) => player.name);
-  const duration = formatDuration(entry.durationSeconds);
+  const duration = entry.durationSeconds ? formatDuration(entry.durationSeconds) : null;
   const demoDate = formatDateParts(demoLibraryTimestamp(entry), language);
   const sourceName = entry.demoSource ? platformName(entry.demoSource.name) : words.unknownPlatform;
   const scoreStatus = entry.score?.status || (entry.scoreIsSnapshot ? "snapshot" : "final");
@@ -853,7 +829,7 @@ export function LibraryWorkspace({
   const platforms = [...new Set((scan?.entries ?? []).map((entry) => entry.demoSource?.name).filter((value): value is string => Boolean(value)))]
     .sort((left, right) => left.localeCompare(right));
   const normalizedQuery = query.trim().toLowerCase();
-  const isScanning = loading || scan === null;
+  const libraryIsEmpty = (scan?.entries.length ?? 0) === 0;
   const maintenanceBusy = repairingLibrary || importingArchives || Boolean(repairingManifest);
   const openEntryMenu = (event: ReactMouseEvent, entry: DemoLibraryEntry) => {
     event.preventDefault();
@@ -1001,7 +977,7 @@ export function LibraryWorkspace({
         </div>
       ) : (
         <>
-          {(isScanning || (scan?.entries.length ?? 0) > 0) ? <div className="library-command-bar">
+          {(loading || !libraryIsEmpty) ? <div className="library-command-bar">
             <details className="library-roots-menu" ref={rootsMenuRef}>
               <summary className="library-root-button" title={exportRoot}>
                 <FolderIcon size={16} />
@@ -1093,13 +1069,13 @@ export function LibraryWorkspace({
             </button>
           </div> : null}
 
-          <div className={`library-result-meta${isScanning ? " is-scanning" : ""}`} role="status" aria-live="polite">
-            {isScanning ? <span className="library-scan-indicator" aria-hidden="true"><RefreshIcon size={13} /></span> : null}
+          <div className={`library-result-meta${loading ? " is-scanning" : ""}`} role="status" aria-live="polite">
+            {loading ? <span className="library-scan-indicator" aria-hidden="true"><RefreshIcon size={13} /></span> : null}
             <strong>{importingArchives
               ? words.importingArchives
               : repairingLibrary
               ? words.repairingLibrary
-              : isScanning ? words.scanningLibrary : words.libraryCount.replace("{count}", String(entries.length))}</strong>
+              : loading ? words.scanningLibrary : words.libraryCount.replace("{count}", String(entries.length))}</strong>
             <span>{(roots.length === 1 ? words.indexedFolderSummaryOne : words.indexedFolderSummaryMany).replace("{count}", String(roots.length))}</span>
             {notice ? <em className="library-notice">{notice}</em>
               : scan && scan.skipped.length > 0 ? <em>{words.libraryScanNotes.replace("{count}", String(scan.skipped.length))}</em> : null}
@@ -1115,7 +1091,7 @@ export function LibraryWorkspace({
             </aside>
           ) : null}
 
-          {isScanning ? <LibrarySkeleton /> : entries.length > 0 ? (
+          {loading ? <LibrarySkeleton /> : entries.length > 0 ? (
             <>
               <div className="library-list">
                 {visibleItems.map((item) => item.kind === "series" ? (
@@ -1146,14 +1122,14 @@ export function LibraryWorkspace({
               ) : null}
             </>
           ) : searchingPlayers && (professionals.loading || professionals.error) ? null : (
-            <div className={`library-no-results${scan?.entries.length === 0 ? " is-blank-slate" : ""}`}>
+            <div className={`library-no-results${libraryIsEmpty ? " is-blank-slate" : ""}`}>
               <span className="library-blank-mark" aria-hidden="true">
-                {scan?.entries.length === 0 ? <TraceMark size={36} /> : <SearchIcon size={22} />}
+                {libraryIsEmpty ? <TraceMark size={36} /> : <SearchIcon size={22} />}
               </span>
-              <strong>{scan?.entries.length === 0 ? words.libraryDirectoryEmptyTitle : words.libraryNoResultsTitle}</strong>
-              <p>{scan?.entries.length === 0 ? words.libraryDirectoryEmptyBody : words.libraryNoResultsBody}</p>
-              {scan?.entries.length === 0 ? <button className="primary-button" type="button" onClick={onConvert}><PlusIcon size={15} />{words.convertDemo}</button> : null}
-              {scan?.entries.length === 0 ? <em>{words.dropDemo} · {words.dropTypes}</em> : null}
+              <strong>{libraryIsEmpty ? words.libraryDirectoryEmptyTitle : words.libraryNoResultsTitle}</strong>
+              <p>{libraryIsEmpty ? words.libraryDirectoryEmptyBody : words.libraryNoResultsBody}</p>
+              {libraryIsEmpty ? <button className="primary-button" type="button" onClick={onConvert}><PlusIcon size={15} />{words.convertDemo}</button> : null}
+              {libraryIsEmpty ? <em>{words.dropDemo} · {words.dropTypes}</em> : null}
             </div>
           )}
         </>

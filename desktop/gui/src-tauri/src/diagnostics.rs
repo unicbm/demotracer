@@ -50,7 +50,6 @@ pub(crate) enum DiagnosticStatus {
     Warning,
     Error,
     Unverified,
-    NotApplicable,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -66,11 +65,8 @@ pub(crate) struct Cs2InstallCandidateDto {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct EnvironmentDiagnosticReportDto {
     pub checked_at_ms: u64,
-    pub requested_path: String,
     pub cs2_root: String,
-    pub game_csgo_path: String,
     pub overall: DiagnosticStatus,
-    pub runtime_verification: String,
     pub checks: Vec<DiagnosticCheckDto>,
     pub receipt: InstallReceiptSummaryDto,
 }
@@ -102,15 +98,11 @@ pub(crate) struct InstallReceiptSummaryDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bundle_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub manifest_abi: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub bot_controller_abi: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bot_controller_minor: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bot_hider_api: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bot_randomizer_api: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub demo_tracer_api: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -146,6 +138,10 @@ pub(crate) struct PlaybackContractWire {
     pub(crate) platform: String,
     pub(crate) manifest_abi: i32,
     pub(crate) dtr_writer: u32,
+    #[serde(default)]
+    pub(crate) dtr_section_writer_codec: String,
+    #[serde(default)]
+    pub(crate) dtr_section_zstd_level: i32,
     pub(crate) dtr_reader: DtrReaderContractWire,
     pub(crate) bot_controller: BotControllerContractWire,
     pub(crate) bot_hider: BotHiderContractWire,
@@ -192,6 +188,14 @@ pub(crate) struct BotControllerContractWire {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct BotHiderContractWire {
     pub(crate) api: i32,
+    #[serde(default)]
+    pub(crate) native_abi: i32,
+    #[serde(default)]
+    pub(crate) native_slot_bytes: u32,
+    #[serde(default)]
+    pub(crate) native_provider_version: String,
+    #[serde(default)]
+    pub(crate) managed_provider_version: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -270,15 +274,8 @@ pub(crate) struct InstallPaths {
 }
 
 #[derive(Debug, Default)]
-struct ReceiptAudit {
-    summary: InstallReceiptSummaryDto,
-}
-
-#[derive(Debug, Default)]
 struct RuntimeAudit {
-    verification: String,
     plugin_version: Option<String>,
-    counter_strike_sharp_version: Option<String>,
     checks: Vec<DiagnosticCheckDto>,
 }
 
@@ -371,97 +368,16 @@ fn inspect_cs2_install_for(requested_path: &str) -> CommandResult<EnvironmentDia
     let mut checks = Vec::new();
     let game_csgo = &paths.game_csgo;
 
-    checks.push(DiagnosticCheckDto {
-        id: "cs2.path".to_string(),
-        group: "cs2".to_string(),
-        status: DiagnosticStatus::Pass,
-        title: "CS2 game directory".to_string(),
-        summary: "The selected path resolves to a local game/csgo directory.".to_string(),
-        expected: Some("game/csgo/gameinfo.gi".to_string()),
-        actual: Some(game_csgo.display().to_string()),
-        evidence_path: Some(game_csgo.join("gameinfo.gi").display().to_string()),
-        action: None,
-    });
-
-    let executable = paths
-        .cs2_root
-        .join("game")
-        .join("bin")
-        .join("win64")
-        .join("cs2.exe");
-    checks.push(single_file_check(
-        "cs2.executable",
-        "cs2",
-        "CS2 Windows executable",
-        &paths.cs2_root,
-        &executable,
-    ));
-
     checks.push(metamod_files_check(game_csgo));
-    checks.push(hook_runtime_check());
-    let mut runtime_audit = inspect_runtime_health(game_csgo);
-    checks.push(counterstrikesharp_check(
-        game_csgo,
-        runtime_audit.counter_strike_sharp_version.as_deref(),
-    ));
-
-    checks.push(required_files_check(
-        "demotracer.botController",
-        "demotracer",
-        "DemoTracer BotController runtime",
-        game_csgo,
-        &[
-            "addons/BotController/bin/win64/BotController.dll",
-            "addons/BotController/gamedata.json",
-            "addons/metamod/BotController.vdf",
-        ],
-    ));
-    checks.push(required_files_check(
-        "demotracer.botHiderNative",
-        "demotracer",
-        "DemoTracer BotHider native runtime",
-        game_csgo,
-        &[
-            "addons/BotHider/bin/win64/BotHider.dll",
-            "addons/BotHider/gamedata.json",
-            "addons/metamod/BotHider.vdf",
-        ],
-    ));
-    checks.push(required_files_check(
-        "demotracer.plugin",
-        "demotracer",
-        "DemoTracer CounterStrikeSharp plugin",
-        game_csgo,
-        &[
-            "addons/counterstrikesharp/plugins/DemoTracer/DemoTracer.dll",
-            "addons/counterstrikesharp/shared/DemoTracerApi/DemoTracerApi.dll",
-            "addons/counterstrikesharp/plugins/DemoTracer/cs2-lib-econ-index.v1.json",
-        ],
-    ));
-    checks.push(required_files_check(
-        "demotracer.botHiderPlugin",
-        "demotracer",
-        "DemoTracer BotHider managed provider",
-        game_csgo,
-        &[
-            "addons/counterstrikesharp/plugins/BotHiderImpl/BotHiderImpl.dll",
-            "addons/counterstrikesharp/shared/DemoTracerBotHiderApi/DemoTracerBotHiderApi.dll",
-            "addons/counterstrikesharp/shared/0Harmony/0Harmony.dll",
-        ],
-    ));
-    checks.push(json_files_check(game_csgo));
-    checks.append(&mut runtime_audit.checks);
-
-    let receipt_audit = inspect_install_receipt(game_csgo, &mut checks);
+    checks.push(counterstrikesharp_files_check(game_csgo));
+    checks.append(&mut inspect_runtime_health(game_csgo).checks);
+    let receipt = inspect_install_receipt(game_csgo, &mut checks);
     Ok(EnvironmentDiagnosticReportDto {
         checked_at_ms: now_ms(),
-        requested_path: requested_path.trim().to_string(),
         cs2_root: paths.cs2_root.display().to_string(),
-        game_csgo_path: game_csgo.display().to_string(),
         overall: overall_status(&checks),
-        runtime_verification: runtime_audit.verification,
         checks,
-        receipt: receipt_audit.summary,
+        receipt,
     })
 }
 
@@ -550,101 +466,29 @@ fn metamod_files_check(game_csgo: &Path) -> DiagnosticCheckDto {
     check
 }
 
-fn hook_runtime_check() -> DiagnosticCheckDto {
-    let requirements = embedded_playback_contract()
-        .ok()
-        .and_then(|contract| contract.hook_runtime)
-        .map(|hook| {
-            format!(
-                "Metamod build {}+, plugin API {}; KHook-enabled CounterStrikeSharp (source {})",
-                hook.metamod_minimum_build,
-                hook.metamod_plugin_api,
-                hook.counterstrikesharp_source_commit,
-            )
-        });
-    DiagnosticCheckDto {
-        id: "dependencies.hookRuntime".to_string(),
-        group: "dependencies".to_string(),
-        status: if requirements.is_some() {
-            DiagnosticStatus::Unverified
-        } else {
-            DiagnosticStatus::Error
-        },
-        title: "Metamod / CounterStrikeSharp hook runtime".to_string(),
-        summary: "This inspection cannot verify the installed Metamod plugin API or CounterStrikeSharp hook backend. File names, package metadata, and CSS API versions do not prove those host capabilities.".to_string(),
-        expected: requirements,
-        actual: Some("not measured".to_string()),
-        evidence_path: None,
-        action: Some("Use the Metamod and KHook-enabled CounterStrikeSharp builds specified in the playback server requirements. Check server startup errors if a plugin fails to load.".to_string()),
+fn counterstrikesharp_files_check(game_csgo: &Path) -> DiagnosticCheckDto {
+    let mut check = required_files_check(
+        "counterStrikeSharp.files",
+        "dependencies",
+        "CounterStrikeSharp files",
+        game_csgo,
+        &[
+            "addons/counterstrikesharp/bin/win64/counterstrikesharp.dll",
+            "addons/counterstrikesharp/api/CounterStrikeSharp.API.dll",
+            "addons/metamod/counterstrikesharp.vdf",
+        ],
+    );
+    if check.status == DiagnosticStatus::Error {
+        check.action =
+            Some("Install CounterStrikeSharp using the playback server requirements.".to_string());
     }
-}
-
-fn counterstrikesharp_check(game_csgo: &Path, runtime_version: Option<&str>) -> DiagnosticCheckDto {
-    let root = game_csgo.join("addons").join("counterstrikesharp");
-    let vdf = game_csgo
-        .join("addons")
-        .join("metamod")
-        .join("counterstrikesharp.vdf");
-    let present = is_normal_file_below(game_csgo, &root.join("bin/win64/counterstrikesharp.dll"))
-        && is_normal_file_below(game_csgo, &root.join("api/CounterStrikeSharp.API.dll"))
-        && is_normal_file_below(game_csgo, &vdf);
-    let expected_version = embedded_playback_contract()
-        .ok()
-        .map(|contract| contract.counterstrikesharp.minimum_version)
-        .unwrap_or_default();
-    let version_compatible = runtime_version
-        .and_then(version_tuple)
-        .zip(version_tuple(&expected_version))
-        .map(|(actual, expected)| actual >= expected);
-    DiagnosticCheckDto {
-        id: "counterStrikeSharp.runtime".to_string(),
-        group: "dependencies".to_string(),
-        status: if !present || version_compatible == Some(false) {
-            DiagnosticStatus::Error
-        } else {
-            DiagnosticStatus::Unverified
-        },
-        title: "CounterStrikeSharp runtime".to_string(),
-        summary: if present && version_compatible == Some(true) {
-            "A fresh DemoTracer heartbeat confirms the loaded CounterStrikeSharp API version. This version check alone does not verify its KHook backend; use the source baseline in the playback bundle requirements."
-                .to_string()
-        } else if present && version_compatible == Some(false) {
-            "The loaded CounterStrikeSharp host is older than DemoTracer's required version."
-                .to_string()
-        } else if present {
-            "CounterStrikeSharp is installed; its loaded state and exact version are not proven by files alone.".to_string()
-        } else {
-            "CounterStrikeSharp or its Metamod loader file is missing.".to_string()
-        },
-        expected: Some(format!(
-            "KHook-enabled CounterStrikeSharp, API {expected_version}+"
-        )),
-        actual: Some(
-            if present && runtime_version.is_some() {
-                runtime_version.unwrap_or("unknown")
-            } else if present {
-                "installed, version unverified"
-            } else {
-                "missing"
-            }
-            .to_string(),
-        ),
-        evidence_path: Some(root.display().to_string()),
-        action: if !present || version_compatible == Some(false) {
-            Some(format!(
-                "Install the KHook-enabled CounterStrikeSharp source baseline specified by the playback bundle (API {expected_version}+)."
-            ))
-        } else {
-            None
-        },
-    }
+    check
 }
 
 fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
     let path = join_public_relative(game_csgo, RUNTIME_HEALTH_RELATIVE_PATH);
     if !is_normal_file_below(game_csgo, &path) {
         return runtime_audit_without_live_evidence(
-            "unavailable",
             DiagnosticStatus::Unverified,
             "No DemoTracer runtime heartbeat has been written in this CS2 tree.",
             "missing",
@@ -657,7 +501,6 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
         Ok(text) => text,
         Err(error) => {
             return runtime_audit_without_live_evidence(
-                "unknown",
                 DiagnosticStatus::Warning,
                 &format!("The DemoTracer runtime heartbeat could not be read: {error}"),
                 "unreadable",
@@ -670,7 +513,6 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
         Ok(health) => health,
         Err(error) => {
             return runtime_audit_without_live_evidence(
-                "unknown",
                 DiagnosticStatus::Warning,
                 &format!("The DemoTracer runtime heartbeat is invalid JSON: {error}"),
                 "invalid",
@@ -687,7 +529,6 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
         || version_tuple(&health.counter_strike_sharp_version).is_none()
     {
         return runtime_audit_without_live_evidence(
-            "unknown",
             DiagnosticStatus::Warning,
             "The DemoTracer runtime heartbeat has an unsupported or invalid schema.",
             "unsupported",
@@ -699,7 +540,6 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
     let now = now_ms();
     if health.written_at_ms > now.saturating_add(MAX_RUNTIME_HEALTH_FUTURE_SKEW_MS) {
         return runtime_audit_without_live_evidence(
-            "unknown",
             DiagnosticStatus::Warning,
             "The heartbeat timestamp is too far in the future to use as live evidence.",
             "clock mismatch",
@@ -710,7 +550,6 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
     let age_ms = now.saturating_sub(health.written_at_ms);
     if !health.running {
         return runtime_audit_without_live_evidence(
-            "notRunning",
             DiagnosticStatus::Unverified,
             "DemoTracer recorded a clean runtime stop. Installed files can still be inspected, but no plugin is currently proven active.",
             "stopped",
@@ -720,7 +559,6 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
     }
     if age_ms > MAX_RUNTIME_HEALTH_AGE_MS {
         return runtime_audit_without_live_evidence(
-            "unknown",
             DiagnosticStatus::Unverified,
             &format!(
                 "The most recent running heartbeat is stale ({} seconds old).",
@@ -736,7 +574,6 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
         Ok(expected) => expected,
         Err(error) => {
             return runtime_audit_without_live_evidence(
-                "unknown",
                 DiagnosticStatus::Error,
                 &error,
                 "embedded contract invalid",
@@ -904,21 +741,23 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
         }),
     });
 
+    let css_compatible = version_tuple(&health.counter_strike_sharp_version)
+        .zip(version_tuple(&expected.counterstrikesharp.minimum_version))
+        .is_some_and(|(actual, required)| actual >= required);
+    checks.push(DiagnosticCheckDto {
+        id: "runtime.counterStrikeSharpApi".to_string(),
+        group: "runtime".to_string(),
+        status: if css_compatible { DiagnosticStatus::Pass } else { DiagnosticStatus::Error },
+        title: "Reported CounterStrikeSharp API version".to_string(),
+        summary: "Compares the API version in the fresh heartbeat with the required minimum. This does not identify the host's hook backend.".to_string(),
+        expected: Some(format!("API {}+", expected.counterstrikesharp.minimum_version)),
+        actual: Some(health.counter_strike_sharp_version),
+        evidence_path: Some(path.display().to_string()),
+        action: (!css_compatible).then(|| "Update CounterStrikeSharp using the playback server requirements.".to_string()),
+    });
+
     RuntimeAudit {
-        verification: if controller_compatible
-            && hider_compatible
-            && randomizer_compatible
-            && version_tuple(&health.counter_strike_sharp_version)
-                .zip(version_tuple(&expected.counterstrikesharp.minimum_version))
-                .is_some_and(|(actual, required)| actual >= required)
-        {
-            "verified"
-        } else {
-            "incompatible"
-        }
-        .to_string(),
         plugin_version: Some(health.plugin_version),
-        counter_strike_sharp_version: Some(health.counter_strike_sharp_version),
         checks,
     }
 }
@@ -928,7 +767,6 @@ pub(crate) fn fresh_runtime_plugin_version(game_csgo: &Path) -> Option<String> {
 }
 
 fn runtime_audit_without_live_evidence(
-    verification: &str,
     status: DiagnosticStatus,
     summary: &str,
     actual: &str,
@@ -936,7 +774,6 @@ fn runtime_audit_without_live_evidence(
     action: Option<&str>,
 ) -> RuntimeAudit {
     RuntimeAudit {
-        verification: verification.to_string(),
         checks: vec![DiagnosticCheckDto {
             id: "runtime.heartbeat".to_string(),
             group: "runtime".to_string(),
@@ -998,88 +835,10 @@ fn required_files_check(
     }
 }
 
-fn single_file_check(
-    id: &str,
-    group: &str,
-    title: &str,
-    root: &Path,
-    path: &Path,
-) -> DiagnosticCheckDto {
-    let present = is_normal_file_below(root, path);
-    DiagnosticCheckDto {
-        id: id.to_string(),
-        group: group.to_string(),
-        status: if present {
-            DiagnosticStatus::Pass
-        } else {
-            DiagnosticStatus::NotApplicable
-        },
-        title: title.to_string(),
-        summary: if present {
-            "File is present."
-        } else {
-            "No client executable was found; this can be valid for a dedicated replay-server tree."
-        }
-        .to_string(),
-        expected: Some(path.display().to_string()),
-        actual: Some(if present { "present" } else { "missing" }.to_string()),
-        evidence_path: Some(path.display().to_string()),
-        action: None,
-    }
-}
-
-fn json_files_check(game_csgo: &Path) -> DiagnosticCheckDto {
-    let files = [
-        "addons/BotController/gamedata.json",
-        "addons/BotHider/gamedata.json",
-        "addons/counterstrikesharp/plugins/DemoTracer/cs2-lib-econ-index.v1.json",
-    ];
-    let invalid = files
-        .iter()
-        .filter_map(|relative| {
-            let path = join_public_relative(game_csgo, relative);
-            if !is_normal_file_below(game_csgo, &path) {
-                return None;
-            }
-            match read_small_text_below(game_csgo, &path, MAX_TEXT_FILE_BYTES) {
-                Ok(text) => serde_json::from_str::<serde_json::Value>(&text)
-                    .err()
-                    .map(|error| format!("{relative}: {error}")),
-                Err(error) => Some(format!("{relative}: {error}")),
-            }
-        })
-        .collect::<Vec<_>>();
-    DiagnosticCheckDto {
-        id: "demotracer.json".to_string(),
-        group: "demotracer".to_string(),
-        status: if invalid.is_empty() {
-            DiagnosticStatus::Pass
-        } else {
-            DiagnosticStatus::Error
-        },
-        title: "DemoTracer JSON data".to_string(),
-        summary: if invalid.is_empty() {
-            "Installed DemoTracer JSON data is syntactically valid.".to_string()
-        } else {
-            invalid.join("; ")
-        },
-        expected: Some("Valid JSON for installed gamedata and econ index files".to_string()),
-        actual: Some(
-            if invalid.is_empty() {
-                "valid"
-            } else {
-                "invalid"
-            }
-            .to_string(),
-        ),
-        evidence_path: Some(game_csgo.join("addons").display().to_string()),
-        action: (!invalid.is_empty()).then(|| {
-            "Replace the damaged files from one complete DemoTracer playback bundle.".to_string()
-        }),
-    }
-}
-
-fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto>) -> ReceiptAudit {
+fn inspect_install_receipt(
+    game_csgo: &Path,
+    checks: &mut Vec<DiagnosticCheckDto>,
+) -> InstallReceiptSummaryDto {
     let receipt_path = join_public_relative(game_csgo, INSTALL_RECEIPT_RELATIVE_PATH);
     if !is_normal_file_below(game_csgo, &receipt_path) {
         checks.push(DiagnosticCheckDto {
@@ -1093,22 +852,26 @@ fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto
             evidence_path: Some(receipt_path.display().to_string()),
             action: Some("Install a complete matching DemoTracer playback bundle to enable receipt and file-hash checks.".to_string()),
         });
-        return ReceiptAudit::default();
+        checks.push(required_files_check(
+            "demotracer.files",
+            "demotracer",
+            "DemoTracer bundle files (no receipt)",
+            game_csgo,
+            REQUIRED_RECEIPT_PATHS,
+        ));
+        return InstallReceiptSummaryDto::default();
     }
 
-    let mut audit = ReceiptAudit {
-        summary: InstallReceiptSummaryDto {
-            found: true,
-            path: Some(receipt_path.display().to_string()),
-            ..InstallReceiptSummaryDto::default()
-        },
-        ..ReceiptAudit::default()
+    let mut audit = InstallReceiptSummaryDto {
+        found: true,
+        path: Some(receipt_path.display().to_string()),
+        ..InstallReceiptSummaryDto::default()
     };
     let text = match read_small_text_below(game_csgo, &receipt_path, MAX_TEXT_FILE_BYTES) {
         Ok(text) => text,
         Err(error) => {
             checks.push(receipt_error_check(&receipt_path, error));
-            audit.summary.verified = Some(false);
+            audit.verified = Some(false);
             return audit;
         }
     };
@@ -1116,22 +879,20 @@ fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto
         Ok(receipt) => receipt,
         Err(error) => {
             checks.push(receipt_error_check(&receipt_path, error.to_string()));
-            audit.summary.verified = Some(false);
+            audit.verified = Some(false);
             return audit;
         }
     };
-    audit.summary.bundle_version = Some(receipt.bundle_version.clone());
-    audit.summary.manifest_abi = Some(receipt.compatibility.manifest_abi);
-    audit.summary.bot_controller_abi = Some(receipt.compatibility.bot_controller.abi_major);
-    audit.summary.bot_controller_minor = Some(receipt.compatibility.bot_controller.min_abi_minor);
-    audit.summary.bot_hider_api = Some(receipt.compatibility.bot_hider.api);
-    audit.summary.bot_randomizer_api = Some(receipt.compatibility.bot_randomizer.api);
-    audit.summary.demo_tracer_api = Some(receipt.compatibility.demotracer.companion_api);
+    audit.bundle_version = Some(receipt.bundle_version.clone());
+    audit.bot_controller_abi = Some(receipt.compatibility.bot_controller.abi_major);
+    audit.bot_controller_minor = Some(receipt.compatibility.bot_controller.min_abi_minor);
+    audit.bot_hider_api = Some(receipt.compatibility.bot_hider.api);
+    audit.demo_tracer_api = Some(receipt.compatibility.demotracer.companion_api);
 
     let contract_errors = receipt_contract_errors(&receipt);
     let mut integrity_errors = Vec::new();
     if receipt.files.len() > MAX_RECEIPT_FILES {
-        audit.summary.files_mismatched = receipt.files.len();
+        audit.files_mismatched = receipt.files.len();
         integrity_errors.push(format!(
             "receipt lists too many files ({})",
             receipt.files.len()
@@ -1141,7 +902,7 @@ fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto
         for file in &receipt.files {
             let normalized_path = normalized_receipt_path(&file.path);
             if !recorded_paths.insert(normalized_path.clone()) {
-                audit.summary.files_mismatched += 1;
+                audit.files_mismatched += 1;
                 if integrity_errors.len() < 12 {
                     integrity_errors.push(format!("duplicate receipt path: {}", file.path));
                 }
@@ -1149,7 +910,7 @@ fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto
             }
             let expected_component = receipt_component(&normalized_path);
             let mut mismatched = false;
-            if expected_component.is_some_and(|component| component != file.component) {
+            if expected_component != Some(file.component.as_str()) {
                 mismatched = true;
                 if integrity_errors.len() < 12 {
                     integrity_errors.push(format!(
@@ -1160,7 +921,7 @@ fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto
                     ));
                 }
             }
-            audit.summary.files_checked += 1;
+            audit.files_checked += 1;
             match verify_receipt_file(game_csgo, file) {
                 Ok(()) => {}
                 Err(error) => {
@@ -1171,12 +932,12 @@ fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto
                 }
             }
             if mismatched {
-                audit.summary.files_mismatched += 1;
+                audit.files_mismatched += 1;
             }
         }
         for required in REQUIRED_RECEIPT_PATHS {
             if !recorded_paths.contains(*required) {
-                audit.summary.files_mismatched += 1;
+                audit.files_mismatched += 1;
                 if integrity_errors.len() < 12 {
                     integrity_errors.push(format!("receipt omits required file: {required}"));
                 }
@@ -1184,7 +945,7 @@ fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto
         }
     }
     let verified = contract_errors.is_empty() && integrity_errors.is_empty();
-    audit.summary.verified = Some(verified);
+    audit.verified = Some(verified);
     checks.push(DiagnosticCheckDto {
         id: "demotracer.receipt".to_string(),
         group: "demotracer".to_string(),
@@ -1193,7 +954,7 @@ fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto
         summary: if verified {
             format!(
                 "Bundle {} matches the receipt metadata and all {} recorded file hashes. This proves package integrity; loaded ABI/API compatibility is verified separately by the runtime heartbeat.",
-                receipt.bundle_version, audit.summary.files_checked
+                receipt.bundle_version, audit.files_checked
             )
         } else {
             contract_errors
@@ -1215,10 +976,10 @@ fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto
             receipt.compatibility.bot_controller.abi_major,
             receipt.compatibility.bot_controller.min_abi_minor,
             receipt.compatibility.bot_hider.api,
-            audit.summary.files_mismatched
+            audit.files_mismatched
         )),
         evidence_path: Some(receipt_path.display().to_string()),
-        action: (!verified).then(|| "A component was mixed, replaced, or damaged. Reinstall one complete DemoTracer playback bundle before replay.".to_string()),
+        action: (!verified).then(|| "The receipt or recorded files do not match this desktop build. Reinstall a complete matching playback bundle to refresh both.".to_string()),
     });
     audit
 }
@@ -1680,34 +1441,6 @@ mod tests {
     }
 
     #[test]
-    fn loaded_counterstrikesharp_version_is_compared_to_the_contract() {
-        let tree = TempTree::cs2();
-        let css_root = tree.game_csgo().join("addons/counterstrikesharp");
-        let css_vdf = tree
-            .game_csgo()
-            .join("addons/metamod/counterstrikesharp.vdf");
-        fs::create_dir_all(css_root.join("bin/win64")).unwrap();
-        fs::create_dir_all(css_root.join("api")).unwrap();
-        fs::write(
-            css_root.join("bin/win64/counterstrikesharp.dll"),
-            b"fixture",
-        )
-        .unwrap();
-        fs::write(css_root.join("api/CounterStrikeSharp.API.dll"), b"fixture").unwrap();
-        fs::create_dir_all(css_vdf.parent().expect("CSS VDF parent")).expect("create Metamod root");
-        fs::write(&css_vdf, b"fixture").expect("write CSS VDF");
-
-        assert_eq!(
-            counterstrikesharp_check(&tree.game_csgo(), Some("1.0.370.0")).status,
-            DiagnosticStatus::Error
-        );
-        assert_eq!(
-            counterstrikesharp_check(&tree.game_csgo(), Some("1.0.371.0")).status,
-            DiagnosticStatus::Unverified
-        );
-    }
-
-    #[test]
     fn receipt_components_are_derived_from_paths_not_labels() {
         assert_eq!(
             receipt_component("addons/botcontroller/bin/win64/botcontroller.dll"),
@@ -1759,6 +1492,121 @@ mod tests {
         })
     }
 
+    fn write_receipt_fixture(tree: &TempTree) -> InstallReceiptWire {
+        let contract = embedded_playback_contract().unwrap();
+        let bytes = b"fixture";
+        let files = REQUIRED_RECEIPT_PATHS
+            .iter()
+            .map(|relative| {
+                let path = join_public_relative(&tree.game_csgo(), relative);
+                fs::create_dir_all(path.parent().unwrap()).unwrap();
+                fs::write(path, bytes).unwrap();
+                ReceiptFileWire {
+                    path: relative.to_string(),
+                    component: receipt_component(relative).unwrap().to_string(),
+                    size: bytes.len() as u64,
+                    sha256: sha256_hex(bytes),
+                }
+            })
+            .collect();
+        let receipt = InstallReceiptWire {
+            schema_version: 1,
+            product: contract.product.clone(),
+            bundle_version: "1.3.0".to_string(),
+            git_commit: None,
+            platform: contract.platform.clone(),
+            compatibility: contract,
+            files,
+        };
+        fs::write(
+            join_public_relative(&tree.game_csgo(), INSTALL_RECEIPT_RELATIVE_PATH),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        receipt
+    }
+
+    #[test]
+    fn empty_install_has_no_successful_file_checks() {
+        let tree = TempTree::cs2();
+        let report = inspect_cs2_install_for(tree.root().to_str().unwrap()).unwrap();
+        assert_eq!(report.overall, DiagnosticStatus::Error);
+        assert!(report
+            .checks
+            .iter()
+            .all(|check| check.status != DiagnosticStatus::Pass));
+        assert!(
+            report
+                .checks
+                .iter()
+                .any(|check| check.id == "demotracer.files"
+                    && check.status == DiagnosticStatus::Error)
+        );
+    }
+
+    #[test]
+    fn matching_receipt_replaces_duplicate_file_probes_and_still_detects_damage() {
+        let tree = TempTree::cs2();
+        write_receipt_fixture(&tree);
+        let mut checks = Vec::new();
+        let receipt = inspect_install_receipt(&tree.game_csgo(), &mut checks);
+        assert_eq!(receipt.verified, Some(true));
+        assert_eq!(receipt.files_checked, REQUIRED_RECEIPT_PATHS.len());
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].id, "demotracer.receipt");
+
+        // Same length, different bytes: integrity still checks hashes.
+        fs::write(
+            join_public_relative(&tree.game_csgo(), REQUIRED_RECEIPT_PATHS[0]),
+            b"changed",
+        )
+        .unwrap();
+        checks.clear();
+        let damaged = inspect_install_receipt(&tree.game_csgo(), &mut checks);
+        assert_eq!(damaged.verified, Some(false));
+        assert_eq!(damaged.files_mismatched, 1);
+        assert_eq!(checks[0].status, DiagnosticStatus::Error);
+        assert!(checks[0].summary.contains("hash differs"));
+    }
+
+    #[test]
+    fn receipt_inspection_rejects_files_outside_the_bundle_components() {
+        let tree = TempTree::cs2();
+        let mut receipt = write_receipt_fixture(&tree);
+        let bytes = b"unrelated";
+        let relative = "addons/another-plugin.dll";
+        fs::write(join_public_relative(&tree.game_csgo(), relative), bytes).unwrap();
+        receipt.files.push(ReceiptFileWire {
+            path: relative.to_string(),
+            component: "demotracer".to_string(),
+            size: bytes.len() as u64,
+            sha256: sha256_hex(bytes),
+        });
+        fs::write(
+            join_public_relative(&tree.game_csgo(), INSTALL_RECEIPT_RELATIVE_PATH),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        let mut checks = Vec::new();
+        assert_eq!(
+            inspect_install_receipt(&tree.game_csgo(), &mut checks).verified,
+            Some(false)
+        );
+        assert_eq!(checks[0].status, DiagnosticStatus::Error);
+    }
+
+    #[test]
+    fn receipt_contract_roundtrip_preserves_every_declared_requirement() {
+        let source: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../shared/contracts/playback-contract.v1.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(embedded_playback_contract().unwrap()).unwrap(),
+            source
+        );
+    }
+
     fn write_heartbeat(tree: &TempTree, health: &serde_json::Value) {
         let path = join_public_relative(&tree.game_csgo(), RUNTIME_HEALTH_RELATIVE_PATH);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1770,15 +1618,11 @@ mod tests {
         let tree = TempTree::cs2();
         write_heartbeat(&tree, &healthy_heartbeat());
         let audit = inspect_runtime_health(&tree.game_csgo());
-        assert_eq!(audit.verification, "verified");
+        assert_eq!(overall_status(&audit.checks), DiagnosticStatus::Pass);
         assert!(audit
             .checks
             .iter()
             .all(|check| check.status == DiagnosticStatus::Pass));
-        // Live provider contracts do not report the host's hook backend.
-        let mut checks = audit.checks;
-        checks.push(hook_runtime_check());
-        assert_eq!(overall_status(&checks), DiagnosticStatus::Unverified);
     }
 
     #[test]
@@ -1806,7 +1650,6 @@ mod tests {
             *health.pointer_mut(pointer).unwrap() = value;
             write_heartbeat(&tree, &health);
             let audit = inspect_runtime_health(&tree.game_csgo());
-            assert_eq!(audit.verification, "incompatible", "{pointer}");
             assert_eq!(
                 overall_status(&audit.checks),
                 DiagnosticStatus::Error,
@@ -1819,32 +1662,32 @@ mod tests {
     fn missing_stale_stopped_and_future_heartbeats_do_not_prove_runtime_compatibility() {
         let tree = TempTree::cs2();
         assert_eq!(
-            inspect_runtime_health(&tree.game_csgo()).verification,
-            "unavailable"
+            overall_status(&inspect_runtime_health(&tree.game_csgo()).checks),
+            DiagnosticStatus::Unverified
         );
-        for (pointer, value, verification) in [
+        for (pointer, value, actual) in [
             (
                 "/writtenAtMs",
                 serde_json::json!(now_ms().saturating_sub(MAX_RUNTIME_HEALTH_AGE_MS + 1000)),
-                "unknown",
+                "stale",
             ),
-            ("/running", serde_json::json!(false), "notRunning"),
+            ("/running", serde_json::json!(false), "stopped"),
             (
                 "/writtenAtMs",
                 serde_json::json!(now_ms() + MAX_RUNTIME_HEALTH_FUTURE_SKEW_MS + 60_000),
-                "unknown",
+                "clock mismatch",
             ),
             (
                 "/counterStrikeSharpVersion",
                 serde_json::json!("unknown-1.0.999"),
-                "unknown",
+                "unsupported",
             ),
         ] {
             let mut health = healthy_heartbeat();
             *health.pointer_mut(pointer).unwrap() = value;
             write_heartbeat(&tree, &health);
             let audit = inspect_runtime_health(&tree.game_csgo());
-            assert_eq!(audit.verification, verification, "{pointer}");
+            assert_eq!(audit.checks[0].actual.as_deref(), Some(actual), "{pointer}");
             assert!(audit.plugin_version.is_none());
             assert!(audit
                 .checks
@@ -1860,8 +1703,8 @@ mod tests {
         health["counterStrikeSharpVersion"] = serde_json::json!("0.0.1");
         write_heartbeat(&tree, &health);
         assert_eq!(
-            inspect_runtime_health(&tree.game_csgo()).verification,
-            "incompatible"
+            overall_status(&inspect_runtime_health(&tree.game_csgo()).checks),
+            DiagnosticStatus::Error
         );
     }
 
@@ -1882,7 +1725,6 @@ mod tests {
             metamod_files_check(&tree.game_csgo()).status,
             DiagnosticStatus::Pass
         );
-        assert_eq!(hook_runtime_check().status, DiagnosticStatus::Unverified);
     }
 
     #[test]
