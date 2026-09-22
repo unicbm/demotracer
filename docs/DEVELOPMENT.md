@@ -35,8 +35,9 @@ by hand.
 derivatives of XBribo's projects. Preserve their own licenses, attribution, and
 `UPSTREAM.md` files; they are not first-party DemoTracer source for copyright
 header purposes. The playback server additionally requires Windows x64 CS2,
-Metamod:Source, CounterStrikeSharp 1.0.371 or newer, and a matching DemoTracer
-bundle.
+Metamod:Source 2.0 build 1469+, a KHook-enabled CounterStrikeSharp host, and a
+matching DemoTracer bundle. See the pinned source baseline and native hook
+tests in [playback server requirements](../server/README.md#shared-hook-runtime).
 
 BotRandomizer 1.6 is part of the matched playback bundle and implements the v3
 replay-plan API. DemoTracer owns normalization and plan lifetime only;

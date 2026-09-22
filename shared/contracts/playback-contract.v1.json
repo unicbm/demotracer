@@ -12,7 +12,7 @@
   },
   "bot_controller": {
     "abi_major": 21,
-    "min_abi_minor": 42,
+    "min_abi_minor": 43,
     "public_control_api": 20,
     "replay_tick_bytes": 228,
     "replay_tick_event_tail": "reserved_zero",
@@ -36,5 +36,13 @@
   "counterstrikesharp": {
     "minimum_version": "1.0.371",
     "target_framework": "net10.0"
+  },
+  "hook_runtime": {
+    "backend": "khook",
+    "metamod_minimum_build": 1469,
+    "metamod_plugin_api": 18,
+    "metamod_source_commit": "fa6f80e4662e5b96cc2e97722d812f374581dfd8",
+    "khook_source_commit": "40d233d160b5bf60cc3e732939142b222fbd8ece",
+    "counterstrikesharp_source_commit": "9cbdee0ce7871671f38ff25101052bd5c2f0a858"
   }
 }

@@ -63,11 +63,11 @@ namespace BotController
         static void *g_addrPlayerRunCommand = nullptr;
         static void *g_addrPhysicsSimulate = nullptr;
 
-        static Hook g_hookProcessMovement;
-        static Hook g_hookFinishMove;
-        static Hook g_hookSetupMove;
-        static Hook g_hookPlayerRunCommand;
-        static Hook g_hookPhysicsSimulate;
+        static Hook<ProcessMovement_t> g_hookProcessMovement;
+        static Hook<FinishMove_t> g_hookFinishMove;
+        static Hook<SetupMove_t> g_hookSetupMove;
+        static Hook<PlayerRunCommand_t> g_hookPlayerRunCommand;
+        static Hook<PhysicsSimulate_t> g_hookPhysicsSimulate;
         static bool g_installed = false;
         // True once PhysicsSimulate is hooked
         static bool g_physicsActive = false;
@@ -649,12 +649,13 @@ namespace BotController
 
         // ---- SetupMove: supply input before any subtick movement ----
 
-        static void BC_FASTCALL HookedSetupMove(void *services, void *cmd, void *moveData)
+        static KHook::Return<void> BC_FASTCALL HookedSetupMove(void *services, void *cmd, void *moveData)
         {
-            g_origSetupMove(services, cmd, moveData);
+            g_hookSetupMove.Continue(services, cmd, moveData);
             const int slot = ServicesToSlot(services);
             if (ReplayActiveAndSafe(slot))
                 MotionRecorder::OnReplaySetupMove(slot, moveData);
+            return {KHook::Action::Ignore};
         }
 
         // ---- ProcessMovement: record pre/post; replay simulation is native ----
@@ -662,7 +663,7 @@ namespace BotController
         // Defined after HookedFinishMove
         static void EnsureVtableHooks(void *services);
 
-        static void BC_FASTCALL HookedProcessMovement(void *services, void *moveData)
+        static KHook::Return<void> BC_FASTCALL HookedProcessMovement(void *services, void *moveData)
         {
             MotionRecorder::AddReplayPerf(MotionRecorder::ReplayPerfCounter::ProcessMovementHook);
             g_hookCalls.fetch_add(1, std::memory_order_relaxed);
@@ -700,16 +701,17 @@ namespace BotController
             if (hasMovementIntent)
                 ApplyUsercmdMovementIntentToMoveData(services, moveData, movementIntent);
 
-            g_origProcessMovement(services, moveData);
+            g_hookProcessMovement.Continue(services, moveData);
 
             // Recording: commit the tick here only when PhysicsSimulate isn't the boundary
             if (recording && !g_physicsActive)
                 MotionRecorder::OnCapturePost(slot, services, moveData);
+            return {KHook::Action::Ignore};
         }
 
         // ---- FinishMove: replay post-move and final local view ----
 
-        static void BC_FASTCALL HookedFinishMove(void *services, void *cmd,
+        static KHook::Return<void> BC_FASTCALL HookedFinishMove(void *services, void *cmd,
                                                 void *moveData)
         {
             MotionRecorder::AddReplayPerf(MotionRecorder::ReplayPerfCounter::FinishMoveHook);
@@ -718,17 +720,18 @@ namespace BotController
 
             // Publish the engine's output through its normal origin/velocity
             // setters. Never replace it with post snapshots or fake an origin delta.
-            g_origFinishMove(services, cmd, moveData);
+            g_hookFinishMove.Continue(services, cmd, moveData);
 
             // After original: prepare the final getter before the engine publishes
             // network eye angles in the remaining PlayerRunCommand tail.
             if (replaying)
                 MotionRecorder::OnReplayFinalView(slot, services);
+            return {KHook::Action::Ignore};
         }
 
         // ---- PlayerRunCommand: subtick record + re-inject ----
 
-        static void BC_FASTCALL HookedPlayerRunCommand(void *services, void *cmd)
+        static KHook::Return<void> BC_FASTCALL HookedPlayerRunCommand(void *services, void *cmd)
         {
             ProjectileBirthAlign::ProcessPending();
             MotionRecorder::AddReplayPerf(MotionRecorder::ReplayPerfCounter::PlayerRunCommandHook);
@@ -940,19 +943,20 @@ namespace BotController
                     ApplyPublicControl(slot, pc, base);
             }
 
-            g_origPlayerRunCommand(services, cmd);
+            g_hookPlayerRunCommand.Continue(services, cmd);
             // The normal publisher runs inside PlayerRunCommand after FinishMove.
             // Even without PhysicsSimulate, retain the final getter until that
             // tail completes; ending replay in FinishMove loses the final view.
             if (replaying && !g_physicsActive)
                 MotionRecorder::OnReplayCommit(slot, services);
             MotionRecorder::OnReplayCommandPost(slot, services, replaying);
+            return {KHook::Action::Ignore};
         }
 
         // ---- PhysicsSimulate: the per-tick boundary ----
         // Records pre/post + commits
 
-        static void BC_FASTCALL HookedPhysicsSimulate(void *controller)
+        static KHook::Return<void> BC_FASTCALL HookedPhysicsSimulate(void *controller)
         {
             ProjectileBirthAlign::ProcessPending();
             MotionRecorder::AddReplayPerf(MotionRecorder::ReplayPerfCounter::PhysicsSimulateHook);
@@ -975,13 +979,14 @@ namespace BotController
             if (recording)
                 MotionRecorder::OnCapturePre(slot, services, nullptr);
 
-            g_origPhysicsSimulate(controller);
+            g_hookPhysicsSimulate.Continue(controller);
 
             // post: snapshot end-of-tick state + commit one frame
             if (recording)
                 MotionRecorder::OnCapturePost(slot, services, nullptr);
             if (replaying)
                 MotionRecorder::OnReplayCommit(slot, services);
+            return {KHook::Action::Ignore};
         }
 
         static std::atomic<bool> g_vtHooksTried{false};
@@ -1011,8 +1016,8 @@ namespace BotController
                 g_addrSetupMove = nullptr;
             if (g_addrSetupMove &&
                 g_hookSetupMove.Create(g_addrSetupMove,
-                                       reinterpret_cast<void *>(&HookedSetupMove),
-                                       reinterpret_cast<void **>(&g_origSetupMove)) &&
+                                       &HookedSetupMove,
+                                       &g_origSetupMove) &&
                 g_hookSetupMove.Enable())
             {
                 g_setupMoveActive = true;
@@ -1030,8 +1035,8 @@ namespace BotController
                 g_addrFinishMove = nullptr;
             if (g_addrFinishMove &&
                 g_hookFinishMove.Create(g_addrFinishMove,
-                                        reinterpret_cast<void *>(&HookedFinishMove),
-                                        reinterpret_cast<void **>(&g_origFinishMove)) &&
+                                        &HookedFinishMove,
+                                        &g_origFinishMove) &&
                 g_hookFinishMove.Enable())
             {
                 g_finishMoveActive = true;
@@ -1050,8 +1055,8 @@ namespace BotController
                 g_addrPlayerRunCommand = nullptr;
             if (g_addrPlayerRunCommand &&
                 g_hookPlayerRunCommand.Create(g_addrPlayerRunCommand,
-                                              reinterpret_cast<void *>(&HookedPlayerRunCommand),
-                                              reinterpret_cast<void **>(&g_origPlayerRunCommand)) &&
+                                              &HookedPlayerRunCommand,
+                                              &g_origPlayerRunCommand) &&
                 g_hookPlayerRunCommand.Enable())
             {
                 g_subtickActive = true;
@@ -1111,8 +1116,8 @@ namespace BotController
                 return false;
             }
             if (!g_hookProcessMovement.Create(g_addrProcessMovement,
-                                              reinterpret_cast<void *>(&HookedProcessMovement),
-                                              reinterpret_cast<void **>(&g_origProcessMovement)) ||
+                                              &HookedProcessMovement,
+                                              &g_origProcessMovement) ||
                 !g_hookProcessMovement.Enable())
             {
                 std::snprintf(errorOut, errorOutLen, "hook ProcessMovement failed");
@@ -1129,8 +1134,8 @@ namespace BotController
                 psErr, sizeof(psErr));
             if (g_addrPhysicsSimulate &&
                 g_hookPhysicsSimulate.Create(g_addrPhysicsSimulate,
-                                             reinterpret_cast<void *>(&HookedPhysicsSimulate),
-                                             reinterpret_cast<void **>(&g_origPhysicsSimulate)) &&
+                                             &HookedPhysicsSimulate,
+                                             &g_origPhysicsSimulate) &&
                 g_hookPhysicsSimulate.Enable())
             {
                 g_physicsActive = true;
@@ -1147,7 +1152,7 @@ namespace BotController
                 std::snprintf(dbg, sizeof(dbg),
                               "[BotController] WARN: PhysicsSimulate hook unavailable (%s); "
                               "replay falls back to PlayerRunCommand-post (may stutter)\n",
-                              psErr[0] ? psErr : "funchook failed");
+                              psErr[0] ? psErr : "KHook failed");
                 DebugOut(dbg);
             }
 

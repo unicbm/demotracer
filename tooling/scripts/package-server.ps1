@@ -82,6 +82,11 @@ function Assert-ExternalRuntimeReceipt(
         $receipt.compatibility.demotracer.companion_api -ne $ExpectedContract.demotracer.companion_api) {
         throw "$Label source receipt does not match the current DemoTracer playback contract: $receiptPath"
     }
+    foreach ($field in @("backend", "metamod_minimum_build", "metamod_plugin_api", "metamod_source_commit", "khook_source_commit", "counterstrikesharp_source_commit")) {
+        if ($receipt.compatibility.hook_runtime.$field -ne $ExpectedContract.hook_runtime.$field) {
+            throw "$Label source receipt has incompatible hook runtime field '$field': $receiptPath"
+        }
+    }
 
     $entries = @($receipt.files | Where-Object { $_.component -eq $Component })
     if ($entries.Count -eq 0) {
@@ -407,9 +412,9 @@ plugins as one matching runtime set.
 ## Install
 
 1. Stop the CS2 server.
-2. Make sure the server already has Metamod:Source and CounterStrikeSharp
-   v1.0.371 or newer installed. They are prerequisites and are not included in
-   this bundle.
+2. Install Metamod:Source build __METAMOD_BUILD__+ (plugin API __METAMOD_API__)
+   and the KHook-enabled CounterStrikeSharp source baseline listed below.
+   They are prerequisites and are not included in this bundle.
 3. Replace the provider code with this bundle's `BotHiderImpl`. Remove legacy
    `DemoTracerBotHider` DLL/PDB/dependency manifests while preserving user
    configuration and recordings. Only the bundled presentation writer may run.
@@ -502,8 +507,11 @@ through CS2's native `say` / `say_team` path when `dtr_chat_auto on` is enabled
 
 Required external server prerequisites:
 
-- Metamod:Source
-- CounterStrikeSharp v1.0.371 or newer for CS2 1.41.6.9
+- Metamod:Source 2.0 build __METAMOD_BUILD__ or newer (plugin API __METAMOD_API__, KHook).
+- CounterStrikeSharp with the KHook backend. The matched baseline is PR #1418,
+  source commit `__CSS_KHOOK_COMMIT__`. A managed API version number alone does
+  not prove KHook support; stock v1.0.374 and older use the previous backend.
+- Native source pins: Metamod `__METAMOD_COMMIT__`, KHook `__KHOOK_COMMIT__`.
 
 Included in this bundle:
 
@@ -549,6 +557,11 @@ $readme = $readme.Replace("__DEMOTRACER_API__", [string]$playbackContract.demotr
 $readme = $readme.Replace("__BOTHIDER_API__", [string]$playbackContract.bot_hider.api)
 $readme = $readme.Replace("__BOTRANDOMIZER_API__", [string]$playbackContract.bot_randomizer.api)
 $readme = $readme.Replace("__CSS_TARGET__", [string]$playbackContract.counterstrikesharp.target_framework)
+$readme = $readme.Replace("__METAMOD_BUILD__", [string]$playbackContract.hook_runtime.metamod_minimum_build)
+$readme = $readme.Replace("__METAMOD_API__", [string]$playbackContract.hook_runtime.metamod_plugin_api)
+$readme = $readme.Replace("__METAMOD_COMMIT__", [string]$playbackContract.hook_runtime.metamod_source_commit)
+$readme = $readme.Replace("__KHOOK_COMMIT__", [string]$playbackContract.hook_runtime.khook_source_commit)
+$readme = $readme.Replace("__CSS_KHOOK_COMMIT__", [string]$playbackContract.hook_runtime.counterstrikesharp_source_commit)
 Set-Content -LiteralPath (Join-Path $stageRoot "README.md") -Value $readme -Encoding UTF8
 
 if (-not $IncludeSymbols) {

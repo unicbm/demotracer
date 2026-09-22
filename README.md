@@ -122,8 +122,10 @@ Python, Node.js, Rust, .NET, or a running CS2 server after installation.
 
 To play an exported replay, use a local Windows x64 CS2 server with
 [Metamod:Source](https://www.sourcemm.net/) and
-[CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp). In
-**Settings → Install & environment**, select the CS2 folder, inspect the
+[CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp).
+Use Metamod 2.0 build 1469+ and the KHook-enabled CounterStrikeSharp source
+baseline listed in the [playback server requirements](server/README.md#shared-hook-runtime).
+In **Settings → Install & environment**, select the CS2 folder, inspect the
 installation, and install the matched playback bundle.
 
 ## Local-First and Defensive

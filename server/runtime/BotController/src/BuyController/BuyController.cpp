@@ -30,7 +30,7 @@ namespace BotController
     {
         static BuyUpdate_t g_origOnUpdate = nullptr;
         static void *g_addrOnUpdate = nullptr;
-        static Hook g_hookOnUpdate;
+        static Hook<BuyUpdate_t> g_hookOnUpdate;
         static bool g_installed = false;
         static std::string g_status = "not_attempted";
 
@@ -64,12 +64,12 @@ namespace BotController
             DebugOut(dbg);
         }
 
-        static void BC_FASTCALL HookedOnUpdate(void *self, void *me)
+        static KHook::Return<void> BC_FASTCALL HookedOnUpdate(void *self, void *me)
         {
             int slot = CCSBotToSlot(me);
             BuyPlan plan;
             if (slot < 0 || slot >= 64 || !BuyControllerState::Copy(slot, plan))
-                return g_origOnUpdate(self, me);
+                return g_hookOnUpdate.Continue(self, me);
 
             // A skip plan is a persistent hard gate, not a one-shot edge. The
             // engine can re-enter or preserve BuyState after round/spawn work;
@@ -84,13 +84,13 @@ namespace BotController
                 // OnUpdate through would violate the no-buy contract; clearing
                 // the slot plan on handoff restores the normal state machine.
                 if (!WriteField(self, tg::kBuy_DoneBuying, done))
-                    return;
-                return g_origOnUpdate(self, me);
+                    return {KHook::Action::Supersede};
+                return g_hookOnUpdate.Continue(self, me);
             }
 
             uint8_t init = 0;
             if (!SafeRead(self, tg::kBuy_InitialDelay, init))
-                return g_origOnUpdate(self, me);
+                return g_hookOnUpdate.Continue(self, me);
             const auto action = DecideBuyUpdate(
                 false,
                 init,
@@ -99,7 +99,8 @@ namespace BotController
                 ApplyPlan(self, slot, plan);
             g_lastInitDelay[slot].store(init, std::memory_order_relaxed);
 
-            g_origOnUpdate(self, me);
+            g_hookOnUpdate.Continue(self, me);
+            return {KHook::Action::Ignore};
         }
 
         void ResetInitialDelayLatch(int slot)
@@ -126,8 +127,8 @@ namespace BotController
             }
 
             if (!g_hookOnUpdate.Create(g_addrOnUpdate,
-                                       reinterpret_cast<void *>(&HookedOnUpdate),
-                                       reinterpret_cast<void **>(&g_origOnUpdate)) ||
+                                       &HookedOnUpdate,
+                                       &g_origOnUpdate) ||
                 !g_hookOnUpdate.Enable())
             {
                 std::snprintf(errorOut, errorOutLen, "hook BuyState::OnUpdate failed");

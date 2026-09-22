@@ -93,6 +93,10 @@ The build stages a ready-to-copy `addons/` tree under `build/package/`.
 ## Build
 
 Env: `HL2SDKCS2`, `MMSOURCE_DEV`, `CSGO_PROTO`, `protoc` (3.21.x) on PATH.
+`MMSOURCE_DEV` must include Metamod's KHook API and initialized KHook submodule;
+use the [matched source baseline](../../README.md#shared-hook-runtime).
+ABI minor 43 uses Metamod's shared KHook engine for function hooks. No private
+detour engine is linked into the runtime.
 
 ```
 cmake -B build -G "Visual Studio 18 2026" -A x64

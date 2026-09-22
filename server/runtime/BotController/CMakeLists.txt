@@ -85,59 +85,13 @@ add_custom_command(
     VERBATIM
 )
 
-if(DEFINED ENV{FUNCHOOK_ROOT} AND EXISTS "$ENV{FUNCHOOK_ROOT}/include/funchook.h")
-    add_library(funchook-static STATIC IMPORTED GLOBAL)
-    add_library(distorm-static STATIC IMPORTED GLOBAL)
-    set_target_properties(funchook-static PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "$ENV{FUNCHOOK_ROOT}/include"
-        INTERFACE_LINK_LIBRARIES distorm-static)
-    if(WIN32)
-        set_target_properties(funchook-static PROPERTIES
-            IMPORTED_LOCATION_RELEASE "$ENV{FUNCHOOK_ROOT}/lib/Release/funchook.lib"
-            IMPORTED_LOCATION_RELWITHDEBINFO "$ENV{FUNCHOOK_ROOT}/lib/Release/funchook.lib"
-            IMPORTED_LOCATION_MINSIZEREL "$ENV{FUNCHOOK_ROOT}/lib/Release/funchook.lib"
-            IMPORTED_LOCATION_DEBUG "$ENV{FUNCHOOK_ROOT}/lib/Debug/funchook.lib")
-        set_target_properties(distorm-static PROPERTIES
-            IMPORTED_LOCATION_RELEASE "$ENV{FUNCHOOK_ROOT}/lib/Release/distorm.lib"
-            IMPORTED_LOCATION_RELWITHDEBINFO "$ENV{FUNCHOOK_ROOT}/lib/Release/distorm.lib"
-            IMPORTED_LOCATION_MINSIZEREL "$ENV{FUNCHOOK_ROOT}/lib/Release/distorm.lib"
-            IMPORTED_LOCATION_DEBUG "$ENV{FUNCHOOK_ROOT}/lib/Debug/distorm.lib")
-    else()
-        set_target_properties(funchook-static PROPERTIES
-            IMPORTED_LOCATION_RELEASE "$ENV{FUNCHOOK_ROOT}/lib/Release/libfunchook.a"
-            IMPORTED_LOCATION_RELWITHDEBINFO "$ENV{FUNCHOOK_ROOT}/lib/Release/libfunchook.a"
-            IMPORTED_LOCATION_MINSIZEREL "$ENV{FUNCHOOK_ROOT}/lib/Release/libfunchook.a"
-            IMPORTED_LOCATION_DEBUG "$ENV{FUNCHOOK_ROOT}/lib/Debug/libfunchook.a")
-        set_target_properties(distorm-static PROPERTIES
-            IMPORTED_LOCATION_RELEASE "$ENV{FUNCHOOK_ROOT}/lib/Release/libdistorm.a"
-            IMPORTED_LOCATION_RELWITHDEBINFO "$ENV{FUNCHOOK_ROOT}/lib/Release/libdistorm.a"
-            IMPORTED_LOCATION_MINSIZEREL "$ENV{FUNCHOOK_ROOT}/lib/Release/libdistorm.a"
-            IMPORTED_LOCATION_DEBUG "$ENV{FUNCHOOK_ROOT}/lib/Debug/libdistorm.a")
-    endif()
-else()
-    include(FetchContent)
-    set(FUNCHOOK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(FUNCHOOK_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-    if(DEFINED ENV{FUNCHOOK_SOURCE} AND EXISTS "$ENV{FUNCHOOK_SOURCE}/CMakeLists.txt")
-        set(FETCHCONTENT_SOURCE_DIR_FUNCHOOK "$ENV{FUNCHOOK_SOURCE}" CACHE PATH "")
-    endif()
-    FetchContent_Declare(funchook
-        GIT_REPOSITORY https://github.com/kubo/funchook.git
-        GIT_TAG v2.0.0 GIT_SHALLOW TRUE
-        UPDATE_DISCONNECTED TRUE)
-    FetchContent_MakeAvailable(funchook)
-endif()
+include("${CMAKE_CURRENT_SOURCE_DIR}/../common/khook.cmake")
 
 set(SDK_SOURCES
     ${HL2SDK}/public/tier0/memoverride.cpp
     ${HL2SDK}/tier1/generichash.cpp
     ${HL2SDK}/tier1/keyvalues3.cpp
     ${HL2SDK}/tier1/convar.cpp
-    ${MMS}/core/sourcehook/sourcehook.cpp
-    ${MMS}/core/sourcehook/sourcehook_impl_chookidman.cpp
-    ${MMS}/core/sourcehook/sourcehook_impl_chookmaninfo.cpp
-    ${MMS}/core/sourcehook/sourcehook_impl_cvfnptr.cpp
-    ${MMS}/core/sourcehook/sourcehook_impl_cproto.cpp
 )
 
 add_library(BotController SHARED
@@ -181,7 +135,7 @@ target_include_directories(BotController PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party
     ${GENERATED_DIR}
     ${HL2SDK}/thirdparty/protobuf-3.21.8/src
-    ${MMS}/core ${MMS}/core/sourcehook ${MMS}/core/sourcemm
+    ${MMS}/core ${MMS}/core/sourcemm
     ${HL2SDK}/public
     ${HL2SDK}/public/engine
     ${HL2SDK}/public/game/server
@@ -192,8 +146,6 @@ target_include_directories(BotController PRIVATE
     ${HL2SDK}/game/shared
     ${HL2SDK}/common
 )
-
-target_link_libraries(BotController PRIVATE funchook-static)
 
 target_compile_definitions(BotController PRIVATE
     META_IS_SOURCE2 PLATFORM_64BITS X64BITS GOOGLE_PROTOBUF_NO_RTTI)

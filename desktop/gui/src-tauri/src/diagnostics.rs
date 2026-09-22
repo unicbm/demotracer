@@ -214,6 +214,18 @@ pub(crate) struct PlaybackContractWire {
     pub(crate) bot_randomizer: BotRandomizerContractWire,
     pub(crate) demotracer: DemoTracerContractWire,
     pub(crate) counterstrikesharp: CounterStrikeSharpContractWire,
+    #[serde(default)]
+    pub(crate) hook_runtime: Option<HookRuntimeContractWire>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub(crate) struct HookRuntimeContractWire {
+    pub(crate) backend: String,
+    pub(crate) metamod_minimum_build: u32,
+    pub(crate) metamod_plugin_api: u32,
+    pub(crate) metamod_source_commit: String,
+    pub(crate) khook_source_commit: String,
+    pub(crate) counterstrikesharp_source_commit: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -708,7 +720,7 @@ fn counterstrikesharp_check(game_csgo: &Path, runtime_version: Option<&str>) -> 
         },
         title: "CounterStrikeSharp runtime".to_string(),
         summary: if present && version_compatible {
-            "CounterStrikeSharp is installed and a fresh DemoTracer heartbeat proves that its loaded host version meets the required contract."
+            "A fresh DemoTracer heartbeat confirms the loaded CounterStrikeSharp API version. This version check alone does not verify its KHook backend; use the source baseline in the playback bundle requirements."
                 .to_string()
         } else if present && runtime_version.is_some() {
             "The loaded CounterStrikeSharp host is older than DemoTracer's required version."
@@ -718,7 +730,9 @@ fn counterstrikesharp_check(game_csgo: &Path, runtime_version: Option<&str>) -> 
         } else {
             "CounterStrikeSharp or its Metamod loader file is missing.".to_string()
         },
-        expected: Some(format!("CounterStrikeSharp {expected_version} or newer")),
+        expected: Some(format!(
+            "KHook-enabled CounterStrikeSharp, API {expected_version}+"
+        )),
         actual: Some(
             if present && version_compatible {
                 runtime_version.unwrap_or("unknown")
@@ -734,7 +748,7 @@ fn counterstrikesharp_check(game_csgo: &Path, runtime_version: Option<&str>) -> 
         evidence_path: Some(root.display().to_string()),
         action: if !present || (runtime_version.is_some() && !version_compatible) {
             Some(format!(
-                "Install CounterStrikeSharp {expected_version} or newer."
+                "Install the KHook-enabled CounterStrikeSharp source baseline specified by the playback bundle (API {expected_version}+)."
             ))
         } else {
             None
@@ -1552,6 +1566,9 @@ fn contract_errors(receipt: &InstallReceiptWire) -> Vec<String> {
     }
     if actual.counterstrikesharp.target_framework != expected.counterstrikesharp.target_framework {
         errors.push("CounterStrikeSharp target framework differs".to_string());
+    }
+    if actual.hook_runtime != expected.hook_runtime {
+        errors.push("Metamod/CounterStrikeSharp hook runtime requirements differ".to_string());
     }
     if version_tuple(&actual.counterstrikesharp.minimum_version)
         < version_tuple(&expected.counterstrikesharp.minimum_version)
@@ -2508,6 +2525,37 @@ mod tests {
     }
 
     #[test]
+    fn rejects_legacy_hook_runtime_receipts() {
+        let contract = embedded_playback_contract().unwrap();
+        let receipt = InstallReceiptWire {
+            schema_version: 1,
+            product: contract.product.clone(),
+            bundle_version: "test".to_string(),
+            git_commit: None,
+            platform: contract.platform.clone(),
+            compatibility: contract,
+            files: vec![],
+        };
+        assert!(contract_errors(&receipt).is_empty());
+        let mut json = serde_json::to_value(&receipt).unwrap();
+        let roundtrip: InstallReceiptWire = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(roundtrip, receipt);
+        json["compatibility"]
+            .as_object_mut()
+            .unwrap()
+            .remove("hook_runtime");
+        let legacy: InstallReceiptWire = serde_json::from_value(json).unwrap();
+        assert!(contract_errors(&legacy)
+            .iter()
+            .any(|error| error.contains("hook runtime")));
+        let mut old_native = receipt;
+        old_native.compatibility.bot_controller.min_abi_minor = 42;
+        assert!(contract_errors(&old_native)
+            .iter()
+            .any(|error| error.contains("BotController ABI")));
+    }
+
+    #[test]
     fn compares_numeric_versions() {
         assert!(version_tuple("1.0.371") > version_tuple("1.0.99"));
         assert_eq!(version_tuple("v1.2"), (1, 2, 0, 0));
@@ -2701,7 +2749,7 @@ mod tests {
             "counterStrikeSharpVersion": "1.0.371.0",
             "botController": {
                 "abiMajor": 21,
-                "abiMinor": 42,
+                "abiMinor": 43,
                 "capabilities": "0x7ffff",
                 "buildId": "fixture",
                 "compatible": true,

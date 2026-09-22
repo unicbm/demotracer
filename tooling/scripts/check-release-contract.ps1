@@ -150,6 +150,16 @@ Assert-Equal "BotRandomizer API" (Read-RegexValue "server\vendor\BotRandomizerAp
 Assert-Equal "BotRandomizer provider" (Read-RegexValue "server\runtime\BotRandomizer\BotRandomizer.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "BotRandomizer provider version") ([string]$contract.bot_randomizer.provider_version)
 Assert-Equal "DemoTracer target framework" (Read-RegexValue "server\plugins\DemoTracer\DemoTracer.csproj" '<TargetFramework>([^<]+)</TargetFramework>' "DemoTracer target framework") ([string]$contract.counterstrikesharp.target_framework)
 Assert-Equal "CounterStrikeSharp minimum version" (Read-RegexValue "server\plugins\DemoTracer\DemoTracer.csproj" 'CounterStrikeSharp\.API" Version="([^"]+)"' "CounterStrikeSharp version") ([string]$contract.counterstrikesharp.minimum_version)
+Assert-Equal "native hook backend" ([string]$contract.hook_runtime.backend) "khook"
+Assert-Equal "Metamod plugin API" ([string]$contract.hook_runtime.metamod_plugin_api) "18"
+Assert-Equal "runtime native ABI minor" (Read-RegexValue "server\runtime\BotController\src\common\exports.cpp" 'kBotControllerAbiMinor\s*=\s*(\d+)' "runtime native ABI minor") ([string]$contract.bot_controller.min_abi_minor)
+foreach ($pin in @("metamod_source_commit", "khook_source_commit", "counterstrikesharp_source_commit")) {
+    if ([string]$contract.hook_runtime.$pin -notmatch '^[0-9a-f]{40}$') { throw "Invalid hook runtime pin: $pin" }
+}
+foreach ($runtime in @("BotController", "BotHider")) {
+    Assert-TextAbsent "server\runtime\$runtime\CMakeLists.txt" 'funchook|core/sourcehook' "$runtime legacy hook dependencies"
+    Assert-TextPresent "server\runtime\$runtime\CMakeLists.txt" 'common/khook\.cmake' "$runtime shared KHook interface"
+}
 
 Assert-PathAbsent "desktop\converter\src\main.rs" "converter CLI entrypoint"
 Assert-PathAbsent "desktop\converter\src\cli" "converter CLI module"

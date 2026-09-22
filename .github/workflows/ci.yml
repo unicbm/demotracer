@@ -230,6 +230,32 @@ jobs:
       - name: Test native replay safety
         run: ctest --test-dir server\runtime\BotController\out\replay-safety-ci -C Release --output-on-failure
 
+      - name: Read shared hook source pin
+        id: metamod-source
+        shell: pwsh
+        run: |
+          $contract = Get-Content shared\contracts\playback-contract.v1.json -Raw | ConvertFrom-Json
+          "commit=$($contract.hook_runtime.metamod_source_commit)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Checkout shared hook engine
+        uses: actions/checkout@v6
+        with:
+          repository: alliedmodders/metamod-source
+          ref: ${{ steps.metamod-source.outputs.commit }}
+          path: .external/metamod-khook
+          submodules: recursive
+
+      - name: Configure shared hook integration tests
+        env:
+          MMSOURCE_DEV: ${{ github.workspace }}/.external/metamod-khook
+        run: cmake -S server\runtime\common\tests -B server\runtime\common\tests\build -A x64
+
+      - name: Build shared hook integration tests
+        run: cmake --build server\runtime\common\tests\build --config Release
+
+      - name: Test shared hook chain and lifecycle
+        run: ctest --test-dir server\runtime\common\tests\build -C Release --output-on-failure
+
   native-fuzz-smoke:
     needs: gate
     runs-on: ubuntu-latest

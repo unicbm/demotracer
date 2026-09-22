@@ -3,6 +3,7 @@
 // Signature scanning + gamedata.json loader.
 
 #include "sig_scan.h"
+#include "../../common/khook_signature.h"
 
 #if defined(_WIN32)
 #include <Windows.h>
@@ -309,30 +310,11 @@ namespace cs2bh::sig
                         const std::vector<uint8_t> &pattern,
                         const std::vector<bool> &wild)
     {
-        if (!module || pattern.empty() || pattern.size() != wild.size())
-            return nullptr;
-
-        const size_t plen = pattern.size();
-        for (const ModuleSegment &segment : module.Segments)
-        {
-            if (!segment.Base || segment.Size < plen)
-                continue;
-
-            for (size_t i = 0; i + plen <= segment.Size; ++i)
-            {
-                bool match = true;
-                for (size_t j = 0; j < plen; ++j)
-                {
-                    if (!wild[j] && segment.Base[i + j] != pattern[j])
-                    {
-                        match = false;
-                        break;
-                    }
-                }
-                if (match)
-                    return segment.Base + i;
-            }
-        }
+        if (!module || pattern.empty() || pattern.size() != wild.size()) return nullptr;
+        const auto signature = DemoTracerHooks::Signature(pattern, wild);
+        for (const auto &segment : module.Segments)
+            if (void *hit = DemoTracerHooks::FindSignature(segment.Base, segment.Size, pattern.size(), signature))
+                return hit;
         return nullptr;
     }
 
@@ -342,28 +324,17 @@ namespace cs2bh::sig
                                              const std::vector<bool> &wild)
     {
         std::vector<void *> matches;
-        if (!module || pattern.empty() || pattern.size() != wild.size())
-            return matches;
-
-        const size_t patternLength = pattern.size();
-        for (const ModuleSegment &segment : module.Segments)
+        if (!module || pattern.empty() || pattern.size() != wild.size()) return matches;
+        const auto signature = DemoTracerHooks::Signature(pattern, wild);
+        for (const auto &segment : module.Segments)
         {
-            if (!segment.Base || segment.Size < patternLength)
-                continue;
-
-            for (size_t i = 0; i + patternLength <= segment.Size; ++i)
+            auto *cursor = segment.Base;
+            size_t remaining = segment.Size;
+            while (auto *hit = static_cast<unsigned char *>(DemoTracerHooks::FindSignature(cursor, remaining, pattern.size(), signature)))
             {
-                bool match = true;
-                for (size_t j = 0; j < patternLength; ++j)
-                {
-                    if (!wild[j] && segment.Base[i + j] != pattern[j])
-                    {
-                        match = false;
-                        break;
-                    }
-                }
-                if (match)
-                    matches.push_back(segment.Base + i);
+                matches.push_back(hit);
+                remaining -= static_cast<size_t>(hit + 1 - cursor);
+                cursor = hit + 1;
             }
         }
         return matches;
