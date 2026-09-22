@@ -4,22 +4,13 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import catalogSource from "./data/professional-players.v2.json?raw";
-import registrySource from "./data/cs2-pro-steamid-lib.v1.jsonl?raw";
-import {
-  mergeProfessionalPlayerIdentities,
-  parseProfessionalPlayerCatalog,
-  resolveProfessionalPlayerFromCatalog,
-  type ProfessionalPlayerIdentity,
-} from "./professionalPlayersCatalog";
-import { parseProSteamIdCatalogJsonl, resolveProSteamIdFromCatalog } from "./proSteamIdCatalog";
-const catalog = parseProfessionalPlayerCatalog(JSON.parse(catalogSource));
-const registryCatalog = parseProSteamIdCatalogJsonl(registrySource);
+import { professionalsCatalogUrl } from "virtual:demotracer-catalogs";
+import { createJsonCatalogResource, useCatalogResource } from "./catalogResource";
+import type { ProfessionalPlayerSummary } from "./professionalPlayersCatalog";
 
-export function resolveProfessionalPlayer(steamId: string): ProfessionalPlayerIdentity | null {
-  return mergeProfessionalPlayerIdentities(
-    resolveProfessionalPlayerFromCatalog(catalog, steamId),
-    resolveProSteamIdFromCatalog(registryCatalog, steamId),
-    registryCatalog,
-  );
+export type ProfessionalPlayers = Readonly<Record<string, ProfessionalPlayerSummary>>;
+const catalog = createJsonCatalogResource<ProfessionalPlayers>(professionalsCatalogUrl);
+
+export function useProfessionalPlayers(enabled: boolean) {
+  return useCatalogResource(catalog, enabled);
 }

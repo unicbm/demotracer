@@ -415,10 +415,6 @@ export interface ConversionSummary {
   commands: {
     goRound: string;
     goSequence: string;
-    round: string;
-    sequence: string;
-    cosmeticRound?: string | null;
-    cosmeticSequence?: string | null;
   };
 }
 
@@ -745,25 +741,6 @@ export type TaskEvent =
   | { kind: "phase"; phase: TaskPhase }
   | { kind: "log"; level: LogLevel; message: string }
   | { kind: "progress"; progress: ConversionProgressEvent };
-
-export interface DemoScanCandidate {
-  path: string;
-  relativePath: string;
-  fileName: string;
-  sizeBytes: string;
-  compressed: boolean;
-  modifiedAtMs?: number | null;
-}
-
-export interface DemoFolderScan {
-  root: string;
-  recursive: boolean;
-  limit: number;
-  candidates: DemoScanCandidate[];
-  truncated: boolean;
-  skippedReparsePoints: number;
-  warnings: string[];
-}
 
 export type BatchStatus =
   | "pending"

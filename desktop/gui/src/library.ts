@@ -166,14 +166,6 @@ export function persistLibraryPreferences(preferences: LibraryPreferences) {
   }
 }
 
-export function storedLibraryRoot(): string {
-  return storedLibraryPreferences().exportRoot;
-}
-
-export function persistLibraryRoot(root: string) {
-  persistLibraryPreferences({ exportRoot: root, roots: [root] });
-}
-
 export function mergeLibraryScan(scan: DemoLibraryScan): DemoLibraryScan {
   // Portable demo-info.json is the only source of analyzed archive metadata.
   // Browser-local score caches are deliberately never merged: they cannot be

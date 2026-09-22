@@ -8,7 +8,7 @@ use super::{AppState, CommandErrorDto, CommandResult, CosmeticConsentDto, TaskEv
 use crate::target_lock::TargetFileLock;
 use cs2_demotracer::browser_analysis::BrowserDemoSource;
 use cs2_demotracer::demo_id::sha256_hex;
-use cs2_demotracer::demo_series::{group_demo_sources, resolve_demo_source, DemoSourceSet};
+use cs2_demotracer::demo_series::{group_demo_sources, resolve_demo_source};
 use cs2_demotracer::export::DEFAULT_FREEZE_PREROLL_SECONDS;
 use cs2_demotracer::model::{Side, SubtickMode};
 use cs2_demotracer::quality::AnalysisOptions;
@@ -24,9 +24,6 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 
 const BATCH_SCHEMA_VERSION: u32 = 2;
-const DEFAULT_SCAN_LIMIT: usize = 512;
-const MAX_SCAN_RESULTS: usize = 4096;
-const MAX_SCAN_DEPTH: usize = 8;
 pub(crate) const MAX_BATCH_ITEMS: usize = 8;
 pub(crate) const MAX_BATCH_CONCURRENCY: usize = 8;
 const MIN_BATCH_CONCURRENCY: usize = 1;
@@ -156,46 +153,6 @@ fn acquire_batch_process_lock(ledger_path: &Path) -> CommandResult<TargetFileLoc
         };
         CommandErrorDto::at_path(code, format!("Could not lock this batch: {error}"), &path)
     })
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ChooseDemoFolderRequest {
-    #[serde(default)]
-    pub initial_path: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ScanDemoFolderRequest {
-    pub root: String,
-    #[serde(default = "default_true")]
-    pub recursive: bool,
-    #[serde(default = "default_scan_limit")]
-    pub limit: usize,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct DemoScanCandidateDto {
-    pub path: String,
-    pub relative_path: String,
-    pub file_name: String,
-    pub size_bytes: String,
-    pub compressed: bool,
-    pub modified_at_ms: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct DemoFolderScanDto {
-    pub root: String,
-    pub recursive: bool,
-    pub limit: usize,
-    pub candidates: Vec<DemoScanCandidateDto>,
-    pub truncated: bool,
-    pub skipped_reparse_points: usize,
-    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -507,50 +464,12 @@ fn default_true() -> bool {
     true
 }
 
-fn default_scan_limit() -> usize {
-    DEFAULT_SCAN_LIMIT
-}
-
 fn default_max_round_seconds() -> f32 {
     AnalysisOptions::default().max_round_seconds
 }
 
 fn default_freeze_preroll_seconds() -> f32 {
     DEFAULT_FREEZE_PREROLL_SECONDS
-}
-
-#[tauri::command]
-pub(crate) async fn choose_demo_batch_dir(
-    request: ChooseDemoFolderRequest,
-) -> CommandResult<Option<String>> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let mut dialog = rfd::FileDialog::new().set_title("Choose a folder containing CS2 demos");
-        if let Some(value) = request
-            .initial_path
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            let hint = Path::new(value);
-            if hint.is_dir() {
-                dialog = dialog.set_directory(hint);
-            } else if let Some(parent) = hint.parent().filter(|parent| parent.is_dir()) {
-                dialog = dialog.set_directory(parent);
-            }
-        }
-        dialog.pick_folder().map(|path| path.display().to_string())
-    })
-    .await
-    .map_err(|error| CommandErrorDto::new("dialog_failed", error.to_string()))
-}
-
-#[tauri::command]
-pub(crate) async fn scan_demo_folder(
-    request: ScanDemoFolderRequest,
-) -> CommandResult<DemoFolderScanDto> {
-    tauri::async_runtime::spawn_blocking(move || scan_demo_folder_for(&request))
-        .await
-        .map_err(|error| CommandErrorDto::new("demo_scan_worker_failed", error.to_string()))?
 }
 
 #[tauri::command]
@@ -679,117 +598,6 @@ async fn run_runtime_async(
     tauri::async_runtime::spawn_blocking(move || run_batch_runtime(runtime, events, resume))
         .await
         .map_err(|error| CommandErrorDto::new("batch_worker_failed", error.to_string()))?
-}
-
-fn scan_demo_folder_for(request: &ScanDemoFolderRequest) -> CommandResult<DemoFolderScanDto> {
-    let limit = request.limit.clamp(1, MAX_SCAN_RESULTS);
-    let root = validate_source_root(Path::new(request.root.trim()))?;
-    let mut demo_paths = Vec::new();
-    let mut warnings = Vec::new();
-    let mut skipped_reparse_points = 0_usize;
-    let mut truncated = false;
-    let mut pending = vec![(root.clone(), 0_usize)];
-
-    'scan: while let Some((directory, depth)) = pending.pop() {
-        let entries = match fs::read_dir(&directory) {
-            Ok(entries) => entries,
-            Err(error) => {
-                warnings.push(format!("{}: {error}", directory.display()));
-                continue;
-            }
-        };
-        let mut paths = Vec::new();
-        for entry in entries {
-            match entry {
-                Ok(entry) => paths.push(entry.path()),
-                Err(error) => warnings.push(format!("{}: {error}", directory.display())),
-            }
-        }
-        paths.sort();
-        let mut child_directories = Vec::new();
-        for path in paths {
-            let metadata = match fs::symlink_metadata(&path) {
-                Ok(metadata) => metadata,
-                Err(error) => {
-                    warnings.push(format!("{}: {error}", path.display()));
-                    continue;
-                }
-            };
-            if super::catalog::is_symlink_or_reparse(&metadata) {
-                skipped_reparse_points = skipped_reparse_points.saturating_add(1);
-                continue;
-            }
-            if metadata.is_dir() {
-                if request.recursive && depth < MAX_SCAN_DEPTH {
-                    child_directories.push(path);
-                }
-                continue;
-            }
-            if !metadata.is_file() || !is_demo_path(&path) {
-                continue;
-            }
-            if demo_paths.len() >= MAX_SCAN_RESULTS {
-                truncated = true;
-                break 'scan;
-            }
-            demo_paths.push(path);
-        }
-        for child in child_directories.into_iter().rev() {
-            pending.push((child, depth + 1));
-        }
-    }
-    demo_paths.sort();
-    let mut grouped = BTreeMap::<String, DemoSourceSet>::new();
-    for path in demo_paths {
-        match resolve_demo_source(&path) {
-            Ok(source) => {
-                let key = normalized_path_key(source.primary_path());
-                grouped.entry(key).or_insert(source);
-            }
-            Err(error) => warnings.push(format!("{}: {error}", path.display())),
-        }
-    }
-    let sources = grouped.into_values().collect::<Vec<_>>();
-    if sources.len() > limit {
-        truncated = true;
-    }
-    let mut candidates = sources
-        .iter()
-        .take(limit)
-        .map(|source| scan_candidate(&root, source))
-        .collect::<CommandResult<Vec<_>>>()?;
-    candidates.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-    Ok(DemoFolderScanDto {
-        root: root.display().to_string(),
-        recursive: request.recursive,
-        limit,
-        candidates,
-        truncated,
-        skipped_reparse_points,
-        warnings,
-    })
-}
-
-fn scan_candidate(root: &Path, source: &DemoSourceSet) -> CommandResult<DemoScanCandidateDto> {
-    let path = source.primary_path();
-    let metadata = source
-        .metadata()
-        .map_err(|error| CommandErrorDto::from_core("demo_source_inspect_failed", error))?;
-    Ok(DemoScanCandidateDto {
-        path: path.display().to_string(),
-        relative_path: path
-            .strip_prefix(root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/"),
-        file_name: path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "demo.dem".to_string()),
-        size_bytes: metadata.size_bytes.to_string(),
-        compressed: source.paths().any(is_compressed_demo_path),
-        modified_at_ms: metadata.modified.map(unix_time_ms),
-    })
 }
 
 fn build_batch_ledger(request: &StartBatchImportRequest) -> CommandResult<BatchLedgerDto> {
@@ -1921,108 +1729,12 @@ mod tests {
     }
 
     #[test]
-    fn scan_is_recursive_bounded_and_reports_truncation() {
-        let root = test_directory("scan");
-        let nested = root.join("nested");
-        fs::create_dir(&nested).unwrap();
-        fs::write(root.join("a.dem"), b"a").unwrap();
-        fs::write(root.join("b.DEM.ZST"), b"bb").unwrap();
-        fs::write(root.join("c.dem"), b"ccc").unwrap();
-        fs::write(nested.join("bare.zst"), b"no").unwrap();
-        fs::write(root.join("ignore.txt"), b"no").unwrap();
-
-        let scan = scan_demo_folder_for(&ScanDemoFolderRequest {
-            root: root.display().to_string(),
-            recursive: true,
-            limit: 2,
-        })
-        .unwrap();
-        assert_eq!(scan.candidates.len(), 2);
-        assert!(scan.truncated);
-        assert_eq!(scan.candidates[0].relative_path, "a.dem");
-        assert!(!scan.candidates[0].compressed);
-        assert_eq!(scan.candidates[1].relative_path, "b.DEM.ZST");
-        assert!(scan.candidates[1].compressed);
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
     fn demo_path_filter_accepts_dem_zst_but_not_bare_zst() {
         assert!(is_demo_path(Path::new("match.dem")));
         assert!(is_demo_path(Path::new("match.DEM.ZST")));
         assert!(is_compressed_demo_path(Path::new("match.dem.zst")));
         assert!(!is_demo_path(Path::new("match.zst")));
         assert!(!is_demo_path(Path::new("match.dem.zip")));
-    }
-
-    #[test]
-    fn scan_groups_numbered_demo_segments_as_one_candidate() {
-        let root = test_directory("segment-scan");
-        fs::write(root.join("match-p1.dem"), b"one").unwrap();
-        fs::write(root.join("match-p2.dem"), b"two-two").unwrap();
-        fs::write(root.join("ordinary.dem"), b"plain").unwrap();
-
-        let scan = scan_demo_folder_for(&ScanDemoFolderRequest {
-            root: root.display().to_string(),
-            recursive: false,
-            limit: 10,
-        })
-        .unwrap();
-
-        assert_eq!(scan.candidates.len(), 2);
-        let segmented = scan
-            .candidates
-            .iter()
-            .find(|candidate| candidate.file_name == "match-p1.dem")
-            .unwrap();
-        assert_eq!(segmented.size_bytes, "10");
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn scan_skips_a_broken_segment_set_without_hiding_other_demos() {
-        let root = test_directory("broken-segment-scan");
-        fs::write(root.join("ordinary.dem"), b"plain").unwrap();
-        fs::write(root.join("broken-p1.dem"), b"one").unwrap();
-        fs::write(root.join("broken-p3.dem"), b"three").unwrap();
-
-        let scan = scan_demo_folder_for(&ScanDemoFolderRequest {
-            root: root.display().to_string(),
-            recursive: false,
-            limit: 10,
-        })
-        .unwrap();
-
-        assert_eq!(scan.candidates.len(), 1);
-        assert_eq!(scan.candidates[0].file_name, "ordinary.dem");
-        assert!(scan
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("missing p2")));
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn non_recursive_scan_does_not_descend() {
-        let root = test_directory("flat-scan");
-        let nested = root.join("nested");
-        fs::create_dir(&nested).unwrap();
-        fs::write(root.join("top.dem"), b"top").unwrap();
-        fs::write(nested.join("nested.dem"), b"nested").unwrap();
-
-        let scan = scan_demo_folder_for(&ScanDemoFolderRequest {
-            root: root.display().to_string(),
-            recursive: false,
-            limit: 10,
-        })
-        .unwrap();
-        assert_eq!(scan.candidates.len(), 1);
-        assert_eq!(scan.candidates[0].relative_path, "top.dem");
-
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

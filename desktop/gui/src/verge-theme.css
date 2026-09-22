@@ -1367,7 +1367,6 @@ textarea {
 /* Batch, analysis, archive, and task surfaces */
 .batch-workspace,
 .archive-workspace,
-.analysis-overview,
 .result-view,
 .empty-state,
 .failure-view,
@@ -1377,20 +1376,17 @@ textarea {
 
 .batch-heading,
 .archive-header,
-.analysis-overview-header,
 .round-header,
 .session-header {
   background: var(--app-bg);
   border-color: var(--divider);
 }
 
-.archive-content,
-.analysis-overview-content {
+.archive-content {
   gap: var(--space-3);
 }
 
 .analysis-summary-card,
-.analysis-overview-card,
 .archive-summary-card,
 .archive-hero,
 .player-roster,
@@ -1423,33 +1419,10 @@ textarea {
 }
 
 /* Analysis and playback visual hierarchy. */
-.analysis-overview {
-  overflow: hidden;
-  margin: 10px var(--space-3) 0;
-  background: var(--surface-raised);
-  border: 1px solid var(--divider);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--surface-shadow);
-}
-
-.analysis-matchbar {
-  min-height: 64px;
-  background: var(--surface-raised);
-}
-
-.analysis-scoreline,
 .archive-score-numbers,
 .archive-scoreline {
   font-family: var(--font-ui);
   font-variant-numeric: tabular-nums;
-}
-
-.analysis-scoreboard {
-  border-top-color: var(--divider);
-}
-
-.analysis-team-heading {
-  background: color-mix(in srgb, var(--team-color) 8%, var(--surface-subtle));
 }
 
 .player-analysis-toolbar {

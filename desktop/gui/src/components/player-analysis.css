@@ -270,6 +270,8 @@
 .professional-player-flag {
   flex: none;
   width: 24px;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
   border: 1px solid color-mix(in srgb, var(--text-primary) 54%, var(--divider));
   box-shadow: none;
   line-height: 16px;

@@ -1,8 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { runtimeCatalogs } from "./scripts/runtime-catalog-plugin";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), runtimeCatalogs()],
   clearScreen: false,
   server: {
     port: 1420,

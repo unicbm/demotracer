@@ -71,7 +71,7 @@ import {
   BatchWorkspace,
   type BatchConcurrency,
   type BatchJobItem,
-  type BatchScanCandidate,
+  type BatchImportCandidate,
 } from "./components/BatchWorkspace";
 import { ExportInspector } from "./components/ExportInspector";
 import { FaqWorkspace } from "./components/FaqWorkspace";
@@ -157,7 +157,6 @@ import type {
   ConverterSettings,
   DemoLibraryEntry,
   DemoLibraryScan,
-  DemoFolderScan,
   DemoSourcePreflight,
   EnvironmentDiagnosticReport,
   ImportArchivesResult,
@@ -237,8 +236,11 @@ function App() {
   const [librarySort, setLibrarySort] = useState<LibrarySort>("recent");
   const [savingArchiveNote, setSavingArchiveNote] = useState(false);
   const [batchFolderPath, setBatchFolderPath] = useState(() => storedBatchPreferences().folderPath);
-  const [batchScanError, setBatchScanError] = useState("");
-  const [batchScan, setBatchScan] = useState<DemoFolderScan | null>(null);
+  const [batchNotice, setBatchNotice] = useState("");
+  const [batchSelection, setBatchSelection] = useState<{
+    root: string;
+    sources: DemoSourcePreflight[];
+  } | null>(null);
   const [batchSelectedIds, setBatchSelectedIds] = useState<string[]>([]);
   const [batchReplaceSourceIds, setBatchReplaceSourceIds] = useState<string[]>([]);
   const [batchConcurrency, setBatchConcurrency] = useState<BatchConcurrency>(() => storedBatchPreferences().concurrency);
@@ -246,7 +248,7 @@ function App() {
   const [batchProgressByItem, setBatchProgressByItem] = useState<Record<string, BatchItemProgress>>({});
   const [batchInvocationActive, setBatchInvocationActive] = useState(false);
   const [batchStopPending, setBatchStopPending] = useState(false);
-  const [batchStartingCandidates, setBatchStartingCandidates] = useState<BatchScanCandidate[]>([]);
+  const [batchStartingCandidates, setBatchStartingCandidates] = useState<BatchImportCandidate[]>([]);
   const [batchClock, setBatchClock] = useState(() => Date.now());
   const [outputRoot, setOutputRoot] = useState("");
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -510,18 +512,18 @@ function App() {
     () => librarySeriesForManifest(libraryScan?.entries ?? [], archivePath),
     [archivePath, libraryScan],
   );
-  const batchCandidates = useMemo<BatchScanCandidate[]>(() => {
-    return (batchScan?.candidates ?? []).map((candidate) => {
-      const sourceId = normalizedDiagnosticPath(candidate.path);
+  const batchCandidates = useMemo<BatchImportCandidate[]>(() => {
+    return (batchSelection?.sources ?? []).map((source) => {
+      const sourceId = normalizedDiagnosticPath(source.sourcePath);
       const replacing = batchReplaceSources.has(sourceId);
       const imported = importedBatchSources.has(sourceId) && !replacing;
       return {
-        id: normalizedDiagnosticPath(candidate.path),
-        path: candidate.path,
-        fileName: candidate.fileName,
-        sizeBytes: candidate.sizeBytes,
-        compressed: candidate.compressed,
-        modifiedAtMs: candidate.modifiedAtMs,
+        id: sourceId,
+        path: source.sourcePath,
+        fileName: fileName(source.sourcePath),
+        sizeBytes: source.sourceSizeBytes,
+        compressed: source.compressed,
+        modifiedAtMs: source.sourceModifiedAtMs,
         status: imported ? "imported" : "ready",
         reason: replacing
           ? words.batchCandidateReplacing
@@ -530,7 +532,7 @@ function App() {
             : null,
       };
     });
-  }, [batchReplaceSources, batchScan, importedBatchSources, words]);
+  }, [batchReplaceSources, batchSelection, importedBatchSources, words]);
   const batchJobs = useMemo<BatchJobItem[]>(() => {
     if (!batchLedger) {
       return batchStartingCandidates.map((candidate) => ({
@@ -777,7 +779,7 @@ function App() {
     }).catch((reason) => {
       if (!disposed && generation === batchGenerationRef.current) {
         const error = parseCommandError(reason);
-        setBatchScanError(userFacingErrorMessage(error, language));
+        setBatchNotice(userFacingErrorMessage(error, language));
       }
     });
     return () => { disposed = true; };
@@ -1105,26 +1107,10 @@ function App() {
     relinkedDuplicates: number,
   ) {
     const root = commonParentDirectory(selections.map((item) => item.sourcePath));
-    const candidates = selections.map((item) => ({
-      path: item.sourcePath,
-      relativePath: fileName(item.sourcePath),
-      fileName: fileName(item.sourcePath),
-      sizeBytes: String(item.sourceSizeBytes),
-      compressed: item.compressed,
-      modifiedAtMs: item.sourceModifiedAtMs ?? null,
-    }));
     setBatchFolderPath(root);
-    setBatchScan({
-      root,
-      recursive: false,
-      limit: BATCH_SELECTION_LIMIT,
-      candidates,
-      truncated: false,
-      skippedReparsePoints: 0,
-      warnings: [],
-    });
+    setBatchSelection({ root, sources: selections });
     setBatchReplaceSourceIds(replaceSourceIds);
-    setBatchSelectedIds(candidates.map((candidate) => normalizedDiagnosticPath(candidate.path)));
+    setBatchSelectedIds(selections.map((source) => normalizedDiagnosticPath(source.sourcePath)));
     setBatchLedger(null);
     setBatchProgressByItem({});
     setBatchStartingCandidates([]);
@@ -1139,7 +1125,7 @@ function App() {
         ? words.batchNoticeRelinked.replace("{count}", String(relinkedDuplicates))
         : "",
     ].filter(Boolean);
-    setBatchScanError(notices.join(" "));
+    setBatchNotice(notices.join(" "));
     dispatchLibraryWorkspace({ type: "navigate", section: "batch" });
   }
 
@@ -1570,7 +1556,7 @@ function App() {
     try {
       const next = await invoke<BatchLedger>("start_batch_import", {
         request: {
-          sourceRoot: batchScan?.root ?? batchFolderPath,
+          sourceRoot: batchSelection?.root ?? batchFolderPath,
           libraryRoot: destination,
           demoPaths: candidates.map((candidate) => candidate.path),
           replaceDemoPaths,
@@ -1697,8 +1683,8 @@ function App() {
     setBatchLedger(null);
     setBatchProgressByItem({});
     setBatchStartingCandidates([]);
-    setBatchScan(null);
-    setBatchScanError("");
+    setBatchSelection(null);
+    setBatchNotice("");
     setBatchSelectedIds([]);
     setBatchReplaceSourceIds([]);
     dispatchLibraryWorkspace({ type: "navigate", section: "library" });
@@ -3052,7 +3038,7 @@ function App() {
             {activeSection === "batch" ? <BatchWorkspace
               words={words}
               language={language}
-              notice={batchScanError}
+              notice={batchNotice}
               candidates={batchCandidates}
               selectedCandidateIds={batchSelectedIds}
               concurrency={batchConcurrency}

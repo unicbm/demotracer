@@ -9,7 +9,7 @@ import steamMarkUrl from "../assets/steam-mark.svg";
 import { CheckIcon, CopyIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
 import type { InventorySimulatorSelectionController } from "../inventorySimulatorSelection";
-import { resolveProfessionalPlayer } from "../professionalPlayers";
+import { useProfessionalPlayers } from "../professionalPlayers";
 import { formattedBirthDateWithAge, formattedProfessionalRoles } from "../professionalPlayersCatalog";
 import type { Language } from "../types";
 import {
@@ -23,7 +23,8 @@ import {
 import type { CopyTarget } from "./TaskViews";
 import { currentSteamAlias, demoPlayerColorValue, SteamAvatar, type SteamProfileMap } from "./SteamProfile";
 import { WorkspaceBackButton } from "./WorkspaceBackButton";
-import "flag-icons/css/flag-icons.min.css";
+import { CatalogLoadStatus } from "./CatalogLoadStatus";
+import { CountryFlag } from "./CountryFlag";
 import "./archive-workspace.css";
 import "./player-analysis.css";
 
@@ -91,6 +92,7 @@ export function PlayerAnalysisWorkspace({
   }));
   const selectedKey = playerSelectionKey(selectedPlayer);
   const selectedEntry = entries.find((entry) => entry.key === selectedKey);
+  const professionals = useProfessionalPlayers(Boolean(selectedEntry));
   const headingRef = useRef<HTMLHeadingElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollPositionsRef = useRef(new Map<string, number>());
@@ -143,22 +145,18 @@ export function PlayerAnalysisWorkspace({
   const { player, team } = selectedEntry;
   const steamProfile = steamProfiles.get(player.steamId);
   const steamAlias = currentSteamAlias(steamProfile, player.name);
-  const professionalPlayer = resolveProfessionalPlayer(player.steamId);
-  const professionalRealName = professionalPlayer?.registry?.nameLatin
-    ?? professionalPlayer?.registry?.nameNative
-    ?? professionalPlayer?.hltv?.realName;
-  const professionalCountry = professionalPlayer?.registry?.country
-    ?? professionalPlayer?.hltv?.country?.name;
-  const professionalCountryCode = professionalPlayer?.registry?.countryCode
-    ?? professionalPlayer?.hltv?.country?.code;
+  const professionalPlayer = professionals.data?.[player.steamId];
+  const professionalRealName = professionalPlayer?.realName;
+  const professionalCountry = professionalPlayer?.country;
+  const professionalCountryCode = professionalPlayer?.countryCode;
   const professionalFlagCode = professionalCountryCode && /^[A-Z]{2}$/i.test(professionalCountryCode)
     ? professionalCountryCode.toLowerCase()
     : null;
   const professionalBirthday = formattedBirthDateWithAge(
-    professionalPlayer?.registry?.birthDate,
+    professionalPlayer?.birthDate,
     language,
   );
-  const professionalRoles = formattedProfessionalRoles(professionalPlayer?.registry?.roles);
+  const professionalRoles = formattedProfessionalRoles(professionalPlayer?.roles);
   const steamProfileAvailable = hasSteamProfile(player.steamId);
   const metrics = playerMetricCards(player, words);
   const kdaMetrics = metrics.filter((metric) => metric.key === "kills" || metric.key === "deaths" || metric.key === "assists");
@@ -229,6 +227,7 @@ export function PlayerAnalysisWorkspace({
           </aside>
 
           <article className="player-analysis-main" aria-labelledby="player-analysis-title">
+            <CatalogLoadStatus {...professionals} words={words} />
             <section className="player-analysis-summary" aria-label={words.playerMatchData}>
               <header className="player-analysis-heading">
                 <div className="player-analysis-heading-identity">
@@ -244,12 +243,7 @@ export function PlayerAnalysisWorkspace({
                         {professionalRealName ? (
                           <div className="professional-player-person">
                             {professionalFlagCode ? (
-                              <span
-                                className={`fi fi-${professionalFlagCode} professional-player-flag`}
-                                role="img"
-                                aria-label={professionalCountry ?? professionalCountryCode ?? undefined}
-                                title={professionalCountry ?? professionalCountryCode ?? undefined}
-                              />
+                              <CountryFlag code={professionalFlagCode} country={professionalCountry ?? professionalCountryCode!} className="professional-player-flag" />
                             ) : null}
                             <strong>{professionalRealName}</strong>
                           </div>

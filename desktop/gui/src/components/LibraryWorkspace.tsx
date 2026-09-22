@@ -19,7 +19,8 @@ import {
   normalizeSourceLinkNoteDismissed,
   SOURCE_LINK_NOTE_DISMISSED_STORAGE_KEY,
 } from "../library";
-import { resolveProfessionalPlayer } from "../professionalPlayers";
+import { useProfessionalPlayers, type ProfessionalPlayers } from "../professionalPlayers";
+import { CatalogLoadStatus } from "./CatalogLoadStatus";
 import type { DemoLibraryEntry, DemoLibraryScan, Language, LibraryPlayerSummary, ManifestArchive } from "../types";
 import { displayMap, MapArtwork, mapArtworkStyle } from "./MapArtwork";
 import { useArchiveTeamAvatar } from "./archiveTeamAvatar";
@@ -139,23 +140,16 @@ function compatibilityLabel(entry: DemoLibraryEntry, words: TextDictionary): str
   return words.versionUnsupported;
 }
 
-function playerSearchText(player: LibraryPlayerSummary): string {
-  const professional = resolveProfessionalPlayer(player.steamId);
+function playerSearchText(player: LibraryPlayerSummary, professionals: ProfessionalPlayers | null): string {
   return [
     player.name,
     player.steamId,
     player.teamName,
-    professional?.handle,
-    ...(professional?.aliases ?? []),
-    professional?.registry?.nameNative,
-    professional?.registry?.nameLatin,
-    professional?.registry?.country,
-    professional?.hltv?.registeredHandle,
-    professional?.hltv?.realName,
+    professionals?.[player.steamId]?.searchText,
   ].filter(Boolean).join(" ").toLowerCase();
 }
 
-function entrySearchText(entry: DemoLibraryEntry): string {
+function entrySearchText(entry: DemoLibraryEntry, professionals: ProfessionalPlayers | null): string {
   return [
     entry.demoPath,
     entry.sourcePath,
@@ -167,7 +161,7 @@ function entrySearchText(entry: DemoLibraryEntry): string {
     entry.serverName,
     entry.score?.teamA.name,
     entry.score?.teamB.name,
-    ...entry.players.map(playerSearchText),
+    ...entry.players.map((player) => playerSearchText(player, professionals)),
   ].filter(Boolean).join(" ").toLowerCase();
 }
 
@@ -771,6 +765,8 @@ export function LibraryWorkspace({
   onReparseEntry,
   onDeleteEntry,
 }: LibraryWorkspaceProps) {
+  const searchingPlayers = (scan?.entries.length ?? 0) > 0 && query.trim().length > 0;
+  const professionals = useProfessionalPlayers(searchingPlayers);
   const [propertiesEntry, setPropertiesEntry] = useState<DemoLibraryEntry | null>(null);
   const [propertiesArchive, setPropertiesArchive] = useState<ManifestArchive | null>(null);
   const [propertiesLoading, setPropertiesLoading] = useState(false);
@@ -921,7 +917,7 @@ export function LibraryWorkspace({
     ? words.editArchiveNote
     : words.addArchiveNote;
   const entries = (scan?.entries ?? [])
-    .filter((entry) => !normalizedQuery || entrySearchText(entry).includes(normalizedQuery))
+    .filter((entry) => !normalizedQuery || entrySearchText(entry, professionals.data).includes(normalizedQuery))
     .filter((entry) => !mapFilter || entry.map === mapFilter)
     .filter((entry) => !platformFilter || entry.demoSource?.name === platformFilter)
     .sort((left, right) => {
@@ -1109,6 +1105,8 @@ export function LibraryWorkspace({
               : scan && scan.skipped.length > 0 ? <em>{words.libraryScanNotes.replace("{count}", String(scan.skipped.length))}</em> : null}
           </div>
 
+          {searchingPlayers ? <CatalogLoadStatus {...professionals} words={words} /> : null}
+
           {hasMissingSourceArchives && !sourceLinkNoteDismissed ? (
             <aside className="library-source-link-note">
               <FolderIcon size={16} />
@@ -1147,7 +1145,7 @@ export function LibraryWorkspace({
                 </nav>
               ) : null}
             </>
-          ) : (
+          ) : searchingPlayers && (professionals.loading || professionals.error) ? null : (
             <div className={`library-no-results${scan?.entries.length === 0 ? " is-blank-slate" : ""}`}>
               <span className="library-blank-mark" aria-hidden="true">
                 {scan?.entries.length === 0 ? <TraceMark size={36} /> : <SearchIcon size={22} />}

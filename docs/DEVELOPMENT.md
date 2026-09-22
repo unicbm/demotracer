@@ -85,6 +85,17 @@ The importer is offline: it reads that checkout's committed cache and never
 contacts Liquipedia. It refuses dirty or unpinned source worktrees. CI performs
 the same pinned checkout and generation step.
 
+Vite validates and merges the identity sources at build time, then emits a
+display/search projection and the cosmetic catalog as separate, hashed JSON
+assets. The UI loads these local assets on demand and shares each decoded
+catalog across views. Original catalogs and provenance remain the build inputs;
+do not hand-edit the generated runtime projection. Country flags retain the
+complete supported country set in the UI's 4:3 aspect ratio.
+
+Release binaries use Tauri's default Brotli asset compression. `dist` sizes are
+uncompressed asset sizes, not installer sizes. Adding a second compression layer
+requires measuring both compressed size and the additional decoding path.
+
 Run the narrowest affected checks first:
 
 ```powershell

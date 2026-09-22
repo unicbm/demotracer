@@ -35,7 +35,7 @@ export type BatchJobPhase =
   | "failed"
   | "skipped";
 
-export interface BatchScanCandidate {
+export interface BatchImportCandidate {
   id: string;
   path: string;
   fileName: string;
@@ -71,7 +71,7 @@ export interface BatchWorkspaceProps {
   words: TextDictionary;
   language: Language;
   notice?: string | null;
-  candidates: readonly BatchScanCandidate[];
+  candidates: readonly BatchImportCandidate[];
   selectedCandidateIds: readonly string[];
   concurrency: BatchConcurrency;
   runState: BatchRunState;
@@ -267,7 +267,7 @@ function clampProgress(value: number | null | undefined): number | null {
   return Math.min(1, Math.max(0, value));
 }
 
-function isCandidateSelectable(candidate: BatchScanCandidate): boolean {
+function isCandidateSelectable(candidate: BatchImportCandidate): boolean {
   return candidate.status === "ready";
 }
 
@@ -317,7 +317,7 @@ export function BatchWorkspace({
   const processed = Math.min(summary.total, summary.completed + summary.failed + summary.skipped);
   const overallProgress = summary.total > 0 ? Math.min(1, processed / summary.total) : 0;
 
-  function toggleCandidate(candidate: BatchScanCandidate) {
+  function toggleCandidate(candidate: BatchImportCandidate) {
     if (!isCandidateSelectable(candidate) || working) return;
     const next = new Set(selected);
     if (next.has(candidate.id)) next.delete(candidate.id);

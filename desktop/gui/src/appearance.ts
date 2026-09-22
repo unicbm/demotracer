@@ -113,10 +113,6 @@ export function themeBackground(theme: ResolvedTheme): string {
   return THEME_BACKGROUNDS[theme];
 }
 
-export function toggleResolvedTheme(theme: Theme, systemDark: boolean): ResolvedTheme {
-  return resolveTheme(theme, systemDark) === "dark" ? "light" : "dark";
-}
-
 export function normalizeUiScale(value: unknown): UiScale {
   if (value === null || value === undefined || value === "") return 1;
   const numeric = typeof value === "number" ? value : Number(value);
@@ -321,17 +317,4 @@ export function applyCustomCss(css: string, target: Document = document): void {
     target.head.append(style);
   }
   style.textContent = normalized;
-}
-
-export function stepUiScale(current: number, direction: 1 | -1): UiScale {
-  const normalized = normalizeUiScale(current);
-  const index = UI_SCALE_STEPS.indexOf(normalized);
-  const next = Math.min(UI_SCALE_STEPS.length - 1, Math.max(0, index + direction));
-  return UI_SCALE_STEPS[next];
-}
-
-export function cycleUiScale(current: number): UiScale {
-  const normalized = normalizeUiScale(current);
-  const index = UI_SCALE_STEPS.indexOf(normalized);
-  return UI_SCALE_STEPS[(index + 1) % UI_SCALE_STEPS.length];
 }

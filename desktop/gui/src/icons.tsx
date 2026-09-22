@@ -112,32 +112,6 @@ export function CopyIcon({ size = 18, ...props }: IconProps) {
   );
 }
 
-export function SunIcon({ size = 18, ...props }: IconProps) {
-  return (
-    <svg {...base(size)} {...props}>
-      <circle cx="12" cy="12" r="3.5" />
-      <path d="M12 2.8v2M12 19.2v2M2.8 12h2M19.2 12h2M5.5 5.5l1.4 1.4M17.1 17.1l1.4 1.4M18.5 5.5l-1.4 1.4M6.9 17.1l-1.4 1.4" />
-    </svg>
-  );
-}
-
-export function MoonIcon({ size = 18, ...props }: IconProps) {
-  return (
-    <svg {...base(size)} {...props}>
-      <path d="M19.4 15.1A8 8 0 0 1 8.9 4.6 8 8 0 1 0 19.4 15Z" />
-    </svg>
-  );
-}
-
-export function LanguageIcon({ size = 18, ...props }: IconProps) {
-  return (
-    <svg {...base(size)} {...props}>
-      <circle cx="12" cy="12" r="8.5" />
-      <path d="M3.8 12h16.4M12 3.5c2.1 2.3 3.2 5.1 3.2 8.5S14.1 18.2 12 20.5M12 3.5C9.9 5.8 8.8 8.6 8.8 12s1.1 6.2 3.2 8.5" />
-    </svg>
-  );
-}
-
 export function CloseIcon({ size = 18, ...props }: IconProps) {
   return (
     <svg {...base(size)} {...props}>
@@ -238,16 +212,6 @@ export function ExternalLinkIcon({ size = 18, ...props }: IconProps) {
     <svg {...base(size)} {...props}>
       <path d="M13 5h6v6M19 5l-8 8" />
       <path d="M17 13v5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 5 18v-9a1.5 1.5 0 0 1 1.5-1.5h5" />
-    </svg>
-  );
-}
-
-export function BatchIcon({ size = 18, ...props }: IconProps) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
-      <path d="M5 5.5h11.5a2 2 0 0 1 2 2V19H7a2 2 0 0 1-2-2V5.5Z" />
-      <path d="M8.5 2.5H19a2 2 0 0 1 2 2V16" />
-      <path d="M9 10h5M9 14h5" />
     </svg>
   );
 }

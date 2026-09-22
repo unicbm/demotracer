@@ -25,8 +25,8 @@ use activity_log::{
 };
 use base64::Engine as _;
 use batch::{
-    cancel_batch_import, choose_demo_batch_dir, list_batch_imports, read_batch_import,
-    resume_batch_import, scan_demo_folder, start_batch_import,
+    cancel_batch_import, list_batch_imports, read_batch_import, resume_batch_import,
+    start_batch_import,
 };
 use cs2_demotracer::browser_analysis::{
     analyze_browser_demo, BrowserDemoAnalysis, BrowserDemoSource, BrowserFriendlyFireSummary,
@@ -531,10 +531,6 @@ pub struct CosmeticSummaryDto {
 pub struct CommandSummaryDto {
     pub go_round: String,
     pub go_sequence: String,
-    pub round: String,
-    pub sequence: String,
-    pub cosmetic_round: Option<String>,
-    pub cosmetic_sequence: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -3260,12 +3256,7 @@ fn read_manifest_for(value: &str) -> CommandResult<ManifestArchiveDto> {
                 inventory_snapshots: accumulator.inventory_snapshots,
                 sequence_length: 0,
                 available,
-                commands: build_commands(
-                    &manifest_path,
-                    Some(round),
-                    voice_rounds.len(),
-                    cosmetic_preset.as_deref(),
-                ),
+                commands: build_commands(&manifest_path, Some(round)),
             }
         })
         .collect::<Vec<_>>();
@@ -3323,12 +3314,7 @@ fn read_manifest_for(value: &str) -> CommandResult<ManifestArchiveDto> {
                     inventory_snapshots: 0,
                     sequence_length: 0,
                     available: false,
-                    commands: build_commands(
-                        &manifest_path,
-                        Some(round),
-                        voice_rounds.len(),
-                        cosmetic_preset.as_deref(),
-                    ),
+                    commands: build_commands(&manifest_path, Some(round)),
                 }
             })
             .collect();
@@ -5414,12 +5400,7 @@ fn summarize_conversion(
     } else {
         Some("basic".to_string())
     };
-    let commands = build_commands(
-        &report.manifest_path,
-        first_exported_round,
-        voice_sidecars,
-        preset.as_deref(),
-    );
+    let commands = build_commands(&report.manifest_path, first_exported_round);
 
     ConversionSummaryDto {
         root: report.root.display().to_string(),
@@ -5562,44 +5543,12 @@ fn team_index_from_first_side(side: &str) -> usize {
     }
 }
 
-fn build_commands(
-    manifest_path: &Path,
-    first_round: Option<u32>,
-    voice_sidecars: usize,
-    cosmetic_preset: Option<&str>,
-) -> CommandSummaryDto {
+fn build_commands(manifest_path: &Path, first_round: Option<u32>) -> CommandSummaryDto {
     let round = first_round.unwrap_or(0);
     let manifest = console_quote_path(manifest_path);
-    let go_round = format!("dtr_go round \"{manifest}\" {round}");
-    let go_sequence = format!("dtr_go seq \"{manifest}\" {round}");
     CommandSummaryDto {
-        go_round: go_round.clone(),
-        go_sequence: go_sequence.clone(),
-        round: command_with_prefixes(&go_round, voice_sidecars, None),
-        sequence: command_with_prefixes(&go_sequence, voice_sidecars, None),
-        cosmetic_round: cosmetic_preset
-            .map(|preset| command_with_prefixes(&go_round, voice_sidecars, Some(preset))),
-        cosmetic_sequence: cosmetic_preset
-            .map(|preset| command_with_prefixes(&go_sequence, voice_sidecars, Some(preset))),
-    }
-}
-
-fn command_with_prefixes(
-    command: &str,
-    voice_sidecars: usize,
-    cosmetic_preset: Option<&str>,
-) -> String {
-    let mut prefixes = Vec::new();
-    if voice_sidecars > 0 {
-        prefixes.push("dtr_voice_auto on".to_string());
-    }
-    if let Some(preset) = cosmetic_preset {
-        prefixes.push(format!("dtr_cosmetics {preset}"));
-    }
-    if prefixes.is_empty() {
-        command.to_string()
-    } else {
-        format!("{}; {command}", prefixes.join("; "))
+        go_round: format!("dtr_go round \"{manifest}\" {round}"),
+        go_sequence: format!("dtr_go seq \"{manifest}\" {round}"),
     }
 }
 
@@ -5805,8 +5754,6 @@ pub fn run() {
             load_server_config,
             validate_server_config,
             save_server_config,
-            choose_demo_batch_dir,
-            scan_demo_folder,
             start_batch_import,
             resume_batch_import,
             read_batch_import,
@@ -7376,26 +7323,15 @@ mod tests {
     }
 
     #[test]
-    fn commands_use_exported_round_and_expected_prefix_order() {
-        let commands = build_commands(
-            Path::new("output/demo/manifest.json"),
-            Some(7),
-            2,
-            Some("full"),
-        );
+    fn commands_use_exported_round() {
+        let commands = build_commands(Path::new("output/demo/manifest.json"), Some(7));
         assert_eq!(
             commands.go_sequence,
             "dtr_go seq \"output/demo/manifest.json\" 7"
         );
         assert_eq!(
-            commands.round,
-            "dtr_voice_auto on; dtr_go round \"output/demo/manifest.json\" 7"
-        );
-        assert_eq!(
-            commands.cosmetic_sequence.as_deref(),
-            Some(
-                "dtr_voice_auto on; dtr_cosmetics full; dtr_go seq \"output/demo/manifest.json\" 7"
-            )
+            commands.go_round,
+            "dtr_go round \"output/demo/manifest.json\" 7"
         );
     }
 

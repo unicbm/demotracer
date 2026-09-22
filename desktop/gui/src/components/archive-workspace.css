@@ -653,8 +653,7 @@
   border-top: 1px solid var(--divider);
 }
 
-.archive-workspace .archive-roster-grid,
-.analysis-overview .archive-roster-grid {
+.archive-workspace .archive-roster-grid {
   max-height: none;
   overflow: visible;
 }

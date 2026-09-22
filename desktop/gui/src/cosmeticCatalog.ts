@@ -4,7 +4,8 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import catalogSource from "./data/cs2-cosmetic-catalog.v1.json?raw";
+import { cosmeticsCatalogUrl } from "virtual:demotracer-catalogs";
+import { createJsonCatalogResource, useCatalogResource } from "./catalogResource";
 import {
   inventorySimulatorItemForCosmetic,
   type InventorySimulatorItem,
@@ -43,17 +44,20 @@ export interface CosmeticCatalogEntry {
   stickerSchemaCount: number;
 }
 
-const catalog = JSON.parse(catalogSource) as CosmeticCatalogData;
-const cdnBaseUrl = catalog.source.cdnBaseUrl.replace(/\/$/, "");
-const freeInventorySimulatorItemIds = new Set(catalog.inventorySimulator.freeItemIds);
+const catalogResource = createJsonCatalogResource<CosmeticCatalogData>(cosmeticsCatalogUrl);
+
+export function useCosmeticCatalog(enabled: boolean) {
+  return useCatalogResource(catalogResource, enabled);
+}
 
 function localizedEntry(
   tuple: CatalogTuple,
   language: Language,
+  catalog: CosmeticCatalogData,
 ): CosmeticCatalogEntry {
   return {
     name: language === "zh" && tuple[2] ? tuple[2] : tuple[1],
-    imageUrl: `${cdnBaseUrl}/${tuple[0].replace(/^\//, "")}`,
+    imageUrl: `${catalog.source.cdnBaseUrl.replace(/\/$/, "")}/${tuple[0].replace(/^\//, "")}`,
     itemId: tuple[3],
     rarity: tuple[4],
     stickerSchemaCount: catalog.inventorySimulator.stickerSchemaCountByItemId[String(tuple[3])] ?? 5,
@@ -74,22 +78,26 @@ export function resolveCosmeticCatalog(
   language: Language,
 ): CosmeticCatalogEntry | null {
   if (cosmetic.itemDefIndex === null || cosmetic.itemDefIndex === undefined) return null;
+  const catalog = catalogResource.getSnapshot().data;
+  if (!catalog) return null;
   if (cosmetic.kind === "agent") {
     const tuple = catalog.agents[String(cosmetic.itemDefIndex)];
-    return tuple ? localizedEntry(tuple, language) : null;
+    return tuple ? localizedEntry(tuple, language, catalog) : null;
   }
 
   const paintKit = cosmetic.paintKit ?? 0;
   const tuple = catalog.items[`${cosmetic.itemDefIndex}:${paintKit}`];
-  return tuple ? withWearPreview(localizedEntry(tuple, language), cosmetic.wear) : null;
+  return tuple ? withWearPreview(localizedEntry(tuple, language, catalog), cosmetic.wear) : null;
 }
 
 export function resolveStickerCatalog(
   stickerId: number,
   language: Language,
 ): CosmeticCatalogEntry | null {
+  const catalog = catalogResource.getSnapshot().data;
+  if (!catalog) return null;
   const tuple = catalog.stickers[String(stickerId)];
-  return tuple ? localizedEntry(tuple, language) : null;
+  return tuple ? localizedEntry(tuple, language, catalog) : null;
 }
 
 export function resolveCharmCatalog(
@@ -97,21 +105,25 @@ export function resolveCharmCatalog(
   stickerId: number | null | undefined,
   language: Language,
 ): CosmeticCatalogEntry | null {
+  const catalog = catalogResource.getSnapshot().data;
+  if (!catalog) return null;
   const tuple = stickerId === null || stickerId === undefined
     ? undefined
     : catalog.charms[`${charmId}:${stickerId}`];
   const fallback = tuple ?? catalog.charms[`${charmId}:0`];
-  return fallback ? localizedEntry(fallback, language) : null;
+  return fallback ? localizedEntry(fallback, language, catalog) : null;
 }
 
 export function resolveMusicKitCatalog(
   musicKitId: number,
   language: Language,
 ): CosmeticCatalogEntry | null {
+  const catalog = catalogResource.getSnapshot().data;
+  if (!catalog) return null;
   const tuple = catalog.musicKits[String(musicKitId)];
   // Free Valve soundtracks are player configuration, not owned cosmetic evidence.
-  return tuple && !freeInventorySimulatorItemIds.has(tuple[3])
-    ? localizedEntry(tuple, language)
+  return tuple && !catalog.inventorySimulator.freeItemIds.includes(tuple[3])
+    ? localizedEntry(tuple, language, catalog)
     : null;
 }
 
@@ -182,7 +194,9 @@ export function buildCosmeticInventorySimulatorItem(
 }
 
 export function isInventorySimulatorItemCraftable(item: InventorySimulatorItem): boolean {
-  return !freeInventorySimulatorItemIds.has(item.id)
+  const catalog = catalogResource.getSnapshot().data;
+  if (!catalog) return false;
+  return !catalog.inventorySimulator.freeItemIds.includes(item.id)
     || item.nameTag !== undefined
     || Object.keys(item.stickers ?? {}).length > 0
     || Object.keys(item.keychains ?? {}).length > 0;

@@ -34,8 +34,6 @@ function round(round: number, sequenceLength: number): ManifestArchive["rounds"]
     commands: {
       goRound: "dtr_go round",
       goSequence: "dtr_go seq",
-      round: "dtr_arm round",
-      sequence: "dtr_arm seq",
     },
   };
 }

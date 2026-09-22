@@ -15,6 +15,7 @@ import {
   resolveCosmeticCatalog,
   resolveMusicKitCatalog,
   resolveStickerCatalog,
+  useCosmeticCatalog,
   type CosmeticCatalogEntry,
 } from "../cosmeticCatalog";
 import { CheckIcon, CloseIcon, CopyIcon, ExternalLinkIcon, PlusIcon, ReplayIcon } from "../icons";
@@ -32,6 +33,7 @@ import type { CopyTarget } from "./TaskViews";
 import { CrosshairPreview } from "./CrosshairPreview";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { DialogPrimitive } from "./Dialog";
+import { CatalogLoadStatus } from "./CatalogLoadStatus";
 import { demoPlayerColorValue, SteamPlayerIdentity, type SteamProfileMap } from "./SteamProfile";
 
 export interface RosterPlayer {
@@ -681,6 +683,9 @@ export function PlayerDossier({
   const crosshairCodes = details?.crosshairCodes ?? [];
   const viewmodels = (details?.viewmodels ?? []).map(viewmodelCommand).filter(Boolean);
   const cosmetics = (details?.cosmetics ?? []).filter(isDisplayableCosmeticEvidence);
+  const showCosmetics = view === "all" || view === "cosmetics" || view === "evidence";
+  const needsCatalog = showCosmetics && (cosmetics.length > 0 || (details?.musicKitIds?.length ?? 0) > 0);
+  const catalog = useCosmeticCatalog(needsCatalog);
   const musicKitIds = (details?.musicKitIds ?? []).filter((musicKitId) => (
     resolveMusicKitCatalog(musicKitId, language) !== null
   ));
@@ -707,7 +712,6 @@ export function PlayerDossier({
   const steamProfileAvailable = hasSteamProfile(player.steamId);
   const showProfile = view === "all";
   const showConfiguration = view === "all" || view === "configuration" || view === "evidence";
-  const showCosmetics = view === "all" || view === "cosmetics" || view === "evidence";
   return (
     <div className="player-dossier">
       {showProfile ? <div className="roster-profile-line">
@@ -755,6 +759,7 @@ export function PlayerDossier({
       ) : showConfiguration ? <p className="roster-evidence-empty">{words.playerConfigurationEmpty}</p> : null}
 
       {showCosmetics ? <section className="roster-evidence-section roster-cosmetics">
+        {needsCatalog ? <CatalogLoadStatus {...catalog} words={words} /> : null}
         <header className="roster-cosmetic-toolbar">
           <strong>{words.cosmeticEvidence}{words.cosmeticEvidenceCount.replace("{count}", String(evidenceCount))}</strong>
           {inventoryEntries.length > 0 ? <div className="roster-inventory-batch-actions">
@@ -808,7 +813,7 @@ export function PlayerDossier({
               />
             ))}
           </div>
-        ) : <p className="roster-evidence-empty">{words.cosmeticEvidenceEmpty}</p>}
+        ) : !needsCatalog || catalog.data ? <p className="roster-evidence-empty">{words.cosmeticEvidenceEmpty}</p> : null}
       </section> : null}
 
       {viewer ? <CosmeticViewerDialog title={viewer.title} url={viewer.url} words={words} onClose={() => setViewer(null)} /> : null}

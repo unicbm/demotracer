@@ -6,6 +6,17 @@
 
 import type { ProSteamIdIdentity } from "./proSteamIdCatalog";
 
+/** Display and search projection; provenance stays in the build-time source catalogs. */
+export interface ProfessionalPlayerSummary {
+  handle: string;
+  realName: string | null;
+  country: string | null;
+  countryCode: string | null;
+  birthDate: string | null;
+  roles: readonly string[];
+  searchText: string;
+}
+
 export interface ProfessionalPlayerCountry {
   name: string;
   code: string;

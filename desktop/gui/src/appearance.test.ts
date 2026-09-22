@@ -7,7 +7,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  cycleUiScale,
   ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY,
   CUSTOM_CSS_PROFILES_STORAGE_KEY,
   CUSTOM_CSS_STORAGE_KEY,
@@ -24,7 +23,6 @@ import {
   normalizeTheme,
   recommendedUiScale,
   resolveTheme,
-  stepUiScale,
   stepUiFontSize,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
   THEME_CUSTOMIZATION_STORAGE_KEY,
@@ -32,17 +30,9 @@ import {
   themeBackground,
   themeCustomizationCss,
   themePalette,
-  toggleResolvedTheme,
 } from "./appearance.ts";
 
 describe("appearance preferences", () => {
-  it("toggles the visible system theme on the first click", () => {
-    assert.equal(toggleResolvedTheme("system", false), "dark");
-    assert.equal(toggleResolvedTheme("system", true), "light");
-    assert.equal(toggleResolvedTheme("light", true), "dark");
-    assert.equal(toggleResolvedTheme("dark", false), "light");
-  });
-
   it("normalizes stored theme values", () => {
     assert.equal(normalizeTheme("light"), "light");
     assert.equal(normalizeTheme("dark"), "dark");
@@ -87,15 +77,11 @@ describe("appearance preferences", () => {
     assert.equal(themeBackground("dark"), "#20212b");
   });
 
-  it("normalizes and steps persistent UI scale values", () => {
+  it("normalizes legacy UI scale values for preference migration", () => {
     assert.equal(normalizeUiScale("1.1"), 1.1);
     assert.equal(normalizeUiScale(1.22), 1.25);
     assert.equal(normalizeUiScale(null), 1);
     assert.equal(normalizeUiScale("invalid"), 1);
-    assert.equal(stepUiScale(1, 1), 1.1);
-    assert.equal(stepUiScale(1, -1), 0.9);
-    assert.equal(stepUiScale(1.25, 1), 1.25);
-    assert.equal(cycleUiScale(1.25), 0.9);
   });
 
   it("normalizes editable UI font sizes without blocking intermediate input", () => {
