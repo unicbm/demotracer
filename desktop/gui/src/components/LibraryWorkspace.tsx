@@ -1091,7 +1091,7 @@ export function LibraryWorkspace({
             </aside>
           ) : null}
 
-          {loading ? <LibrarySkeleton /> : entries.length > 0 ? (
+          {loading && libraryIsEmpty ? <LibrarySkeleton /> : entries.length > 0 ? (
             <>
               <div className="library-list">
                 {visibleItems.map((item) => item.kind === "series" ? (

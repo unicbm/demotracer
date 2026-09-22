@@ -1185,8 +1185,17 @@ function App() {
     setLibraryLoading(true);
     try {
       const scans = await Promise.all(paths.map(async (root): Promise<DemoLibraryScan> => {
+        let finished = false;
+        const events = new Channel<DemoLibraryEntry[]>();
+        events.onmessage = (entries) => {
+          if (finished || token !== libraryScanTokenRef.current) return;
+          setLibraryScan((current) => token !== libraryScanTokenRef.current ? current : mergeLibraryScans([
+            { root, entries, skipped: [] },
+            ...(current ? [current] : []),
+          ], paths[0]));
+        };
         try {
-          return await invoke<DemoLibraryScan>("scan_demo_library", { root });
+          return await invoke<DemoLibraryScan>("scan_demo_library", { root, events });
         } catch (reason) {
           const error = parseCommandError(reason);
           return {
@@ -1194,6 +1203,8 @@ function App() {
             entries: [],
             skipped: [{ path: error.path ?? root, message: userFacingErrorMessage(error, language) }],
           };
+        } finally {
+          finished = true;
         }
       }));
       if (token !== libraryScanTokenRef.current) return;
@@ -1213,29 +1224,6 @@ function App() {
       if (token === libraryScanTokenRef.current) setLibraryLoading(false);
     }
   }, [language, manifestCache]);
-
-  useEffect(() => {
-    if (!libraryScan || libraryLoading || isBusy || !("__TAURI_INTERNALS__" in window)) return;
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        // Read the active match first, then warm the remaining library one at a time.
-        for (const entry of [...activeArchiveSeries, ...libraryScan.entries]) {
-          if (cancelled) return;
-          if (entry.compatibility === "unsupported" || manifestCache.get(entry.manifestPath)) continue;
-          try {
-            await manifestCache.read(entry.manifestPath);
-          } catch {
-            // Opening the archive surfaces the read error through the normal UI.
-          }
-        }
-      })();
-    }, 0);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [activeArchiveSeries, isBusy, libraryLoading, libraryScan, manifestCache]);
 
   function applyBatchLedger(next: BatchLedger, generation: number, allowBatchSwitch = false) {
     if (generation !== batchGenerationRef.current) return;

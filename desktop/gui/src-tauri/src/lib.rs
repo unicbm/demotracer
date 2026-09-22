@@ -1618,10 +1618,17 @@ async fn save_archive_note(request: SaveArchiveNoteRequest) -> CommandResult<Sav
 }
 
 #[tauri::command]
-async fn scan_demo_library(root: String) -> CommandResult<catalog::LibraryScanDto> {
-    tauri::async_runtime::spawn_blocking(move || catalog::scan_demo_library_for(&root))
-        .await
-        .map_err(|error| CommandErrorDto::new("library_scan_worker_failed", error.to_string()))?
+async fn scan_demo_library(
+    root: String,
+    events: Channel<Vec<catalog::LibraryEntryDto>>,
+) -> CommandResult<catalog::LibraryScanDto> {
+    tauri::async_runtime::spawn_blocking(move || {
+        catalog::scan_demo_library_with_progress(&root, |entries| {
+            let _ = events.send(entries.to_vec());
+        })
+    })
+    .await
+    .map_err(|error| CommandErrorDto::new("library_scan_worker_failed", error.to_string()))?
 }
 
 #[tauri::command]

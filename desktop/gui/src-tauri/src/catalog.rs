@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, Metadata};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
 const MAX_SCAN_DEPTH: usize = 8;
 const MAX_LIBRARY_MANIFESTS: usize = 2048;
@@ -201,6 +201,13 @@ struct PlayerAccumulator {
 }
 
 pub(crate) fn scan_demo_library_for(root: &str) -> CommandResult<LibraryScanDto> {
+    scan_demo_library_with_progress(root, |_| {})
+}
+
+pub(crate) fn scan_demo_library_with_progress(
+    root: &str,
+    mut on_entries: impl FnMut(&[LibraryEntryDto]),
+) -> CommandResult<LibraryScanDto> {
     let trimmed = root.trim();
     if trimmed.is_empty() {
         return Err(CommandErrorDto::new(
@@ -233,22 +240,42 @@ pub(crate) fn scan_demo_library_for(root: &str) -> CommandResult<LibraryScanDto>
         ));
     }
 
-    let mut manifest_paths = Vec::new();
+    let mut manifest_count = 0;
     let mut skipped = Vec::new();
-    collect_manifest_paths(&root_path, 0, &mut manifest_paths, &mut skipped)?;
-
+    let mut invalid_manifests = Vec::new();
     let mut entries = Vec::new();
-    for manifest_path in manifest_paths {
-        match summarize_manifest(&manifest_path) {
-            Ok(entry) => entries.push(entry),
-            Err(message) => skipped.push(LibraryScanSkippedDto {
-                path: manifest_path.display().to_string(),
-                message,
-            }),
-        }
+    let mut sent = 0;
+    let mut last_update = Instant::now();
+    visit_manifest_paths(
+        &root_path,
+        0,
+        &mut manifest_count,
+        &mut skipped,
+        &mut |manifest_path| {
+            match summarize_manifest(manifest_path) {
+                Ok(entry) => entries.push(entry),
+                Err(message) => invalid_manifests.push(LibraryScanSkippedDto {
+                    path: manifest_path.display().to_string(),
+                    message,
+                }),
+            }
+            // Show the first archive immediately, then batch updates to avoid
+            // rendering once per file in a large library.
+            if entries.len() > sent
+                && (sent == 0 || last_update.elapsed() >= Duration::from_millis(100))
+            {
+                on_entries(&entries[sent..]);
+                sent = entries.len();
+                last_update = Instant::now();
+            }
+        },
+    )?;
+    if entries.len() > sent {
+        on_entries(&entries[sent..]);
     }
     entries.sort_by(|left, right| left.manifest_path.cmp(&right.manifest_path));
     assign_strict_hltv_series(&mut entries);
+    skipped.extend(invalid_manifests);
 
     Ok(LibraryScanDto {
         root: root_path.display().to_string(),
@@ -257,11 +284,12 @@ pub(crate) fn scan_demo_library_for(root: &str) -> CommandResult<LibraryScanDto>
     })
 }
 
-fn collect_manifest_paths(
+fn visit_manifest_paths(
     directory: &Path,
     depth: usize,
-    manifests: &mut Vec<PathBuf>,
+    manifest_count: &mut usize,
     skipped: &mut Vec<LibraryScanSkippedDto>,
+    on_manifest: &mut impl FnMut(&Path),
 ) -> CommandResult<bool> {
     let read_dir = match fs::read_dir(directory) {
         Ok(read_dir) => read_dir,
@@ -284,18 +312,24 @@ fn collect_manifest_paths(
     let mut paths = Vec::new();
     for entry in read_dir {
         match entry {
-            Ok(entry) => paths.push(entry.path()),
+            Ok(entry) => paths.push(entry),
             Err(error) => skipped.push(LibraryScanSkippedDto {
                 path: directory.display().to_string(),
                 message: format!("Directory entry could not be read: {error}"),
             }),
         }
     }
-    paths.sort();
+    paths.sort_by_key(|entry| entry.file_name());
 
     let mut child_directories = Vec::new();
-    for path in paths {
-        let metadata = match fs::symlink_metadata(&path) {
+    for entry in paths {
+        let path = entry.path();
+        // Directory entries already carry file types on Windows. Replay
+        // payloads do not need a separate metadata lookup during discovery.
+        if !is_manifest_name(&path) && !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            continue;
+        }
+        let metadata = match entry.metadata() {
             Ok(metadata) => metadata,
             Err(error) => {
                 if is_manifest_name(&path) {
@@ -311,14 +345,15 @@ fn collect_manifest_paths(
             continue;
         }
         if metadata.is_file() && is_manifest_name(&path) {
-            if manifests.len() == MAX_LIBRARY_MANIFESTS {
+            if *manifest_count == MAX_LIBRARY_MANIFESTS {
                 skipped.push(LibraryScanSkippedDto {
                     path: directory.display().to_string(),
                     message: format!("Scan stopped after {MAX_LIBRARY_MANIFESTS} manifest files."),
                 });
                 return Ok(true);
             }
-            manifests.push(path);
+            *manifest_count += 1;
+            on_manifest(&path);
         } else if metadata.is_dir()
             && depth < MAX_SCAN_DEPTH
             && !is_internal_transaction_directory(&path)
@@ -328,7 +363,7 @@ fn collect_manifest_paths(
     }
 
     for child in child_directories {
-        if collect_manifest_paths(&child, depth + 1, manifests, skipped)? {
+        if visit_manifest_paths(&child, depth + 1, manifest_count, skipped, on_manifest)? {
             return Ok(true);
         }
     }
@@ -1065,6 +1100,33 @@ mod tests {
         assert_eq!(alpha.assists, Some(4));
         assert!(entry.modified_at_ms > 0);
         assert!(!entry.root.contains(".dtr"));
+    }
+
+    #[test]
+    fn scan_delivers_entries_before_discovering_the_remaining_archives() {
+        let directory = TestDirectory::new("progress");
+        directory.write_manifest("a", &valid_manifest());
+        let next = directory.path.join("b/manifest.json");
+        fs::create_dir_all(next.parent().unwrap()).unwrap();
+        let mut delivered = Vec::new();
+        let scan = scan_demo_library_with_progress(directory.path.to_str().unwrap(), |entries| {
+            if delivered.is_empty() {
+                // The next archive appears after the first result is delivered.
+                // A scan that discovers the whole tree up front would miss it.
+                fs::write(&next, serde_json::to_vec(&valid_manifest()).unwrap()).unwrap();
+            }
+            delivered.extend(entries.iter().map(|entry| entry.manifest_path.clone()));
+        })
+        .unwrap();
+        assert_eq!(scan.entries.len(), 2);
+        assert!(scan.skipped.is_empty());
+        assert_eq!(
+            delivered,
+            scan.entries
+                .iter()
+                .map(|entry| entry.manifest_path.clone())
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
