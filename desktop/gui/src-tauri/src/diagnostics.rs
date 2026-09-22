@@ -22,8 +22,6 @@ const MAX_RUNTIME_HEALTH_AGE_MS: u64 = 30_000;
 const MAX_RUNTIME_HEALTH_FUTURE_SKEW_MS: u64 = 60_000;
 pub(crate) const MAX_RECEIPT_FILES: usize = 256;
 pub(crate) const MAX_RECEIPT_FILE_BYTES: u64 = 128 * 1024 * 1024;
-const MAX_PLUGIN_DIRECTORIES: usize = 256;
-const MAX_PLUGIN_DLLS: usize = 64;
 pub(crate) const REQUIRED_RECEIPT_PATHS: &[&str] = &[
     "addons/botcontroller/bin/win64/botcontroller.dll",
     "addons/botcontroller/gamedata.json",
@@ -45,42 +43,6 @@ pub(crate) const REQUIRED_RECEIPT_PATHS: &[&str] = &[
     "addons/counterstrikesharp/shared/botrandomizerapi/botrandomizerapi.dll",
     "addons/counterstrikesharp/shared/0harmony/0harmony.dll",
 ];
-const BOT_IMPROVER_142_CONTROLLER_SHA256: &str =
-    "84b28ba57246f5b8ae97f248fa3012f8bdc32a036fb9f22f255071c0aea05da3";
-const BOT_IMPROVER_142_CONTROLLER_BYTES: u64 = 1_917_440;
-const BOT_IMPROVER_142_HIDER_SHA256: &str =
-    "7eaa9abd55888d67e961e833f3244570221ba4778626a44c21ad5277649aab67";
-const BOT_IMPROVER_142_HIDER_BYTES: u64 = 1_534_976;
-const BOT_IMPROVER_141_HIDER_SHA256: &str =
-    "e420b634e19707bf8f3aa099ccdeb7493ff6755f1f01138a6e607c80cf72ccdf";
-const BOT_IMPROVER_141_HIDER_BYTES: u64 = 1_450_496;
-const BOT_IMPROVER_142_CONTROLLER_IMPL_SHA256: &str =
-    "92d6d1ee346289ff9b06acf8edbf693f5bc383fd8287867516ad04fab57c66bd";
-const BOT_IMPROVER_142_CONTROLLER_IMPL_BYTES: u64 = 16_896;
-
-const BOT_IMPROVER_PLUGIN_NAMES: &[&str] = &[
-    "botai",
-    "botbuy",
-    "botcontrollerimpl",
-    "bothiderimpl",
-    "botrandomizer",
-    "botstate",
-    "botteams",
-    "rounddamagerecap",
-];
-
-const BOT_IMPROVER_BEHAVIOR_PLUGIN_NAMES: &[&str] = &[
-    "botai",
-    "botbuy",
-    "botrandomizer",
-    "botstate",
-    "botteams",
-    "rounddamagerecap",
-];
-
-const KNOWN_COSMETIC_PLUGIN_NAMES: &[&str] =
-    &["cs2-weaponpaints", "cs2_weaponpaints", "weaponpaints"];
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum DiagnosticStatus {
@@ -110,8 +72,6 @@ pub(crate) struct EnvironmentDiagnosticReportDto {
     pub overall: DiagnosticStatus,
     pub runtime_verification: String,
     pub checks: Vec<DiagnosticCheckDto>,
-    pub plugins: Vec<CssPluginDto>,
-    pub conflicts: Vec<DiagnosticConflictDto>,
     pub receipt: InstallReceiptSummaryDto,
 }
 
@@ -131,28 +91,6 @@ pub(crate) struct DiagnosticCheckDto {
     pub evidence_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub action: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct CssPluginDto {
-    pub name: String,
-    pub directory: String,
-    pub assembly_files: Vec<String>,
-    pub classification: String,
-    pub runtime_state: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct DiagnosticConflictDto {
-    pub rule_id: String,
-    pub severity: String,
-    pub confidence: String,
-    pub title: String,
-    pub summary: String,
-    pub evidence_path: String,
-    pub affected_features: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -285,8 +223,6 @@ struct RuntimeHealthWire {
     bot_controller: RuntimeBotControllerWire,
     bot_hider: RuntimeBotHiderWire,
     bot_randomizer: RuntimeBotRandomizerWire,
-    cosmetics: RuntimeCosmeticsWire,
-    loaded_css_plugin_directories: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -327,20 +263,6 @@ struct RuntimeBotRandomizerWire {
     available: bool,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RuntimeCosmeticsWire {
-    alignment_enabled: bool,
-    weapons_enabled: bool,
-    knives_enabled: bool,
-    gloves_enabled: bool,
-    names_enabled: bool,
-    agents_enabled: bool,
-    stickers_enabled: bool,
-    charms_enabled: bool,
-    preserve_native_enabled: bool,
-}
-
 #[derive(Debug)]
 pub(crate) struct InstallPaths {
     pub(crate) cs2_root: PathBuf,
@@ -350,7 +272,6 @@ pub(crate) struct InstallPaths {
 #[derive(Debug, Default)]
 struct ReceiptAudit {
     summary: InstallReceiptSummaryDto,
-    component_mismatches: BTreeSet<String>,
 }
 
 #[derive(Debug, Default)]
@@ -358,8 +279,6 @@ struct RuntimeAudit {
     verification: String,
     plugin_version: Option<String>,
     counter_strike_sharp_version: Option<String>,
-    loaded_plugin_directories: Option<BTreeSet<String>>,
-    cosmetics: Option<RuntimeCosmeticsWire>,
     checks: Vec<DiagnosticCheckDto>,
 }
 
@@ -479,7 +398,7 @@ fn inspect_cs2_install_for(requested_path: &str) -> CommandResult<EnvironmentDia
     ));
 
     checks.push(metamod_files_check(game_csgo));
-    checks.push(metamod_gameinfo_check(game_csgo));
+    checks.push(hook_runtime_check());
     let mut runtime_audit = inspect_runtime_health(game_csgo);
     checks.push(counterstrikesharp_check(
         game_csgo,
@@ -531,33 +450,17 @@ fn inspect_cs2_install_for(requested_path: &str) -> CommandResult<EnvironmentDia
         ],
     ));
     checks.push(json_files_check(game_csgo));
-    checks.push(vdf_targets_check(game_csgo));
     checks.append(&mut runtime_audit.checks);
 
     let receipt_audit = inspect_install_receipt(game_csgo, &mut checks);
-    let plugins = scan_css_plugins(
-        game_csgo,
-        &mut checks,
-        runtime_audit.loaded_plugin_directories.as_ref(),
-    );
-    checks.push(bot_improver_behavior_check(
-        game_csgo,
-        &plugins,
-        &receipt_audit,
-    ));
-    let conflicts = detect_conflicts(game_csgo, &plugins, &receipt_audit, &runtime_audit);
-    let overall = overall_status(&checks, &conflicts);
-
     Ok(EnvironmentDiagnosticReportDto {
         checked_at_ms: now_ms(),
         requested_path: requested_path.trim().to_string(),
         cs2_root: paths.cs2_root.display().to_string(),
         game_csgo_path: game_csgo.display().to_string(),
-        overall,
+        overall: overall_status(&checks),
         runtime_verification: runtime_audit.verification,
         checks,
-        plugins,
-        conflicts,
         receipt: receipt_audit.summary,
     })
 }
@@ -629,68 +532,50 @@ pub(crate) fn resolve_install_paths(input: &Path) -> CommandResult<InstallPaths>
 }
 
 fn metamod_files_check(game_csgo: &Path) -> DiagnosticCheckDto {
-    let metamod_root = game_csgo.join("addons").join("metamod");
-    let win64 = metamod_root.join("bin").join("win64");
-    let native_present = is_normal_directory_below(game_csgo, &win64)
-        && fs::read_dir(&win64)
-            .ok()
-            .into_iter()
-            .flatten()
-            .filter_map(Result::ok)
-            .any(|entry| {
-                let path = entry.path();
-                is_normal_file_below(game_csgo, &path)
-                    && path.extension().is_some_and(|extension| {
-                        extension.to_string_lossy().eq_ignore_ascii_case("dll")
-                    })
-            });
+    let mut check = required_files_check(
+        "metamod.files",
+        "dependencies",
+        "Metamod:Source files",
+        game_csgo,
+        &[
+            "addons/metamod/bin/win64/server.dll",
+            "addons/metamod/bin/win64/metamod.2.cs2.dll",
+        ],
+    );
+    if check.status == DiagnosticStatus::Error {
+        check.action = Some(
+            "Install Metamod:Source for CS2 using the playback server requirements.".to_string(),
+        );
+    }
+    check
+}
+
+fn hook_runtime_check() -> DiagnosticCheckDto {
+    let requirements = embedded_playback_contract()
+        .ok()
+        .and_then(|contract| contract.hook_runtime)
+        .map(|hook| {
+            format!(
+                "Metamod build {}+, plugin API {}; KHook-enabled CounterStrikeSharp (source {})",
+                hook.metamod_minimum_build,
+                hook.metamod_plugin_api,
+                hook.counterstrikesharp_source_commit,
+            )
+        });
     DiagnosticCheckDto {
-        id: "metamod.files".to_string(),
+        id: "dependencies.hookRuntime".to_string(),
         group: "dependencies".to_string(),
-        status: if native_present {
-            DiagnosticStatus::Pass
+        status: if requirements.is_some() {
+            DiagnosticStatus::Unverified
         } else {
             DiagnosticStatus::Error
         },
-        title: "Metamod:Source files".to_string(),
-        summary: if native_present {
-            "Metamod's Windows runtime directory is present.".to_string()
-        } else {
-            "Metamod's Windows runtime files were not found.".to_string()
-        },
-        expected: Some("addons/metamod/bin/win64/*.dll".to_string()),
-        actual: Some(if native_present { "present" } else { "missing" }.to_string()),
-        evidence_path: Some(win64.display().to_string()),
-        action: (!native_present)
-            .then(|| "Install a current Metamod:Source build for CS2.".to_string()),
-    }
-}
-
-fn metamod_gameinfo_check(game_csgo: &Path) -> DiagnosticCheckDto {
-    let gameinfo = game_csgo.join("gameinfo.gi");
-    let wired = read_small_text_below(game_csgo, &gameinfo, MAX_TEXT_FILE_BYTES)
-        .ok()
-        .is_some_and(|text| text.to_ascii_lowercase().contains("csgo/addons/metamod"));
-    DiagnosticCheckDto {
-        id: "metamod.gameinfo".to_string(),
-        group: "dependencies".to_string(),
-        status: if wired {
-            DiagnosticStatus::Pass
-        } else {
-            DiagnosticStatus::Warning
-        },
-        title: "Metamod loader entry".to_string(),
-        summary: if wired {
-            "gameinfo.gi contains the Metamod search path.".to_string()
-        } else {
-            "Metamod files may exist, but its gameinfo.gi loader entry was not confirmed."
-                .to_string()
-        },
-        expected: Some("Game csgo/addons/metamod".to_string()),
-        actual: Some(if wired { "present" } else { "not confirmed" }.to_string()),
-        evidence_path: Some(gameinfo.display().to_string()),
-        action: (!wired)
-            .then(|| "Re-run the Metamod installation steps for this CS2 tree.".to_string()),
+        title: "Metamod / CounterStrikeSharp hook runtime".to_string(),
+        summary: "This inspection cannot verify the installed Metamod plugin API or CounterStrikeSharp hook backend. File names, package metadata, and CSS API versions do not prove those host capabilities.".to_string(),
+        expected: requirements,
+        actual: Some("not measured".to_string()),
+        evidence_path: None,
+        action: Some("Use the Metamod and KHook-enabled CounterStrikeSharp builds specified in the playback server requirements. Check server startup errors if a plugin fails to load.".to_string()),
     }
 }
 
@@ -700,31 +585,30 @@ fn counterstrikesharp_check(game_csgo: &Path, runtime_version: Option<&str>) -> 
         .join("addons")
         .join("metamod")
         .join("counterstrikesharp.vdf");
-    let present =
-        is_normal_directory_below(game_csgo, &root) && is_normal_file_below(game_csgo, &vdf);
+    let present = is_normal_file_below(game_csgo, &root.join("bin/win64/counterstrikesharp.dll"))
+        && is_normal_file_below(game_csgo, &root.join("api/CounterStrikeSharp.API.dll"))
+        && is_normal_file_below(game_csgo, &vdf);
     let expected_version = embedded_playback_contract()
         .ok()
         .map(|contract| contract.counterstrikesharp.minimum_version)
-        .unwrap_or_else(|| "1.0.371".to_string());
+        .unwrap_or_default();
     let version_compatible = runtime_version
-        .is_some_and(|version| version_tuple(version) >= version_tuple(&expected_version));
+        .and_then(version_tuple)
+        .zip(version_tuple(&expected_version))
+        .map(|(actual, expected)| actual >= expected);
     DiagnosticCheckDto {
         id: "counterStrikeSharp.runtime".to_string(),
         group: "dependencies".to_string(),
-        status: if present && version_compatible {
-            DiagnosticStatus::Pass
-        } else if present && runtime_version.is_some() {
+        status: if !present || version_compatible == Some(false) {
             DiagnosticStatus::Error
-        } else if present {
-            DiagnosticStatus::Unverified
         } else {
-            DiagnosticStatus::Error
+            DiagnosticStatus::Unverified
         },
         title: "CounterStrikeSharp runtime".to_string(),
-        summary: if present && version_compatible {
+        summary: if present && version_compatible == Some(true) {
             "A fresh DemoTracer heartbeat confirms the loaded CounterStrikeSharp API version. This version check alone does not verify its KHook backend; use the source baseline in the playback bundle requirements."
                 .to_string()
-        } else if present && runtime_version.is_some() {
+        } else if present && version_compatible == Some(false) {
             "The loaded CounterStrikeSharp host is older than DemoTracer's required version."
                 .to_string()
         } else if present {
@@ -736,9 +620,7 @@ fn counterstrikesharp_check(game_csgo: &Path, runtime_version: Option<&str>) -> 
             "KHook-enabled CounterStrikeSharp, API {expected_version}+"
         )),
         actual: Some(
-            if present && version_compatible {
-                runtime_version.unwrap_or("unknown")
-            } else if present && runtime_version.is_some() {
+            if present && runtime_version.is_some() {
                 runtime_version.unwrap_or("unknown")
             } else if present {
                 "installed, version unverified"
@@ -748,7 +630,7 @@ fn counterstrikesharp_check(game_csgo: &Path, runtime_version: Option<&str>) -> 
             .to_string(),
         ),
         evidence_path: Some(root.display().to_string()),
-        action: if !present || (runtime_version.is_some() && !version_compatible) {
+        action: if !present || version_compatible == Some(false) {
             Some(format!(
                 "Install the KHook-enabled CounterStrikeSharp source baseline specified by the playback bundle (API {expected_version}+)."
             ))
@@ -802,7 +684,7 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
         || health.plugin_version.len() > 64
         || health.counter_strike_sharp_version.trim().is_empty()
         || health.counter_strike_sharp_version.len() > 64
-        || health.loaded_css_plugin_directories.len() > MAX_PLUGIN_DIRECTORIES
+        || version_tuple(&health.counter_strike_sharp_version).is_none()
     {
         return runtime_audit_without_live_evidence(
             "unknown",
@@ -829,7 +711,7 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
     if !health.running {
         return runtime_audit_without_live_evidence(
             "notRunning",
-            DiagnosticStatus::NotApplicable,
+            DiagnosticStatus::Unverified,
             "DemoTracer recorded a clean runtime stop. Installed files can still be inspected, but no plugin is currently proven active.",
             "stopped",
             &path,
@@ -838,7 +720,7 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
     }
     if age_ms > MAX_RUNTIME_HEALTH_AGE_MS {
         return runtime_audit_without_live_evidence(
-            "notRunning",
+            "unknown",
             DiagnosticStatus::Unverified,
             &format!(
                 "The most recent running heartbeat is stale ({} seconds old).",
@@ -848,28 +730,6 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
             &path,
             Some("Confirm the local replay server is running, then inspect again."),
         );
-    }
-
-    let mut loaded_plugin_directories = BTreeSet::new();
-    for name in &health.loaded_css_plugin_directories {
-        let trimmed = name.trim();
-        if trimmed.is_empty()
-            || trimmed.len() > 128
-            || trimmed
-                .chars()
-                .any(|character| matches!(character, '/' | '\\' | ':'))
-            || matches!(trimmed, "." | "..")
-        {
-            return runtime_audit_without_live_evidence(
-                "unknown",
-                DiagnosticStatus::Warning,
-                "The runtime heartbeat contains an unsafe CSS plugin directory name.",
-                "invalid plugin inventory",
-                &path,
-                Some("Restart DemoTracer and inspect again."),
-            );
-        }
-        loaded_plugin_directories.insert(trimmed.to_ascii_lowercase());
     }
 
     let expected = match embedded_playback_contract() {
@@ -1043,14 +903,22 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
                 .to_string()
         }),
     });
-    checks.push(runtime_cosmetics_check(&path, &health.cosmetics));
 
     RuntimeAudit {
-        verification: "verified".to_string(),
+        verification: if controller_compatible
+            && hider_compatible
+            && randomizer_compatible
+            && version_tuple(&health.counter_strike_sharp_version)
+                .zip(version_tuple(&expected.counterstrikesharp.minimum_version))
+                .is_some_and(|(actual, required)| actual >= required)
+        {
+            "verified"
+        } else {
+            "incompatible"
+        }
+        .to_string(),
         plugin_version: Some(health.plugin_version),
         counter_strike_sharp_version: Some(health.counter_strike_sharp_version),
-        loaded_plugin_directories: Some(loaded_plugin_directories),
-        cosmetics: Some(health.cosmetics),
         checks,
     }
 }
@@ -1084,43 +952,6 @@ fn runtime_audit_without_live_evidence(
             action: action.map(str::to_string),
         }],
         ..RuntimeAudit::default()
-    }
-}
-
-fn runtime_cosmetics_check(path: &Path, cosmetics: &RuntimeCosmeticsWire) -> DiagnosticCheckDto {
-    let enabled = [
-        ("master", cosmetics.alignment_enabled),
-        ("weapons", cosmetics.weapons_enabled),
-        ("knives", cosmetics.knives_enabled),
-        ("gloves", cosmetics.gloves_enabled),
-        ("names", cosmetics.names_enabled),
-        ("agents", cosmetics.agents_enabled),
-        ("stickers", cosmetics.stickers_enabled),
-        ("charms", cosmetics.charms_enabled),
-        ("preserve-native", cosmetics.preserve_native_enabled),
-    ]
-    .into_iter()
-    .filter_map(|(name, enabled)| enabled.then_some(name))
-    .collect::<Vec<_>>();
-    DiagnosticCheckDto {
-        id: "runtime.cosmetics".to_string(),
-        group: "runtime".to_string(),
-        status: DiagnosticStatus::Pass,
-        title: "Live DemoTracer cosmetic alignment settings".to_string(),
-        summary: if enabled.is_empty() {
-            "DemoTracer cosmetic, sticker, charm, and agent alignment are currently off."
-                .to_string()
-        } else {
-            format!("Runtime-enabled cosmetic features: {}.", enabled.join(", "))
-        },
-        expected: None,
-        actual: Some(if enabled.is_empty() {
-            "all off".to_string()
-        } else {
-            enabled.join(", ")
-        }),
-        evidence_path: Some(path.display().to_string()),
-        action: None,
     }
 }
 
@@ -1248,71 +1079,6 @@ fn json_files_check(game_csgo: &Path) -> DiagnosticCheckDto {
     }
 }
 
-fn vdf_targets_check(game_csgo: &Path) -> DiagnosticCheckDto {
-    let expected = [
-        (
-            "addons/metamod/BotController.vdf",
-            "addons/botcontroller/bin/win64/botcontroller",
-        ),
-        (
-            "addons/metamod/BotHider.vdf",
-            "addons/bothider/bin/win64/bothider",
-        ),
-    ];
-    let mut invalid = Vec::new();
-    for (relative, target) in expected {
-        let path = join_public_relative(game_csgo, relative);
-        let ok = read_small_text_below(game_csgo, &path, MAX_TEXT_FILE_BYTES)
-            .ok()
-            .is_some_and(|text| {
-                text.replace('\\', "/")
-                    .to_ascii_lowercase()
-                    .contains(target)
-            });
-        if !ok {
-            invalid.push(relative);
-        }
-    }
-    DiagnosticCheckDto {
-        id: "demotracer.vdfTargets".to_string(),
-        group: "demotracer".to_string(),
-        status: if invalid.is_empty() {
-            DiagnosticStatus::Pass
-        } else {
-            DiagnosticStatus::Error
-        },
-        title: "DemoTracer Metamod loader targets".to_string(),
-        summary: if invalid.is_empty() {
-            "BotController and BotHider VDF files point at DemoTracer's expected native paths."
-                .to_string()
-        } else {
-            format!(
-                "Missing or unexpected loader target: {}",
-                invalid.join(", ")
-            )
-        },
-        expected: Some("DemoTracer BotController and BotHider native paths".to_string()),
-        actual: Some(
-            if invalid.is_empty() {
-                "matching"
-            } else {
-                "not matching"
-            }
-            .to_string(),
-        ),
-        evidence_path: Some(
-            game_csgo
-                .join("addons")
-                .join("metamod")
-                .display()
-                .to_string(),
-        ),
-        action: (!invalid.is_empty()).then(|| {
-            "Reinstall DemoTracer's VDF and matching native runtime together.".to_string()
-        }),
-    }
-}
-
 fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto>) -> ReceiptAudit {
     let receipt_path = join_public_relative(game_csgo, INSTALL_RECEIPT_RELATIVE_PATH);
     if !is_normal_file_below(game_csgo, &receipt_path) {
@@ -1321,11 +1087,11 @@ fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto
             group: "demotracer".to_string(),
             status: DiagnosticStatus::Unverified,
             title: "DemoTracer install receipt".to_string(),
-            summary: "This is a legacy or unverified install. Component vendor and exact ABI cannot be proven from file names alone.".to_string(),
+            summary: "No install receipt was found. The package contract and file integrity have not been verified.".to_string(),
             expected: Some(INSTALL_RECEIPT_RELATIVE_PATH.to_string()),
             actual: Some("missing".to_string()),
             evidence_path: Some(receipt_path.display().to_string()),
-            action: Some("Install a current complete DemoTracer playback bundle to enable vendor-integrity checks.".to_string()),
+            action: Some("Install a complete matching DemoTracer playback bundle to enable receipt and file-hash checks.".to_string()),
         });
         return ReceiptAudit::default();
     }
@@ -1362,7 +1128,7 @@ fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto
     audit.summary.bot_randomizer_api = Some(receipt.compatibility.bot_randomizer.api);
     audit.summary.demo_tracer_api = Some(receipt.compatibility.demotracer.companion_api);
 
-    let contract_errors = contract_errors(&receipt);
+    let contract_errors = receipt_contract_errors(&receipt);
     let mut integrity_errors = Vec::new();
     if receipt.files.len() > MAX_RECEIPT_FILES {
         audit.summary.files_mismatched = receipt.files.len();
@@ -1393,20 +1159,12 @@ fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto
                         expected_component.unwrap_or("unknown")
                     ));
                 }
-                if let Some(component) = expected_component {
-                    audit.component_mismatches.insert(component.to_string());
-                }
             }
             audit.summary.files_checked += 1;
             match verify_receipt_file(game_csgo, file) {
                 Ok(()) => {}
                 Err(error) => {
                     mismatched = true;
-                    audit.component_mismatches.insert(
-                        expected_component
-                            .unwrap_or(file.component.as_str())
-                            .to_string(),
-                    );
                     if integrity_errors.len() < 12 {
                         integrity_errors.push(error);
                     }
@@ -1421,9 +1179,6 @@ fn inspect_install_receipt(game_csgo: &Path, checks: &mut Vec<DiagnosticCheckDto
                 audit.summary.files_mismatched += 1;
                 if integrity_errors.len() < 12 {
                     integrity_errors.push(format!("receipt omits required file: {required}"));
-                }
-                if let Some(component) = receipt_component(required) {
-                    audit.component_mismatches.insert(component.to_string());
                 }
             }
         }
@@ -1482,105 +1237,22 @@ fn receipt_error_check(path: &Path, message: String) -> DiagnosticCheckDto {
     }
 }
 
-fn contract_errors(receipt: &InstallReceiptWire) -> Vec<String> {
-    let mut errors = Vec::new();
+pub(crate) fn receipt_contract_errors(receipt: &InstallReceiptWire) -> Vec<String> {
     let expected = match embedded_playback_contract() {
         Ok(expected) => expected,
         Err(error) => return vec![error],
     };
-    let actual = &receipt.compatibility;
-    if receipt.schema_version != 1 || actual.schema_version != expected.schema_version {
-        errors.push("unsupported receipt or compatibility schema".to_string());
+    let mut errors = Vec::new();
+    if receipt.schema_version != 1 {
+        errors.push("unsupported install receipt schema".to_string());
     }
-    if receipt.product != expected.product || actual.product != expected.product {
-        errors.push("receipt product is not CS2 DemoTracer".to_string());
+    if receipt.product != expected.product || receipt.platform != expected.platform {
+        errors.push("receipt product or platform differs from this desktop build".to_string());
     }
-    if receipt.platform != expected.platform || actual.platform != expected.platform {
-        errors.push(format!(
-            "platform {} is not {}",
-            receipt.platform, expected.platform
-        ));
-    }
-    if actual.manifest_abi != expected.manifest_abi {
-        errors.push(format!(
-            "manifest ABI {} is not {}",
-            actual.manifest_abi, expected.manifest_abi
-        ));
-    }
-    if actual.dtr_writer != expected.dtr_writer
-        || actual.dtr_reader.min > expected.dtr_writer
-        || actual.dtr_reader.max < expected.dtr_writer
-    {
-        errors
-            .push("installed DTR writer/reader contract does not cover the GUI writer".to_string());
-    }
-    if actual.bot_controller.abi_major != expected.bot_controller.abi_major
-        || actual.bot_controller.min_abi_minor < expected.bot_controller.min_abi_minor
-    {
-        errors.push(format!(
-            "BotController ABI {}/{} is incompatible with required {}/{}+",
-            actual.bot_controller.abi_major,
-            actual.bot_controller.min_abi_minor,
-            expected.bot_controller.abi_major,
-            expected.bot_controller.min_abi_minor
-        ));
-    }
-    if actual
-        .bot_controller
-        .required_capabilities_hex
-        .to_ascii_lowercase()
-        != expected
-            .bot_controller
-            .required_capabilities_hex
-            .to_ascii_lowercase()
-    {
-        errors.push("BotController required capability contract differs".to_string());
-    }
-    if actual.bot_controller.public_control_api != expected.bot_controller.public_control_api
-        || actual.bot_controller.movement_intent_version
-            != expected.bot_controller.movement_intent_version
-        || actual.bot_controller.replay_tick_bytes != expected.bot_controller.replay_tick_bytes
-        || actual.bot_controller.replay_tick_event_tail
-            != expected.bot_controller.replay_tick_event_tail
-        || actual.bot_controller.managed_provider_version
-            != expected.bot_controller.managed_provider_version
-    {
-        errors.push("BotController public provider or replay tick contract differs".to_string());
-    }
-    if actual.bot_hider.api != expected.bot_hider.api {
-        errors.push(format!(
-            "BotHider API {} is not {}",
-            actual.bot_hider.api, expected.bot_hider.api
-        ));
-    }
-    if actual.bot_randomizer != expected.bot_randomizer {
-        errors.push(format!(
-            "BotRandomizer {}/API {} is not {}/API {}",
-            actual.bot_randomizer.provider_version,
-            actual.bot_randomizer.api,
-            expected.bot_randomizer.provider_version,
-            expected.bot_randomizer.api
-        ));
-    }
-    if actual.demotracer.companion_api != expected.demotracer.companion_api {
-        errors.push(format!(
-            "DemoTracer API {} is not {}",
-            actual.demotracer.companion_api, expected.demotracer.companion_api
-        ));
-    }
-    if actual.counterstrikesharp.target_framework != expected.counterstrikesharp.target_framework {
-        errors.push("CounterStrikeSharp target framework differs".to_string());
-    }
-    if actual.hook_runtime != expected.hook_runtime {
-        errors.push("Metamod/CounterStrikeSharp hook runtime requirements differ".to_string());
-    }
-    if version_tuple(&actual.counterstrikesharp.minimum_version)
-        < version_tuple(&expected.counterstrikesharp.minimum_version)
-    {
-        errors.push(format!(
-            "CounterStrikeSharp minimum {} is older than {}",
-            actual.counterstrikesharp.minimum_version, expected.counterstrikesharp.minimum_version
-        ));
+    // This is a matched playback bundle, not a probe of the installed host.
+    // Installation and inspection must enforce the same package contract.
+    if receipt.compatibility != expected {
+        errors.push("playback bundle contract differs from this desktop build".to_string());
     }
     errors
 }
@@ -1668,588 +1340,15 @@ pub(crate) fn receipt_component(normalized_path: &str) -> Option<&'static str> {
     }
 }
 
-fn scan_css_plugins(
-    game_csgo: &Path,
-    checks: &mut Vec<DiagnosticCheckDto>,
-    loaded_plugin_directories: Option<&BTreeSet<String>>,
-) -> Vec<CssPluginDto> {
-    let root = game_csgo
-        .join("addons")
-        .join("counterstrikesharp")
-        .join("plugins");
-    if !is_normal_directory_below(game_csgo, &root) {
-        checks.push(DiagnosticCheckDto {
-            id: "plugins.inventory".to_string(),
-            group: "plugins".to_string(),
-            status: DiagnosticStatus::NotApplicable,
-            title: "CounterStrikeSharp plugin inventory".to_string(),
-            summary: "No CounterStrikeSharp plugins directory is available to scan.".to_string(),
-            expected: None,
-            actual: Some("not available".to_string()),
-            evidence_path: Some(root.display().to_string()),
-            action: None,
-        });
-        return Vec::new();
-    }
-    let mut directories = fs::read_dir(&root)
-        .ok()
-        .into_iter()
-        .flatten()
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .collect::<Vec<_>>();
-    directories.sort();
-    directories.truncate(MAX_PLUGIN_DIRECTORIES);
-    let mut plugins = Vec::new();
-    for directory in directories {
-        let Ok(metadata) = fs::symlink_metadata(&directory) else {
-            continue;
-        };
-        if !metadata.is_dir() || crate::catalog::is_symlink_or_reparse(&metadata) {
-            continue;
-        }
-        let name = directory
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        if name.is_empty() {
-            continue;
-        }
-        let mut assembly_files = fs::read_dir(&directory)
-            .ok()
-            .into_iter()
-            .flatten()
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| {
-                is_normal_file_below(game_csgo, path)
-                    && path.extension().is_some_and(|extension| {
-                        extension.to_string_lossy().eq_ignore_ascii_case("dll")
-                    })
-            })
-            .filter_map(|path| {
-                path.file_name()
-                    .map(|name| name.to_string_lossy().into_owned())
-            })
-            .collect::<Vec<_>>();
-        assembly_files.sort();
-        assembly_files.truncate(MAX_PLUGIN_DLLS);
-        if assembly_files.is_empty() {
-            continue;
-        }
-        plugins.push(CssPluginDto {
-            classification: classify_plugin(&assembly_files).to_string(),
-            runtime_state: match loaded_plugin_directories {
-                Some(loaded) if loaded.contains(&name.to_ascii_lowercase()) => "loaded",
-                Some(_) => "notLoaded",
-                None => "unknown",
-            }
-            .to_string(),
-            name,
-            directory: directory.display().to_string(),
-            assembly_files,
-        });
-    }
-    checks.push(DiagnosticCheckDto {
-        id: "plugins.inventory".to_string(),
-        group: "plugins".to_string(),
-        status: DiagnosticStatus::Pass,
-        title: "CounterStrikeSharp plugin inventory".to_string(),
-        summary: format!(
-            "Found {} plugin directories. File presence does not prove that a plugin is loaded.",
-            plugins.len()
-        ),
-        expected: None,
-        actual: Some(format!("{} directories", plugins.len())),
-        evidence_path: Some(root.display().to_string()),
-        action: None,
-    });
-    plugins
-}
-
-fn plugin_assembly_identities(plugin: &CssPluginDto) -> BTreeSet<String> {
-    plugin
-        .assembly_files
-        .iter()
-        .filter_map(|file| Path::new(file).file_stem())
-        .map(|stem| stem.to_string_lossy().to_ascii_lowercase())
-        .collect()
-}
-
-fn plugin_has_identity(plugin: &CssPluginDto, identity: &str) -> bool {
-    plugin_assembly_identities(plugin).contains(&identity.to_ascii_lowercase())
-}
-
-fn plugin_dll_path(plugin: &CssPluginDto, identity: &str) -> Option<PathBuf> {
-    plugin.assembly_files.iter().find_map(|file| {
-        Path::new(file)
-            .file_stem()
-            .is_some_and(|stem| stem.to_string_lossy().eq_ignore_ascii_case(identity))
-            .then(|| Path::new(&plugin.directory).join(file))
-    })
-}
-
-fn classify_plugin(assembly_files: &[String]) -> &'static str {
-    let identities = assembly_files
-        .iter()
-        .filter_map(|file| Path::new(file).file_stem())
-        .map(|stem| stem.to_string_lossy().to_ascii_lowercase())
-        .collect::<BTreeSet<_>>();
-    if identities
-        .iter()
-        .any(|identity| matches!(identity.as_str(), "demotracer" | "demotracerbothider"))
-    {
-        "demotracer"
-    } else if identities.contains("botrandomizer") {
-        "dependency"
-    } else if identities
-        .iter()
-        .any(|identity| matches!(identity.as_str(), "raytraceimpl" | "raytrace"))
-    {
-        "dependency"
-    } else if identities.iter().any(|identity| {
-        matches!(
-            identity.as_str(),
-            "bothider" | "bothiderimpl" | "botcontrollerimpl" | "botrandomizer"
-        ) || KNOWN_COSMETIC_PLUGIN_NAMES.contains(&identity.as_str())
-    }) {
-        "potentialConflict"
-    } else {
-        "unknown"
-    }
-}
-
-fn is_verified_provider(
-    game_csgo: &Path,
-    plugin: &CssPluginDto,
-    receipt: &ReceiptAudit,
-    directory: &str,
-    component: &str,
-) -> bool {
-    receipt.summary.verified == Some(true)
-        && !receipt.component_mismatches.contains(component)
-        && path_key(Path::new(&plugin.directory))
-            == path_key(
-                &game_csgo
-                    .join("addons/counterstrikesharp/plugins")
-                    .join(directory),
-            )
-}
-
-fn detect_conflicts(
-    game_csgo: &Path,
-    plugins: &[CssPluginDto],
-    receipt: &ReceiptAudit,
-    runtime: &RuntimeAudit,
-) -> Vec<DiagnosticConflictDto> {
-    let mut conflicts = Vec::new();
-    let is_bundled_bot_randomizer = |plugin: &CssPluginDto| {
-        is_verified_provider(
-            game_csgo,
-            plugin,
-            receipt,
-            "BotRandomizer",
-            "bot_randomizer_managed",
-        )
-    };
-    let names = plugins
-        .iter()
-        .flat_map(plugin_assembly_identities)
-        .collect::<BTreeSet<_>>();
-
-    let controller_path = game_csgo.join("addons/BotController/bin/win64/BotController.dll");
-    let hider_path = game_csgo.join("addons/BotHider/bin/win64/BotHider.dll");
-    let unverified_controller = plugins.iter().find(|plugin| {
-        plugin_has_identity(plugin, "botcontrollerimpl")
-            && !is_verified_provider(
-                game_csgo,
-                plugin,
-                receipt,
-                "BotControllerImpl",
-                "bot_controller",
-            )
-    });
-    let controller_impl_path =
-        unverified_controller.and_then(|plugin| plugin_dll_path(plugin, "botcontrollerimpl"));
-    let known_improver_controller = matches_file_fingerprint(
-        game_csgo,
-        &controller_path,
-        BOT_IMPROVER_142_CONTROLLER_BYTES,
-        BOT_IMPROVER_142_CONTROLLER_SHA256,
-    );
-    let known_improver_hider_142 = matches_file_fingerprint(
-        game_csgo,
-        &hider_path,
-        BOT_IMPROVER_142_HIDER_BYTES,
-        BOT_IMPROVER_142_HIDER_SHA256,
-    );
-    let known_improver_hider_141 = matches_file_fingerprint(
-        game_csgo,
-        &hider_path,
-        BOT_IMPROVER_141_HIDER_BYTES,
-        BOT_IMPROVER_141_HIDER_SHA256,
-    );
-    let known_improver_hider = known_improver_hider_142 || known_improver_hider_141;
-
-    if known_improver_controller || known_improver_hider {
-        let mut matched = Vec::new();
-        if known_improver_controller {
-            matched.push("BotController 0.5.2 / ABI 14");
-        }
-        if known_improver_hider_142 {
-            matched.push("BotHider 0.3.1 (v1.4.2 package)");
-        }
-        if known_improver_hider_141 {
-            matched.push("BotHider 0.2.0 (v1.4.1 package)");
-        }
-        conflicts.push(DiagnosticConflictDto {
-            rule_id: "cs2_bot_improver_known_native_vendor".to_string(),
-            severity: "error".to_string(),
-            confidence: "certain".to_string(),
-            title: "CS2-Bot-Improver native vendor files are installed".to_string(),
-            summary: format!(
-                "Exact known CS2-Bot-Improver release fingerprints were found: {}. Its native vendor set is not the DemoTracer contract; the v1.4.2 BotController specifically uses ABI 14 instead of DemoTracer's ABI 21/minor 40. Reinstall DemoTracer's complete playback bundle, then keep only compatible post-handoff behavior plugins.",
-                matched.join(", ")
-            ),
-            evidence_path: if known_improver_controller {
-                controller_path.display().to_string()
-            } else {
-                hider_path.display().to_string()
-            },
-            affected_features: vec![
-                "native replay runtime".to_string(),
-                "post-handoff bot AI".to_string(),
-                "bot identity".to_string(),
-            ],
-        });
-    }
-
-    if unverified_controller.is_some() {
-        let known_abi14_bridge = controller_impl_path.as_deref().is_some_and(|path| {
-            matches_file_fingerprint(
-                game_csgo,
-                path,
-                BOT_IMPROVER_142_CONTROLLER_IMPL_BYTES,
-                BOT_IMPROVER_142_CONTROLLER_IMPL_SHA256,
-            )
-        });
-        conflicts.push(DiagnosticConflictDto {
-            rule_id: "cs2_bot_improver_controller_bridge".to_string(),
-            severity: "warning".to_string(),
-            confidence: if known_abi14_bridge { "certain" } else { "high" }.to_string(),
-            title: if known_abi14_bridge {
-                "CS2-Bot-Improver's ABI 14 BotController bridge is installed"
-            } else {
-                "A second BotController CounterStrikeSharp bridge is installed"
-            }
-            .to_string(),
-            summary: if known_abi14_bridge {
-                "This exact BotControllerImpl build expects ABI 14 and disables itself against DemoTracer's ABI 21 runtime, so Improver behavior plugins cannot obtain their botcontroller:api dependency. Replace BotControllerImpl with the matched DemoTracer provider."
-            } else {
-                "BotControllerImpl uses the same managed capability surface as post-handoff behavior plugins. Its ABI contract could not be proven; verify that it explicitly supports DemoTracer BotController ABI 21/minor 40 before use."
-            }
-            .to_string(),
-            evidence_path: controller_impl_path
-                .as_deref()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| game_csgo.join("addons/counterstrikesharp/plugins").display().to_string()),
-            affected_features: vec![
-                "post-handoff bot AI".to_string(),
-                "native replay runtime".to_string(),
-            ],
-        });
-    }
-
-    for plugin in plugins {
-        if plugin_has_identity(plugin, "demotracerbothider")
-            || plugin_has_identity(plugin, "bothider")
-            || (plugin_has_identity(plugin, "bothiderimpl")
-                && !is_verified_provider(
-                    game_csgo,
-                    plugin,
-                    receipt,
-                    "BotHiderImpl",
-                    "bot_hider_managed",
-                ))
-        {
-            conflicts.push(DiagnosticConflictDto {
-                rule_id: "duplicate_bot_hider_publisher".to_string(),
-                severity: "error".to_string(),
-                confidence: "high".to_string(),
-                title: "A second BotHider presentation publisher is installed".to_string(),
-                summary: "The matched BotHiderImpl must be the sole BotHider CounterStrikeSharp presentation publisher. Remove obsolete or duplicate providers.".to_string(),
-                evidence_path: plugin.directory.clone(),
-                affected_features: vec!["identity".to_string(), "crosshair".to_string(), "bot ownership".to_string()],
-            });
-        }
-    }
-
-    for plugin in plugins {
-        let identities = plugin_assembly_identities(plugin);
-        if identities
-            .iter()
-            .any(|identity| KNOWN_COSMETIC_PLUGIN_NAMES.contains(&identity.as_str()))
-            && plugin.runtime_state != "notLoaded"
-        {
-            let alignment_enabled = runtime.cosmetics.as_ref().is_some_and(|cosmetics| {
-                cosmetics.alignment_enabled
-                    && (cosmetics.weapons_enabled
-                        || cosmetics.knives_enabled
-                        || cosmetics.gloves_enabled
-                        || cosmetics.names_enabled
-                        || cosmetics.agents_enabled
-                        || cosmetics.stickers_enabled
-                        || cosmetics.charms_enabled)
-            });
-            let runtime_loaded = plugin.runtime_state == "loaded";
-            conflicts.push(DiagnosticConflictDto {
-                rule_id: "known_cosmetic_writer".to_string(),
-                severity: "warning".to_string(),
-                confidence: if runtime_loaded && alignment_enabled {
-                    "certain"
-                } else if runtime_loaded {
-                    "high"
-                } else {
-                    "medium"
-                }
-                .to_string(),
-                title: format!("{} may write the same bot cosmetic state", plugin.name),
-                summary: if runtime_loaded && alignment_enabled {
-                    "A fresh DemoTracer heartbeat shows this plugin assembly loaded while DemoTracer cosmetic alignment is enabled. Both may write the same replay-bot state."
-                        .to_string()
-                } else if runtime_loaded {
-                    "A fresh DemoTracer heartbeat shows this plugin assembly loaded. DemoTracer cosmetic alignment is currently off; enabling it may create competing bot inventory or presentation writes."
-                        .to_string()
-                } else {
-                    "This known cosmetic writer is installed, but current loaded state is unverified. It can conflict when DemoTracer cosmetic, sticker, charm, knife, glove, or agent alignment is enabled."
-                        .to_string()
-                },
-                evidence_path: plugin.directory.clone(),
-                affected_features: vec!["cosmetics".to_string(), "agents".to_string()],
-            });
-        }
-        if identities.contains("botrandomizer")
-            && plugin.runtime_state != "notLoaded"
-            && !is_bundled_bot_randomizer(plugin)
-        {
-            let runtime_loaded = plugin.runtime_state == "loaded";
-            let agent_alignment_enabled = runtime
-                .cosmetics
-                .as_ref()
-                .is_some_and(|cosmetics| cosmetics.alignment_enabled && cosmetics.agents_enabled);
-            conflicts.push(DiagnosticConflictDto {
-                rule_id: "cs2_bot_improver_bot_randomizer".to_string(),
-                severity: "warning".to_string(),
-                confidence: if runtime_loaded && agent_alignment_enabled {
-                    "certain"
-                } else if runtime_loaded {
-                    "high"
-                } else {
-                    "medium"
-                }
-                .to_string(),
-                title: "CS2-Bot-Improver BotRandomizer is installed".to_string(),
-                summary: if runtime_loaded && agent_alignment_enabled {
-                    "A fresh heartbeat shows an additional BotRandomizer loaded while DemoTracer's bundled provider is accepting replay plans. Two cosmetic providers can write the same bot presentation state; keep only the bundled provider."
-                        .to_string()
-                } else if runtime_loaded {
-                    "A fresh heartbeat shows an additional BotRandomizer loaded. It can compete with DemoTracer's bundled provider for bot agent, music, inventory, or model state."
-                        .to_string()
-                } else {
-                    "An additional BotRandomizer is installed, but loaded state is unverified. Remove it so the bundled replay-plan provider remains the sole cosmetic writer."
-                        .to_string()
-                },
-                evidence_path: plugin.directory.clone(),
-                affected_features: vec!["agents".to_string(), "music kits".to_string()],
-            });
-        }
-    }
-
-    let external_bot_randomizer_present = plugins.iter().any(|plugin| {
-        plugin_has_identity(plugin, "botrandomizer") && !is_bundled_bot_randomizer(plugin)
-    });
-    let improver_plugins = names
-        .iter()
-        .filter(|name| BOT_IMPROVER_PLUGIN_NAMES.contains(&name.as_str()))
-        .filter(|name| name.as_str() != "botrandomizer" || external_bot_randomizer_present)
-        .cloned()
-        .collect::<Vec<_>>();
-    let native_present = is_normal_file_below(game_csgo, &controller_path)
-        || is_normal_file_below(game_csgo, &hider_path);
-    if !improver_plugins.is_empty()
-        && native_present
-        && !known_improver_controller
-        && !known_improver_hider
-    {
-        let native_mismatch = receipt.component_mismatches.contains("bot_controller")
-            || receipt.component_mismatches.contains("bot_hider_native");
-        let conflict = if native_mismatch {
-            Some((
-                "cs2_bot_improver_native_vendor_mismatch",
-                "error",
-                "BotController or BotHider no longer matches the DemoTracer vendor set",
-                "CS2-Bot-Improver plugins are present and DemoTracer's install receipt proves that a native runtime file was replaced or mixed. The two projects vendor different BotController/BotHider builds.",
-            ))
-        } else if receipt.summary.verified != Some(true) {
-            Some((
-                "cs2_bot_improver_native_vendor_unverified",
-                "warning",
-                "CS2-Bot-Improver and unverified BotController/BotHider files coexist",
-                "Both projects use BotController/BotHider names, but this legacy install has no DemoTracer receipt. File names alone cannot establish which vendor build is installed.",
-            ))
-        } else {
-            None
-        };
-        if let Some((rule_id, severity, title, summary)) = conflict {
-            conflicts.push(DiagnosticConflictDto {
-                rule_id: rule_id.to_string(),
-                severity: severity.to_string(),
-                confidence: if improver_plugins.len() >= 2 {
-                    "high"
-                } else {
-                    "medium"
-                }
-                .to_string(),
-                title: title.to_string(),
-                summary: format!(
-                    "{summary} Detected Improver modules: {}.",
-                    improver_plugins.join(", ")
-                ),
-                evidence_path: game_csgo.join("addons").display().to_string(),
-                affected_features: vec![
-                    "post-handoff bot AI".to_string(),
-                    "native replay runtime".to_string(),
-                    "bot identity".to_string(),
-                ],
-            });
-        }
-    }
-    conflicts
-}
-
-fn bot_improver_behavior_check(
-    game_csgo: &Path,
-    plugins: &[CssPluginDto],
-    receipt: &ReceiptAudit,
-) -> DiagnosticCheckDto {
-    let names = plugins
-        .iter()
-        .flat_map(plugin_assembly_identities)
-        .collect::<BTreeSet<_>>();
-    let behavior_plugins = names
-        .iter()
-        .filter(|name| BOT_IMPROVER_BEHAVIOR_PLUGIN_NAMES.contains(&name.as_str()))
-        .cloned()
-        .collect::<Vec<_>>();
-    let legacy_bridge_present = plugins.iter().any(|plugin| {
-        plugin_has_identity(plugin, "bothider")
-            || plugin_has_identity(plugin, "demotracerbothider")
-            || (plugin_has_identity(plugin, "botcontrollerimpl")
-                && !is_verified_provider(
-                    game_csgo,
-                    plugin,
-                    receipt,
-                    "BotControllerImpl",
-                    "bot_controller",
-                ))
-            || (plugin_has_identity(plugin, "bothiderimpl")
-                && !is_verified_provider(
-                    game_csgo,
-                    plugin,
-                    receipt,
-                    "BotHiderImpl",
-                    "bot_hider_managed",
-                ))
-    });
-    let supported_static_shape = !behavior_plugins.is_empty()
-        && !legacy_bridge_present
-        && receipt.summary.verified == Some(true);
-    DiagnosticCheckDto {
-        id: "compatibility.botImproverBehaviorOnly".to_string(),
-        group: "compatibility".to_string(),
-        status: if behavior_plugins.is_empty() {
-            DiagnosticStatus::NotApplicable
-        } else if supported_static_shape {
-            DiagnosticStatus::Pass
-        } else {
-            DiagnosticStatus::Unverified
-        },
-        title: "CS2-Bot-Improver post-handoff behavior plugins".to_string(),
-        summary: if behavior_plugins.is_empty() {
-            "No known CS2-Bot-Improver behavior-only modules were found.".to_string()
-        } else if supported_static_shape {
-            format!(
-                "A behavior-only combination is installed while DemoTracer's BotController/BotHider vendor set remains intact: {}. Loaded state still requires runtime evidence.",
-                behavior_plugins.join(", ")
-            )
-        } else {
-            format!(
-                "Behavior modules are present, but a clean DemoTracer-native plus behavior-only combination was not proven: {}.",
-                behavior_plugins.join(", ")
-            )
-        },
-        expected: Some(
-            "DemoTracer native receipt intact; matched BotControllerImpl/BotHiderImpl; behavior plugins permitted"
-                .to_string(),
-        ),
-        actual: Some(if behavior_plugins.is_empty() {
-            "not installed".to_string()
-        } else if supported_static_shape {
-            "supported static layout".to_string()
-        } else {
-            "layout not proven".to_string()
-        }),
-        evidence_path: plugins
-            .iter()
-            .find(|plugin| {
-                plugin_assembly_identities(plugin).iter().any(|identity| {
-                    BOT_IMPROVER_BEHAVIOR_PLUGIN_NAMES.contains(&identity.as_str())
-                })
-            })
-            .map(|plugin| plugin.directory.clone()),
-        action: (!behavior_plugins.is_empty() && !supported_static_shape).then(|| {
-            "Keep DemoTracer's complete native bundle and install only compatible behavior plugins for post-handoff enhancement."
-                .to_string()
-        }),
-    }
-}
-
-fn matches_file_fingerprint(
-    root: &Path,
-    path: &Path,
-    expected_size: u64,
-    expected_sha256: &str,
-) -> bool {
-    let Ok(metadata) = metadata_below_without_reparse(root, path) else {
-        return false;
-    };
-    if !metadata.is_file()
-        || metadata.len() != expected_size
-        || metadata.len() > MAX_RECEIPT_FILE_BYTES
-    {
-        return false;
-    }
-    fs::read(path)
-        .ok()
-        .is_some_and(|bytes| sha256_hex(&bytes).eq_ignore_ascii_case(expected_sha256))
-}
-
-fn overall_status(
-    checks: &[DiagnosticCheckDto],
-    conflicts: &[DiagnosticConflictDto],
-) -> DiagnosticStatus {
+fn overall_status(checks: &[DiagnosticCheckDto]) -> DiagnosticStatus {
     if checks
         .iter()
         .any(|check| check.status == DiagnosticStatus::Error)
-        || conflicts
-            .iter()
-            .any(|conflict| conflict.severity == "error")
     {
         DiagnosticStatus::Error
     } else if checks
         .iter()
         .any(|check| check.status == DiagnosticStatus::Warning)
-        || !conflicts.is_empty()
     {
         DiagnosticStatus::Warning
     } else if checks
@@ -2422,12 +1521,6 @@ fn is_normal_file_below(root: &Path, path: &Path) -> bool {
         .is_some_and(|metadata| metadata.is_file())
 }
 
-fn is_normal_directory_below(root: &Path, path: &Path) -> bool {
-    metadata_below_without_reparse(root, path)
-        .ok()
-        .is_some_and(|metadata| metadata.is_dir())
-}
-
 fn read_small_text_below(root: &Path, path: &Path, max_bytes: u64) -> Result<String, String> {
     let metadata = metadata_below_without_reparse(root, path)?;
     if !metadata.is_file() {
@@ -2453,18 +1546,20 @@ fn path_key(path: &Path) -> String {
         .to_ascii_lowercase()
 }
 
-fn version_tuple(value: &str) -> (u32, u32, u32, u32) {
-    let mut parts = value
-        .split(|character: char| !character.is_ascii_digit())
-        .filter(|part| !part.is_empty())
-        .take(4)
-        .map(|part| part.parse::<u32>().unwrap_or(0));
-    (
-        parts.next().unwrap_or(0),
-        parts.next().unwrap_or(0),
-        parts.next().unwrap_or(0),
-        parts.next().unwrap_or(0),
-    )
+fn version_tuple(value: &str) -> Option<(u32, u32, u32, u32)> {
+    let mut parts = [0; 4];
+    let mut count = 0;
+    for (index, part) in value.split('.').enumerate() {
+        if index >= parts.len()
+            || part.is_empty()
+            || !part.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return None;
+        }
+        parts[index] = part.parse().ok()?;
+        count += 1;
+    }
+    (count >= 3).then_some((parts[0], parts[1], parts[2], parts[3]))
 }
 
 fn now_ms() -> u64 {
@@ -2540,7 +1635,7 @@ mod tests {
             compatibility: contract,
             files: vec![],
         };
-        assert!(contract_errors(&receipt).is_empty());
+        assert!(receipt_contract_errors(&receipt).is_empty());
         let mut json = serde_json::to_value(&receipt).unwrap();
         let roundtrip: InstallReceiptWire = serde_json::from_value(json.clone()).unwrap();
         assert_eq!(roundtrip, receipt);
@@ -2549,20 +1644,30 @@ mod tests {
             .unwrap()
             .remove("hook_runtime");
         let legacy: InstallReceiptWire = serde_json::from_value(json).unwrap();
-        assert!(contract_errors(&legacy)
+        assert!(receipt_contract_errors(&legacy)
             .iter()
-            .any(|error| error.contains("hook runtime")));
+            .any(|error| error.contains("bundle contract")));
         let mut old_native = receipt;
         old_native.compatibility.bot_controller.min_abi_minor = 42;
-        assert!(contract_errors(&old_native)
+        assert!(receipt_contract_errors(&old_native)
             .iter()
-            .any(|error| error.contains("BotController ABI")));
+            .any(|error| error.contains("bundle contract")));
     }
 
     #[test]
     fn compares_numeric_versions() {
         assert!(version_tuple("1.0.371") > version_tuple("1.0.99"));
-        assert_eq!(version_tuple("v1.2"), (1, 2, 0, 0));
+        assert_eq!(version_tuple("1.0.375.0"), Some((1, 0, 375, 0)));
+        for invalid in [
+            "unknown",
+            "v1.2",
+            "not-1.0.999",
+            "1.0.375-PR",
+            "1.0.375.0.1",
+            "1..375",
+        ] {
+            assert_eq!(version_tuple(invalid), None, "{invalid}");
+        }
     }
 
     #[test]
@@ -2575,136 +1680,20 @@ mod tests {
     }
 
     #[test]
-    fn installed_legacy_bot_hider_is_reported_as_a_conflict() {
-        let tree = TempTree::cs2();
-        let plugin = tree
-            .game_csgo()
-            .join("addons/counterstrikesharp/plugins/BotHiderImpl");
-        fs::create_dir_all(&plugin).expect("create plugin directory");
-        fs::write(plugin.join("BotHiderImpl.dll"), b"fixture").expect("write plugin fixture");
-
-        let report = inspect_cs2_install_for(tree.root().to_str().expect("UTF-8 test path"))
-            .expect("inspect fixture");
-        assert!(report
-            .conflicts
-            .iter()
-            .any(|conflict| conflict.rule_id == "duplicate_bot_hider_publisher"));
-        assert!(report
-            .plugins
-            .iter()
-            .any(|plugin| plugin.name.eq_ignore_ascii_case("BotHiderImpl")));
-    }
-
-    #[test]
-    fn empty_plugin_directory_is_not_treated_as_a_bot_hider() {
-        let tree = TempTree::cs2();
-        fs::create_dir_all(
-            tree.game_csgo()
-                .join("addons/counterstrikesharp/plugins/BotHiderImpl"),
-        )
-        .expect("create empty plugin directory");
-
-        let report = inspect_cs2_install_for(tree.root().to_str().expect("UTF-8 test path"))
-            .expect("inspect fixture");
-        assert!(!report
-            .conflicts
-            .iter()
-            .any(|conflict| conflict.rule_id == "duplicate_bot_hider_publisher"));
-        assert!(!report
-            .plugins
-            .iter()
-            .any(|plugin| plugin.name.eq_ignore_ascii_case("BotHiderImpl")));
-    }
-
-    #[test]
-    fn verified_bundle_does_not_hide_extra_or_obsolete_providers() {
-        let tree = TempTree::cs2();
-        let game_csgo = tree.game_csgo();
-        let plugin = |directory: &str, assembly: &str| CssPluginDto {
-            name: directory.to_string(),
-            directory: game_csgo
-                .join("addons/counterstrikesharp/plugins")
-                .join(directory)
-                .display()
-                .to_string(),
-            assembly_files: vec![format!("{assembly}.dll")],
-            classification: "unknown".to_string(),
-            runtime_state: "unknown".to_string(),
-        };
-        let mut receipt = ReceiptAudit::default();
-        receipt.summary.verified = Some(true);
-        let matched = vec![
-            plugin("BotControllerImpl", "BotControllerImpl"),
-            plugin("BotHiderImpl", "BotHiderImpl"),
-            plugin("BotState", "BotState"),
-        ];
-        assert!(
-            detect_conflicts(&game_csgo, &matched, &receipt, &RuntimeAudit::default()).is_empty()
-        );
-        assert_eq!(
-            bot_improver_behavior_check(&game_csgo, &matched, &receipt).status,
-            DiagnosticStatus::Pass
-        );
-
-        for (directory, assembly, rule) in [
-            (
-                "OldController",
-                "BotControllerImpl",
-                "cs2_bot_improver_controller_bridge",
-            ),
-            ("OldHider", "BotHiderImpl", "duplicate_bot_hider_publisher"),
-            (
-                "DemoTracerBotHider",
-                "DemoTracerBotHider",
-                "duplicate_bot_hider_publisher",
-            ),
-            ("BotHiderImpl", "BotHider", "duplicate_bot_hider_publisher"),
-        ] {
-            let mut plugins = matched.clone();
-            plugins.push(plugin(directory, assembly));
-            let conflicts =
-                detect_conflicts(&game_csgo, &plugins, &receipt, &RuntimeAudit::default());
-            assert!(
-                conflicts.iter().any(|conflict| conflict.rule_id == rule),
-                "{directory}"
-            );
-            if directory == "OldController" {
-                assert!(conflicts.iter().any(|conflict| conflict.rule_id == rule
-                    && conflict.evidence_path.contains("OldController")));
-            }
-            assert_eq!(
-                bot_improver_behavior_check(&game_csgo, &plugins, &receipt).status,
-                DiagnosticStatus::Unverified,
-                "{directory}"
-            );
-        }
-    }
-
-    #[test]
-    fn assembly_identity_detects_renamed_bot_hider_directory() {
-        let tree = TempTree::cs2();
-        let plugin = tree
-            .game_csgo()
-            .join("addons/counterstrikesharp/plugins/RenamedPlugin");
-        fs::create_dir_all(&plugin).expect("create renamed plugin directory");
-        fs::write(plugin.join("BotHiderImpl.dll"), b"fixture").expect("write plugin fixture");
-
-        let report = inspect_cs2_install_for(tree.root().to_str().expect("UTF-8 test path"))
-            .expect("inspect fixture");
-        assert!(report.conflicts.iter().any(|conflict| {
-            conflict.rule_id == "duplicate_bot_hider_publisher"
-                && conflict.evidence_path.contains("RenamedPlugin")
-        }));
-    }
-
-    #[test]
     fn loaded_counterstrikesharp_version_is_compared_to_the_contract() {
         let tree = TempTree::cs2();
         let css_root = tree.game_csgo().join("addons/counterstrikesharp");
         let css_vdf = tree
             .game_csgo()
             .join("addons/metamod/counterstrikesharp.vdf");
-        fs::create_dir_all(&css_root).expect("create CSS root");
+        fs::create_dir_all(css_root.join("bin/win64")).unwrap();
+        fs::create_dir_all(css_root.join("api")).unwrap();
+        fs::write(
+            css_root.join("bin/win64/counterstrikesharp.dll"),
+            b"fixture",
+        )
+        .unwrap();
+        fs::write(css_root.join("api/CounterStrikeSharp.API.dll"), b"fixture").unwrap();
         fs::create_dir_all(css_vdf.parent().expect("CSS VDF parent")).expect("create Metamod root");
         fs::write(&css_vdf, b"fixture").expect("write CSS VDF");
 
@@ -2714,7 +1703,7 @@ mod tests {
         );
         assert_eq!(
             counterstrikesharp_check(&tree.game_csgo(), Some("1.0.371.0")).status,
-            DiagnosticStatus::Pass
+            DiagnosticStatus::Unverified
         );
     }
 
@@ -2738,124 +1727,181 @@ mod tests {
         );
     }
 
-    #[test]
-    fn fresh_runtime_heartbeat_proves_live_contracts_and_loaded_plugins() {
-        let tree = TempTree::cs2();
-        let health_path = join_public_relative(&tree.game_csgo(), RUNTIME_HEALTH_RELATIVE_PATH);
-        fs::create_dir_all(health_path.parent().expect("health parent"))
-            .expect("create health directory");
-        let health = serde_json::json!({
+    fn healthy_heartbeat() -> serde_json::Value {
+        let contract = embedded_playback_contract().unwrap();
+        serde_json::json!({
             "schemaVersion": 1,
             "writtenAtMs": now_ms(),
             "running": true,
             "pluginVersion": "0.8.0",
-            "demoTracerApi": 7,
-            "counterStrikeSharpVersion": "1.0.371.0",
+            "demoTracerApi": contract.demotracer.companion_api,
+            "counterStrikeSharpVersion": contract.counterstrikesharp.minimum_version,
             "botController": {
-                "abiMajor": 21,
-                "abiMinor": 44,
-                "capabilities": "0x7ffff",
+                "abiMajor": contract.bot_controller.abi_major,
+                "abiMinor": contract.bot_controller.min_abi_minor,
+                "capabilities": contract.bot_controller.required_capabilities_hex,
                 "buildId": "fixture",
                 "compatible": true,
                 "requiredCapabilities": {
-                    "mask": "0x741df",
+                    "mask": contract.bot_controller.required_capabilities_hex,
                     "present": true,
                     "missing": "0x0"
                 }
             },
             "botHider": {
-                "providerApi": 2,
-                "connected": true,
-                "draining": false,
-                "available": true
+                "providerApi": contract.bot_hider.api, "connected": true,
+                "draining": false, "available": true
             },
             "botRandomizer": {
-                "providerApi": 3,
-                "ready": true,
-                "draining": false,
-                "replayPlanPrebuildAvailable": true,
-                "available": true
-            },
-            "cosmetics": {
-                "alignmentEnabled": false,
-                "weaponsEnabled": false,
-                "knivesEnabled": false,
-                "glovesEnabled": false,
-                "namesEnabled": false,
-                "agentsEnabled": false,
-                "stickersEnabled": false,
-                "charmsEnabled": false,
-                "preserveNativeEnabled": false
-            },
-            "loadedCssPluginDirectories": ["DemoTracer", "BotAI"]
-        });
-        fs::write(
-            &health_path,
-            serde_json::to_vec_pretty(&health).expect("serialize heartbeat"),
-        )
-        .expect("write heartbeat");
+                "providerApi": contract.bot_randomizer.api, "ready": true, "draining": false,
+                "replayPlanPrebuildAvailable": true, "available": true
+            }
+        })
+    }
 
-        let audit = inspect_runtime_health(&tree.game_csgo());
-        assert_eq!(audit.verification, "verified");
-        assert!(audit
-            .loaded_plugin_directories
-            .as_ref()
-            .is_some_and(|plugins| plugins.contains("botai")));
-        assert!(audit.checks.iter().any(|check| {
-            check.id == "runtime.botController" && check.status == DiagnosticStatus::Pass
-        }));
-        assert!(audit.checks.iter().any(|check| {
-            check.id == "runtime.botHider" && check.status == DiagnosticStatus::Pass
-        }));
-        assert!(audit.checks.iter().any(|check| {
-            check.id == "runtime.botRandomizer" && check.status == DiagnosticStatus::Pass
-        }));
+    fn write_heartbeat(tree: &TempTree, health: &serde_json::Value) {
+        let path = join_public_relative(&tree.game_csgo(), RUNTIME_HEALTH_RELATIVE_PATH);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, serde_json::to_vec(health).unwrap()).unwrap();
     }
 
     #[test]
-    fn stale_runtime_heartbeat_never_claims_plugins_are_loaded() {
+    fn fresh_runtime_heartbeat_checks_only_the_reported_contracts() {
         let tree = TempTree::cs2();
-        let health_path = join_public_relative(&tree.game_csgo(), RUNTIME_HEALTH_RELATIVE_PATH);
-        fs::create_dir_all(health_path.parent().expect("health parent"))
-            .expect("create health directory");
-        let stale = serde_json::json!({
-            "schemaVersion": 1,
-            "writtenAtMs": now_ms().saturating_sub(MAX_RUNTIME_HEALTH_AGE_MS + 1),
-            "running": true,
-            "pluginVersion": "0.8.0",
-            "demoTracerApi": 7,
-            "counterStrikeSharpVersion": "1.0.371.0",
-            "botController": {
-                "abiMajor": 21,
-                "abiMinor": 42,
-                "capabilities": "0x7ffff",
-                "buildId": "fixture",
-                "compatible": true,
-                "requiredCapabilities": { "mask": "0x741df", "present": true, "missing": "0x0" }
-            },
-            "botHider": { "providerApi": 2, "connected": true, "draining": false, "available": true },
-            "botRandomizer": { "providerApi": 3, "ready": true, "draining": false, "replayPlanPrebuildAvailable": true, "available": true },
-            "cosmetics": {
-                "alignmentEnabled": false,
-                "weaponsEnabled": false,
-                "knivesEnabled": false,
-                "glovesEnabled": false,
-                "namesEnabled": false,
-                "agentsEnabled": false,
-                "stickersEnabled": false,
-                "charmsEnabled": false,
-                "preserveNativeEnabled": false
-            },
-            "loadedCssPluginDirectories": ["WeaponPaints"]
-        });
-        fs::write(
-            &health_path,
-            serde_json::to_vec(&stale).expect("serialize heartbeat"),
-        )
-        .expect("write heartbeat");
-
+        write_heartbeat(&tree, &healthy_heartbeat());
         let audit = inspect_runtime_health(&tree.game_csgo());
-        assert_eq!(audit.verification, "notRunning");
-        assert!(audit.loaded_plugin_directories.is_none());
+        assert_eq!(audit.verification, "verified");
+        assert!(audit
+            .checks
+            .iter()
+            .all(|check| check.status == DiagnosticStatus::Pass));
+        // Live provider contracts do not report the host's hook backend.
+        let mut checks = audit.checks;
+        checks.push(hook_runtime_check());
+        assert_eq!(overall_status(&checks), DiagnosticStatus::Unverified);
+    }
+
+    #[test]
+    fn failing_live_contracts_never_claim_verification() {
+        let tree = TempTree::cs2();
+        for (pointer, value) in [
+            ("/botController/abiMinor", serde_json::json!(0)),
+            ("/botController/abiMajor", serde_json::json!(0)),
+            ("/botController/compatible", serde_json::json!(false)),
+            ("/botController/capabilities", serde_json::json!("0x0")),
+            (
+                "/botController/requiredCapabilities/missing",
+                serde_json::json!("0x1"),
+            ),
+            ("/botHider/connected", serde_json::json!(false)),
+            ("/botHider/providerApi", serde_json::json!(0)),
+            (
+                "/botRandomizer/replayPlanPrebuildAvailable",
+                serde_json::json!(false),
+            ),
+            ("/botRandomizer/draining", serde_json::json!(true)),
+            ("/demoTracerApi", serde_json::json!(0)),
+        ] {
+            let mut health = healthy_heartbeat();
+            *health.pointer_mut(pointer).unwrap() = value;
+            write_heartbeat(&tree, &health);
+            let audit = inspect_runtime_health(&tree.game_csgo());
+            assert_eq!(audit.verification, "incompatible", "{pointer}");
+            assert_eq!(
+                overall_status(&audit.checks),
+                DiagnosticStatus::Error,
+                "{pointer}"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_stale_stopped_and_future_heartbeats_do_not_prove_runtime_compatibility() {
+        let tree = TempTree::cs2();
+        assert_eq!(
+            inspect_runtime_health(&tree.game_csgo()).verification,
+            "unavailable"
+        );
+        for (pointer, value, verification) in [
+            (
+                "/writtenAtMs",
+                serde_json::json!(now_ms().saturating_sub(MAX_RUNTIME_HEALTH_AGE_MS + 1000)),
+                "unknown",
+            ),
+            ("/running", serde_json::json!(false), "notRunning"),
+            (
+                "/writtenAtMs",
+                serde_json::json!(now_ms() + MAX_RUNTIME_HEALTH_FUTURE_SKEW_MS + 60_000),
+                "unknown",
+            ),
+            (
+                "/counterStrikeSharpVersion",
+                serde_json::json!("unknown-1.0.999"),
+                "unknown",
+            ),
+        ] {
+            let mut health = healthy_heartbeat();
+            *health.pointer_mut(pointer).unwrap() = value;
+            write_heartbeat(&tree, &health);
+            let audit = inspect_runtime_health(&tree.game_csgo());
+            assert_eq!(audit.verification, verification, "{pointer}");
+            assert!(audit.plugin_version.is_none());
+            assert!(audit
+                .checks
+                .iter()
+                .all(|check| check.status != DiagnosticStatus::Pass));
+        }
+    }
+
+    #[test]
+    fn old_css_api_cannot_verify_live_runtime() {
+        let tree = TempTree::cs2();
+        let mut health = healthy_heartbeat();
+        health["counterStrikeSharpVersion"] = serde_json::json!("0.0.1");
+        write_heartbeat(&tree, &health);
+        assert_eq!(
+            inspect_runtime_health(&tree.game_csgo()).verification,
+            "incompatible"
+        );
+    }
+
+    #[test]
+    fn arbitrary_dlls_do_not_satisfy_metamod_file_requirements() {
+        let tree = TempTree::cs2();
+        let directory = tree.game_csgo().join("addons/metamod/bin/win64");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("unrelated.dll"), b"fixture").unwrap();
+        assert_eq!(
+            metamod_files_check(&tree.game_csgo()).status,
+            DiagnosticStatus::Error
+        );
+        for name in ["server.dll", "metamod.2.cs2.dll"] {
+            fs::write(directory.join(name), b"fixture").unwrap();
+        }
+        assert_eq!(
+            metamod_files_check(&tree.game_csgo()).status,
+            DiagnosticStatus::Pass
+        );
+        assert_eq!(hook_runtime_check().status, DiagnosticStatus::Unverified);
+    }
+
+    #[test]
+    fn plugin_names_and_dll_names_do_not_change_compatibility_verdicts() {
+        let tree = TempTree::cs2();
+        let before = inspect_cs2_install_for(tree.root().to_str().unwrap()).unwrap();
+        for name in ["WeaponPaints", "BotAI", "BotControllerImpl", "RenamedHider"] {
+            let directory = tree
+                .game_csgo()
+                .join("addons/counterstrikesharp/plugins")
+                .join(name);
+            fs::create_dir_all(&directory).unwrap();
+            fs::write(directory.join("BotHiderImpl.dll"), b"fixture").unwrap();
+        }
+        let after = inspect_cs2_install_for(tree.root().to_str().unwrap()).unwrap();
+        assert_eq!(before.overall, after.overall);
+        assert_eq!(
+            serde_json::to_value(before.checks).unwrap(),
+            serde_json::to_value(after.checks).unwrap()
+        );
     }
 }

@@ -13,7 +13,6 @@ import {
   CloseIcon,
   ExternalLinkIcon,
   FolderIcon,
-  LibraryIcon,
   RefreshIcon,
   ReplayIcon,
   SearchIcon,
@@ -42,7 +41,6 @@ import type {
   EnvironmentCheckStatus,
   EnvironmentDiagnosticReport,
   EnvironmentOverallStatus,
-  EnvironmentPluginClassification,
   GuiUpdateStatus,
   Language,
   LocalEnvironmentSettings,
@@ -206,34 +204,12 @@ function overallCopy(words: TextDictionary, status: EnvironmentOverallStatus) {
   return [words.environmentUnverifiedTitle, words.environmentUnverifiedBody] as const;
 }
 
-function pluginClassification(words: TextDictionary, classification: EnvironmentPluginClassification): string {
-  if (classification === "demotracer") return words.pluginClassDemoTracer;
-  if (classification === "dependency") return words.pluginClassDependency;
-  if (classification === "potentialConflict") return words.pluginClassPotentialConflict;
-  return words.pluginClassUnknown;
-}
-
-function pluginRuntimeState(words: TextDictionary, state: "loaded" | "notLoaded" | "unknown"): string {
-  if (state === "loaded") return words.runtimePluginLoaded;
-  if (state === "notLoaded") return words.runtimePluginNotLoaded;
-  return words.runtimePluginUnknown;
-}
-
 function diagnosticGroupLabel(words: TextDictionary, group: string): string {
   if (group === "cs2") return "CS2";
   if (group === "dependencies") return words.diagnosticGroupDependencies;
   if (group === "demotracer") return "DemoTracer";
-  if (group === "plugins") return words.diagnosticGroupPlugins;
-  if (group === "compatibility") return words.diagnosticGroupCompatibility;
   if (group === "runtime") return words.diagnosticGroupRuntime;
   return group;
-}
-
-function confidenceLabel(words: TextDictionary, confidence: string): string {
-  if (confidence === "high" || confidence === "certain") return words.confidenceHigh;
-  if (confidence === "medium") return words.confidenceMedium;
-  if (confidence === "low") return words.confidenceLow;
-  return confidence;
 }
 
 function SettingLine({
@@ -753,11 +729,10 @@ export function SettingsWorkspace({
               <span className="diagnostic-detail-mark"><StatusMark status={report.overall} /></span>
               <span className="diagnostic-detail-title">
                 <strong>{reportCopy?.[0]}</strong>
-                {report.cached ? <small>{words.cachedDiagnosticBadge}</small> : null}
+                <small>{report.cached ? words.cachedDiagnosticBadge : reportCopy?.[1]}</small>
               </span>
               <b>{words.environmentDetailCount
-                .replace("{checks}", String(report.checks.length))
-                .replace("{plugins}", String(report.plugins.length))}</b>
+                .replace("{checks}", String(report.checks.length))}</b>
               <ChevronIcon size={15} />
             </summary>
             <div className="diagnostic-detail-content">
@@ -802,33 +777,6 @@ export function SettingsWorkspace({
             {report.receipt.path ? <code className="receipt-path">{report.receipt.path}</code> : null}
           </section>
 
-          {report.conflicts.length > 0 ? (
-            <section className="settings-card diagnostic-conflicts" aria-labelledby="diagnostic-conflicts-title">
-              <div className="settings-card-heading">
-                <div>
-                  <h3 id="diagnostic-conflicts-title">{words.conflictsTitle}</h3>
-                  <p>{words.conflictsHelp}</p>
-                </div>
-                <span className="count-badge is-warning">{report.conflicts.length}</span>
-              </div>
-              <div className="conflict-list">
-                {report.conflicts.map((conflict) => (
-                  <article className={`conflict-item is-${conflict.severity}`} key={`${conflict.ruleId}:${conflict.evidencePath}`}>
-                    <span><AlertIcon size={16} /></span>
-                    <div>
-                      <div><strong>{conflict.title}</strong><small>{confidenceLabel(words, conflict.confidence)}</small></div>
-                      <p>{conflict.summary}</p>
-                      {conflict.evidencePath ? <code>{conflict.evidencePath}</code> : null}
-                      {conflict.affectedFeatures.length > 0 ? (
-                        <footer>{conflict.affectedFeatures.map((feature) => <span key={feature}>{feature}</span>)}</footer>
-                      ) : null}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-          ) : null}
-
           <section className="settings-card diagnostic-checks" aria-labelledby="diagnostic-checks-title">
             <div className="settings-card-heading">
               <div>
@@ -862,32 +810,6 @@ export function SettingsWorkspace({
             </div>
           </section>
 
-          <section className="settings-card plugin-inventory" aria-labelledby="plugin-inventory-title">
-            <div className="settings-card-heading">
-              <div>
-                <h3 id="plugin-inventory-title">{words.pluginInventory}</h3>
-                <p>{words.pluginInventoryHelp}</p>
-              </div>
-              <span className="count-badge">{report.plugins.length}</span>
-            </div>
-            {report.plugins.length > 0 ? (
-              <div className="plugin-list">
-                {report.plugins.map((plugin) => (
-                  <div className={`plugin-row is-${plugin.classification}`} key={`${plugin.directory}:${plugin.name}`}>
-                    <span><LibraryIcon size={15} /></span>
-                    <div>
-                      <strong>{plugin.name}</strong>
-                      <code>{plugin.directory}</code>
-                    </div>
-                    <small title={plugin.assemblyFiles.join("\n")}>
-                      {words.assemblyCount.replace("{count}", String(plugin.assemblyFiles.length))} · {pluginRuntimeState(words, plugin.runtimeState)}
-                    </small>
-                    <b>{pluginClassification(words, plugin.classification)}</b>
-                  </div>
-                ))}
-              </div>
-            ) : <p className="settings-empty-list">{words.noCssPluginsFound}</p>}
-          </section>
             </div>
           </details>
         </>

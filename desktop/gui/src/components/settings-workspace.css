@@ -731,17 +731,13 @@
 .diagnostic-detail-bundle.is-pass .diagnostic-detail-mark { color: var(--success); }
 .diagnostic-detail-bundle.is-warning .diagnostic-detail-mark { color: var(--warning); }
 .diagnostic-detail-bundle.is-error .diagnostic-detail-mark { color: var(--danger); }
-.diagnostic-detail-title { display: flex; align-items: baseline; min-width: 0; gap: var(--space-2); }
+.diagnostic-detail-title { display: grid; min-width: 0; gap: var(--space-1); }
 .diagnostic-detail-bundle > summary strong { overflow: hidden; font-size: var(--type-micro); font-weight: var(--weight-semibold); text-overflow: ellipsis; white-space: nowrap; }
 .diagnostic-detail-bundle > summary small { color: var(--text-tertiary); font-size: var(--type-caption); }
 .diagnostic-detail-bundle > summary b { color: var(--text-secondary); font-size: var(--type-caption); font-weight: var(--weight-semibold); }
 .diagnostic-detail-bundle > summary svg { color: var(--text-tertiary); transition: transform 150ms ease-out; }
 .diagnostic-detail-bundle[open] > summary svg { transform: rotate(180deg); }
 .diagnostic-detail-content { padding: 0 10px 10px; border-top: 1px solid var(--divider); }
-
-.diagnostic-conflicts .settings-card-heading {
-  background: color-mix(in srgb, var(--warning-soft) 42%, transparent);
-}
 
 .receipt-contract-grid {
   display: grid;
@@ -772,50 +768,8 @@
   white-space: nowrap;
 }
 
-.conflict-list,
-.diagnostic-check-list,
-.plugin-list {
+.diagnostic-check-list {
   display: grid;
-}
-
-.conflict-item {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  padding: 11px 14px;
-  gap: 10px;
-  border-bottom: 1px solid var(--divider);
-}
-
-.conflict-item:last-child { border-bottom: 0; }
-.conflict-item > span { display: inline-flex; margin-top: 1px; color: var(--warning); }
-.conflict-item.is-error > span { color: var(--danger); }
-
-.conflict-item > div > div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.conflict-item strong { font-size: var(--type-micro); font-weight: var(--weight-semibold); }
-.conflict-item small { color: var(--warning); font-size: var(--type-caption); text-transform: uppercase; }
-.conflict-item p { margin-top: 2px; color: var(--text-secondary); font-size: var(--type-tiny); line-height: 15px; }
-.conflict-item code { display: block; margin-top: 5px; overflow-wrap: anywhere; color: var(--text-tertiary); font-size: var(--type-caption); }
-
-.conflict-item footer {
-  display: flex;
-  flex-wrap: wrap;
-  margin-top: 7px;
-  gap: var(--space-1);
-}
-
-.conflict-item footer span {
-  padding: 2px 6px;
-  color: var(--text-secondary);
-  background: var(--surface-subtle);
-  border: 1px solid var(--divider);
-  border-radius: var(--radius-sm);
-  font-size: var(--type-caption);
 }
 
 .diagnostic-check {
@@ -881,28 +835,6 @@
 .diagnostic-check-detail code { overflow-wrap: anywhere; color: var(--text-secondary); font-size: var(--type-caption); }
 .diagnostic-check-detail p { grid-column: 1 / -1; color: var(--text-secondary); font-size: var(--type-caption); }
 .diagnostic-check-detail p strong { margin-right: 6px; color: var(--text-primary); }
-
-.plugin-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto minmax(86px, auto);
-  align-items: center;
-  min-height: 48px;
-  padding: 7px var(--space-3);
-  gap: 9px;
-  border-bottom: 1px solid var(--divider);
-}
-
-.plugin-row:last-child { border-bottom: 0; }
-.plugin-row > span { display: inline-flex; color: var(--text-tertiary); }
-.plugin-row > div { display: grid; min-width: 0; }
-.plugin-row strong { font-size: var(--type-tiny); font-weight: var(--weight-semibold); }
-.plugin-row code { overflow: hidden; color: var(--text-tertiary); font-size: var(--type-caption); text-overflow: ellipsis; white-space: nowrap; }
-.plugin-row small { color: var(--text-tertiary); font-size: var(--type-caption); }
-.plugin-row b { color: var(--text-secondary); font-size: var(--type-caption); font-weight: var(--weight-semibold); text-align: right; }
-.plugin-row.is-demotracer > span,
-.plugin-row.is-demotracer b { color: var(--trace); }
-.plugin-row.is-potentialConflict > span,
-.plugin-row.is-potentialConflict b { color: var(--warning); }
 
 .settings-empty-list {
   padding: var(--space-4) 14px;

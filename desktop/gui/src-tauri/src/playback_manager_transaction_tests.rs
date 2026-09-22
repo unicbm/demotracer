@@ -5,7 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 use super::*;
-use crate::diagnostics::ReceiptFileWire;
+use crate::diagnostics::{embedded_playback_contract, ReceiptFileWire};
 use std::io::Write;
 
 const CONTROLLER: &str =
@@ -235,4 +235,26 @@ fn install_rejects_changed_event_semantics_even_when_tick_size_and_abi_match() {
     }
     let old: InstallReceiptWire = serde_json::from_value(old).unwrap();
     assert!(validate_receipt_contract(&old, "1.2.2").is_err());
+}
+
+#[test]
+fn inspection_and_installation_agree_on_matching_and_newer_package_contracts() {
+    let fixture = InstallFixture::new();
+    let package =
+        extract_and_validate_package(&package_bytes("1.2.2"), &fixture.0.join("payload"), "1.2.2")
+            .unwrap();
+    let receipt = package.receipt;
+    assert!(receipt_contract_errors(&receipt).is_empty());
+    assert!(validate_receipt_contract(&receipt, "1.2.2").is_ok());
+
+    let mut newer_native = receipt.clone();
+    newer_native.compatibility.bot_controller.min_abi_minor += 1;
+    let mut newer_reader = receipt.clone();
+    newer_reader.compatibility.dtr_reader.max += 1;
+    let mut newer_css = receipt;
+    newer_css.compatibility.counterstrikesharp.minimum_version = "99.0.0".to_string();
+    for changed in [newer_native, newer_reader, newer_css] {
+        assert!(!receipt_contract_errors(&changed).is_empty());
+        assert!(validate_receipt_contract(&changed, "1.2.2").is_err());
+    }
 }

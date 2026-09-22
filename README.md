@@ -126,7 +126,12 @@ To play an exported replay, use a local Windows x64 CS2 server with
 Use Metamod 2.0 build 1469+ and the KHook-enabled CounterStrikeSharp source
 baseline listed in the [playback server requirements](server/README.md#shared-hook-runtime).
 In **Settings → Install & environment**, select the CS2 folder, inspect the
-installation, and install the matched playback bundle.
+installation, and install the matched playback bundle. Inspection reports file
+integrity and fresh DemoTracer ABI/API heartbeat evidence separately. It does
+not automatically verify the installed Metamod plugin API, CSS KHook backend,
+or compatibility with other plugins; those remain unverified. A successful
+bundle installation confirms the package was installed, not that the server
+can load it.
 
 ## Local-First and Defensive
 

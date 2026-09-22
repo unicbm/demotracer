@@ -6,8 +6,8 @@
 
 use crate::activity_log::{ActivityLogLevel, ActivityLogState};
 use crate::diagnostics::{
-    checked_receipt_relative_path, embedded_playback_contract, fresh_runtime_plugin_version,
-    normalized_receipt_path, receipt_component, resolve_install_paths, InstallReceiptWire,
+    checked_receipt_relative_path, fresh_runtime_plugin_version, normalized_receipt_path,
+    receipt_component, receipt_contract_errors, resolve_install_paths, InstallReceiptWire,
     INSTALL_RECEIPT_RELATIVE_PATH, MAX_RECEIPT_FILES, MAX_RECEIPT_FILE_BYTES,
     REQUIRED_RECEIPT_PATHS,
 };
@@ -722,17 +722,13 @@ fn validate_receipt_contract(
     receipt: &InstallReceiptWire,
     expected_version: &str,
 ) -> CommandResult<()> {
-    if receipt.schema_version != 1
-        || receipt.product != "CS2 DemoTracer Playback Bundle"
-        || receipt.platform != "windows-x64"
+    let errors = receipt_contract_errors(receipt);
+    if !errors.is_empty()
         || parse_version(&receipt.bundle_version)? != parse_version(expected_version)?
-        || receipt.compatibility
-            != embedded_playback_contract()
-                .map_err(|error| CommandErrorDto::new("embedded_contract_invalid", error))?
     {
         return Err(CommandErrorDto::new(
             "playback_receipt_contract_mismatch",
-            "Playback package receipt does not match this desktop build and requested version.",
+            format!("Playback package receipt does not match this desktop build and requested version. {}", errors.join("; ")),
         ));
     }
     if receipt.files.is_empty() || receipt.files.len() > MAX_RECEIPT_FILES {

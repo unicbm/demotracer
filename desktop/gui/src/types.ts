@@ -590,7 +590,7 @@ export interface GuiUpdateStatus {
 
 export type EnvironmentOverallStatus = "pass" | "warning" | "error" | "unverified";
 export type EnvironmentCheckStatus = EnvironmentOverallStatus | "notApplicable";
-export type RuntimeVerificationStatus = "verified" | "notRunning" | "unavailable" | "unknown";
+export type RuntimeVerificationStatus = "verified" | "incompatible" | "notRunning" | "unavailable" | "unknown";
 
 export interface EnvironmentDiagnosticCheck {
   id: string;
@@ -602,30 +602,6 @@ export interface EnvironmentDiagnosticCheck {
   actual?: string | null;
   evidencePath?: string | null;
   action?: string | null;
-}
-
-export type EnvironmentPluginClassification =
-  | "demotracer"
-  | "dependency"
-  | "potentialConflict"
-  | "unknown";
-
-export interface EnvironmentPluginInfo {
-  name: string;
-  directory: string;
-  assemblyFiles: string[];
-  classification: EnvironmentPluginClassification;
-  runtimeState: "loaded" | "notLoaded" | "unknown";
-}
-
-export interface EnvironmentConflict {
-  ruleId: string;
-  severity: "warning" | "error";
-  confidence: "certain" | "high" | "medium" | "low";
-  title: string;
-  summary: string;
-  evidencePath: string;
-  affectedFeatures: string[];
 }
 
 export interface EnvironmentInstallReceipt {
@@ -652,8 +628,6 @@ export interface EnvironmentDiagnosticReport {
   overall: EnvironmentOverallStatus;
   runtimeVerification: RuntimeVerificationStatus;
   checks: EnvironmentDiagnosticCheck[];
-  plugins: EnvironmentPluginInfo[];
-  conflicts: EnvironmentConflict[];
   receipt: EnvironmentInstallReceipt;
 }
 

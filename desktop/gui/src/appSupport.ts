@@ -42,7 +42,6 @@ import type {
   ConverterSettings,
   DemoLibraryEntry,
   DemoSourcePreflight,
-  EnvironmentDiagnosticReport,
   Language,
   LocalEnvironmentSettings,
   ManifestArchive,
@@ -387,74 +386,12 @@ export function storedLocalEnvironment(): LocalEnvironmentSettings {
   }
 }
 
-export const ENVIRONMENT_REPORT_STORAGE_KEY = "demotracer.environment-report.v1";
-
-export interface StoredEnvironmentReport {
-  cs2Path: string;
-  report: EnvironmentDiagnosticReport;
-}
-
-export function normalizedDiagnosticPath(path: string): string {
-  return path.trim().replace(/\\/g, "/").replace(/\/+$/, "").toLocaleLowerCase();
-}
-
-export function isEnvironmentDiagnosticReport(value: unknown): value is EnvironmentDiagnosticReport {
-  if (!value || typeof value !== "object") return false;
-  const report = value as Partial<EnvironmentDiagnosticReport>;
-  return Number.isFinite(report.checkedAtMs)
-    && typeof report.requestedPath === "string"
-    && typeof report.cs2Root === "string"
-    && typeof report.gameCsgoPath === "string"
-    && ["pass", "warning", "error", "unverified"].includes(String(report.overall))
-    && Array.isArray(report.checks)
-    && Array.isArray(report.plugins)
-    && Array.isArray(report.conflicts)
-    && Boolean(report.receipt && typeof report.receipt === "object");
-}
-
-export function cachedEnvironmentReport(report: EnvironmentDiagnosticReport): EnvironmentDiagnosticReport {
-  const runtimeConflictRules = new Set(["known_cosmetic_writer", "cs2_bot_improver_bot_randomizer"]);
-  const checks = report.checks
-    .filter((check) => check.group !== "runtime")
-    .map((check) => check.id === "counterStrikeSharp.runtime" && check.status === "pass"
-      ? {
-          ...check,
-          status: "unverified" as const,
-          summary: "CounterStrikeSharp was installed at the last inspection; its loaded host version requires a fresh inspection.",
-          actual: "cached; runtime version unknown",
-        }
-      : check);
-  const conflicts = report.conflicts.map((conflict) => runtimeConflictRules.has(conflict.ruleId)
-    ? {
-        ...conflict,
-        confidence: "medium" as const,
-        summary: `${conflict.title} was present at the last inspection. Inspect again to verify whether it is currently loaded or overlaps DemoTracer runtime behavior.`,
-      }
-    : conflict);
-
-  return {
-    ...report,
-    cached: true,
-    overall: "unverified",
-    runtimeVerification: "unknown",
-    checks,
-    plugins: report.plugins.map((plugin) => ({ ...plugin, runtimeState: "unknown" })),
-    conflicts,
-  };
-}
-
-export function storedEnvironmentReport(expectedCs2Path: string): EnvironmentDiagnosticReport | null {
-  const expectedPath = normalizedDiagnosticPath(expectedCs2Path);
-  if (!expectedPath) return null;
-  try {
-    const saved = JSON.parse(localStorage.getItem(ENVIRONMENT_REPORT_STORAGE_KEY) ?? "null") as Partial<StoredEnvironmentReport> | null;
-    if (!saved || typeof saved !== "object" || typeof saved.cs2Path !== "string") return null;
-    if (normalizedDiagnosticPath(saved.cs2Path) !== expectedPath || !isEnvironmentDiagnosticReport(saved.report)) return null;
-    return cachedEnvironmentReport(saved.report);
-  } catch {
-    return null;
-  }
-}
+export {
+  ENVIRONMENT_REPORT_STORAGE_KEY,
+  type StoredEnvironmentReport,
+  normalizedDiagnosticPath,
+  storedEnvironmentReport,
+} from "./environmentReport";
 
 export function fileName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
