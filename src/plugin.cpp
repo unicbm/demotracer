@@ -26,7 +26,7 @@
 #include <utility>
 #include <vector>
 
-#include <funchook.h>
+#include "../../common/khook.h"
 #include <nlohmann/json.hpp>
 #include <entity2/entityinstance.h>
 
@@ -41,22 +41,6 @@
 #include <eiface.h>
 #include <tier1/utlvector.h>
 #include <tier1/convar.h>
-
-SH_DECL_HOOK6_void(IServerGameClients, OnClientConnected, SH_NOATTRIB, 0,
-                   CPlayerSlot, const char *, uint64, const char *, const char *, bool);
-SH_DECL_HOOK4_void(IServerGameClients, ClientPutInServer, SH_NOATTRIB, 0,
-                   CPlayerSlot, char const *, int, uint64);
-SH_DECL_HOOK5_void(IServerGameClients, ClientDisconnect, SH_NOATTRIB, 0,
-                   CPlayerSlot, ENetworkDisconnectionReason, const char *, uint64, const char *);
-SH_DECL_HOOK3(INetworkGameServer, StartChangeLevel, SH_NOATTRIB, 0,
-              CUtlVector<INetworkGameClient *> *, const char *, const char *, void *);
-SH_DECL_HOOK3_void(IServerGameDLL, GameFrame, SH_NOATTRIB, 0, bool, bool, bool);
-SH_DECL_HOOK3_void(ICvar, DispatchConCommand, SH_NOATTRIB, 0,
-                   ConCommandRef, const CCommandContext &, const CCommand &);
-#if !defined(_WIN32)
-SH_DECL_MANUALHOOK1(CreateFakeClientSlotHook, cs2bh::targets::kVTSlot_CreateFakeClient, 0, 0,
-                    cs2bh::PlayerSlotHookResult, const char *);
-#endif
 
 namespace cs2bh
 {
@@ -91,9 +75,6 @@ static UtilRemoveFn g_pfnUtilRemove = nullptr;
 // Cross-check anchor: address of the CGameEntitySystem singleton global that UTIL_Remove references.
 static void **g_ppEntSysGlobal = nullptr;
 
-static funchook_t *g_pFunchook = nullptr;
-static size_t g_PreparedFunchookCount = 0;
-static bool g_FunchooksInstalled = false;
 
 // * inline detour on CCSBotManager::MaintainBotQuota
 #if defined(_WIN32)
@@ -102,12 +83,14 @@ using MaintainQuotaFn = int64_t(__fastcall *)(void * /*CCSBotManager*/);
 using MaintainQuotaFn = int64_t (*)(void * /*CCSBotManager*/);
 #endif
 static MaintainQuotaFn g_pfnQuotaTramp = nullptr;
+static DemoTracerHooks::Hook<MaintainQuotaFn> g_QuotaHook;
 static void *g_pQuotaHookTarget = nullptr;
 
 #if defined(_WIN32)
 using HandleJoinTeamFn = int64_t(__fastcall *)(void * /*CCSPlayerController*/,
                                                unsigned int, bool);
 static HandleJoinTeamFn g_pfnHandleJoinTeamTramp = nullptr;
+static DemoTracerHooks::Hook<HandleJoinTeamFn> g_JoinTeamHook;
 static void *g_pHandleJoinTeamHookTarget = nullptr;
 #endif
 
@@ -117,6 +100,7 @@ using PackEntitiesFn = void(__fastcall *)(void *, void *, int, void *, void *);
 using PackEntitiesFn = void (*)(void *, void *, int, void *, void *);
 #endif
 static PackEntitiesFn g_pfnPackEntitiesTramp = nullptr;
+static DemoTracerHooks::Hook<PackEntitiesFn> g_PackEntitiesHook;
 static void *g_pPackEntitiesHookTarget = nullptr;
 static std::atomic_bool g_PackEntitiesFirstCallLogged = false;
 static std::recursive_mutex g_PackEntitiesMutex;
@@ -234,11 +218,11 @@ private:
 
 // Passes entity packing through unchanged and logs the first calling thread
 #if defined(_WIN32)
-static void __fastcall Detour_PackEntities(void *serverObject, void *packContext,
+static KHook::Return<void> __fastcall Detour_PackEntities(void *serverObject, void *packContext,
                                           int clientCount, void *clients,
                                           void *snapshotContext)
 #else
-static void Detour_PackEntities(void *serverObject, void *packContext,
+static KHook::Return<void> Detour_PackEntities(void *serverObject, void *packContext,
                                 int clientCount, void *clients,
                                 void *snapshotContext)
 #endif
@@ -253,134 +237,66 @@ static void Detour_PackEntities(void *serverObject, void *packContext,
     std::lock_guard<std::recursive_mutex> lock(g_PackEntitiesMutex);
     if (g_PackEntitiesDepth != 0)
     {
-        g_pfnPackEntitiesTramp(serverObject, packContext, clientCount, clients, snapshotContext);
-        return;
+        g_PackEntitiesHook.Continue(serverObject, packContext, clientCount, clients, snapshotContext);
+        return {KHook::Action::Ignore};
     }
 
     PackEntitiesDepthGuard depthGuard;
     ScopedBotFlagOverride flagOverride;
-    g_pfnPackEntitiesTramp(serverObject, packContext, clientCount, clients, snapshotContext);
+    g_PackEntitiesHook.Continue(serverObject, packContext, clientCount, clients, snapshotContext);
+    return {KHook::Action::Ignore};
 }
 
-// Prepares one target and replaces its original pointer with the trampoline
-template <typename Function>
-static bool PrepareFunchook(Function &original, void *target, void *detour, const char *name)
+// Prepare typed callbacks, then attach after schema initialization.
+template <typename Function, typename Callback>
+static bool PrepareKHook(DemoTracerHooks::Hook<Function> &hook, Function &original,
+                         void *target, Callback callback, const char *name)
 {
-    if (!g_pFunchook)
-    {
-        g_pFunchook = funchook_create();
-        if (!g_pFunchook)
-        {
-            META_CONPRINTF("[BOTHIDER] warning: funchook_create failed for %s\n", name);
-            return false;
-        }
-    }
-
-    void *trampoline = target;
-    int result = funchook_prepare(g_pFunchook, &trampoline, detour);
-    if (result != FUNCHOOK_ERROR_SUCCESS)
-    {
-        META_CONPRINTF("[BOTHIDER] warning: funchook_prepare failed for %s: %s (%d)\n",
-                       name, funchook_error_message(g_pFunchook), result);
-        original = nullptr;
-        return false;
-    }
-
-    original = reinterpret_cast<Function>(trampoline);
-    ++g_PreparedFunchookCount;
-    return true;
+    if (hook.Create(target, callback, &original)) return true;
+    META_CONPRINTF("[BOTHIDER] warning: KHook preparation failed for %s\n", name);
+    return false;
 }
 
-// Clears all published funchook targets and trampoline pointers
-static void ClearFunchookBindings()
+static void InstallPreparedHooks()
 {
-    g_pfnQuotaTramp = nullptr;
-    g_pfnPackEntitiesTramp = nullptr;
-    g_pQuotaHookTarget = nullptr;
-    g_pPackEntitiesHookTarget = nullptr;
+    if (g_pQuotaHookTarget && !g_QuotaHook.Enable())
+    {
+        g_QuotaHook.Remove();
+        g_pQuotaHookTarget = nullptr;
+        META_CONPRINTF("[BOTHIDER] warning: KHook bot-quota hook failed\n");
+    }
+    if (g_pPackEntitiesHookTarget && !g_PackEntitiesHook.Enable())
+    {
+        g_PackEntitiesHook.Remove();
+        g_pPackEntitiesHookTarget = nullptr;
+        META_CONPRINTF("[BOTHIDER] warning: KHook PackEntities hook failed\n");
+    }
 #if defined(_WIN32)
-    g_pfnHandleJoinTeamTramp = nullptr;
-    g_pHandleJoinTeamHookTarget = nullptr;
-#endif
-    g_PreparedFunchookCount = 0;
-    g_FunchooksInstalled = false;
-}
-
-// Installs every successfully prepared hook through the shared handle
-static void InstallPreparedFunchooks()
-{
-    if (!g_pFunchook || g_PreparedFunchookCount == 0)
+    if (g_pHandleJoinTeamHookTarget && !g_JoinTeamHook.Enable())
     {
-        if (g_pFunchook)
-            funchook_destroy(g_pFunchook);
-        g_pFunchook = nullptr;
-        ClearFunchookBindings();
-        return;
+        g_JoinTeamHook.Remove();
+        g_pHandleJoinTeamHookTarget = nullptr;
+        META_CONPRINTF("[BOTHIDER] warning: KHook JoinTeam hook failed\n");
     }
-
-    int result = funchook_install(g_pFunchook, 0);
-    if (result != FUNCHOOK_ERROR_SUCCESS)
-    {
-        META_CONPRINTF("[BOTHIDER] warning: funchook_install failed: %s (%d)\n",
-                       funchook_error_message(g_pFunchook), result);
-        funchook_destroy(g_pFunchook);
-        g_pFunchook = nullptr;
-        ClearFunchookBindings();
-        return;
-    }
-
-    g_FunchooksInstalled = true;
-    if (g_pQuotaHookTarget)
-        META_CONPRINTF("[BOTHIDER] bot-quota fix installed at %p\n", g_pQuotaHookTarget);
-    if (g_pPackEntitiesHookTarget)
-        META_CONPRINTF("[BOTHIDER] CNetworkGameServer::PackEntities hook installed at %p\n",
-                       g_pPackEntitiesHookTarget);
-#if defined(_WIN32)
-    if (g_pHandleJoinTeamHookTarget)
-        META_CONPRINTF("[BOTHIDER] CCSPlayerController::HandleCommand_JoinTeam hook installed at %p\n",
-                       g_pHandleJoinTeamHookTarget);
 #endif
 }
 
-// Uninstalls all hooks before releasing their shared funchook handle
-static bool RemoveFunchooks()
+static bool RemoveHooks()
 {
     if (g_PackEntitiesDepth != 0)
     {
-        META_CONPRINTF("[BOTHIDER] error: refusing funchook removal during PackEntities\n");
+        META_CONPRINTF("[BOTHIDER] error: refusing hook removal during PackEntities\n");
         return false;
     }
-
-    std::unique_lock<std::recursive_mutex> lock(g_PackEntitiesMutex);
-    if (!g_pFunchook)
-    {
-        ClearFunchookBindings();
-        return true;
-    }
-
-    if (g_FunchooksInstalled)
-    {
-        int result = funchook_uninstall(g_pFunchook, 0);
-        if (result != FUNCHOOK_ERROR_SUCCESS)
-        {
-            std::string message = funchook_error_message(g_pFunchook);
-            lock.unlock();
-            META_CONPRINTF("[BOTHIDER] error: funchook_uninstall failed: %s (%d)\n",
-                           message.c_str(), result);
-            return false;
-        }
-    }
-
-    int result = funchook_destroy(g_pFunchook);
-    std::string destroyMessage;
-    if (result != FUNCHOOK_ERROR_SUCCESS)
-        destroyMessage = funchook_error_message(g_pFunchook);
-    g_pFunchook = nullptr;
-    ClearFunchookBindings();
-    lock.unlock();
-    if (result != FUNCHOOK_ERROR_SUCCESS)
-        META_CONPRINTF("[BOTHIDER] warning: funchook_destroy failed: %s (%d)\n",
-                       destroyMessage.c_str(), result);
+    // Do not hold the packing mutex while draining KHook: an in-flight
+    // callback may be waiting for that mutex on another thread.
+    g_PackEntitiesHook.Remove();
+    g_QuotaHook.Remove();
+    g_pPackEntitiesHookTarget = g_pQuotaHookTarget = nullptr;
+#if defined(_WIN32)
+    g_JoinTeamHook.Remove();
+    g_pHandleJoinTeamHookTarget = nullptr;
+#endif
     return true;
 }
 
@@ -394,21 +310,21 @@ namespace cs2bh
 
 // Detour
 #if defined(_WIN32)
-static int64_t __fastcall Detour_MaintainBotQuota(void *mgr)
+static KHook::Return<int64_t> __fastcall Detour_MaintainBotQuota(void *mgr)
 #else
-static int64_t Detour_MaintainBotQuota(void *mgr)
+static KHook::Return<int64_t> Detour_MaintainBotQuota(void *mgr)
 #endif
 {
     std::array<ManagedControllerFlagSnapshot, 64> flipped{};
     cs2bh::FlipManagedController904(false, &flipped);
-    int64_t r = g_pfnQuotaTramp ? g_pfnQuotaTramp(mgr) : 0;
+    g_QuotaHook.Continue(mgr);
     cs2bh::FlipManagedController904(true, &flipped);
-    return r;
+    return {KHook::Action::Ignore};
 }
 
 #if defined(_WIN32)
 // Restore bot identity only while the engine validates an initial team join.
-static int64_t __fastcall Detour_HandleCommandJoinTeam(void *controller,
+static KHook::Return<int64_t> __fastcall Detour_HandleCommandJoinTeam(void *controller,
                                                        unsigned int requestedTeam,
                                                        bool unknownFlag)
 {
@@ -424,9 +340,7 @@ static int64_t __fastcall Detour_HandleCommandJoinTeam(void *controller,
             controller, trace.Slot, trace.CurrentTeam, requestedTeam);
     }
 
-    return g_pfnHandleJoinTeamTramp
-               ? g_pfnHandleJoinTeamTramp(controller, requestedTeam, unknownFlag)
-               : 0;
+    return g_JoinTeamHook.Continue(controller, requestedTeam, unknownFlag);
 }
 #endif
 
@@ -712,8 +626,8 @@ namespace cs2bh
             META_CONPRINTF("[BOTHIDER] warning: MaintainBotQuota sig not found — quota fix disabled\n");
             return;
         }
-        if (PrepareFunchook(g_pfnQuotaTramp, target,
-                            reinterpret_cast<void *>(&Detour_MaintainBotQuota),
+        if (PrepareKHook(g_QuotaHook, g_pfnQuotaTramp, target,
+                            &Detour_MaintainBotQuota,
                             "CCSBotManager::MaintainBotQuota"))
             g_pQuotaHookTarget = target;
     }
@@ -746,8 +660,8 @@ namespace cs2bh
         }
 
         void *target = matches.front();
-        if (PrepareFunchook(g_pfnHandleJoinTeamTramp, target,
-                            reinterpret_cast<void *>(&Detour_HandleCommandJoinTeam),
+        if (PrepareKHook(g_JoinTeamHook, g_pfnHandleJoinTeamTramp, target,
+                            &Detour_HandleCommandJoinTeam,
                             "CCSPlayerController::HandleCommand_JoinTeam"))
             g_pHandleJoinTeamHookTarget = target;
     }
@@ -784,8 +698,8 @@ namespace cs2bh
 
         void *target = matches.front();
         g_PackEntitiesFirstCallLogged.store(false, std::memory_order_relaxed);
-        if (PrepareFunchook(g_pfnPackEntitiesTramp, target,
-                            reinterpret_cast<void *>(&Detour_PackEntities),
+        if (PrepareKHook(g_PackEntitiesHook, g_pfnPackEntitiesTramp, target,
+                            &Detour_PackEntities,
                             "CNetworkGameServer::PackEntities"))
             g_pPackEntitiesHookTarget = target;
     }
@@ -1529,22 +1443,22 @@ namespace cs2bh
     // Windows binds from the authoritative OnClientConnected slot and avoids
     // the unstable IVEngineServer::CreateFakeClient return hook. Linux keeps
     // the upstream CreateFakeClient context path below
-    void HiderPlugin::Hook_OnClientConnected_Post(CPlayerSlot slot, const char *pszName, uint64 /*xuid*/,
+    KHook::Return<void> HiderPlugin::Hook_OnClientConnected_Post(IServerGameClients *, CPlayerSlot slot, const char *pszName, uint64 /*xuid*/,
                                                   const char *pszNetworkID, const char * /*pszAddress*/,
                                                   bool bFakePlayer)
     {
         if (m_bSelfDisabled || !bFakePlayer || IsHltvConnection(pszName, pszNetworkID))
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
 #if defined(_WIN32)
         int idx = slot.Get();
         if (idx < 0 || idx >= PersonaPool::kMaxSlots)
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
         if (Manager().IsManaged(idx))
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
 
         void *pClient = ResolveClientBySlot(idx);
         if (!pClient || ssc::IsHltv(pClient))
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
 
         const BotEntry *entry = BotInfo().PickForBot(pszName);
         std::string displayName;
@@ -1560,7 +1474,7 @@ namespace cs2bh
         if (displayName.empty())
         {
             BotInfo().ReleaseAssignment(entry);
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
         }
 
         const uint64_t configuredSid =
@@ -1572,7 +1486,7 @@ namespace cs2bh
                 crosshairCode, scoreboardFlair))
         {
             BotInfo().ReleaseAssignment(entry);
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
         }
         g_SlotEntry[idx] = entry;
         g_OriginalSlotName[idx] = (pszName && pszName[0]) ? pszName : "";
@@ -1595,52 +1509,52 @@ namespace cs2bh
         META_CONPRINTF("[BOTHIDER] slot=%d adopted name='%s' steamid64=%llu\n",
                        idx, displayName.c_str(),
                        static_cast<unsigned long long>(sid));
-        RETURN_META(MRES_IGNORED);
+        return {KHook::Action::Ignore};
 #else
         if (g_FakeClientCallStack.empty())
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
 
         int idx = slot.Get();
         if (idx < 0 || idx >= PersonaPool::kMaxSlots)
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
 
         auto &context = g_FakeClientCallStack.back();
         if (!context.Enabled || context.ConnectedObserved)
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
 
         context.ConnectedObserved = true;
         context.ConnectedSlot = idx;
         context.ConnectedName = (pszName && pszName[0]) ? pszName : "";
         META_CONPRINTF("[BOTHIDER] CreateFakeClient observed slot=%d name='%s'\n",
                        idx, context.ConnectedName.empty() ? "<empty>" : context.ConnectedName.c_str());
-        RETURN_META(MRES_IGNORED);
+        return {KHook::Action::Ignore};
 #endif
     }
 
-    void HiderPlugin::Hook_ClientPutInServer_Post(CPlayerSlot slot, char const *pszName,
+    KHook::Return<void> HiderPlugin::Hook_ClientPutInServer_Post(IServerGameClients *, CPlayerSlot slot, char const *pszName,
                                                   int type, uint64 /*xuid*/)
     {
         if (m_bSelfDisabled)
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
 #if defined(_WIN32)
         // OnClientConnected already classified the client before disguise
         // changed its fake-client fields
         (void)type;
 #else
         if (type != 1)
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
 #endif
         int idx = slot.Get();
         if (idx < 0 || idx >= PersonaPool::kMaxSlots)
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
         if (!Personas().IsSlotManaged(idx))
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
 
         void *pClient = ResolveClientBySlot(idx);
         if (!pClient)
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
         if (ReleaseManagedHltvSlot(this, idx, pClient))
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
 
         if (m_bDisguiseEnabled)
         {
@@ -1673,7 +1587,7 @@ namespace cs2bh
         }
 
         META_CONPRINTF("[BOTHIDER] CPiS safety-net slot=%d name='%s'\n", idx, pszName ? pszName : "<null>");
-        RETURN_META(MRES_IGNORED);
+        return {KHook::Action::Ignore};
     }
 
     // Checks whether the engine may leave a controller after disconnect
@@ -1696,17 +1610,17 @@ namespace cs2bh
 
     // Clean teardown on disconnect
     // Restore the bot identity
-    void HiderPlugin::Hook_ClientDisconnect_Pre(CPlayerSlot slot, ENetworkDisconnectionReason reason,
+    KHook::Return<void> HiderPlugin::Hook_ClientDisconnect_Pre(IServerGameClients *, CPlayerSlot slot, ENetworkDisconnectionReason reason,
                                                 const char * /*pszName*/, uint64 /*xuid*/,
                                                 const char * /*pszNetworkID*/)
     {
         if (m_bSelfDisabled)
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
         int idx = slot.Get();
         if (idx < 0 || idx >= PersonaPool::kMaxSlots)
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
         if (!Personas().IsSlotManaged(idx))
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
 
         // Capture the persona name
         std::string persona = Personas().GetSlotName(idx);
@@ -1735,7 +1649,7 @@ namespace cs2bh
 
         META_CONPRINTF("[BOTHIDER] ClientDisconnect slot=%d name='%s' — slot released\n",
                        idx, persona.empty() ? "<null>" : persona.c_str());
-        RETURN_META(MRES_IGNORED);
+        return {KHook::Action::Ignore};
     }
 
     // True for console commands that disconnect a client
@@ -1898,13 +1812,13 @@ namespace cs2bh
     }
 
     // PRE ICvar::DispatchConCommand — restore fake-player identity on all managed slots
-    void HiderPlugin::Hook_DispatchConCommand_Pre(ConCommandRef cmd, const CCommandContext &,
+    KHook::Return<void> HiderPlugin::Hook_DispatchConCommand_Pre(ICvar *, ConCommandRef cmd, const CCommandContext &,
                                                   const CCommand &args)
     {
         if (m_bSelfDisabled)
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
         if (!cmd.IsValidRef())
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
         const char *cmdName = cmd.GetName();
 
         // Capture the current quota so POST can set it to old+1
@@ -1914,7 +1828,7 @@ namespace cs2bh
             ConVarRefAbstract botQuota("bot_quota");
             if (botQuota.IsValidRef())
                 m_QuotaBeforeAdd = botQuota.GetInt();
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
         }
 
 #if !defined(_WIN32)
@@ -1926,7 +1840,7 @@ namespace cs2bh
                                cmdName);
                 SetDisguiseEnabled(false);
             }
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
         }
 #endif
 
@@ -1943,17 +1857,17 @@ namespace cs2bh
                     engine->ServerCommand(kickCmd);
                     META_CONPRINTF("[BOTHIDER] bot_kick '%s' redirected to kick for managed slot=%d\n",
                                    target, slot);
-                    RETURN_META(MRES_SUPERCEDE);
+                    return {KHook::Action::Supersede};
                 }
             }
         }
 
         if (!IsKickCommand(cmdName))
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
 
         // Disguise-toggle rebuild in progress: skip
         if (m_bRebuilding)
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
 
         m_ManagedBeforeKick = 0;
         m_QuotaBeforeKick = -1;
@@ -1985,18 +1899,18 @@ namespace cs2bh
             ++restored;
         }
         META_CONPRINTF("[BOTHIDER] kick PRE '%s' restored=%d\n", cmdName, restored);
-        RETURN_META(MRES_IGNORED);
+        return {KHook::Action::Ignore};
     } // end Hook_DispatchConCommand_Pre
 
     // POST ICvar::DispatchConCommand — the kick has run and released its target slot(s) via ClientDisconnect
     // Re-disguise every slot still managed so the surviving bots keep their forged identity
-    void HiderPlugin::Hook_DispatchConCommand_Post(ConCommandRef cmd, const CCommandContext &,
+    KHook::Return<void> HiderPlugin::Hook_DispatchConCommand_Post(ICvar *, ConCommandRef cmd, const CCommandContext &,
                                                    const CCommand & /*args*/)
     {
         if (m_bSelfDisabled)
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
         if (!cmd.IsValidRef())
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
         const char *cmdName = cmd.GetName();
 
         if (IsBotAddCommand(cmdName))
@@ -2011,18 +1925,18 @@ namespace cs2bh
                         botQuota.SetInt(want);
                 }
             }
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
         }
 
         if (!IsKickCommand(cmdName))
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
 
         // Disguise-toggle rebuild: skip re-disguise + quota write, clear the flag
         if (m_bRebuilding)
         {
             m_bRebuilding = false;
             META_CONPRINTF("[BOTHIDER] disguise-off kick done\n");
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
         }
 
         int redisguised = 0;
@@ -2070,7 +1984,7 @@ namespace cs2bh
 
         META_CONPRINTF("[BOTHIDER] kick POST '%s' redisguised=%d quota=%d\n",
                        cmd.GetName(), redisguised, managedAfterKick);
-        RETURN_META(MRES_IGNORED);
+        return {KHook::Action::Ignore};
     } // end Hook_DispatchConCommand_Post
 
     // Toggle disguise: off restores m_bFakePlayer=1 so the bot manager spawns bots again
@@ -2182,7 +2096,7 @@ namespace cs2bh
 
 #if !defined(_WIN32)
     // Preserve the upstream Linux CreateFakeClient binding path
-    PlayerSlotHookResult HiderPlugin::Hook_CreateFakeClient_Pre(const char *netname)
+    KHook::Return<CPlayerSlot> HiderPlugin::Hook_CreateFakeClient_Pre(IVEngineServer *, const char *netname)
     {
         FakeClientCallContext context;
         context.RequestedName = (netname && netname[0]) ? netname : "";
@@ -2206,23 +2120,29 @@ namespace cs2bh
         META_CONPRINTF("[BOTHIDER] CreateFakeClient begin depth=%zu requested='%s'\n",
                        g_FakeClientCallStack.size(),
                        netname && netname[0] ? netname : "<empty>");
-        RETURN_META_VALUE(MRES_IGNORED, PlayerSlotHookResult(-1));
+        return {KHook::Action::Ignore, CPlayerSlot(-1)};
     }
 
-    PlayerSlotHookResult HiderPlugin::Hook_CreateFakeClient_Post(const char * /*netname*/)
+    KHook::Return<CPlayerSlot> HiderPlugin::Hook_CreateFakeClient_Post(IVEngineServer *, const char * /*netname*/)
     {
         if (g_FakeClientCallStack.empty())
         {
             META_CONPRINTF("[BOTHIDER] CreateFakeClient end without matching begin\n");
-            RETURN_META_VALUE(MRES_IGNORED, PlayerSlotHookResult(-1));
+            return {KHook::Action::Ignore, CPlayerSlot(-1)};
         }
 
-        const int returnedSlot = (META_RESULT_ORIG_RET(PlayerSlotHookResult)).Get();
         FakeClientCallContext context = std::move(g_FakeClientCallStack.back());
         g_FakeClientCallStack.pop_back();
 
         if (!context.Enabled)
-            RETURN_META_VALUE(MRES_IGNORED, PlayerSlotHookResult(-1));
+            return {KHook::Action::Ignore, CPlayerSlot(-1)};
+
+        if (KHook::WasOriginalFunctionSkipped())
+        {
+            BotInfo().ReleaseAssignment(context.Entry);
+            return {KHook::Action::Ignore, CPlayerSlot(-1)};
+        }
+        const int returnedSlot = KHook::GetOriginalReturn<CPlayerSlot>().Get();
 
         if (returnedSlot < 0 || returnedSlot >= PersonaPool::kMaxSlots)
         {
@@ -2230,7 +2150,7 @@ namespace cs2bh
             META_CONPRINTF("[BOTHIDER] CreateFakeClient failed returned=%d requested='%s'\n",
                            returnedSlot,
                            context.RequestedName.empty() ? "<empty>" : context.RequestedName.c_str());
-            RETURN_META_VALUE(MRES_IGNORED, PlayerSlotHookResult(-1));
+            return {KHook::Action::Ignore, CPlayerSlot(-1)};
         }
 
         if (context.ConnectedObserved && context.ConnectedSlot != returnedSlot)
@@ -2238,7 +2158,7 @@ namespace cs2bh
             BotInfo().ReleaseAssignment(context.Entry);
             META_CONPRINTF("[BOTHIDER] CreateFakeClient slot mismatch returned=%d connected=%d\n",
                            returnedSlot, context.ConnectedSlot);
-            RETURN_META_VALUE(MRES_IGNORED, PlayerSlotHookResult(-1));
+            return {KHook::Action::Ignore, CPlayerSlot(-1)};
         }
 
         void *pClient = ResolveClientBySlot(returnedSlot);
@@ -2247,7 +2167,7 @@ namespace cs2bh
             BotInfo().ReleaseAssignment(context.Entry);
             META_CONPRINTF("[BOTHIDER] CreateFakeClient bind failed: client slot=%d unavailable after return\n",
                            returnedSlot);
-            RETURN_META_VALUE(MRES_IGNORED, PlayerSlotHookResult(-1));
+            return {KHook::Action::Ignore, CPlayerSlot(-1)};
         }
 
         std::string engineName = context.ConnectedName.empty()
@@ -2292,7 +2212,7 @@ namespace cs2bh
             BotInfo().ReleaseAssignment(context.Entry);
             META_CONPRINTF("[BOTHIDER] CreateFakeClient bind failed: manager rejected slot=%d\n",
                            returnedSlot);
-            RETURN_META_VALUE(MRES_IGNORED, PlayerSlotHookResult(-1));
+            return {KHook::Action::Ignore, CPlayerSlot(-1)};
         }
 
         g_SlotEntry[returnedSlot] = cfg;
@@ -2318,16 +2238,15 @@ namespace cs2bh
                        boundName && boundName[0] ? boundName : "<null>");
         META_CONPRINTF("[BOTHIDER] CreateFakeClient end slot=%d depth=%zu\n",
                        returnedSlot, g_FakeClientCallStack.size());
-        RETURN_META_VALUE(MRES_IGNORED, PlayerSlotHookResult(-1));
+        return {KHook::Action::Ignore, CPlayerSlot(-1)};
     }
 #endif
 
-    CUtlVector<INetworkGameClient *> *HiderPlugin::Hook_StartChangeLevel_Pre(
-        const char *mapName, const char *landmark, void * /*changelevelState*/)
+    KHook::Return<CUtlVector<INetworkGameClient *> *> HiderPlugin::Hook_StartChangeLevel_Pre(INetworkGameServer *, const char *mapName, const char *landmark, void * /*changelevelState*/)
     {
         if (m_bSelfDisabled)
         {
-            RETURN_META_VALUE(MRES_IGNORED, nullptr);
+            return {KHook::Action::Ignore, nullptr};
         }
 #if !defined(_WIN32)
         ClearFakeClientCallStack();
@@ -2337,7 +2256,7 @@ namespace cs2bh
         BotInfo().ResetAssignments();
         META_CONPRINTF("[BOTHIDER] StartChangeLevel PRE — map='%s' landmark='%s'\n",
                        mapName ? mapName : "?", landmark ? landmark : "");
-        RETURN_META_VALUE(MRES_IGNORED, nullptr);
+        return {KHook::Action::Ignore, nullptr};
     }
 
     bool HiderPlugin::PublishIdentity(int slot, uint64_t session, uint64_t incarnation,
@@ -2424,10 +2343,10 @@ namespace cs2bh
     }
 
     // Tick driver
-    void HiderPlugin::Hook_GameFrame_Post(bool simulating, bool /*bFirst*/, bool /*bLast*/)
+    KHook::Return<void> HiderPlugin::Hook_GameFrame_Post(IServerGameDLL *, bool simulating, bool /*bFirst*/, bool /*bLast*/)
     {
         if (m_bSelfDisabled || !simulating)
-            RETURN_META(MRES_IGNORED);
+            return {KHook::Action::Ignore};
 
         DrainPendingControllerRemovals();
 
@@ -2464,7 +2383,7 @@ namespace cs2bh
             }
         }
 
-        RETURN_META(MRES_IGNORED);
+        return {KHook::Action::Ignore};
     }
 
     void HiderPlugin::OnLevelInit(char const *pMapName, char const *, char const *,
@@ -2476,17 +2395,20 @@ namespace cs2bh
                                : nullptr;
         if (gameServer && gameServer != m_pHookedGameServer)
         {
-            if (m_StartChangeLevelHookId != 0)
+            m_StartChangeLevelHook.reset();
+            try
             {
-                SH_REMOVE_HOOK_ID(m_StartChangeLevelHookId);
-                m_StartChangeLevelHookId = 0;
+                m_StartChangeLevelHook = DemoTracerHooks::MakeVirtual(
+                    &INetworkGameServer::StartChangeLevel, static_cast<INetworkGameServer *>(gameServer),
+                    this, &HiderPlugin::Hook_StartChangeLevel_Pre, nullptr);
+                m_pHookedGameServer = gameServer;
+                META_CONPRINTF("[BOTHIDER] StartChangeLevel KHook attached to %p\n", static_cast<void *>(gameServer));
             }
-            m_StartChangeLevelHookId = SH_ADD_HOOK_MEMFUNC(
-                INetworkGameServer, StartChangeLevel, gameServer,
-                this, &HiderPlugin::Hook_StartChangeLevel_Pre, false /* PRE */);
-            m_pHookedGameServer = static_cast<void *>(gameServer);
-            META_CONPRINTF("[BOTHIDER] StartChangeLevel hook attached to %p (id %d)\n",
-                           static_cast<void *>(gameServer), m_StartChangeLevelHookId);
+            catch (const std::exception &e)
+            {
+                m_pHookedGameServer = nullptr;
+                META_CONPRINTF("[BOTHIDER] StartChangeLevel hook failed: %s\n", e.what());
+            }
         }
         META_CONPRINTF("[BOTHIDER] OnLevelInit map=%s\n", pMapName ? pMapName : "?");
 
@@ -2512,6 +2434,11 @@ namespace cs2bh
     bool HiderPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, bool /*late*/)
     {
         PLUGIN_SAVEVARS();
+        if (!KHook::__exported__khook)
+        {
+            std::snprintf(error, maxlen, "Metamod did not provide the shared KHook interface");
+            return false;
+        }
 
         GET_V_IFACE_CURRENT(GetEngineFactory, engine, IVEngineServer, INTERFACEVERSION_VENGINESERVER);
         GET_V_IFACE_CURRENT(GetEngineFactory, icvar, ICvar, CVAR_INTERFACE_VERSION);
@@ -2629,7 +2556,7 @@ namespace cs2bh
             META_CONPRINTF("[BOTHIDER] warning: SchemaSystem unresolved — idle-kick and FL_BOT overrides disabled\n");
         }
 
-        InstallPreparedFunchooks();
+        InstallPreparedHooks();
 
         // Linux retains the upstream CUtlString::Set name path. Windows uses
         // CServerSideClient::SetName directly without this symbol
@@ -2694,24 +2621,36 @@ namespace cs2bh
         META_CONPRINTF("[BOTHIDER] disguise whitelist — %zu map(s) from '%s'\n",
                        g_DisguiseWhitelist.size(), wlPath.c_str());
 
-        SH_ADD_HOOK(IServerGameClients, OnClientConnected, gameclients,
-                    SH_MEMBER(this, &HiderPlugin::Hook_OnClientConnected_Post), true);
-        SH_ADD_HOOK(IServerGameClients, ClientPutInServer, gameclients,
-                    SH_MEMBER(this, &HiderPlugin::Hook_ClientPutInServer_Post), true);
-        SH_ADD_HOOK(IServerGameClients, ClientDisconnect, gameclients,
-                    SH_MEMBER(this, &HiderPlugin::Hook_ClientDisconnect_Pre), false);
+        try
+        {
+            m_Hooks.push_back(DemoTracerHooks::MakeVirtual(&IServerGameClients::OnClientConnected,
+                gameclients, this, nullptr, &HiderPlugin::Hook_OnClientConnected_Post));
+            m_Hooks.push_back(DemoTracerHooks::MakeVirtual(&IServerGameClients::ClientPutInServer,
+                gameclients, this, nullptr, &HiderPlugin::Hook_ClientPutInServer_Post));
+            m_Hooks.push_back(DemoTracerHooks::MakeVirtual(&IServerGameClients::ClientDisconnect,
+                gameclients, this, &HiderPlugin::Hook_ClientDisconnect_Pre, nullptr));
 #if !defined(_WIN32)
-        SH_ADD_MANUALHOOK(CreateFakeClientSlotHook, engine,
-                          SH_MEMBER(this, &HiderPlugin::Hook_CreateFakeClient_Pre), false);
-        SH_ADD_MANUALHOOK(CreateFakeClientSlotHook, engine,
-                          SH_MEMBER(this, &HiderPlugin::Hook_CreateFakeClient_Post), true);
+            auto fakeClient = std::make_unique<DemoTracerHooks::Virtual<IVEngineServer, CPlayerSlot, const char *>>(
+                targets::kVTSlot_CreateFakeClient, this,
+                &HiderPlugin::Hook_CreateFakeClient_Pre, &HiderPlugin::Hook_CreateFakeClient_Post);
+            fakeClient->Add(engine);
+            if (!fakeClient->Registered()) throw std::runtime_error("CreateFakeClient hook failed");
+            m_Hooks.push_back(std::move(fakeClient));
 #endif
-        SH_ADD_HOOK(IServerGameDLL, GameFrame, server,
-                    SH_MEMBER(this, &HiderPlugin::Hook_GameFrame_Post), true);
-        SH_ADD_HOOK(ICvar, DispatchConCommand, icvar,
-                    SH_MEMBER(this, &HiderPlugin::Hook_DispatchConCommand_Pre), false);
-        SH_ADD_HOOK(ICvar, DispatchConCommand, icvar,
-                    SH_MEMBER(this, &HiderPlugin::Hook_DispatchConCommand_Post), true);
+            m_Hooks.push_back(DemoTracerHooks::MakeVirtual(&IServerGameDLL::GameFrame,
+                server, this, nullptr, &HiderPlugin::Hook_GameFrame_Post));
+            m_Hooks.push_back(DemoTracerHooks::MakeVirtual(&ICvar::DispatchConCommand,
+                icvar, this, &HiderPlugin::Hook_DispatchConCommand_Pre, &HiderPlugin::Hook_DispatchConCommand_Post));
+        }
+        catch (const std::exception &e)
+        {
+            m_Hooks.clear();
+            RemoveHooks();
+            Manager().ReleaseAll();
+            Publisher().Shutdown();
+            std::snprintf(error, maxlen, "KHook registration failed: %s", e.what());
+            return false;
+        }
 
         META_CONPRINTF("[BOTHIDER] loaded — m_bFakePlayer offset=%d, OCC=#%d CPiS=#%d\n",
                        ssc::OFFSET_m_bFakePlayer,
@@ -2722,35 +2661,13 @@ namespace cs2bh
 
     bool HiderPlugin::Unload(char *error, size_t maxlen)
     {
-        if (!RemoveFunchooks())
+        if (!RemoveHooks())
         {
-            std::snprintf(error, maxlen, "failed to uninstall funchook detours");
+            std::snprintf(error, maxlen, "cannot remove KHook callbacks during entity packing");
             return false;
         }
-        SH_REMOVE_HOOK(IServerGameClients, OnClientConnected, gameclients,
-                       SH_MEMBER(this, &HiderPlugin::Hook_OnClientConnected_Post), true);
-        SH_REMOVE_HOOK(IServerGameClients, ClientPutInServer, gameclients,
-                       SH_MEMBER(this, &HiderPlugin::Hook_ClientPutInServer_Post), true);
-        SH_REMOVE_HOOK(IServerGameClients, ClientDisconnect, gameclients,
-                       SH_MEMBER(this, &HiderPlugin::Hook_ClientDisconnect_Pre), false);
-#if !defined(_WIN32)
-        SH_REMOVE_MANUALHOOK(CreateFakeClientSlotHook, engine,
-                             SH_MEMBER(this, &HiderPlugin::Hook_CreateFakeClient_Pre), false);
-        SH_REMOVE_MANUALHOOK(CreateFakeClientSlotHook, engine,
-                             SH_MEMBER(this, &HiderPlugin::Hook_CreateFakeClient_Post), true);
-#endif
-        SH_REMOVE_HOOK(IServerGameDLL, GameFrame, server,
-                       SH_MEMBER(this, &HiderPlugin::Hook_GameFrame_Post), true);
-        SH_REMOVE_HOOK(ICvar, DispatchConCommand, icvar,
-                       SH_MEMBER(this, &HiderPlugin::Hook_DispatchConCommand_Pre), false);
-        SH_REMOVE_HOOK(ICvar, DispatchConCommand, icvar,
-                       SH_MEMBER(this, &HiderPlugin::Hook_DispatchConCommand_Post), true);
-
-        if (m_StartChangeLevelHookId != 0)
-        {
-            SH_REMOVE_HOOK_ID(m_StartChangeLevelHookId);
-            m_StartChangeLevelHookId = 0;
-        }
+        m_Hooks.clear();
+        m_StartChangeLevelHook.reset();
         m_pHookedGameServer = nullptr;
         g_PendingControllerRemovals.clear();
         Manager().ReleaseAll();

@@ -4,6 +4,9 @@ This directory contains the BotHider runtime maintained and shipped as part of
 CS2 DemoTracer. It combines a Metamod plugin with a CounterStrikeSharp
 presentation provider.
 
+Function and virtual hooks use Metamod's shared KHook engine. Build and run
+against the [matched Metamod and CounterStrikeSharp baseline](../../README.md#shared-hook-runtime).
+
 The native layer owns fake-client adoption, synthetic persona state, ping, and
 a synchronous, main-thread C ABI (native ABI 3). The C# layer is the only publisher for visible
 name, SteamID64, ping, scoreboard flair, and server-replicated crosshair state.

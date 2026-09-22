@@ -8,6 +8,11 @@
 #include <playerslot.h>
 #include <tier1/utlvector.h>
 #include <array>
+#include <memory>
+#include <vector>
+#include <eiface.h>
+#include <iserver.h>
+#include <icvar.h>
 
 class CServerSideClient;
 class INetworkGameClient;
@@ -20,22 +25,7 @@ enum ENetworkDisconnectionReason : int;
 namespace cs2bh
 {
 
-#if !defined(_WIN32)
-    class PlayerSlotHookResult
-    {
-    public:
-        // Constructs a SourceHook-compatible slot result
-        explicit PlayerSlotHookResult(int slot = -1) : m_Data(slot) {}
-        // Returns the underlying slot index
-        int Get() const { return m_Data; }
 
-    private:
-        int m_Data;
-    };
-
-    static_assert(sizeof(PlayerSlotHookResult) == sizeof(CPlayerSlot));
-    static_assert(alignof(PlayerSlotHookResult) == alignof(CPlayerSlot));
-#endif
 
     class HiderPlugin : public ISmmPlugin, public IMetamodListener
     {
@@ -58,24 +48,23 @@ namespace cs2bh
         void OnLevelShutdown() override;
 
         // Hook entry points
-        void Hook_OnClientConnected_Post(CPlayerSlot slot, const char *pszName, uint64 xuid,
+        KHook::Return<void> Hook_OnClientConnected_Post(IServerGameClients *, CPlayerSlot slot, const char *pszName, uint64 xuid,
                                          const char *pszNetworkID, const char *pszAddress,
                                          bool bFakePlayer);
-        void Hook_ClientPutInServer_Post(CPlayerSlot slot, char const *pszName, int type, uint64 xuid);
-        void Hook_ClientDisconnect_Pre(CPlayerSlot slot, ENetworkDisconnectionReason reason,
+        KHook::Return<void> Hook_ClientPutInServer_Post(IServerGameClients *, CPlayerSlot slot, char const *pszName, int type, uint64 xuid);
+        KHook::Return<void> Hook_ClientDisconnect_Pre(IServerGameClients *, CPlayerSlot slot, ENetworkDisconnectionReason reason,
                                        const char *pszName, uint64 xuid, const char *pszNetworkID);
 #if !defined(_WIN32)
-        PlayerSlotHookResult Hook_CreateFakeClient_Pre(const char *netname);
-        PlayerSlotHookResult Hook_CreateFakeClient_Post(const char *netname);
+        KHook::Return<CPlayerSlot> Hook_CreateFakeClient_Pre(IVEngineServer *, const char *netname);
+        KHook::Return<CPlayerSlot> Hook_CreateFakeClient_Post(IVEngineServer *, const char *netname);
 #endif
-        CUtlVector<INetworkGameClient *> *Hook_StartChangeLevel_Pre(
-            const char *mapName, const char *landmark, void *changelevelState);
-        void Hook_GameFrame_Post(bool simulating, bool bFirstTick, bool bLastTick);
+        KHook::Return<CUtlVector<INetworkGameClient *> *> Hook_StartChangeLevel_Pre(INetworkGameServer *, const char *mapName, const char *landmark, void *changelevelState);
+        KHook::Return<void> Hook_GameFrame_Post(IServerGameDLL *, bool simulating, bool bFirstTick, bool bLastTick);
 
         // ICvar::DispatchConCommand  — restore bot identity before the engine and processes a kick
-        void Hook_DispatchConCommand_Pre(ConCommandRef cmd, const CCommandContext &ctx,
+        KHook::Return<void> Hook_DispatchConCommand_Pre(ICvar *, ConCommandRef cmd, const CCommandContext &ctx,
                                          const CCommand &args);
-        void Hook_DispatchConCommand_Post(ConCommandRef cmd, const CCommandContext &ctx,
+        KHook::Return<void> Hook_DispatchConCommand_Post(ICvar *, ConCommandRef cmd, const CCommandContext &ctx,
                                           const CCommand &args);
 
 #if !defined(_WIN32)
@@ -97,7 +86,8 @@ namespace cs2bh
 
     private:
         void *m_pHookedGameServer = nullptr;
-        int m_StartChangeLevelHookId = 0;
+        std::unique_ptr<KHook::__Hook> m_StartChangeLevelHook;
+        std::vector<std::unique_ptr<KHook::__Hook>> m_Hooks;
         bool m_bSelfDisabled = false;
         unsigned int m_TickCounter = 0; // throttles per-tick idle-timer reset
         // Master disguise switch
