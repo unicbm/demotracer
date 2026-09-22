@@ -77,6 +77,11 @@ bool BotControllerPlugin::Load(PluginId id, ISmmAPI *ismm,
                                char *error, size_t maxlen, bool /*late*/)
 {
     PLUGIN_SAVEVARS();
+    if (!KHook::__exported__khook)
+    {
+        std::snprintf(error, maxlen, "Metamod did not provide the shared KHook interface");
+        return false;
+    }
 
     g_pCVar = static_cast<ICvar *>(
         ismm->GetEngineFactory()(CVAR_INTERFACE_VERSION, nullptr));

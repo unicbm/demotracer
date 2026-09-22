@@ -36,9 +36,9 @@ namespace BotController
         static void *g_addrSelectItem = nullptr;
         static void *g_addrGetSlot = nullptr;
 
-        static Hook g_hookEquipBestWeapon;
-        static Hook g_hookEquipPistol;
-        static Hook g_hookSelectItem;
+        static Hook<EquipBestWeapon_t> g_hookEquipBestWeapon;
+        static Hook<EquipPistol_t> g_hookEquipPistol;
+        static Hook<SelectItem_t> g_hookSelectItem;
 
         static std::string g_status = "not_attempted";
         static bool g_installed = false;
@@ -77,27 +77,29 @@ namespace BotController
 
         // ---- detours ----
 
-        static void BC_FASTCALL HookedEquipBestWeapon(void *bot, char mustEquip)
+        static KHook::Return<void> BC_FASTCALL HookedEquipBestWeapon(void *bot, char mustEquip)
         {
             auto sr = ResolveSlot(bot);
             LockTarget lt = (sr.slot >= 0) ? WeaponLockerState::Get(sr.slot) : LockTarget::None;
             if (sr.slot >= 0 &&
                 (MotionRecorder::IsReplaying(sr.slot) || lt != LockTarget::None))
-                return;
-            g_origEquipBestWeapon(bot, mustEquip);
+                return {KHook::Action::Supersede};
+            g_hookEquipBestWeapon.Continue(bot, mustEquip);
+            return {KHook::Action::Ignore};
         }
 
-        static void BC_FASTCALL HookedEquipPistol(void *bot, char mustEquip)
+        static KHook::Return<void> BC_FASTCALL HookedEquipPistol(void *bot, char mustEquip)
         {
             auto sr = ResolveSlot(bot);
             LockTarget lt = (sr.slot >= 0) ? WeaponLockerState::Get(sr.slot) : LockTarget::None;
             if (sr.slot >= 0 &&
                 (MotionRecorder::IsReplaying(sr.slot) || lt != LockTarget::None))
-                return;
-            g_origEquipPistol(bot, mustEquip);
+                return {KHook::Action::Supersede};
+            g_hookEquipPistol.Continue(bot, mustEquip);
+            return {KHook::Action::Ignore};
         }
 
-        static char BC_FASTCALL HookedSelectItem(void *ws, void *weapon, int flag)
+        static KHook::Return<char> BC_FASTCALL HookedSelectItem(void *ws, void *weapon, int flag)
         {
             // Recording : a human switching weapons calls SelectItem
             if (weapon)
@@ -114,10 +116,10 @@ namespace BotController
 
             void *pawn = nullptr;
             if (!SafeRead(ws, tg::kServices_Pawn, pawn) || !pawn)
-                return g_origSelectItem(ws, weapon, flag);
+                return g_hookSelectItem.Continue(ws, weapon, flag);
             const int slot = ControllerSlotForPawn(pawn);
             if (slot < 0 || WsForSlot(slot) != ws)
-                return g_origSelectItem(ws, weapon, flag);
+                return g_hookSelectItem.Continue(ws, weapon, flag);
 
             // Native Update/Upkeep may shadow-run during replay for warm
             // perception, but replay remains the sole weapon-action owner.
@@ -127,29 +129,29 @@ namespace BotController
             if (MotionRecorder::IsReplaying(slot))
             {
                 if (!ReplayAllowsWeaponSelection(slot, weapon))
-                    return 0;
-                return g_origSelectItem(ws, weapon, flag);
+                    return {KHook::Action::Supersede, 0};
+                return g_hookSelectItem.Continue(ws, weapon, flag);
             }
 
             LockTarget lt = WeaponLockerState::Get(slot);
             if (lt == LockTarget::None)
-                return g_origSelectItem(ws, weapon, flag);
+                return g_hookSelectItem.Continue(ws, weapon, flag);
 
             int engineSlot = LockTargetToEngineSlot(lt);
             if (engineSlot < 0 || !g_pGetSlot)
-                return g_origSelectItem(ws, weapon, flag);
+                return g_hookSelectItem.Continue(ws, weapon, flag);
 
             void *targetWeapon = g_pGetSlot(ws, engineSlot, 0xFFFFFFFFu);
             // No weapon in the locked slot -> can't enforce, let it through.
             if (!targetWeapon)
-                return g_origSelectItem(ws, weapon, flag);
+                return g_hookSelectItem.Continue(ws, weapon, flag);
 
             // Switch is to the lock target -> allow.
             if (weapon == targetWeapon)
-                return g_origSelectItem(ws, weapon, flag);
+                return g_hookSelectItem.Continue(ws, weapon, flag);
 
             // Switch is to something else -> block.
-            return 0;
+            return {KHook::Action::Supersede, 0};
         }
 
         // ---- install / remove ----
@@ -207,24 +209,24 @@ namespace BotController
             };
 
             if (!g_hookEquipBestWeapon.Create(g_addrEquipBestWeapon,
-                                              reinterpret_cast<void *>(&HookedEquipBestWeapon),
-                                              reinterpret_cast<void **>(&g_origEquipBestWeapon)))
+                                              &HookedEquipBestWeapon,
+                                              &g_origEquipBestWeapon))
             {
                 g_status = "failed: Create EquipBestWeapon";
                 return failCleanup("Create EquipBestWeapon");
             }
 
             if (!g_hookEquipPistol.Create(g_addrEquipPistol,
-                                          reinterpret_cast<void *>(&HookedEquipPistol),
-                                          reinterpret_cast<void **>(&g_origEquipPistol)))
+                                          &HookedEquipPistol,
+                                          &g_origEquipPistol))
             {
                 g_status = "failed: Create EquipPistol";
                 return failCleanup("Create EquipPistol");
             }
 
             if (!g_hookSelectItem.Create(g_addrSelectItem,
-                                         reinterpret_cast<void *>(&HookedSelectItem),
-                                         reinterpret_cast<void **>(&g_origSelectItem)))
+                                         &HookedSelectItem,
+                                         &g_origSelectItem))
             {
                 g_status = "failed: Create SelectItem";
                 return failCleanup("Create SelectItem");

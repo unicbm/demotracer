@@ -1,6 +1,7 @@
 // Cross-platform sig scanning + gamedata.json loader
 
 #include "sig_scan.h"
+#include "../../../common/khook_signature.h"
 #include "ccsbot_slot.h"
 
 #if defined(_WIN32)
@@ -234,30 +235,11 @@ namespace BotController::Sig
                         const std::vector<uint8_t> &pattern,
                         const std::vector<bool> &wild)
     {
-        if (!module || pattern.empty() || pattern.size() != wild.size())
-            return nullptr;
-
-        const size_t plen = pattern.size();
-        for (const ModuleSegment &segment : module.Segments)
-        {
-            if (!segment.Base || segment.Size < plen)
-                continue;
-
-            for (size_t i = 0; i + plen <= segment.Size; ++i)
-            {
-                bool match = true;
-                for (size_t j = 0; j < plen; ++j)
-                {
-                    if (!wild[j] && segment.Base[i + j] != pattern[j])
-                    {
-                        match = false;
-                        break;
-                    }
-                }
-                if (match)
-                    return segment.Base + i;
-            }
-        }
+        if (!module || pattern.empty() || pattern.size() != wild.size()) return nullptr;
+        const auto signature = DemoTracerHooks::Signature(pattern, wild);
+        for (const auto &segment : module.Segments)
+            if (void *hit = DemoTracerHooks::FindSignature(segment.Base, segment.Size, pattern.size(), signature))
+                return hit;
         return nullptr;
     }
 

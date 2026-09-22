@@ -3,6 +3,7 @@
 #include "ccsbot_slot.h"
 #include "hook.h"
 #include "sig_scan.h"
+#include "../../../common/khook_signature.h"
 
 #include <networkstringtabledefs.h>
 #include <convar.h>
@@ -43,7 +44,8 @@ namespace BotController::Avatars
         Publications publications;
         uint64_t clientEpoch = 1;
         uint64_t refreshes = 0;
-        Hook callbackHook, removeHook;
+        Hook<SetCallback> callbackHook;
+        Hook<RemoveTables> removeHook;
         SetCallback setCallback = nullptr;
         RemoveTables removeTables = nullptr;
         CreateEvent createEvent = nullptr;
@@ -179,7 +181,7 @@ namespace BotController::Avatars
             Observe(table, key);
         }
 
-        void BC_FASTCALL OnSetCallback(INetworkStringTable *table, const Delegate *delegate, bool invoke)
+        KHook::Return<void> BC_FASTCALL OnSetCallback(INetworkStringTable *table, const Delegate *delegate, bool invoke)
         {
             if (ready && clientTables && table &&
                 std::strcmp(table->GetTableName(), kTableName) == 0 &&
@@ -194,13 +196,14 @@ namespace BotController::Avatars
                         previousDelegate = *delegate;
                 }
                 const Delegate bridge{nullptr, OnChanged};
-                setCallback(table, &bridge, invoke);
-                return;
+                callbackHook.Continue(table, &bridge, invoke);
+                return {KHook::Action::Ignore};
             }
-            setCallback(table, delegate, invoke);
+            callbackHook.Continue(table, delegate, invoke);
+            return {KHook::Action::Ignore};
         }
 
-        void BC_FASTCALL OnRemoveTables(INetworkStringTableContainer *container)
+        KHook::Return<void> BC_FASTCALL OnRemoveTables(INetworkStringTableContainer *container)
         {
             {
                 std::lock_guard lock(stateMutex);
@@ -213,7 +216,8 @@ namespace BotController::Avatars
                 if (container == serverTables)
                     publications.entries.clear();
             }
-            removeTables(container);
+            removeHook.Continue(container);
+            return {KHook::Action::Ignore};
         }
 
         void BindCurrentTable()
@@ -226,7 +230,7 @@ namespace BotController::Avatars
             Delegate existing{};
             if (!SafeRead(table, 0x48, existing))
                 return;
-            OnSetCallback(table, &existing, true);
+            callbackHook.Invoke(table, &existing, true);
         }
 
         void *Relative(const Sig::ModuleInfo &module, unsigned char *instruction, int displacement, int size)
@@ -245,18 +249,20 @@ namespace BotController::Avatars
             if (!Sig::ParseSigString(Sig::FindPlatformSig(gd, name), bytes, wild))
                 return nullptr;
             void *found = nullptr;
+            const auto signature = DemoTracerHooks::Signature(bytes, wild);
             for (const auto &segment : module.Segments)
             {
-                for (size_t i = 0; i + bytes.size() <= segment.Size; ++i)
+                size_t offset = 0;
+                while (offset < segment.Size)
                 {
-                    size_t n = 0;
-                    while (n < bytes.size() && (wild[n] || segment.Base[i + n] == bytes[n]))
-                        ++n;
-                    if (n != bytes.size())
-                        continue;
+                    auto *match = static_cast<unsigned char *>(DemoTracerHooks::FindSignature(
+                        segment.Base + offset, segment.Size - offset, bytes.size(), signature));
+                    if (!match)
+                        break;
                     if (found)
                         return nullptr;
-                    found = segment.Base + i;
+                    found = match;
+                    offset = static_cast<size_t>(match - segment.Base) + 1;
                 }
             }
             return found;
@@ -330,8 +336,8 @@ namespace BotController::Avatars
         }
         uiEngine = static_cast<void **>(Relative(panoramaModule, command + 0x38, 3, 7));
         if (!uiEngine ||
-            !callbackHook.Create(setter, reinterpret_cast<void *>(OnSetCallback), reinterpret_cast<void **>(&setCallback)) ||
-            !removeHook.Create(remover, reinterpret_cast<void *>(OnRemoveTables), reinterpret_cast<void **>(&removeTables)) ||
+            !callbackHook.Create(setter, OnSetCallback, &setCallback) ||
+            !removeHook.Create(remover, OnRemoveTables, &removeTables) ||
             !removeHook.Enable() || !callbackHook.Enable())
         {
             callbackHook.Remove();
