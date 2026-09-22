@@ -16,7 +16,7 @@ use crate::model::{
     ReplayInventoryItemCount, ReplayInventorySnapshot, ReplayItemCosmetic, ReplayPlayerScoreboard,
     ReplayProjectileMetadata, ReplayRoundScoreboard, ReplayScoreboardFlair, ReplayView,
     ReplayViewmodel, ReplayWeaponCharm, ReplayWeaponCosmetic, ReplayWeaponSticker, RoundSummary,
-    Side, SubtickMode, TeamEconomy, DEMOTRACER_ABI, DTR_FORMAT_VERSION,
+    Side, TeamEconomy, DEMOTRACER_ABI, DTR_FORMAT_VERSION,
 };
 use crate::rec_writer::write_rec;
 use crate::replay::context::{
@@ -26,7 +26,7 @@ use crate::replay::context::{
 use crate::replay::synthesis::{
     synthesize_player_rec_with_row_refs, SynthesisOptions, SynthesisStats,
 };
-use crate::{io_error, Error, Result};
+use crate::{io_error, Result};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -39,7 +39,7 @@ use std::sync::OnceLock;
 // observed in the demo. The actual pre-roll begins at the contiguous freeze
 // suffix connected to the live start, so this is a safety cap rather than a
 // fixed amount of padding.
-pub const DEFAULT_FREEZE_PREROLL_SECONDS: f32 = 120.0;
+pub const MAX_FREEZE_PREROLL_SECONDS: f32 = 120.0;
 const STEAM_ID64_BASE: u64 = 76_561_197_960_265_728;
 const KEYCHAIN_SLOT_0_ID_ATTR: u32 = 299;
 const KEYCHAIN_SLOT_0_OFFSET_X_ATTR: u32 = 300;
@@ -57,8 +57,6 @@ pub struct ConvertOptions {
     pub selected_rounds: Option<BTreeSet<u32>>,
     pub include_suspicious: bool,
     pub cut_before_bomb_plant: bool,
-    pub subtick_mode: SubtickMode,
-    pub freeze_preroll_seconds: f32,
     pub export_cosmetics: bool,
     pub export_stickers: bool,
     pub export_charms: bool,
@@ -72,8 +70,6 @@ pub struct ConvertMemoryOptions {
     pub selected_rounds: Option<BTreeSet<u32>>,
     pub include_suspicious: bool,
     pub cut_before_bomb_plant: bool,
-    pub subtick_mode: SubtickMode,
-    pub freeze_preroll_seconds: f32,
     pub export_cosmetics: bool,
     pub export_stickers: bool,
     pub export_charms: bool,
@@ -88,8 +84,6 @@ impl From<&ConvertOptions> for ConvertMemoryOptions {
             selected_rounds: options.selected_rounds.clone(),
             include_suspicious: options.include_suspicious,
             cut_before_bomb_plant: options.cut_before_bomb_plant,
-            subtick_mode: options.subtick_mode,
-            freeze_preroll_seconds: options.freeze_preroll_seconds,
             export_cosmetics: options.export_cosmetics,
             export_stickers: options.export_stickers,
             export_charms: options.export_charms,
@@ -219,7 +213,6 @@ fn export_demo_to_memory_inner(
     preanalyzed: Option<&DemoAnalysis>,
     mut progress: Option<&mut dyn FnMut(ConversionProgress)>,
 ) -> Result<MemoryConversionReport> {
-    validate_freeze_preroll_seconds(options.freeze_preroll_seconds)?;
     let owned_analysis;
     let analysis = if let Some(analysis) = preanalyzed {
         analysis
@@ -318,12 +311,8 @@ fn export_demo_to_memory_inner(
             .get(&round.round)
             .map(Vec::as_slice)
             .unwrap_or(&[]);
-        let recording_start_tick = recording_start_tick_for_round(
-            round_rows,
-            parsed.tick_rate,
-            round.start_tick,
-            options.freeze_preroll_seconds,
-        );
+        let recording_start_tick =
+            recording_start_tick_for_round(round_rows, parsed.tick_rate, round.start_tick);
         let freeze_preroll_ticks = round.start_tick.saturating_sub(recording_start_tick);
         let pistol_round = is_pistol_round(round.round);
         let t_economy = team_economy(round_rows, round.start_tick, end_tick, 2, pistol_round);
@@ -384,7 +373,6 @@ fn export_demo_to_memory_inner(
                     parsed.tick_rate,
                     round.round,
                     SynthesisOptions {
-                        subtick_mode: options.subtick_mode,
                         play_start_tick_index,
                     },
                 )?;
@@ -552,8 +540,7 @@ fn export_demo_to_memory_inner(
 
     log.push(format!("files_written={}", manifest.files.len()));
     log.push(format!(
-        "subticks mode={} source={} written={} ticks_with_source={} ticks_with_written={} dropped_invalid={} dropped_overflow={} truncated_buttons={}",
-        options.subtick_mode,
+        "subticks source={} written={} ticks_with_source={} ticks_with_written={} dropped_invalid={} dropped_overflow={} truncated_buttons={}",
         subtick_stats.source_subticks,
         subtick_stats.written_subticks,
         subtick_stats.ticks_with_source_subticks,
@@ -789,12 +776,8 @@ fn estimate_round_files(
         .get(&round.round)
         .map(Vec::as_slice)
         .unwrap_or(&[]);
-    let recording_start_tick = recording_start_tick_for_round(
-        round_rows,
-        parsed.tick_rate,
-        round.start_tick,
-        options.freeze_preroll_seconds,
-    );
+    let recording_start_tick =
+        recording_start_tick_for_round(round_rows, parsed.tick_rate, round.start_tick);
     let mut ticks_by_player: BTreeMap<u64, BTreeSet<i32>> = BTreeMap::new();
     for &row in round_rows {
         if row.tick < recording_start_tick
@@ -1474,15 +1457,6 @@ fn ticks_to_seconds(ticks: i32, tick_rate: f32) -> f32 {
     }
 }
 
-fn validate_freeze_preroll_seconds(seconds: f32) -> Result<()> {
-    if seconds.is_finite() && seconds >= 0.0 {
-        return Ok(());
-    }
-    Err(Error::InvalidDemo(
-        "freeze pre-roll must be a finite non-negative number".to_string(),
-    ))
-}
-
 fn rows_by_round(rows: &[ParsedPlayerTick]) -> BTreeMap<u32, Vec<&ParsedPlayerTick>> {
     let mut by_round: BTreeMap<u32, Vec<&ParsedPlayerTick>> = BTreeMap::new();
     for row in rows {
@@ -1508,9 +1482,8 @@ fn recording_start_tick_for_round(
     round_rows: &[&ParsedPlayerTick],
     tick_rate: f32,
     live_start_tick: i32,
-    freeze_preroll_seconds: f32,
 ) -> i32 {
-    let cap_ticks = seconds_to_ticks(freeze_preroll_seconds, tick_rate);
+    let cap_ticks = seconds_to_ticks(MAX_FREEZE_PREROLL_SECONDS, tick_rate);
     if cap_ticks <= 0 {
         return live_start_tick;
     }
@@ -4989,8 +4962,6 @@ mod tests {
             selected_rounds: selected_rounds.clone(),
             include_suspicious: true,
             cut_before_bomb_plant: true,
-            subtick_mode: SubtickMode::Auto,
-            freeze_preroll_seconds: DEFAULT_FREEZE_PREROLL_SECONDS,
             export_cosmetics: false,
             export_stickers: false,
             export_charms: false,
@@ -5031,8 +5002,6 @@ mod tests {
                 selected_rounds,
                 include_suspicious: true,
                 cut_before_bomb_plant: true,
-                subtick_mode: SubtickMode::Auto,
-                freeze_preroll_seconds: DEFAULT_FREEZE_PREROLL_SECONDS,
                 export_cosmetics: false,
                 export_stickers: false,
                 export_charms: false,
@@ -5064,8 +5033,6 @@ mod tests {
             selected_rounds: Some(BTreeSet::from([1])),
             include_suspicious: true,
             cut_before_bomb_plant: true,
-            subtick_mode: SubtickMode::Auto,
-            freeze_preroll_seconds: DEFAULT_FREEZE_PREROLL_SECONDS,
             export_cosmetics: false,
             export_stickers: false,
             export_charms: false,
@@ -5092,8 +5059,6 @@ mod tests {
             selected_rounds: Some(BTreeSet::from([1])),
             include_suspicious: true,
             cut_before_bomb_plant: true,
-            subtick_mode: SubtickMode::Auto,
-            freeze_preroll_seconds: DEFAULT_FREEZE_PREROLL_SECONDS,
             export_cosmetics: false,
             export_stickers: false,
             export_charms: false,
@@ -5130,8 +5095,6 @@ mod tests {
             selected_rounds: Some(BTreeSet::from([1])),
             include_suspicious: true,
             cut_before_bomb_plant: true,
-            subtick_mode: SubtickMode::Auto,
-            freeze_preroll_seconds: DEFAULT_FREEZE_PREROLL_SECONDS,
             export_cosmetics: false,
             export_stickers: false,
             export_charms: false,
@@ -5183,8 +5146,6 @@ mod tests {
             selected_rounds: Some(BTreeSet::from([2])),
             include_suspicious: true,
             cut_before_bomb_plant: true,
-            subtick_mode: SubtickMode::Auto,
-            freeze_preroll_seconds: DEFAULT_FREEZE_PREROLL_SECONDS,
             export_cosmetics: false,
             export_stickers: false,
             export_charms: false,
@@ -5217,8 +5178,6 @@ mod tests {
                 selected_rounds: Some(BTreeSet::from([1])),
                 include_suspicious: true,
                 cut_before_bomb_plant: true,
-                subtick_mode: SubtickMode::Auto,
-                freeze_preroll_seconds: DEFAULT_FREEZE_PREROLL_SECONDS,
                 export_cosmetics: false,
                 export_stickers: false,
                 export_charms: false,
@@ -5243,8 +5202,6 @@ mod tests {
                 selected_rounds: Some(BTreeSet::from([1])),
                 include_suspicious: true,
                 cut_before_bomb_plant: true,
-                subtick_mode: SubtickMode::Auto,
-                freeze_preroll_seconds: DEFAULT_FREEZE_PREROLL_SECONDS,
                 export_cosmetics: false,
                 export_stickers: false,
                 export_charms: false,
@@ -5291,8 +5248,6 @@ mod tests {
                 selected_rounds: Some(BTreeSet::from([1])),
                 include_suspicious: true,
                 cut_before_bomb_plant: true,
-                subtick_mode: SubtickMode::Auto,
-                freeze_preroll_seconds: DEFAULT_FREEZE_PREROLL_SECONDS,
                 export_cosmetics: false,
                 export_stickers: false,
                 export_charms: false,
@@ -5339,14 +5294,24 @@ mod tests {
         rows.push(sample_row(600));
         let row_refs = rows.iter().collect::<Vec<_>>();
 
+        assert_eq!(recording_start_tick_for_round(&row_refs, 64.0, 600), 400);
+    }
+
+    #[test]
+    fn freeze_preroll_keeps_its_internal_safety_cap() {
+        let cap_ticks = seconds_to_ticks(MAX_FREEZE_PREROLL_SECONDS, 64.0);
+        let mut rows = (-cap_ticks - 10..0).map(freeze_row).collect::<Vec<_>>();
+        rows.push(sample_row(0));
+        let row_refs = rows.iter().collect::<Vec<_>>();
+
         assert_eq!(
-            recording_start_tick_for_round(&row_refs, 64.0, 600, DEFAULT_FREEZE_PREROLL_SECONDS,),
-            400
+            recording_start_tick_for_round(&row_refs, 64.0, 0),
+            -cap_ticks
         );
     }
 
     #[test]
-    fn export_caps_freeze_preroll_before_pause_tail() {
+    fn export_ignores_disconnected_freeze_rows_before_pause_tail() {
         let mut parsed = sample_demo();
         parsed.rows = vec![
             freeze_row(-1_000),
@@ -5364,8 +5329,6 @@ mod tests {
                 selected_rounds: Some(BTreeSet::from([1])),
                 include_suspicious: true,
                 cut_before_bomb_plant: true,
-                subtick_mode: SubtickMode::Auto,
-                freeze_preroll_seconds: 1.0,
                 export_cosmetics: false,
                 export_stickers: false,
                 export_charms: false,
@@ -5866,8 +5829,6 @@ mod tests {
                 selected_rounds: Some(BTreeSet::from([1])),
                 include_suspicious: true,
                 cut_before_bomb_plant: false,
-                subtick_mode: SubtickMode::Auto,
-                freeze_preroll_seconds: DEFAULT_FREEZE_PREROLL_SECONDS,
                 export_cosmetics,
                 export_stickers,
                 export_charms,
