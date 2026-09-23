@@ -14,20 +14,20 @@ namespace DemoTracer;
 
 internal sealed class ProjectilePhysicsHook(string serverPath, Action<nint> beforePhysics) : IDisposable
 {
-    // This is the shared projectile slot 226
+    // This is the shared projectile slot 228
     // implementation, not the player/controller PhysicsSimulate hook.
-    internal const string ServerSha256 = "1cac9113b10037c0ba8fb739e5538c21d7ddaee5529325ca4f7e9a241fad43cc";
-    internal const string BodySha256 = "a7f9619084211d7d4e2e8b008d9ae01f630538bd91f903c2499b1e78472f83e7";
-    internal const int EntryRva = 0x99a6d0;
-    internal const int BodyLength = 0x99ae7a - EntryRva;
+    internal const string ServerSha256 = "4f5c59c1153eb5f455f9131f80458bc2b9a6d1d7f30d170a2030d800685c00e8";
+    internal const string BodySha256 = "e98fbf6bf05707520d8f3874b07e1ee15644bb19641794b98d0e26f8a640de81";
+    internal const int EntryRva = 0x9c6ce0;
+    internal const int BodyLength = 0x9c77ad - EntryRva;
     internal static ReadOnlySpan<int> VtableSlotRvas =>
-        [0x1654ce0, 0x16562a8, 0x1655708, 0x176f548, 0x176db00, 0x176c470];
+        [0x17c4ae0, 0x17c60e8, 0x17c5528, 0x18e7188, 0x18e5700, 0x18e4030];
 
     private const string Signature =
-        "48 89 5C 24 18 48 89 74 24 20 55 41 56 41 57 48 8D AC 24 70 FF FF FF 48 81 EC 90 01 00 00";
+        "48 89 5C 24 18 48 89 74 24 20 55 41 56 41 57 48 8D AC 24 30 FF FF FF 48 81 EC D0 01 00 00";
 
     // Win64: this, position*, velocity*, angles*, angularVelocity*. The fifth
-    // argument is read at entry RSP+0x28 (function 0x99ad16). All four output
+    // argument is read at entry RSP+0x28 (function 0x9c760d). All four output
     // vectors and every original argument remain owned by the engine.
     private MemoryFunctionVoid<nint, nint, nint, nint, nint>? _function;
     private bool _attached;
