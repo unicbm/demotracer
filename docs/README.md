@@ -15,6 +15,8 @@ Contributor workflow and repository boundaries are documented in the root
   release packaging.
 - [Commands](COMMANDS.md): public playback commands and runtime defaults.
 - [Format](FORMAT.md): `.dtr` layout, version gates, and decoder limits.
+- [Signature maintenance](SIGNATURES.md): definition ownership, the verified
+  engine baseline, and acceptance requirements for game updates.
 - [Online behavior](ONLINE_SERVICES.md): network requests and local data policy.
 - [Anonymous telemetry](TELEMETRY.md): default aggregate and optional presence contracts,
   retention, deployment, and aggregate admin reporting.
