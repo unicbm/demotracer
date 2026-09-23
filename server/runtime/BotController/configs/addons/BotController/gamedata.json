@@ -93,15 +93,15 @@
   "CCSBot::EquipBestWeapon": {
     "signatures": {
       "library": "server",
-      "windows": "48 89 5C 24 ? 48 89 74 24 ? 57 48 83 EC ? 48 8B F9 84 D2",
+      "windows": "48 89 5C 24 08 48 89 74 24 20 57 48 83 EC 20 48 8B D9 84 D2 75 ? 4C 8D 81 80 5C 00 00 48 8D 0D ? ? ? ? 48 8D 54 24 38 E8 ? ? ? ? 80 38 FF 75 ? 48 8D 54 24 40 48 8D 8B 78 5C 00 00 E8 ? ? ? ? 48 8D 93 80 5C 00 00 48 8B C8 E8 ? ? ? ? F3 0F 10 0D ? ? ? ? 0F 2F C8 0F 87 ? ? ? ? 48 8B 43 18 33 D2 41 B8 FF FF FF FF",
       "linux": ""
     },
-    "comment": "Bot: bot picks and equips its best weapon."
+    "comment": "Select primary, then pistol, then knife; Windows 1.41.8.2 entry 0x2BDB70. Do not bind the knife-only helper at 0x2BDF50."
   },
   "CCSBot::EquipPistol": {
     "signatures": {
       "library": "server",
-      "windows": "48 89 5C 24 ? 48 89 74 24 ? 57 48 83 EC ? 48 8B D9 84 D2",
+      "windows": "48 89 5C 24 08 48 89 74 24 20 57 48 83 EC 20 48 8B D9 84 D2 75 ? 4C 8D 81 80 5C 00 00 48 8D 0D ? ? ? ? 48 8D 54 24 38 E8 ? ? ? ? 80 38 FF 75 ? 48 8D 54 24 40 48 8D 8B 78 5C 00 00 E8 ? ? ? ? 48 8D 93 80 5C 00 00 48 8B C8 E8 ? ? ? ? F3 0F 10 0D ? ? ? ? 0F 2F C8 0F 87 ? ? ? ? 48 8B 05 ? ? ? ?",
       "linux": ""
     },
     "comment": "Bot: bot switches to its pistol secondary."
@@ -109,7 +109,7 @@
   "CCSPlayer_WeaponServices::SelectItem": {
     "signatures": {
       "library": "server",
-      "windows": "48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 48 83 EC ? 41 8B E8 48 8B DA 48 8B F1",
+      "windows": "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 20 41 8B E8 48 8B DA 48 8B F9 E8 ? ? ? ?",
       "linux": ""
     },
     "comment": "Funnel for any weapon switch"
@@ -157,7 +157,7 @@
   "BuyState::OnUpdate": {
     "signatures": {
       "library": "server",
-      "windows": "48 89 54 24 ? 48 89 4C 24 ? 55 57 41 54 48 8D AC 24",
+      "windows": "48 89 54 24 10 48 89 4C 24 08 55 53 41 55 48 8D AC 24 70 F7 FF FF 48 81 EC 90 09 00 00 48 8B 05 ? ? ? ?",
       "linux": ""
     },
     "comment": "Bot buy state per-tick ordering; issues buy commands. linux: TODO"
@@ -179,7 +179,7 @@
   "CCSBot::UpdateLookAngles": {
     "signatures": {
       "library": "server",
-      "windows": "40 55 53 56 57 48 8D 6C 24 ? 48 81 EC ? ? ? ? 48 8D 05",
+      "windows": "40 55 53 56 41 56 48 8D 6C 24 C1 48 81 EC D8 00 00 00 48 8D 05 ? ? ? ? 48 C7 45 A7 5D 00 00 00",
       "linux": ""
     },
     "comment": "Spring-smooths view to m_lookPitch/m_lookYaw."
@@ -187,7 +187,7 @@
   "CCSPlayerPawn::SetEyeAngles": {
     "signatures": {
       "library": "server",
-      "windows": "48 89 5C 24 ? 48 89 74 24 ? 48 89 7C 24 ? 55 48 8D 6C 24 ? 48 81 EC ? ? ? ? 48 8B DA 48 8B F1 48 8D 55",
+      "windows": "48 89 7C 24 20 55 48 8B EC 48 81 EC 80 00 00 00 48 8B F9 48 8D 4D A0 E8 ? ? ? ? F2 0F 10 87 C8 0B 00 00",
       "linux": ""
     },
     "comment": "Engine eye-angle."
@@ -203,7 +203,7 @@
   "CCSBot::LadderStateUpdate": {
     "signatures": {
       "library": "server",
-      "windows": "40 53 48 83 EC 20 80 79 14 00 48 8B D9 0F 84 ? ? ? ? 48 8B 01 C6 41 14 00 48 83 B8 ? ? ? ? 00",
+      "windows": "40 53 48 83 EC 20 80 79 14 00 48 8B D9 74 ? 48 8B 01 C6 41 14 00 48 83 B8 78 4F 00 00 00 74 ?",
       "linux": ""
     },
     "comment": "Boolean ladder traversal wrapper; first member points to CCSBot. Replay suppresses navigation Teleport while retaining native player ladder physics."
@@ -346,7 +346,7 @@
   },
   "AvatarHud::DispatchEventAsync": {
     "signatures": {
-      "windows": "48 8B C4 53 56 57 41 54 48 81 EC A8 00 00 00 48 89 68 18 BA FF FF FF FF 4C 89 70 D0 4D 8B E0 0F 29 70 B8 4C 8B F1 0F 29 78 A8"
+      "windows": "48 8B C4 53 56 57 41 54 48 81 EC A8 00 00 00 48 89 68 18 4D 8B E0 4C 89 78 C8 48 8D 2D ? ? ? ?"
     },
     "comment": "Optional local client HUD bridge; validate the matching engine/client ABI before installing."
   },

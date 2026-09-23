@@ -136,7 +136,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
             writer = new MemoryFunctionWithReturn<nint, string, float, int>(
                 RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
                     ? "55 48 89 E5 41 57 41 56 49 89 FE 41 55 41 54 53 48 89 F3 48 83 EC ? F3 0F 11 85"
-                    : "40 53 55 41 56 48 81 EC ? ? ? ? 0F 29 74 24");
+                    : "48 89 4C 24 08 53 41 55 41 56 48 81 EC A0 00 00 00 0F 29 74 24 70 48 8B DA 0F 28 F2 4C 8B E9 E8 ? ? ? ?");
         }
         catch (Exception exception)
         {

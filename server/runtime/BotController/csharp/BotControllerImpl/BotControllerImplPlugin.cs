@@ -52,12 +52,23 @@ public partial class BotControllerPlugin : BasePlugin
         catch (KeyNotFoundException) { return false; }
     }
 
-    // Loads the managed plugin and publishes its shared API
+    private bool _providerReady;
+
+    // CSS can load its managed plugins before Metamod has loaded BotController.
     public override void Load(bool hotReload)
     {
+        RegisterListener<Listeners.OnMetamodAllPluginsLoaded>(() => InitializeProvider(true));
+        if (hotReload) InitializeProvider(true);
+    }
+
+    public override void OnAllPluginsLoaded(bool hotReload) => InitializeProvider(hotReload);
+
+    private void InitializeProvider(bool reportFailure)
+    {
+        if (_providerReady) return;
         if (!BotController.IsCompatible())
         {
-            Server.PrintToConsole("[BotController] BotController ABI mismatch; disabled.");
+            if (reportFailure) Server.PrintToConsole("[BotController] Native runtime unavailable or ABI mismatch; disabled.");
             return;
         }
 
@@ -66,6 +77,8 @@ public partial class BotControllerPlugin : BasePlugin
         Capabilities.RegisterPluginCapability(
             BotControllerCapability.Cap, () => _api);
 
+        _providerReady = true;
+        Server.PrintToConsole("[BotController] managed provider ready; runtime ABI 21, public API 20");
         Directory.CreateDirectory(RecordingsDir);
         RegisterListener<Listeners.OnTick>(() => _api.ObserveDemoTracerOwnership(IsDemoTracerOwner, ClearProjectileReplay));
         RegisterListener<Listeners.OnTick>(ProcessPendingProjectileCandidates);
@@ -78,7 +91,7 @@ public partial class BotControllerPlugin : BasePlugin
     // Clears projectile alignment state during managed plugin unload
     public override void Unload(bool hotReload)
     {
-        ReleaseAllOwnedState();
+        if (_providerReady) ReleaseAllOwnedState();
     }
 
     private void ReleaseOwnedSlot(int slot)
