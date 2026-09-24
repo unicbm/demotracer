@@ -12,22 +12,10 @@ using CounterStrikeSharp.API.Modules.Memory.DynamicFunctions;
 
 namespace DemoTracer;
 
-internal sealed class ProjectilePhysicsHook(string serverPath, Action<nint> beforePhysics) : IDisposable
+internal sealed class ProjectilePhysicsHook(string serverPath, string profilePath, Action<nint> beforePhysics) : IDisposable
 {
-    // This is the shared projectile slot 228
-    // implementation, not the player/controller PhysicsSimulate hook.
-    internal const string ServerSha256 = "4f5c59c1153eb5f455f9131f80458bc2b9a6d1d7f30d170a2030d800685c00e8";
-    internal const string BodySha256 = "e98fbf6bf05707520d8f3874b07e1ee15644bb19641794b98d0e26f8a640de81";
-    internal const int EntryRva = 0x9c6ce0;
-    internal const int BodyLength = 0x9c77ad - EntryRva;
-    internal static ReadOnlySpan<int> VtableSlotRvas =>
-        [0x17c4ae0, 0x17c60e8, 0x17c5528, 0x18e7188, 0x18e5700, 0x18e4030];
-
-    private const string Signature =
-        "48 89 5C 24 18 48 89 74 24 20 55 41 56 41 57 48 8D AC 24 30 FF FF FF 48 81 EC D0 01 00 00";
-
     // Win64: this, position*, velocity*, angles*, angularVelocity*. The fifth
-    // argument is read at entry RSP+0x28 (function 0x9c760d). All four output
+    // argument is read at entry RSP+0x28. All four output
     // vectors and every original argument remain owned by the engine.
     private MemoryFunctionVoid<nint, nint, nint, nint, nint>? _function;
     private bool _attached;
@@ -48,23 +36,25 @@ internal sealed class ProjectilePhysicsHook(string serverPath, Action<nint> befo
             var modules = process.Modules.Cast<ProcessModule>().ToArray();
             var module = modules[FindGameServerModuleIndex(
                 modules.Select(m => m.FileName).ToArray(), serverPath)];
-            using var file = File.OpenRead(module.FileName);
-            if (!MatchesHash(SHA256.HashData(file), ServerSha256))
-                throw new InvalidOperationException("unsupported_server_binary");
-            if (!OffsetsFitImage(module.ModuleMemorySize))
+            var profile = ProjectilePhysicsProfile.Load(profilePath);
+            byte[] file = File.ReadAllBytes(module.FileName);
+            if (!NativeCompatibility.PeImageFingerprint.Compute(file).Equals(profile.ImageSha256, StringComparison.Ordinal))
+                throw new InvalidOperationException("unsupported_server_image:audit_native_profile");
+            int entryRva = profile.ResolveEntry(file);
+            if (!profile.OffsetsFitImage(module.ModuleMemorySize))
                 throw new InvalidOperationException("invalid_server_image_size");
 
-            var body = new byte[BodyLength];
-            Marshal.Copy(module.BaseAddress + EntryRva, body, 0, body.Length);
-            if (!MatchesHash(SHA256.HashData(body), BodySha256))
+            var body = new byte[profile.BodyLength];
+            Marshal.Copy(module.BaseAddress + entryRva, body, 0, body.Length);
+            if (!MatchesHash(SHA256.HashData(body), profile.BodySha256))
                 throw new InvalidOperationException("physics_body_changed_or_already_detoured");
-            foreach (var rva in VtableSlotRvas)
+            foreach (var rva in profile.VtableSlotRvas)
             {
-                if (Marshal.ReadIntPtr(module.BaseAddress + rva) != module.BaseAddress + EntryRva)
+                if (Marshal.ReadIntPtr(module.BaseAddress + rva) != module.BaseAddress + entryRva)
                     throw new InvalidOperationException("projectile_vtable_mismatch");
             }
 
-            _function = new(Signature, module.FileName);
+            _function = new(profile.Signature, module.FileName);
             _function.Hook(OnPre, HookMode.Pre);
             _attached = true;
             Ready = true;
@@ -89,9 +79,6 @@ internal sealed class ProjectilePhysicsHook(string serverPath, Action<nint> befo
             throw new InvalidOperationException($"game_server_module_matches={matches.Length}");
         return matches[0];
     }
-
-    internal static bool OffsetsFitImage(int size)
-        => size >= EntryRva + BodyLength && VtableSlotRvas.ToArray().All(rva => rva <= size - sizeof(long));
 
     private HookResult OnPre(DynamicHook hook)
     {

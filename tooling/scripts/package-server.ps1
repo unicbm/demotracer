@@ -321,6 +321,7 @@ Copy-RequiredFile (Join-Path $cssOut "ZstdSharp.dll") (Join-Path $pluginOut "Zst
 Copy-RequiredFile (Join-Path $repoRoot "server\plugins\DemoTracer\THIRD_PARTY_NOTICES.md") (Join-Path $pluginOut "THIRD_PARTY_NOTICES.md")
 Copy-RequiredFile (Join-Path $cssOut "cs2-lib-econ-index.v1.json") (Join-Path $pluginOut "cs2-lib-econ-index.v1.json")
 Copy-RequiredFile (Join-Path $repoRoot "server\plugins\DemoTracer\demotracer.config.example.json") (Join-Path $pluginOut "demotracer.config.example.json")
+Copy-RequiredFile (Join-Path $cssOut "demotracer-native.json") (Join-Path $pluginOut "demotracer-native.json")
 $demoTracerApiSharedOut = Join-Path $stageRoot "addons\counterstrikesharp\shared\DemoTracerApi"
 Copy-RequiredFile (Join-Path $apiOut "DemoTracerApi.dll") (Join-Path $demoTracerApiSharedOut "DemoTracerApi.dll")
 $botRandomizerApiSharedOut = Join-Path $stageRoot "addons\counterstrikesharp\shared\BotRandomizerApi"

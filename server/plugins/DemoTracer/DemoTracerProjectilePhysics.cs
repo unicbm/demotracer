@@ -18,7 +18,7 @@ public sealed partial class DemoTracerPlugin
 
     private void InstallProjectilePhysicsHook()
     {
-        _projectilePhysicsHook = new(Addresses.ServerPath, ProcessProjectileFirstPhysics);
+        _projectilePhysicsHook = new(Addresses.ServerPath, Path.Combine(Path.GetDirectoryName(ModulePath)!, "demotracer-native.json"), ProcessProjectileFirstPhysics);
         _projectilePhysicsHook.Install();
         Server.PrintToConsole($"dtr: projectile birth boundary {ProjectilePhysicsHookStatus}");
         if (_projectilePhysicsHook.Ready)

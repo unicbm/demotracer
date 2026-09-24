@@ -92,9 +92,10 @@ public sealed class PendingProjectileBirthsTests
     [Fact]
     public void ImageValidationIncludesTheLastCompleteVtablePointer()
     {
-        var minimum = ProjectilePhysicsHook.VtableSlotRvas.ToArray().Max() + sizeof(long);
-        Assert.True(ProjectilePhysicsHook.OffsetsFitImage(minimum));
-        Assert.False(ProjectilePhysicsHook.OffsetsFitImage(minimum - 1));
-        Assert.False(ProjectilePhysicsHook.OffsetsFitImage(0));
+        var profile = ProjectilePhysicsProfile.Load(Path.Combine(AppContext.BaseDirectory, "demotracer-native.json"));
+        var minimum = profile.VtableSlotRvas.Max() + sizeof(long);
+        Assert.True(profile.OffsetsFitImage(minimum));
+        Assert.False(profile.OffsetsFitImage(minimum - 1));
+        Assert.False(profile.OffsetsFitImage(0));
     }
 }

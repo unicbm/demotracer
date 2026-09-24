@@ -12,6 +12,27 @@ The maintained release combines these projects as one versioned playback
 bundle. Do not mix binaries from different builds: the manifest, native ABI,
 BotHider API, and CounterStrikeSharp reader must remain compatible.
 
+## Projectile hook compatibility profile
+
+The managed plugin ships `demotracer-native.json` beside `DemoTracer.dll`.
+The project and playback packaging script both include this file. Keep the
+profile with its matching plugin; missing or incompatible profiles disable
+projectile birth alignment with a diagnostic instead of using embedded offsets.
+
+Initialization validates a `pe-image-v1` fingerprint, resolves a unique signature
+in executable sections to the reviewed entry, checks the complete loaded function
+body and projectile vtable pointers, then registers through CounterStrikeSharp.
+The fingerprint includes PE headers, section layout, code, data, relocations,
+unwind information and PDB GUID. It normalizes build timestamps, checksum,
+certificate location and CodeView age, and excludes the DOS stub and file overlay.
+Only metadata-equivalent rebuilds are accepted automatically. Code, ABI or layout
+changes still require binary review and an updated profile; a matching prologue
+alone is insufficient. Restart after installing a reviewed profile.
+
+`PeImageFingerprint.cs` is shared with CS2-Bot-Improver-light under its retained
+GPL-3.0-or-later notice. Keep the algorithm and mutation tests synchronized when
+changing either implementation. No additional native hook engine is introduced.
+
 ## Shared hook runtime
 
 BotController and BotHider use the single [KHook](https://github.com/Kenzzer/KHook)
