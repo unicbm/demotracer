@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2026 unicbm. Shared with DemoTracer under the same license.
+// Copyright (c) 2026 unicbm. All rights reserved.
+// Shared with DemoTracer under the same GPL-3.0-or-later license.
 using System.Buffers.Binary;
 using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
