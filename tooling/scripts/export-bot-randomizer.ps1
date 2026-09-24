@@ -25,9 +25,14 @@ foreach ($name in @('BotRandomizer.cs', 'BotRandomizerApiFacade.cs', 'BotRandomi
     $copies[$name] = Join-Path $provider $name
 }
 foreach ($dir in @('Cosmetics', 'tests', 'tools')) {
-    $paths = & rg --files (Join-Path $provider $dir) -g '*.cs' -g '*.csproj' -g '*.ps1' -g '!bin/**' -g '!obj/**' -g '!**/bin/**' -g '!**/obj/**'
-    if ($LASTEXITCODE -gt 1) { throw 'Cannot enumerate provider source' }
-    foreach ($path in $paths) { $copies[[IO.Path]::GetRelativePath($provider, $path)] = $path }
+    # Git is already required by the exporter and CI; export only maintained source.
+    $paths = & git -C $repo ls-files -- "server/runtime/BotRandomizer/$dir"
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate provider source' }
+    foreach ($path in $paths) {
+        if ($path -notmatch '\.(cs|csproj|ps1)$' -or $path -match '(^|/)(bin|obj)/') { continue }
+        $source = Join-Path $repo $path
+        $copies[[IO.Path]::GetRelativePath($provider, $source)] = $source
+    }
 }
 foreach ($name in @('BotRandomizerApi.csproj', 'IBotRandomizerApi.cs', 'UPSTREAM.md', '.gitignore')) {
     $copies['BotRandomizerApi/' + $name] = Join-Path $repo "server/vendor/BotRandomizerApi/$name"
