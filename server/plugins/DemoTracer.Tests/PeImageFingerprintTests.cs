@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2026 unicbm. All rights reserved.
 using System.Buffers.Binary;
 using NativeCompatibility;
 using Xunit;

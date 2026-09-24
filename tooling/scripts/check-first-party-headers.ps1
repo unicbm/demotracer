@@ -38,6 +38,11 @@ $null = $excludedFiles.Add("desktop\gui\src\vite-env.d.ts")
 
 $copyrightMarker = "Copyright (c) 2026 unicbm. All rights reserved."
 $licenseMarker = "Licensed under the GNU Affero General Public License v3.0 only."
+# Shared compatibility sources retain their original license; validate it explicitly.
+$retainedLicenseMarkers = @{
+    "server\plugins\DemoTracer\PeImageFingerprint.cs" = "SPDX-License-Identifier: GPL-3.0-or-later"
+    "server\plugins\DemoTracer.Tests\PeImageFingerprintTests.cs" = "SPDX-License-Identifier: GPL-3.0-or-later"
+}
 $missingHeaders = [System.Collections.Generic.List[string]]::new()
 $checkedCount = 0
 
@@ -75,8 +80,12 @@ foreach ($repositoryPath in $repositoryFiles) {
     $source = [System.IO.File]::ReadAllText($absolutePath)
     $prefixLength = [Math]::Min(640, $source.Length)
     $prefix = $source.Substring(0, $prefixLength)
+    $expectedLicenseMarker = $licenseMarker
+    if ($retainedLicenseMarkers.ContainsKey($relativePath)) {
+        $expectedLicenseMarker = $retainedLicenseMarkers[$relativePath]
+    }
     if (-not $prefix.Contains($copyrightMarker, [System.StringComparison]::Ordinal) -or
-        -not $prefix.Contains($licenseMarker, [System.StringComparison]::Ordinal)) {
+        -not $prefix.Contains($expectedLicenseMarker, [System.StringComparison]::Ordinal)) {
         $missingHeaders.Add($relativePath)
     }
 }
