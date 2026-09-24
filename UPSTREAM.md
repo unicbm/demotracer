@@ -1,5 +1,49 @@
 # Upstream tracking
 
+## Current baseline: 2026-09-24
+
+Unified provider **1.7.0**, replay API **v3**, reviews standalone `main` at
+[`6e9986270aac9c0405a7430a2f26727e7aff3c48`](https://github.com/ed0ard/CS2-Bot-Randomizer/commit/6e9986270aac9c0405a7430a2f26727e7aff3c48).
+The four September 23 commits switch the entrypoint to the modular cosmetics
+implementation and pair agent models with econ definitions. The maintained
+provider already contains those behaviors, including the same agent item/model
+pairs, with stricter human-preview assignment and replay ownership handling.
+There is no new upstream cosmetic catalog in those commits. Do not replace the
+provider wholesale with upstream 1.3.1: it lacks the replay-plan API and Panel
+category controls retained here.
+
+Both runtime catalogs now use published `@ianlucas/cs2-lib` **9.2.0**, source
+commit `94a5fce488f5976255d74b643bd58f993c04a86f`. This adds 579 stickers
+(10,565 -> 11,144), preserving the existing weapon, knife, glove, charm and
+music pools. The generator also recognizes compound sticker finishes such as
+Ranked and Champion instead of classifying them as paper. Historical aggregate
+knife preferences remain unchanged. See
+[`tooling/cs2-lib-data`](../../../tooling/cs2-lib-data/README.md) for the exact
+pin, reproducible generation, source monitoring and review-only candidate CI.
+Unpublished cs2-lib main changes are not silently mixed into this release.
+
+The standalone export includes the complete optional API, provider, self-tests,
+data generation and CI. `tools/package.ps1` produces one common ZIP for ordinary
+bot matches and playback. DemoTracer's packager validates and imports that ZIP;
+it does not compile a different replay provider. Upstream submission remains a
+separate maintainer-reviewed action; a local export is not an upstream release.
+
+Hook management uses the shared KHook host baseline in the playback contract.
+The pinned CounterStrikeSharp source routes managed `Hook/Unhook` to
+`KHook::SetupHook/RemoveHook` and signature lookup to `KHook::LookupSignature`.
+The Randomizer adds no native engine of its own. The common provider
+keeps this single engine and the separate API v3 cosmetic ownership policy;
+KHook alone does not prevent two providers from writing the same inventory.
+
+The existing September 23 Windows attribute-writer signature is retained: it
+already targets the new entrypoint and is more specific than the proposed
+upstream PR #8 pattern. That PR was still unmerged at review. The Linux pattern
+and real-server behavior are not certified by this data update; see
+[`docs/SIGNATURES.md`](../../../docs/SIGNATURES.md) for the platform baseline.
+
+The following sections describe historical comparisons; their API/version
+numbers identify those historical providers, not the current contract.
+
 This maintained provider tracks both upstream source and the Windows build
 actually distributed with CS2-Bot-Improver:
 

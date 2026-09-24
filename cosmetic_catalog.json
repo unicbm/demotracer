@@ -1,7 +1,10 @@
 {
   "source": {
     "repository": "ianlucas/cs2-lib",
-    "commit": "e8057c583e89d6b7a37f27e1cb7ebdbe94dd6238",
+    "commit": "94a5fce488f5976255d74b643bd58f993c04a86f",
+    "package": "@ianlucas/cs2-lib",
+    "version": "9.2.0",
+    "integrity": "sha512-KeQ5DPaKr1sj7aVSZOGDRfWEAOe5JFATHmfkzfn8PpSNBJGqTgZvCXU15N0DEaU175cews80sADQpNFM4vHOrA==",
     "proDemo": {
       "logicalMaps": 269,
       "knifeObservations": 741,
@@ -41731,17 +41734,17 @@
     },
     {
       "defIndex": 5877,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 20
     },
     {
       "defIndex": 5878,
-      "finish": "paper",
+      "finish": "holo",
       "category": 20
     },
     {
       "defIndex": 5879,
-      "finish": "paper",
+      "finish": "gold",
       "category": 20
     },
     {
@@ -41751,17 +41754,17 @@
     },
     {
       "defIndex": 5881,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 20
     },
     {
       "defIndex": 5882,
-      "finish": "paper",
+      "finish": "holo",
       "category": 20
     },
     {
       "defIndex": 5883,
-      "finish": "paper",
+      "finish": "gold",
       "category": 20
     },
     {
@@ -41771,17 +41774,17 @@
     },
     {
       "defIndex": 5885,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 20
     },
     {
       "defIndex": 5886,
-      "finish": "paper",
+      "finish": "holo",
       "category": 20
     },
     {
       "defIndex": 5887,
-      "finish": "paper",
+      "finish": "gold",
       "category": 20
     },
     {
@@ -41791,17 +41794,17 @@
     },
     {
       "defIndex": 5889,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 20
     },
     {
       "defIndex": 5890,
-      "finish": "paper",
+      "finish": "holo",
       "category": 20
     },
     {
       "defIndex": 5891,
-      "finish": "paper",
+      "finish": "gold",
       "category": 20
     },
     {
@@ -41811,17 +41814,17 @@
     },
     {
       "defIndex": 5893,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 20
     },
     {
       "defIndex": 5894,
-      "finish": "paper",
+      "finish": "holo",
       "category": 20
     },
     {
       "defIndex": 5895,
-      "finish": "paper",
+      "finish": "gold",
       "category": 20
     },
     {
@@ -45056,17 +45059,17 @@
     },
     {
       "defIndex": 6567,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 40
     },
     {
       "defIndex": 6568,
-      "finish": "paper",
+      "finish": "holo",
       "category": 40
     },
     {
       "defIndex": 6569,
-      "finish": "paper",
+      "finish": "gold",
       "category": 40
     },
     {
@@ -45076,17 +45079,17 @@
     },
     {
       "defIndex": 6571,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 40
     },
     {
       "defIndex": 6572,
-      "finish": "paper",
+      "finish": "holo",
       "category": 40
     },
     {
       "defIndex": 6573,
-      "finish": "paper",
+      "finish": "gold",
       "category": 40
     },
     {
@@ -45096,17 +45099,17 @@
     },
     {
       "defIndex": 6575,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 40
     },
     {
       "defIndex": 6576,
-      "finish": "paper",
+      "finish": "holo",
       "category": 40
     },
     {
       "defIndex": 6577,
-      "finish": "paper",
+      "finish": "gold",
       "category": 40
     },
     {
@@ -45116,17 +45119,17 @@
     },
     {
       "defIndex": 6579,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 40
     },
     {
       "defIndex": 6580,
-      "finish": "paper",
+      "finish": "holo",
       "category": 40
     },
     {
       "defIndex": 6581,
-      "finish": "paper",
+      "finish": "gold",
       "category": 40
     },
     {
@@ -45136,17 +45139,17 @@
     },
     {
       "defIndex": 6583,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 40
     },
     {
       "defIndex": 6584,
-      "finish": "paper",
+      "finish": "holo",
       "category": 40
     },
     {
       "defIndex": 6585,
-      "finish": "paper",
+      "finish": "gold",
       "category": 40
     },
     {
@@ -48166,17 +48169,17 @@
     },
     {
       "defIndex": 7214,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 26
     },
     {
       "defIndex": 7215,
-      "finish": "paper",
+      "finish": "holo",
       "category": 26
     },
     {
       "defIndex": 7216,
-      "finish": "paper",
+      "finish": "gold",
       "category": 26
     },
     {
@@ -48186,17 +48189,17 @@
     },
     {
       "defIndex": 7218,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 26
     },
     {
       "defIndex": 7219,
-      "finish": "paper",
+      "finish": "holo",
       "category": 26
     },
     {
       "defIndex": 7220,
-      "finish": "paper",
+      "finish": "gold",
       "category": 26
     },
     {
@@ -48206,17 +48209,17 @@
     },
     {
       "defIndex": 7222,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 26
     },
     {
       "defIndex": 7223,
-      "finish": "paper",
+      "finish": "holo",
       "category": 26
     },
     {
       "defIndex": 7224,
-      "finish": "paper",
+      "finish": "gold",
       "category": 26
     },
     {
@@ -48226,17 +48229,17 @@
     },
     {
       "defIndex": 7226,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 26
     },
     {
       "defIndex": 7227,
-      "finish": "paper",
+      "finish": "holo",
       "category": 26
     },
     {
       "defIndex": 7228,
-      "finish": "paper",
+      "finish": "gold",
       "category": 26
     },
     {
@@ -48246,17 +48249,17 @@
     },
     {
       "defIndex": 7230,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 26
     },
     {
       "defIndex": 7231,
-      "finish": "paper",
+      "finish": "holo",
       "category": 26
     },
     {
       "defIndex": 7232,
-      "finish": "paper",
+      "finish": "gold",
       "category": 26
     },
     {
@@ -51271,17 +51274,17 @@
     },
     {
       "defIndex": 7860,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 46
     },
     {
       "defIndex": 7861,
-      "finish": "paper",
+      "finish": "holo",
       "category": 46
     },
     {
       "defIndex": 7862,
-      "finish": "paper",
+      "finish": "gold",
       "category": 46
     },
     {
@@ -51291,17 +51294,17 @@
     },
     {
       "defIndex": 7864,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 46
     },
     {
       "defIndex": 7865,
-      "finish": "paper",
+      "finish": "holo",
       "category": 46
     },
     {
       "defIndex": 7866,
-      "finish": "paper",
+      "finish": "gold",
       "category": 46
     },
     {
@@ -51311,17 +51314,17 @@
     },
     {
       "defIndex": 7868,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 46
     },
     {
       "defIndex": 7869,
-      "finish": "paper",
+      "finish": "holo",
       "category": 46
     },
     {
       "defIndex": 7870,
-      "finish": "paper",
+      "finish": "gold",
       "category": 46
     },
     {
@@ -51331,17 +51334,17 @@
     },
     {
       "defIndex": 7872,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 46
     },
     {
       "defIndex": 7873,
-      "finish": "paper",
+      "finish": "holo",
       "category": 46
     },
     {
       "defIndex": 7874,
-      "finish": "paper",
+      "finish": "gold",
       "category": 46
     },
     {
@@ -51351,17 +51354,17 @@
     },
     {
       "defIndex": 7876,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 46
     },
     {
       "defIndex": 7877,
-      "finish": "paper",
+      "finish": "holo",
       "category": 46
     },
     {
       "defIndex": 7878,
-      "finish": "paper",
+      "finish": "gold",
       "category": 46
     },
     {
@@ -54506,17 +54509,17 @@
     },
     {
       "defIndex": 8534,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 43
     },
     {
       "defIndex": 8535,
-      "finish": "paper",
+      "finish": "holo",
       "category": 43
     },
     {
       "defIndex": 8536,
-      "finish": "paper",
+      "finish": "gold",
       "category": 43
     },
     {
@@ -54526,17 +54529,17 @@
     },
     {
       "defIndex": 8538,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 43
     },
     {
       "defIndex": 8539,
-      "finish": "paper",
+      "finish": "holo",
       "category": 43
     },
     {
       "defIndex": 8540,
-      "finish": "paper",
+      "finish": "gold",
       "category": 43
     },
     {
@@ -54546,17 +54549,17 @@
     },
     {
       "defIndex": 8542,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 43
     },
     {
       "defIndex": 8543,
-      "finish": "paper",
+      "finish": "holo",
       "category": 43
     },
     {
       "defIndex": 8544,
-      "finish": "paper",
+      "finish": "gold",
       "category": 43
     },
     {
@@ -54566,17 +54569,17 @@
     },
     {
       "defIndex": 8546,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 43
     },
     {
       "defIndex": 8547,
-      "finish": "paper",
+      "finish": "holo",
       "category": 43
     },
     {
       "defIndex": 8548,
-      "finish": "paper",
+      "finish": "gold",
       "category": 43
     },
     {
@@ -54586,17 +54589,17 @@
     },
     {
       "defIndex": 8550,
-      "finish": "paper",
+      "finish": "glitter",
       "category": 43
     },
     {
       "defIndex": 8551,
-      "finish": "paper",
+      "finish": "holo",
       "category": 43
     },
     {
       "defIndex": 8552,
-      "finish": "paper",
+      "finish": "gold",
       "category": 43
     },
     {
@@ -58831,17 +58834,17 @@
     },
     {
       "defIndex": 9432,
-      "finish": "paper",
+      "finish": "foil",
       "category": 25
     },
     {
       "defIndex": 9433,
-      "finish": "paper",
+      "finish": "holo",
       "category": 25
     },
     {
       "defIndex": 9434,
-      "finish": "paper",
+      "finish": "gold",
       "category": 25
     },
     {
@@ -58851,17 +58854,17 @@
     },
     {
       "defIndex": 9436,
-      "finish": "paper",
+      "finish": "foil",
       "category": 25
     },
     {
       "defIndex": 9437,
-      "finish": "paper",
+      "finish": "holo",
       "category": 25
     },
     {
       "defIndex": 9438,
-      "finish": "paper",
+      "finish": "gold",
       "category": 25
     },
     {
@@ -58871,17 +58874,17 @@
     },
     {
       "defIndex": 9440,
-      "finish": "paper",
+      "finish": "foil",
       "category": 25
     },
     {
       "defIndex": 9441,
-      "finish": "paper",
+      "finish": "holo",
       "category": 25
     },
     {
       "defIndex": 9442,
-      "finish": "paper",
+      "finish": "gold",
       "category": 25
     },
     {
@@ -58891,17 +58894,17 @@
     },
     {
       "defIndex": 9444,
-      "finish": "paper",
+      "finish": "foil",
       "category": 25
     },
     {
       "defIndex": 9445,
-      "finish": "paper",
+      "finish": "holo",
       "category": 25
     },
     {
       "defIndex": 9446,
-      "finish": "paper",
+      "finish": "gold",
       "category": 25
     },
     {
@@ -58911,17 +58914,17 @@
     },
     {
       "defIndex": 9448,
-      "finish": "paper",
+      "finish": "foil",
       "category": 25
     },
     {
       "defIndex": 9449,
-      "finish": "paper",
+      "finish": "holo",
       "category": 25
     },
     {
       "defIndex": 9450,
-      "finish": "paper",
+      "finish": "gold",
       "category": 25
     },
     {
@@ -62986,12 +62989,12 @@
     },
     {
       "defIndex": 10296,
-      "finish": "paper",
+      "finish": "holo",
       "category": 54
     },
     {
       "defIndex": 10297,
-      "finish": "paper",
+      "finish": "gold",
       "category": 54
     },
     {
@@ -63006,12 +63009,12 @@
     },
     {
       "defIndex": 10300,
-      "finish": "paper",
+      "finish": "holo",
       "category": 54
     },
     {
       "defIndex": 10301,
-      "finish": "paper",
+      "finish": "gold",
       "category": 54
     },
     {
@@ -63026,12 +63029,12 @@
     },
     {
       "defIndex": 10304,
-      "finish": "paper",
+      "finish": "holo",
       "category": 54
     },
     {
       "defIndex": 10305,
-      "finish": "paper",
+      "finish": "gold",
       "category": 54
     },
     {
@@ -63046,12 +63049,12 @@
     },
     {
       "defIndex": 10308,
-      "finish": "paper",
+      "finish": "holo",
       "category": 54
     },
     {
       "defIndex": 10309,
-      "finish": "paper",
+      "finish": "gold",
       "category": 54
     },
     {
@@ -63066,12 +63069,12 @@
     },
     {
       "defIndex": 10312,
-      "finish": "paper",
+      "finish": "holo",
       "category": 54
     },
     {
       "defIndex": 10313,
-      "finish": "paper",
+      "finish": "gold",
       "category": 54
     },
     {
@@ -67206,17 +67209,17 @@
     },
     {
       "defIndex": 11175,
-      "finish": "paper",
+      "finish": "foil",
       "category": 39
     },
     {
       "defIndex": 11176,
-      "finish": "paper",
+      "finish": "holo",
       "category": 39
     },
     {
       "defIndex": 11177,
-      "finish": "paper",
+      "finish": "gold",
       "category": 39
     },
     {
@@ -67226,17 +67229,17 @@
     },
     {
       "defIndex": 11179,
-      "finish": "paper",
+      "finish": "foil",
       "category": 39
     },
     {
       "defIndex": 11180,
-      "finish": "paper",
+      "finish": "holo",
       "category": 39
     },
     {
       "defIndex": 11181,
-      "finish": "paper",
+      "finish": "gold",
       "category": 39
     },
     {
@@ -67246,17 +67249,17 @@
     },
     {
       "defIndex": 11183,
-      "finish": "paper",
+      "finish": "foil",
       "category": 39
     },
     {
       "defIndex": 11184,
-      "finish": "paper",
+      "finish": "holo",
       "category": 39
     },
     {
       "defIndex": 11185,
-      "finish": "paper",
+      "finish": "gold",
       "category": 39
     },
     {
@@ -67266,17 +67269,17 @@
     },
     {
       "defIndex": 11187,
-      "finish": "paper",
+      "finish": "foil",
       "category": 39
     },
     {
       "defIndex": 11188,
-      "finish": "paper",
+      "finish": "holo",
       "category": 39
     },
     {
       "defIndex": 11189,
-      "finish": "paper",
+      "finish": "gold",
       "category": 39
     },
     {
@@ -67286,17 +67289,17 @@
     },
     {
       "defIndex": 11191,
-      "finish": "paper",
+      "finish": "foil",
       "category": 39
     },
     {
       "defIndex": 11192,
-      "finish": "paper",
+      "finish": "holo",
       "category": 39
     },
     {
       "defIndex": 11193,
-      "finish": "paper",
+      "finish": "gold",
       "category": 39
     },
     {
@@ -67503,6 +67506,2901 @@
       "defIndex": 11234,
       "finish": "lenticular",
       "category": 41
+    },
+    {
+      "defIndex": 11235,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11236,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11237,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11238,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11239,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11240,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11241,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11242,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11243,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11244,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11245,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11246,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11247,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11248,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11249,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11250,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11251,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11252,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11253,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11254,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11255,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11256,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11257,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11258,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11259,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11260,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11261,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11262,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11263,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11264,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11265,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11266,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11267,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11268,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11269,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11270,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11271,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11272,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11273,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11274,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11275,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11276,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11277,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11278,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11279,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11280,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11281,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11282,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11283,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11284,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11285,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11286,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11287,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11288,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11289,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11290,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11291,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11292,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11293,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11294,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11295,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11296,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11297,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11298,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11299,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11300,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11301,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11302,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11303,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11304,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11305,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11306,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11307,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11308,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11309,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11310,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11311,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11312,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11313,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11314,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11315,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11316,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11317,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11318,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11319,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11320,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11321,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11322,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11323,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11324,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11325,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11326,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11327,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11328,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11329,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11330,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11331,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11332,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11333,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11334,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11335,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11336,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11337,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11338,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11339,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11340,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11341,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11342,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11343,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11344,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11345,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11346,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11347,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11348,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11349,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11350,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11351,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11352,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11353,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11354,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11355,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11356,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11357,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11358,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11359,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11360,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11361,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11362,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11363,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11364,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11365,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11366,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11367,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11368,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11369,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11370,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11371,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11372,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11373,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11374,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11375,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11376,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11377,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11378,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11379,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11380,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11381,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11382,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11383,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11384,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11385,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11386,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11387,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11388,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11389,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11390,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11391,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11392,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11393,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11394,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11395,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11396,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11397,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11398,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11399,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11400,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11401,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11402,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11403,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11404,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11405,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11406,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11407,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11408,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11409,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11410,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11411,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11412,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11413,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11414,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11415,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11416,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11417,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11418,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11419,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11420,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11421,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11422,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11423,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11424,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11425,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11426,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11427,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11428,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11429,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11430,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11431,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11432,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11433,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11434,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11435,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11436,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11437,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11438,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11439,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11440,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11441,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11442,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11443,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11444,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11445,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11446,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11447,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11448,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11449,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11450,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11451,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11452,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11453,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11454,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11455,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11456,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11457,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11458,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11459,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11460,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11461,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11462,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11463,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11464,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11465,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11466,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11467,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11468,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11469,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11470,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11471,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11472,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11473,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11474,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11475,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11476,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11477,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11478,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11479,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11480,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11481,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11482,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11483,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11484,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11485,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11486,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11487,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11488,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11489,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11490,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11491,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11492,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11493,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11494,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11495,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11496,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11497,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11498,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11499,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11500,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11501,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11502,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11503,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11504,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11505,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11506,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11507,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11508,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11509,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11510,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11511,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11512,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11513,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11514,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11515,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11516,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11517,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11518,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11519,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11520,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11521,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11522,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11523,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11524,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11525,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11526,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11527,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11528,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11529,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11530,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11531,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11532,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11533,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11534,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11535,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11536,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11537,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11538,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11539,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11540,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11541,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11542,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11543,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11544,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11545,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11546,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11547,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11548,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11549,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11550,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11551,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11552,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11553,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11554,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11555,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11556,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11557,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11558,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11559,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11560,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11561,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11562,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11563,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11564,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11565,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11566,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11567,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11568,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11569,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11570,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11571,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11572,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11573,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11574,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11575,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11576,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11577,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11578,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11579,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11580,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11581,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11582,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11583,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11584,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11585,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11586,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11587,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11588,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11589,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11590,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11591,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11592,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11593,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11594,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11595,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11596,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11597,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11598,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11599,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11600,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11601,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11602,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11603,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11604,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11605,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11606,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11607,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11608,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11609,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11610,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11611,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11612,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11613,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11614,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11615,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11616,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11617,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11618,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11619,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11620,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11621,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11622,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11623,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11624,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11625,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11626,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11627,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11628,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11629,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11630,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11631,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11632,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11633,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11634,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11635,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11636,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11637,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11638,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11639,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11640,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11641,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11642,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11643,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11644,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11645,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11646,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11647,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11648,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11649,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11650,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11651,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11652,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11653,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11654,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11655,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11656,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11657,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11658,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11659,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11660,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11661,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11662,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11663,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11664,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11665,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11666,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11667,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11668,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11669,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11670,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11671,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11672,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11673,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11674,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11675,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11676,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11677,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11678,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11679,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11680,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11681,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11682,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11683,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11684,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11685,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11686,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11687,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11688,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11689,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11690,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11691,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11692,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11693,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11694,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11695,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11696,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11697,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11698,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11699,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11700,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11701,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11702,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11703,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11704,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11705,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11706,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11707,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11708,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11709,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11710,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11711,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11712,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11713,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11714,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11715,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11716,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11717,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11718,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11719,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11720,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11721,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11722,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11723,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11724,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11725,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11726,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11727,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11728,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11729,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11730,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11731,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11732,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11733,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11734,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11735,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11736,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11737,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11738,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11739,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11740,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11741,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11742,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11743,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11744,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11745,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11746,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11747,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11748,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11749,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11750,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11751,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11752,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11753,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11754,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11755,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11756,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11757,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11758,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11759,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11760,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11761,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11762,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11763,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11764,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11765,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11766,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11767,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11768,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11769,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11770,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11771,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11772,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11773,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11774,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11775,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11776,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11777,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11778,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11779,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11780,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11781,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11782,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11783,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11784,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11785,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11786,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11787,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11788,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11789,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11790,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11791,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11792,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11793,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11794,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11795,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11796,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11797,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11798,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11799,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11800,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11801,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11802,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11803,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11804,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11805,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11806,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11807,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11808,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11809,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11810,
+      "finish": "gold",
+      "category": 39
+    },
+    {
+      "defIndex": 11811,
+      "finish": "foil",
+      "category": 39
+    },
+    {
+      "defIndex": 11812,
+      "finish": "holo",
+      "category": 39
+    },
+    {
+      "defIndex": 11813,
+      "finish": "gold",
+      "category": 39
     }
   ],
   "keychainDefinitions": [

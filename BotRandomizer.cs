@@ -42,8 +42,8 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
     }
 
     public override string ModuleName => "BotRandomizer";
-    public override string ModuleVersion => "1.6.4";
-    public override string ModuleAuthor => "ed0ard, Misaka17032 & unicbm";
+    public override string ModuleVersion => "1.7.0";
+    public override string ModuleAuthor => "ed0ard, Misaka17032, unicbm & XBribo";
     public override string ModuleDescription =>
         "Stable per-bot knives, gloves, weapon skins, stickers, charms, agents and music kits";
 
@@ -63,8 +63,21 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         Capabilities.RegisterPluginCapability(ApiCapability, () => (IBotRandomizerApi)_apiFacade);
         if (_weaponItemViews?.NativeAvailable == true)
         {
+            // The supported CSS host routes these hooks through Metamod's shared
+            // KHook engine. Keep registration here; never add a private detour.
             VirtualFunctions.GiveNamedItemFunc.Hook(OnGiveNamedItemPre, HookMode.Pre);
-            VirtualFunctions.GiveNamedItemFunc.Hook(OnGiveNamedItemPost, HookMode.Post);
+            try
+            {
+                VirtualFunctions.GiveNamedItemFunc.Hook(OnGiveNamedItemPost, HookMode.Post);
+            }
+            catch
+            {
+                VirtualFunctions.GiveNamedItemFunc.Unhook(OnGiveNamedItemPre, HookMode.Pre);
+                _weaponItemViews.Dispose();
+                _weaponItemViews = null;
+                _draining = true;
+                throw;
+            }
             _giveNamedItemHooked = true;
         }
 
@@ -76,6 +89,8 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
     {
         _draining = true;
         _writeLeases.Reset(countRevocation: true);
+        _states.Reset();
+        _pendingRerolls.Clear();
         if (_giveNamedItemHooked)
         {
             VirtualFunctions.GiveNamedItemFunc.Unhook(OnGiveNamedItemPre, HookMode.Pre);
@@ -225,7 +240,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
 
     private HookResult OnGiveNamedItemPre(DynamicHook hook)
     {
-        if (_catalog is null
+        if (_draining || _catalog is null
             || _roller is null
             || _weaponItemViews is null)
         {
@@ -460,7 +475,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
 
     private SlotCosmeticState? GetOrCreateState(CCSPlayerController? player)
     {
-        if (_roller is null
+        if (_draining || _roller is null
             || player is not { IsValid: true, IsBot: true, IsHLTV: false }
             || player.UserId is not int userId
             || !IsPlayableTeam(player.TeamNum))
@@ -595,7 +610,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         player = null!;
         pawn = null!;
         state = null!;
-        if (!_states.IsCurrent(slot, userId, generation))
+        if (_draining || !_states.IsCurrent(slot, userId, generation))
             return false;
 
         var resolved = Utilities.GetPlayerFromSlot(slot);

@@ -13,16 +13,24 @@ var placementPath = Path.Combine(catalogDirectory, "charm_placements.json");
 var charmPlacements = CharmPlacementCatalog.Load(placementPath, catalog);
 Assert(catalog.SourceRepository == "ianlucas/cs2-lib", "catalog source");
 Assert(catalog.WeaponCount == 35, "weapon count");
-Assert(catalog.WeaponPaintCount == 1456, "weapon paint count");
-Assert(catalog.KnifePaintCount == 556, "knife paint count");
-Assert(catalog.Gloves.Count == 94, "glove count");
-Assert(catalog.StickerCategories.Count == 61, "sticker category count");
-Assert(catalog.StickerKits.Count == 10565, "sticker count");
-Assert(catalog.KeychainDefinitions.Count == 81, "keychain count");
-Assert(catalog.MusicKits.Count == 98, "music kit count");
-Assert(replayEconIndex.SourceVersion == "8.4.0", "replay econ source version");
-Assert(replayEconIndex.WeaponPaintCount == 1456, "replay weapon paint count");
-Assert(replayEconIndex.MusicKitCount == 100, "replay music kit count");
+// Coverage floors detect accidental truncation while allowing new data-only
+// additions. The generator tests compare complete sets to the pinned upstream.
+Assert(catalog.WeaponPaintCount >= 1456, "weapon paint coverage");
+Assert(catalog.KnifePaintCount >= 556, "knife paint coverage");
+Assert(catalog.Gloves.Count >= 94, "glove coverage");
+Assert(catalog.StickerCategories.Count >= 61, "sticker category coverage");
+Assert(catalog.StickerKits.Count >= 11144, "sticker coverage includes September 2026 update");
+Assert(catalog.KeychainDefinitions.Count >= 81, "keychain coverage");
+Assert(catalog.MusicKits.Count >= 98, "music kit coverage");
+using var catalogJson = System.Text.Json.JsonDocument.Parse(File.ReadAllText(args[0]));
+Assert(replayEconIndex.SourceVersion == catalogJson.RootElement.GetProperty("source").GetProperty("version").GetString(),
+    "random and replay econ catalogs use the same source version");
+Assert(catalog.StickerKits.All(sticker => replayEconIndex.IsSticker(sticker.DefIndex)),
+    "every random sticker is replay-valid");
+Assert(catalog.StickerKits.Any(sticker => sticker.DefIndex == 11813 && sticker.Finish == StickerFinish.Gold),
+    "September Ranked Gold sticker is available for randomization and replay");
+Assert(replayEconIndex.WeaponPaintCount == catalog.WeaponPaintCount, "replay weapon paint coverage");
+Assert(replayEconIndex.MusicKitCount >= 100, "replay music kit coverage");
 Assert(replayEconIndex.IsMusicKit(1) && replayEconIndex.IsMusicKit(70),
     "valid demo music kits excluded from random pools remain replay-valid");
 Assert(replayEconIndex.TryGetWeaponPaint(4, 799, out var glockLegacy) && !glockLegacy,
@@ -126,9 +134,9 @@ var gloveWeights = catalog.Gloves
         group => group.Key,
         group => group.Sum(glove => RandomizerAssets.GetGloveVariantWeight(glove.DefIndex)));
 var gloveWeightTotal = gloveWeights.Values.Sum();
-Assert(gloveWeightTotal == 245, "glove weight total");
-Assert(gloveWeights[5030] == 76, "Sport Gloves weight");
-Assert(gloveWeights[5034] == 57, "Specialist Gloves weight");
+Assert(RandomizerAssets.GetGloveVariantWeight(5030) == 4, "Sport Gloves per-variant weight");
+Assert(RandomizerAssets.GetGloveVariantWeight(5034) == 3, "Specialist Gloves per-variant weight");
+Assert(RandomizerAssets.GetGloveVariantWeight(5031) == 2, "other gloves per-variant weight");
 
 var gloveRoller = new CosmeticRoller(catalog, charmPlacements, new Random(20260722));
 var gloveCounts = new Dictionary<ushort, int>();
@@ -582,6 +590,7 @@ Assert(releaseCallbacks == 1 && !mapLeases.TryGetPolicy(1, 11, out _, out _),
     "new owner cancellation releases exactly once");
 
 RandomizerControlTests.Run();
+UnifiedProviderTests.Run(catalog, charmPlacements);
 Console.WriteLine("BotRandomizer self-test passed.");
 
 static void Assert(bool condition, string label)
