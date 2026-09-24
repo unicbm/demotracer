@@ -142,7 +142,10 @@ jobs:
 
       - name: Check generated cs2-lib econ projection
         working-directory: tooling/cs2-lib-data
-        run: npm.cmd run check
+        run: |
+          npm.cmd run check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm.cmd test
 
       - name: Install desktop dependencies
         working-directory: desktop/gui
@@ -211,6 +214,31 @@ jobs:
       - name: Build and test CSS plugin
         shell: pwsh
         run: tooling\scripts\test-css.ps1
+
+  randomizer-standalone:
+    needs: gate
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Export complete standalone source
+        shell: pwsh
+        run: tooling/scripts/export-bot-randomizer.ps1 -Destination tmp/randomizer-standalone
+      - name: Build and test without DemoTracer dependencies
+        shell: pwsh
+        run: tmp/randomizer-standalone/tools/test.ps1
+      - name: Build the public package
+        shell: pwsh
+        run: tmp/randomizer-standalone/tools/package.ps1
+      - name: Verify common package ingestion
+        shell: pwsh
+        run: tmp/randomizer-standalone/tools/test-package.ps1
 
   native-windows:
     needs: gate
@@ -299,6 +327,7 @@ jobs:
       - frontend
       - desktop-rust
       - css
+      - randomizer-standalone
       - native-windows
       - native-fuzz-smoke
     runs-on: ubuntu-latest
@@ -313,6 +342,7 @@ jobs:
             needs.frontend.result != 'success' ||
             needs.desktop-rust.result != 'success' ||
             needs.css.result != 'success' ||
+            needs.randomizer-standalone.result != 'success' ||
             needs.native-windows.result != 'success' ||
             needs.native-fuzz-smoke.result != 'success'
           }}

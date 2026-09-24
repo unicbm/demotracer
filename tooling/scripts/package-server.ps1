@@ -12,6 +12,7 @@ param(
     [string]$RuntimeBuild = "server\runtime\BotController\build",
     [string]$BotHiderRuntimePackage = "server\runtime\BotHider\build\package",
     [string]$BotHiderRuntimeBuild = "server\runtime\BotHider\build",
+    [string]$BotRandomizerPackage = "",
     [string]$DotnetPath = "",
     [switch]$BuildRuntime,
     [switch]$BuildBotHiderRuntime,
@@ -38,8 +39,6 @@ $botHiderRuntimeRoot = if ([System.IO.Path]::IsPathRooted($BotHiderRuntimePackag
 }
 $cssOut = Join-Path $repoRoot "server\plugins\DemoTracer\bin\$Configuration\net10.0"
 $apiOut = Join-Path $repoRoot "server\plugins\DemoTracerApi\bin\$Configuration\net10.0"
-$botRandomizerApiOut = Join-Path $repoRoot "server\vendor\BotRandomizerApi\bin\$Configuration\net10.0"
-$botRandomizerOut = Join-Path $repoRoot "server\runtime\BotRandomizer\bin\$Configuration\net10.0"
 $botHiderCssOut = Join-Path $repoRoot "server\runtime\BotHider\csharp\BotHiderImpl\bin\$Configuration\net10.0"
 $botHiderApiOut = Join-Path $repoRoot "server\runtime\BotHider\csharp\BotHiderApi\bin\$Configuration\net10.0"
 $botControllerCssOut = Join-Path $repoRoot "server\runtime\BotController\csharp\BotControllerImpl\bin\$Configuration"
@@ -206,21 +205,39 @@ if (-not $SkipCssBuild) {
     # Keep build-machine paths out of assembly debug records and optional symbols.
     $sourcePathMap = "-p:PathMap=$repoRoot=/_/demotracer"
     $demoTracerProject = Join-Path $repoRoot "server\plugins\DemoTracer\DemoTracer.csproj"
-    $botRandomizerProject = Join-Path $repoRoot "server\runtime\BotRandomizer\BotRandomizer.csproj"
     $botHiderProject = Join-Path $repoRoot "server\runtime\BotHider\csharp\BotHiderImpl\BotHiderImpl.csproj"
     $botControllerProject = Join-Path $repoRoot "server\runtime\BotController\csharp\BotControllerImpl\BotControllerImpl.csproj"
     Invoke-Checked $resolvedDotnetPath @("restore", $botControllerProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false")
     Invoke-Checked $resolvedDotnetPath @("build", $botControllerProject, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false", $sourcePathMap)
     Invoke-Checked $resolvedDotnetPath @("restore", $demoTracerProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false")
-    Invoke-Checked $resolvedDotnetPath @("restore", $botRandomizerProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false")
     Invoke-Checked $resolvedDotnetPath @("restore", $botHiderProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false")
     Invoke-Checked $resolvedDotnetPath @("build", $demoTracerProject, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false", $sourcePathMap)
-    Invoke-Checked $resolvedDotnetPath @("build", $botRandomizerProject, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false", $sourcePathMap)
     Invoke-Checked $resolvedDotnetPath @("build", $botHiderProject, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false", $sourcePathMap)
 }
 
 Require-Path $playbackContractPath "playback compatibility contract"
 $playbackContract = Get-Content -LiteralPath $playbackContractPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$randomizerTools = Join-Path $repoRoot "server\runtime\BotRandomizer\tools"
+if (-not $BotRandomizerPackage) {
+    $randomizerOutput = Join-Path $outputRootPath "randomizer"
+    $randomizerDotnet = Resolve-DotnetPath $DotnetPath
+    & (Join-Path $randomizerTools "package.ps1") -OutputDirectory $randomizerOutput -DotnetPath $randomizerDotnet -SkipBuild:$SkipCssBuild | Out-Host
+    $BotRandomizerPackage = Join-Path $randomizerOutput "BotRandomizer-v$($playbackContract.bot_randomizer.provider_version).zip"
+}
+# Consume the same public package ordinary bot servers install. No replay-only build.
+if (-not [IO.Path]::IsPathRooted($BotRandomizerPackage)) { $BotRandomizerPackage = Join-Path $repoRoot $BotRandomizerPackage }
+$randomizerStage = Join-Path $outputRootPath ("randomizer-import-" + [guid]::NewGuid().ToString("N"))
+& (Join-Path $randomizerTools "import-package.ps1") -Package $BotRandomizerPackage -DestinationRoot $randomizerStage -ExpectedContractPath $playbackContractPath | Out-Null
+$botRandomizerOut = Join-Path $randomizerStage "addons\counterstrikesharp\plugins\BotRandomizer"
+$botRandomizerApiOut = Join-Path $randomizerStage "addons\counterstrikesharp\shared\BotRandomizerApi"
+if ((Get-FileHash (Join-Path $botRandomizerOut "cs2-lib-econ-index.v1.json")).Hash -ne
+    (Get-FileHash (Join-Path $repoRoot "shared\econ\cs2-lib-econ-index.v1.json")).Hash) {
+    throw "Common Randomizer package and playback consumers must use the same econ catalog"
+}
+if ((Get-FileHash (Join-Path $botRandomizerOut "cs2-lib-econ-index.v1.json")).Hash -ne
+    (Get-FileHash (Join-Path $repoRoot "shared\econ\cs2-lib-econ-index.v1.json")).Hash) {
+    throw "Common Randomizer package and playback consumers must use the same econ catalog"
+}
 $defaultRuntimeRoot = Join-Path $repoRoot "server\runtime\BotController\build\package"
 $defaultBotHiderRuntimeRoot = Join-Path $repoRoot "server\runtime\BotHider\build\package"
 if (-not (Test-SameFullPath $runtimeRoot $defaultRuntimeRoot)) {
@@ -332,9 +349,11 @@ Copy-RequiredFile (Join-Path $botRandomizerOut "BotRandomizer.dll") (Join-Path $
 Copy-RequiredFile (Join-Path $botRandomizerOut "cosmetic_catalog.json") (Join-Path $botRandomizerPluginOut "cosmetic_catalog.json")
 Copy-RequiredFile (Join-Path $botRandomizerOut "cs2-lib-econ-index.v1.json") (Join-Path $botRandomizerPluginOut "cs2-lib-econ-index.v1.json")
 Copy-RequiredFile (Join-Path $botRandomizerOut "charm_placements.json") (Join-Path $botRandomizerPluginOut "charm_placements.json")
-Copy-RequiredFile (Join-Path $repoRoot "server\runtime\BotRandomizer\UPSTREAM.md") (Join-Path $botRandomizerPluginOut "UPSTREAM.md")
-Copy-RequiredFile (Join-Path $repoRoot "server\runtime\BotRandomizer\THIRD_PARTY_NOTICES.md") (Join-Path $botRandomizerPluginOut "THIRD_PARTY_NOTICES.md")
-Copy-RequiredFile (Join-Path $repoRoot "server\runtime\BotRandomizer\LICENSE") (Join-Path $botRandomizerPluginOut "LICENSE")
+Copy-RequiredFile (Join-Path $botRandomizerOut "README.md") (Join-Path $botRandomizerPluginOut "README.md")
+Copy-RequiredFile (Join-Path $botRandomizerOut "API.md") (Join-Path $botRandomizerPluginOut "API.md")
+Copy-RequiredFile (Join-Path $botRandomizerOut "UPSTREAM.md") (Join-Path $botRandomizerPluginOut "UPSTREAM.md")
+Copy-RequiredFile (Join-Path $botRandomizerOut "THIRD_PARTY_NOTICES.md") (Join-Path $botRandomizerPluginOut "THIRD_PARTY_NOTICES.md")
+Copy-RequiredFile (Join-Path $botRandomizerOut "LICENSE") (Join-Path $botRandomizerPluginOut "LICENSE")
 
 $botHiderPluginOut = Join-Path $stageRoot "addons\counterstrikesharp\plugins\BotHiderImpl"
 Copy-RequiredFile (Join-Path $botHiderCssOut "BotHiderImpl.deps.json") (Join-Path $botHiderPluginOut "BotHiderImpl.deps.json")
@@ -346,8 +365,7 @@ Copy-RequiredFile $harmonySource (Join-Path $stageRoot "addons\counterstrikeshar
 if ($IncludeSymbols) {
     Copy-RequiredFile (Join-Path $cssOut "DemoTracer.pdb") (Join-Path $pluginOut "DemoTracer.pdb")
     Copy-RequiredFile (Join-Path $apiOut "DemoTracerApi.pdb") (Join-Path $demoTracerApiSharedOut "DemoTracerApi.pdb")
-    Copy-RequiredFile (Join-Path $botRandomizerApiOut "BotRandomizerApi.pdb") (Join-Path $botRandomizerApiSharedOut "BotRandomizerApi.pdb")
-    Copy-RequiredFile (Join-Path $botRandomizerOut "BotRandomizer.pdb") (Join-Path $botRandomizerPluginOut "BotRandomizer.pdb")
+    # The common Randomizer package is identical across consumers and omits symbols.
     Copy-RequiredFile (Join-Path $botHiderCssOut "BotHiderImpl.pdb") (Join-Path $botHiderPluginOut "BotHiderImpl.pdb")
     Copy-RequiredFile (Join-Path $botHiderApiOut "DemoTracerBotHiderApi.pdb") (Join-Path $botHiderSharedOut "DemoTracerBotHiderApi.pdb")
 }
@@ -542,7 +560,7 @@ Optional:
 - Ray-Trace v1.0.16 or newer, only for stricter line-of-sight filtering in
   handoff 360 threat detection.
 
-The bundled BotRandomizer v2 provider is the sole cosmetic entity writer.
+The bundled common BotRandomizer API v3 provider is the sole cosmetic entity writer.
 DemoTracer submits validated demo evidence as a complete desired-state plan
 before the next natural spawn; BotRandomizer consumes it during GiveNamedItem
 construction. Replay validation uses the canonical cs2-lib econ index rather

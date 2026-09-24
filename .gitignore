@@ -9,6 +9,7 @@
 /server/plugins/**/obj/
 /server/runtime/**/bin/
 /server/runtime/**/obj/
+/server/runtime/BotRandomizer/dist/
 *.user
 *.suo
 

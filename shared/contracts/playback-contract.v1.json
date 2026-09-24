@@ -29,7 +29,7 @@
   },
   "bot_randomizer": {
     "api": 3,
-    "provider_version": "1.6.4"
+    "provider_version": "1.7.0"
   },
   "demotracer": {
     "companion_api": 7

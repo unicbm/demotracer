@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>BotRandomizer</AssemblyName>
     <RootNamespace>BotRandomizer</RootNamespace>
+    <Version>1.7.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="tests\**\*.cs" />

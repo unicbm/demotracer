@@ -35,6 +35,16 @@ changing either implementation. No additional native hook engine is introduced.
 
 ## Shared hook runtime
 
+BotRandomizer is distributed as one common provider for ordinary bot servers,
+Bot Improver Panel and DemoTracer. Build the public package with
+`server/runtime/BotRandomizer/tools/package.ps1`; `package-server.ps1` consumes
+that package, or an explicit `-BotRandomizerPackage` ZIP with matching version,
+API, KHook pins and file hashes. It never creates a second replay implementation.
+For upstream review, `tooling/scripts/export-bot-randomizer.ps1 -Destination
+tmp/randomizer-standalone` exports complete independently buildable source,
+including the shared API, tests and CI. See the provider's
+[README](runtime/BotRandomizer/README.md) and [API](runtime/BotRandomizer/API.md).
+
 BotController and BotHider use the single [KHook](https://github.com/Kenzzer/KHook)
 engine exported by Metamod for both function and virtual hooks. The playback
 server requires Metamod 2.0 build 1469 or newer (plugin API 18) and a
@@ -57,6 +67,20 @@ toolchain. Both native CMake projects reject SDKs without the KHook interface.
 Product DLLs consume Metamod's engine; they do not embed a separate copy.
 Signature scanning also uses KHook so signatures still match original engine
 bytes when another consumer has already installed a detour.
+
+BotRandomizer participates in this same engine through CounterStrikeSharp:
+`GiveNamedItemFunc.Hook/Unhook` delegates to the host's dynamic hooks, which
+register and remove hooks with Metamod's KHook interface in the pinned CSS
+build. Its attribute writer and item-view constructor are native function
+calls, not separate detours; CSS resolves their signatures through KHook.
+Do not add a private hook engine or a second native Randomizer hook layer.
+The NuGet API package alone does not select the host backend.
+
+Shared KHook coordinates hook chaining and original function execution. Cosmetic
+ownership remains the responsibility of the single BotRandomizer provider and
+its API v3 plans. Loading two cosmetic providers can still overwrite inventories
+even when both use KHook. A future common upstream Randomizer must preserve both
+this host requirement and the single-writer plan lifecycle.
 
 The shared hook integration tests build the pinned upstream engine only for
 testing. After initializing its recursive submodules, run from the repo root:

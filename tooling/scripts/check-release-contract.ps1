@@ -149,6 +149,9 @@ Assert-Equal "BotHider native version" (Read-RegexValue "server\runtime\BotHider
 Assert-Equal "BotHider managed version" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderImpl\BotHiderImplPlugin.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "BotHider managed version") ([string]$contract.bot_hider.managed_provider_version)
 Assert-Equal "BotRandomizer API" (Read-RegexValue "server\vendor\BotRandomizerApi\IBotRandomizerApi.cs" 'ApiVersion\s*=\s*(\d+)' "BotRandomizer API") ([string]$contract.bot_randomizer.api)
 Assert-Equal "BotRandomizer provider" (Read-RegexValue "server\runtime\BotRandomizer\BotRandomizer.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "BotRandomizer provider version") ([string]$contract.bot_randomizer.provider_version)
+Assert-Equal "BotRandomizer assembly" (Read-RegexValue "server\runtime\BotRandomizer\BotRandomizer.csproj" '<Version>([^<]+)</Version>' "BotRandomizer assembly version") ([string]$contract.bot_randomizer.provider_version)
+Assert-TextPresent "tooling\scripts\package-server.ps1" 'import-package\.ps1' "common Randomizer package import"
+Assert-TextAbsent "tooling\scripts\package-server.ps1" 'Invoke-Checked[^\r\n]+\$botRandomizerProject' "separate replay Randomizer build"
 Assert-Equal "DemoTracer target framework" (Read-RegexValue "server\plugins\DemoTracer\DemoTracer.csproj" '<TargetFramework>([^<]+)</TargetFramework>' "DemoTracer target framework") ([string]$contract.counterstrikesharp.target_framework)
 Assert-Equal "CounterStrikeSharp minimum version" (Read-RegexValue "server\plugins\DemoTracer\DemoTracer.csproj" 'CounterStrikeSharp\.API" Version="([^"]+)"' "CounterStrikeSharp version") ([string]$contract.counterstrikesharp.minimum_version)
 Assert-Equal "native hook backend" ([string]$contract.hook_runtime.backend) "khook"

@@ -6,10 +6,11 @@
     "node": ">=20"
   },
   "scripts": {
-    "generate": "node generate-econ-index.mjs",
-    "check": "node generate-econ-index.mjs --check"
+    "generate": "node generate-econ-index.mjs && node generate-randomizer-catalog.mjs",
+    "check": "node generate-econ-index.mjs --check && node generate-randomizer-catalog.mjs --check",
+    "test": "node --test catalog.test.mjs"
   },
   "dependencies": {
-    "@ianlucas/cs2-lib": "8.4.0"
+    "@ianlucas/cs2-lib": "9.2.0"
   }
 }

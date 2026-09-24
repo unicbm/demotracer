@@ -9,44 +9,16 @@ import {
   CS2_PAINTABLE_ITEMS,
   CS2RarityColorOrder,
 } from "@ianlucas/cs2-lib";
+import { source, integrity, econPath } from "./source.mjs";
 import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PACKAGE_NAME = "@ianlucas/cs2-lib";
 const REPOSITORY = "https://github.com/ianlucas/cs2-lib";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDirectory, "..", "..");
-const outputPath = resolve(
-  repoRoot,
-  "shared",
-  "econ",
-  "cs2-lib-econ-index.v1.json",
-);
-const packageRoot = resolve(
-  scriptDirectory,
-  "node_modules",
-  "@ianlucas",
-  "cs2-lib",
-);
-const packageJson = JSON.parse(
-  readFileSync(resolve(packageRoot, "package.json"), "utf8"),
-);
-const packageLock = JSON.parse(
-  readFileSync(resolve(scriptDirectory, "package-lock.json"), "utf8"),
-);
-const packageLockEntry =
-  packageLock.packages?.["node_modules/@ianlucas/cs2-lib"];
-
-if (packageJson.name !== PACKAGE_NAME || packageJson.version !== "8.4.0") {
-  throw new Error(
-    `Expected ${PACKAGE_NAME}@8.4.0, found ${packageJson.name}@${packageJson.version}`,
-  );
-}
-if (packageLockEntry?.version !== packageJson.version || !packageLockEntry.integrity) {
-  throw new Error("package-lock.json does not pin the installed cs2-lib package");
-}
+const outputPath = fileURLToPath(econPath);
 
 function requirePositiveInteger(value, field, item) {
   if (!Number.isSafeInteger(value) || value <= 0) {
@@ -62,7 +34,7 @@ function sortedUnique(values) {
 function itemDefIndices(type) {
   return sortedUnique(
     CS2_ITEMS.filter((item) => item.type === type).map((item) =>
-      requirePositiveInteger(item.def, "def", item),
+      requirePositiveInteger(item.definitionIndex, "def", item),
     ),
   );
 }
@@ -71,8 +43,8 @@ function itemIndices(type) {
   return sortedUnique(
     CS2_ITEMS.filter(
       (item) =>
-        item.type === type && Number.isSafeInteger(item.index) && item.index > 0,
-    ).map((item) => requirePositiveInteger(item.index, "index", item)),
+        item.type === type && Number.isSafeInteger(item.variantIndex) && item.variantIndex > 0,
+    ).map((item) => requirePositiveInteger(item.variantIndex, "index", item)),
   );
 }
 
@@ -81,12 +53,12 @@ function weaponPaints(predicate = () => true) {
   for (const item of CS2_ITEMS.filter(
     (candidate) =>
       candidate.type === "weapon" &&
-      candidate.index !== undefined &&
+      candidate.variantIndex !== undefined &&
       predicate(candidate),
   )) {
-    const weaponDefIndex = requirePositiveInteger(item.def, "def", item);
-    const paintKit = requirePositiveInteger(item.index, "index", item);
-    const rarity = CS2RarityColorOrder[item.rarity];
+    const weaponDefIndex = requirePositiveInteger(item.definitionIndex, "def", item);
+    const paintKit = requirePositiveInteger(item.variantIndex, "index", item);
+    const rarity = CS2RarityColorOrder[item.rarityColor];
     if (!Number.isSafeInteger(rarity) || rarity < 1 || rarity > 7) {
       throw new Error(`Invalid rarity on cs2-lib item ${item.id}`);
     }
@@ -117,7 +89,7 @@ function replayEquipmentSlot(item) {
   if (item.type === "utility") {
     return "utility";
   }
-  switch (item.category) {
+  switch (item.loadoutCategory) {
     case "rifle":
     case "heavy":
     case "smg":
@@ -125,12 +97,12 @@ function replayEquipmentSlot(item) {
     case "secondary":
       return "secondary";
     case "equipment":
-      if (item.model !== "taser") {
+      if (item.modelKey !== "taser") {
         throw new Error(`Unsupported cs2-lib equipment model on item ${item.id}`);
       }
       return "taser";
     case "c4":
-      if (item.model !== "c4") {
+      if (item.modelKey !== "c4") {
         throw new Error(`Unsupported cs2-lib c4 model on item ${item.id}`);
       }
       return "c4";
@@ -144,15 +116,15 @@ function replayEquipmentDefinitions() {
   const classNames = new Set();
   for (const item of CS2_ITEMS.filter(
     (candidate) =>
-      candidate.base === true &&
+      candidate.isBase === true &&
       ["weapon", "utility", "melee"].includes(candidate.type),
   )) {
-    const weaponDefIndex = requirePositiveInteger(item.def, "def", item);
-    if (typeof item.model !== "string" || item.model.length === 0) {
+    const weaponDefIndex = requirePositiveInteger(item.definitionIndex, "def", item);
+    if (typeof item.modelKey !== "string" || item.modelKey.length === 0) {
       throw new Error(`Missing model on cs2-lib replay equipment item ${item.id}`);
     }
 
-    const className = `weapon_${item.model}`;
+    const className = `weapon_${item.modelKey}`;
     if (definitions.has(weaponDefIndex)) {
       throw new Error(`Duplicate cs2-lib replay equipment defindex ${weaponDefIndex}`);
     }
@@ -172,21 +144,21 @@ function replayEquipmentDefinitions() {
 }
 
 const weaponPaintPairs = weaponPaints();
-const legacyBodygroupPaintPairs = weaponPaints((item) => item.legacy === true).map(
+const legacyBodygroupPaintPairs = weaponPaints((item) => item.isLegacyModel === true).map(
   ({ weapon_defidx, paint_kit }) => ({ weapon_defidx, paint_kit }),
 );
 const paintKitIds = sortedUnique(
   CS2_ITEMS.filter(
     (item) =>
       CS2_PAINTABLE_ITEMS.includes(item.type) &&
-      Number.isSafeInteger(item.index) &&
-      item.index > 0,
-  ).map((item) => requirePositiveInteger(item.index, "index", item)),
+      Number.isSafeInteger(item.variantIndex) &&
+      item.variantIndex > 0,
+  ).map((item) => requirePositiveInteger(item.variantIndex, "index", item)),
 );
 const replayEquipmentDefIndices = sortedUnique(
   CS2_ITEMS.filter((item) =>
     ["weapon", "utility", "melee"].includes(item.type),
-  ).map((item) => requirePositiveInteger(item.def, "def", item)),
+  ).map((item) => requirePositiveInteger(item.definitionIndex, "def", item)),
 );
 const replayEquipment = replayEquipmentDefinitions();
 if (
@@ -212,8 +184,8 @@ const index = {
     "Generated runtime projection of the pinned @ianlucas/cs2-lib item catalog for CS2 DemoTracer.",
   source: {
     package: PACKAGE_NAME,
-    version: packageJson.version,
-    integrity: packageLockEntry.integrity,
+    version: source.version,
+    integrity,
     repository: REPOSITORY,
   },
   generation_policy:
@@ -257,11 +229,11 @@ if (process.argv.includes("--check")) {
       `${outputPath} is stale; run npm.cmd run generate in ${scriptDirectory}`,
     );
   }
-  console.log(`Verified ${outputPath} against ${PACKAGE_NAME}@${packageJson.version}.`);
+  console.log(`Verified ${outputPath} against ${PACKAGE_NAME}@${source.version}.`);
 } else {
   writeFileSync(outputPath, generated, "utf8");
   console.log(
-    `Wrote ${outputPath} from ${PACKAGE_NAME}@${packageJson.version} ` +
+    `Wrote ${outputPath} from ${PACKAGE_NAME}@${source.version} ` +
       `(${weaponPaintPairs.length} weapon paints, ${stickerIds.length} stickers).`,
   );
 }

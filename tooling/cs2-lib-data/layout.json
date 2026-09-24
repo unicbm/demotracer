@@ -1,0 +1,4 @@
+{
+  "catalog": "../../server/runtime/BotRandomizer/cosmetic_catalog.json",
+  "econ": "../../shared/econ/cs2-lib-econ-index.v1.json"
+}

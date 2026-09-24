@@ -13,6 +13,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $projectPath = Join-Path $repoRoot "server\plugins\DemoTracer.Tests\DemoTracer.Tests.csproj"
 $botRandomizerSelfTest = Join-Path $repoRoot "server\runtime\BotRandomizer\tests\BotRandomizer.SelfTest\BotRandomizer.SelfTest.csproj"
+$botRandomizerProvider = Join-Path $repoRoot "server\runtime\BotRandomizer\BotRandomizer.csproj"
 $botRandomizerCatalog = Join-Path $repoRoot "server\runtime\BotRandomizer\cosmetic_catalog.json"
 $replayEconIndex = Join-Path $repoRoot "shared\econ\cs2-lib-econ-index.v1.json"
 $nugetConfigPath = Join-Path $repoRoot "NuGet.Config"
@@ -58,6 +59,12 @@ Write-Host "Using $dotnet"
 Invoke-Dotnet $dotnet @("restore", $projectPath, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false")
 Invoke-Dotnet $dotnet @("build", $projectPath, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false")
 Invoke-Dotnet $dotnet @("test", $projectPath, "-c", $Configuration, "--no-build", "--no-restore", "-m:1", "-nodeReuse:false")
+Invoke-Dotnet $dotnet @("restore", $botRandomizerProvider, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false")
+Invoke-Dotnet $dotnet @("build", $botRandomizerProvider, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false")
+foreach ($asset in @("BotRandomizer.dll", "cosmetic_catalog.json", "charm_placements.json", "cs2-lib-econ-index.v1.json")) {
+    $assetPath = Join-Path (Split-Path $botRandomizerProvider) "bin\$Configuration\net10.0\$asset"
+    if (-not (Test-Path -LiteralPath $assetPath)) { throw "Missing Randomizer build asset: $asset" }
+}
 Invoke-Dotnet $dotnet @("restore", $botRandomizerSelfTest, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false")
 Invoke-Dotnet $dotnet @("run", "--project", $botRandomizerSelfTest, "-c", $Configuration, "--no-restore", "--", $botRandomizerCatalog, $replayEconIndex)
 & (Join-Path $PSScriptRoot "check-demotracer-source-governance.ps1") -RepoRoot $repoRoot

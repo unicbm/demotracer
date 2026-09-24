@@ -1,0 +1,37 @@
+name: Cosmetic data candidate
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 4 * * 1'
+permissions:
+  contents: read
+jobs:
+  candidate:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Generate update candidate
+        shell: pwsh
+        run: tools/data/update.ps1 -ReportPath dist/review/report.json
+      - name: Test candidate
+        shell: pwsh
+        run: tools/test.ps1
+      - name: Save patch for review
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/review | Out-Null
+          git diff --binary --output=dist/review/candidate.patch -- tools/data cosmetic_catalog.json cs2-lib-econ-index.v1.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cosmetic-data-review
+          path: dist/review/
