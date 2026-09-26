@@ -9,12 +9,13 @@ namespace DemoTracer;
 internal static partial class DtrReplayReader
 {
     private static (NativeReplayInputHistoryTick[], NativeReplayInputHistoryEntry[])
-        ReadInputHistoryFromSection(byte[] body, int tickCount)
+        ReadInputHistoryFromSection(byte[] body, int tickCount, bool retainData)
     {
         using var stream = new MemoryStream(body, writable: false);
         using var reader = new BinaryReader(stream);
-        var ticks = new NativeReplayInputHistoryTick[tickCount];
-        var entries = new List<NativeReplayInputHistoryEntry>();
+        var ticks = retainData ? new NativeReplayInputHistoryTick[tickCount] : [];
+        var entries = retainData ? new List<NativeReplayInputHistoryEntry>() : null;
+        var entryIndex = 0;
         for (var tickIndex = 0; tickIndex < tickCount; tickIndex++)
         {
             var tick = new NativeReplayInputHistoryTick
@@ -30,11 +31,16 @@ internal static partial class DtrReplayReader
             ValidateHistoryIndex(tick.Attack1StartHistoryIndex, tick.NumEntries, tickIndex, "attack1");
             ValidateHistoryIndex(tick.Attack2StartHistoryIndex, tick.NumEntries, tickIndex, "attack2");
             for (var i = 0; i < tick.NumEntries; i++)
-                entries.Add(ReadInputHistoryEntry(reader));
-            ticks[tickIndex] = tick;
+            {
+                var entry = ReadInputHistoryEntry(reader);
+                ValidateInputHistoryEntry(in entry, entryIndex++);
+                entries?.Add(entry);
+            }
+            if (retainData)
+                ticks[tickIndex] = tick;
         }
         RequireConsumed(stream, "input history");
-        return (ticks, entries.ToArray());
+        return (ticks, entries?.ToArray() ?? []);
     }
 
     private static void ValidateHistoryIndex(int index, uint count, int tickIndex, string name)

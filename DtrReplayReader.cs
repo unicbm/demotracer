@@ -84,6 +84,14 @@ internal static partial class DtrReplayReader
         => Read(path, DtrReadLimits.Default);
 
     public static DtrReplayFile Read(string path, DtrReadLimits limits)
+        => Read(path, limits, retainAuxiliaryData: true);
+
+    // Playback validates historical evidence without retaining arrays that the
+    // native runtime no longer consumes. Full reads remain available for inspection.
+    public static DtrReplayFile ReadForPlayback(string path)
+        => Read(path, DtrReadLimits.Default, retainAuxiliaryData: false);
+
+    private static DtrReplayFile Read(string path, DtrReadLimits limits, bool retainAuxiliaryData)
     {
         ArgumentNullException.ThrowIfNull(limits);
         limits.Validate();
@@ -139,7 +147,8 @@ internal static partial class DtrReplayReader
                 projectileCount,
                 playStartTickIndex,
                 metadataJsonLength,
-                limits)
+                limits,
+                retainAuxiliaryData)
             : ReadLegacyBody(
                 reader,
                 version,
@@ -272,7 +281,8 @@ internal static partial class DtrReplayReader
         int projectileCount,
         int playStartTickIndex,
         int metadataJsonLength,
-        DtrReadLimits limits)
+        DtrReadLimits limits,
+        bool retainAuxiliaryData)
     {
         var sectionCount = CheckedLimitedCount(reader.ReadUInt32(), limits.MaxSectionCount, "section_count");
         var snapshotCount = tickCount == 0 ? 0 : checked(tickCount + 1);
@@ -404,7 +414,7 @@ internal static partial class DtrReplayReader
                         header.SectionVersion);
                     break;
                 case SectionMovementExtras:
-                    movementExtras = ReadMovementExtrasFromSection(body, tickCount);
+                    movementExtras = ReadMovementExtrasFromSection(body, tickCount, retainAuxiliaryData);
                     break;
                 case SectionSourceState:
                     sourceState = header.SectionVersion == SectionVersionV2
@@ -413,7 +423,7 @@ internal static partial class DtrReplayReader
                     break;
                 case SectionInputHistory:
                     (inputHistoryTicks, inputHistoryEntries) =
-                        ReadInputHistoryFromSection(body, tickCount);
+                        ReadInputHistoryFromSection(body, tickCount, retainAuxiliaryData);
                     break;
             }
         }

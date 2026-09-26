@@ -588,7 +588,7 @@ internal static partial class BotControllerNative
 
         try
         {
-            var replay = DtrReplayReader.Read(path);
+            var replay = DtrReplayReader.ReadForPlayback(path);
             return LoadReplay(slot, replay, out metadata);
         }
         catch (Exception ex)
@@ -690,7 +690,7 @@ internal static partial class BotControllerNative
     {
         try
         {
-            var replay = DtrReplayReader.Read(path);
+            var replay = DtrReplayReader.ReadForPlayback(path);
             metadata = ReplayNativeMapper.BuildMetadata(replay);
             return true;
         }

@@ -69,44 +69,6 @@ internal static partial class DtrReplayReader
                 "command frame", i);
         }
 
-        for (var i = 0; i < replay.MovementExtras.Length; i++)
-        {
-            var extra = replay.MovementExtras[i];
-            RequireFinite(
-                [
-                    extra.JumpPressedTime,
-                    extra.LastDuckTime,
-                    extra.LastActualJumpPressFrac,
-                    extra.LastUsableJumpPressFrac,
-                    extra.LastLandedFrac,
-                    extra.LastLandedVelocityX,
-                    extra.LastLandedVelocityY,
-                    extra.LastLandedVelocityZ
-                ],
-                "movement extra", i);
-        }
-
-        for (var i = 0; i < replay.InputHistoryEntries.Length; i++)
-        {
-            var entry = replay.InputHistoryEntries[i];
-            var unknownFields = entry.Fields & ~InputHistoryFieldsAll;
-            if (unknownFields != 0)
-                throw new InvalidDataException(
-                    $"input history entry {i} has unknown fields 0x{unknownFields:X8}");
-            RequireFinite(
-                [
-                    entry.ViewPitch, entry.ViewYaw, entry.ViewRoll,
-                    entry.RenderTickFraction, entry.PlayerTickFraction,
-                    entry.ClInterpFraction, entry.SvInterp0Fraction,
-                    entry.SvInterp1Fraction, entry.PlayerInterpFraction,
-                    entry.ShootPositionX, entry.ShootPositionY, entry.ShootPositionZ,
-                    entry.TargetHeadPosCheckX, entry.TargetHeadPosCheckY, entry.TargetHeadPosCheckZ,
-                    entry.TargetAbsPosCheckX, entry.TargetAbsPosCheckY, entry.TargetAbsPosCheckZ,
-                    entry.TargetAbsAngCheckX, entry.TargetAbsAngCheckY, entry.TargetAbsAngCheckZ
-                ],
-                "input history entry", i);
-        }
-
         for (var i = 0; i < replay.Projectiles.Length; i++)
         {
             var projectile = replay.Projectiles[i];
@@ -140,6 +102,38 @@ internal static partial class DtrReplayReader
                 ],
                 "projectile", i);
         }
+    }
+
+    private static void ValidateMovementExtra(in NativeReplayMovementExtra extra, int index)
+    {
+        RequireFinite(
+            [
+                extra.JumpPressedTime, extra.LastDuckTime,
+                extra.LastActualJumpPressFrac, extra.LastUsableJumpPressFrac,
+                extra.LastLandedFrac, extra.LastLandedVelocityX,
+                extra.LastLandedVelocityY, extra.LastLandedVelocityZ
+            ],
+            "movement extra", index);
+    }
+
+    private static void ValidateInputHistoryEntry(in NativeReplayInputHistoryEntry entry, int index)
+    {
+        var unknownFields = entry.Fields & ~InputHistoryFieldsAll;
+        if (unknownFields != 0)
+            throw new InvalidDataException(
+                $"input history entry {index} has unknown fields 0x{unknownFields:X8}");
+        RequireFinite(
+            [
+                entry.ViewPitch, entry.ViewYaw, entry.ViewRoll,
+                entry.RenderTickFraction, entry.PlayerTickFraction,
+                entry.ClInterpFraction, entry.SvInterp0Fraction,
+                entry.SvInterp1Fraction, entry.PlayerInterpFraction,
+                entry.ShootPositionX, entry.ShootPositionY, entry.ShootPositionZ,
+                entry.TargetHeadPosCheckX, entry.TargetHeadPosCheckY, entry.TargetHeadPosCheckZ,
+                entry.TargetAbsPosCheckX, entry.TargetAbsPosCheckY, entry.TargetAbsPosCheckZ,
+                entry.TargetAbsAngCheckX, entry.TargetAbsAngCheckY, entry.TargetAbsAngCheckZ
+            ],
+            "input history entry", index);
     }
 
     private static void ValidateSnapshot(in NativeMovementSnapshot snapshot, int index, string phase)
