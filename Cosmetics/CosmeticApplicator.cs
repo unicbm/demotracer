@@ -89,14 +89,14 @@ internal sealed class CosmeticApplicator
                 // is already current so model and animations cannot remain stale.
                 weapon.AcceptInput("ChangeSubclass", value: selection.DefIndex.ToString());
                 item.ItemDefinitionIndex = selection.DefIndex;
-                item.EntityQuality = selection.Identity?.Quality ?? 3;
+                item.EntityQuality = selection.Identity?.ResolveQuality(defaultQuality: 3) ?? 3;
                 if (_setAttributeByName is not null)
                 {
                     if (!econIsCurrent)
                     {
                         item.AttributeList.Attributes.RemoveAll();
                         item.NetworkedDynamicAttributes.Attributes.RemoveAll();
-                        AssignReplayIdentity(item, selection.Identity, player.SteamID);
+                        AssignReplayIdentity(item, selection.Identity, player.SteamID, defaultQuality: 3);
                         SetTextureAttributes(
                             item.NetworkedDynamicAttributes,
                             item.AttributeList,
@@ -163,7 +163,7 @@ internal sealed class CosmeticApplicator
 
             item.ItemDefinitionIndex = selection.DefIndex;
             item.Initialized = true;
-            AssignReplayIdentity(item, selection.Identity, player.SteamID);
+            AssignReplayIdentity(item, selection.Identity, player.SteamID, defaultQuality: 4);
             item.NetworkedDynamicAttributes.Attributes.RemoveAll();
             item.AttributeList.Attributes.RemoveAll();
             SetTextureAttributes(
@@ -285,7 +285,8 @@ internal sealed class CosmeticApplicator
     private static void AssignReplayIdentity(
         CEconItemView item,
         ReplayEconIdentity? identity,
-        ulong fallbackSteamId)
+        ulong fallbackSteamId,
+        int defaultQuality)
     {
         if (identity is null)
         {
@@ -296,7 +297,7 @@ internal sealed class CosmeticApplicator
 
         var owner = identity.OriginalOwnerSteamId.GetValueOrDefault(fallbackSteamId);
         item.AccountID = identity.ItemAccountId ?? AccountIdFromSteamId(owner);
-        item.EntityQuality = identity.Quality ?? (identity.StattrakCounter is not null ? 9 : 4);
+        item.EntityQuality = identity.ResolveQuality(defaultQuality);
         var itemId = identity.ItemId.GetValueOrDefault();
         if (itemId == 0)
             itemId = EconItemIdAllocator.Next();

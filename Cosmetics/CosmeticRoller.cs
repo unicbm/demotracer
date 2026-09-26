@@ -2,7 +2,6 @@ namespace BotRandomizer;
 
 internal sealed class CosmeticRoller
 {
-    private const int MaximumStickers = 5;
     private const int CleanCraftThreshold = 35;
     private const int SingleStickerCraftThreshold = 47;
     private const int PairCraftThreshold = 55;

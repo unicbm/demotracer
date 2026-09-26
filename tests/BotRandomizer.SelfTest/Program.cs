@@ -63,17 +63,22 @@ Assert(charmPlacements.WeaponCount == 16, "charm placement weapon count");
 Assert(charmPlacements.PlacementCount == 158, "charm placement count");
 Assert(charmPlacements.TryGetPlacements(7, out var akPlacements) && akPlacements.Count == 36,
     "AK-47 charm placement pool");
-Assert(catalog.SourceLogicalMaps == 269, "pro demo prior coverage");
-Assert(catalog.SourceKnifeObservations == 741, "pro knife prior coverage");
-Assert(catalog.MatchedKnifeObservations > 0
-    && catalog.MatchedKnifeObservations == catalog.SourceKnifeObservations,
+// Research provenance belongs to offline data verification, not live item loading.
+var priors = catalogJson.RootElement.GetProperty("source").GetProperty("proDemo");
+Assert(priors.GetProperty("logicalMaps").GetInt32() == 269, "pro demo prior coverage");
+Assert(priors.GetProperty("knifeObservations").GetInt32() == 741, "pro knife prior coverage");
+Assert(priors.GetProperty("matchedKnifeObservations").GetInt32() > 0
+    && priors.GetProperty("matchedKnifeObservations").GetInt32() == priors.GetProperty("knifeObservations").GetInt32(),
     "matched knife observation coverage");
-Assert(catalog.SourceProConverterSha256.Length == 64
-    && catalog.SourceProConverterSha256.All(Uri.IsHexDigit),
+Assert(priors.GetProperty("converterSha256").GetString() is { Length: 64 } converterHash
+    && converterHash.All(Uri.IsHexDigit),
     "pro converter provenance");
-Assert(catalog.SourceProCorpusDigest.Length == 64
-    && catalog.SourceProCorpusDigest.All(Uri.IsHexDigit),
+Assert(priors.GetProperty("corpusDigest").GetString() is { Length: 64 } corpusDigest
+    && corpusDigest.All(Uri.IsHexDigit),
     "pro corpus provenance");
+Assert(catalogJson.RootElement.GetProperty("knifeFinishPreferences").EnumerateArray()
+    .All(preference => preference.GetProperty("observations").GetInt32() > 0),
+    "knife finish observation provenance");
 foreach (var defIndex in new ushort[] { 16, 23, 26, 60, 61 })
 {
     Assert(catalog.TryGetWeapon(defIndex, out var weapon) && weapon.Paints.Count > 0,
@@ -212,9 +217,6 @@ Assert(BitConverter.SingleToInt32Bits(AttributeEncoding.Int32BitsToSingle(-12345
     == -1234567, "int attribute bit encoding");
 var itemIds = Enumerable.Range(0, 32).Select(_ => EconItemIdAllocator.Next()).ToArray();
 Assert(itemIds.Distinct().Count() == itemIds.Length, "custom item IDs are process-unique");
-Assert(itemIds.All(EconItemIdAllocator.IsAllocated)
-    && !EconItemIdAllocator.IsAllocated(0),
-    "custom item IDs identify prebuilt economic views");
 
 var wearAllocator = new WeaponWearAllocator();
 var paint = new PaintCatalogEntry(7, CosmeticRarity.Restricted, false, 0.0f, 1.0f);
@@ -420,11 +422,35 @@ var firstIncarnation = firstState.Incarnation;
 var rerolledState = stateStore.Reroll(
     slot: 5,
     userId: 101,
-    RandomizerAssets.TerroristTeam,
     preserveMusic: false,
     music => roller.RollLoadout(RandomizerAssets.TerroristTeam, music));
-Assert(rerolledState?.Incarnation == firstIncarnation,
+Assert(rerolledState.Incarnation == firstIncarnation,
     "reroll preserves managed bot incarnation");
+int? suppliedMusic = null;
+var preservedMusicState = stateStore.Reroll(
+    slot: 5,
+    userId: 101,
+    preserveMusic: true,
+    music =>
+    {
+        suppliedMusic = music;
+        return rerolledState.Loadout;
+    });
+Assert(suppliedMusic == rerolledState.Loadout.MusicKit
+    && preservedMusicState.Incarnation == firstIncarnation
+    && !stateStore.IsCurrent(5, 101, rerolledState.Generation),
+    "music-preserving reroll retains identity and invalidates old callbacks");
+var replacedUserState = stateStore.Reroll(
+    slot: 5,
+    userId: 303,
+    preserveMusic: true,
+    music =>
+    {
+        suppliedMusic = music;
+        return rerolledState.Loadout;
+    });
+Assert(suppliedMusic is null && replacedUserState.Incarnation != firstIncarnation,
+    "reroll cannot inherit a different user's music or incarnation");
 stateStore.Remove(5);
 var reusedSlotState = stateStore.GetOrCreate(
     slot: 5,
@@ -591,6 +617,9 @@ Assert(releaseCallbacks == 1 && !mapLeases.TryGetPolicy(1, 11, out _, out _),
 
 RandomizerControlTests.Run();
 UnifiedProviderTests.Run(catalog, charmPlacements);
+ReplayPlanValidationTests.Run(catalog, replayEconIndex);
+EconIdentityTests.Run();
+CatalogLoadingTests.Run(args[0], catalog, charmPlacements);
 Console.WriteLine("BotRandomizer self-test passed.");
 
 static void Assert(bool condition, string label)

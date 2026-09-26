@@ -42,7 +42,7 @@ internal static class UnifiedProviderTests
             options.ResolveIntroAgent(null, other.Loadout) == 0, "ordinary bot obeys the same Panel switches");
         Require(ReferenceEquals(originalRandom, bot.Loadout) && ReferenceEquals(originalOther, other.Loadout), "switches do not reroll either bot");
 
-        bot = states.Reroll(bot.Slot, bot.UserId, 3, false, music => roller.RollLoadout(3, music))!;
+        bot = states.Reroll(bot.Slot, bot.UserId, false, music => roller.RollLoadout(3, music));
         Require(leases.TryGetPolicy(bot.Slot, bot.Incarnation, out active, out _) &&
             options.ResolveMusicKit(active, bot.Loadout) == 70, "safe reroll preserves replay ownership");
         var beforeCancel = bot.Generation;

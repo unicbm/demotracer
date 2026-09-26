@@ -6,8 +6,6 @@ internal sealed class CosmeticStateStore
     private long _nextGeneration = 1;
     private ulong _nextIncarnation = 1;
 
-    internal IReadOnlyCollection<SlotCosmeticState> States => _states.Values;
-
     internal SlotCosmeticState GetOrCreate(
         int slot,
         int userId,
@@ -34,22 +32,18 @@ internal sealed class CosmeticStateStore
         return state;
     }
 
-    internal SlotCosmeticState? Reroll(
+    internal SlotCosmeticState Reroll(
         int slot,
         int userId,
-        byte team,
         bool preserveMusic,
         Func<int?, BotCosmeticLoadout> loadoutFactory)
     {
         int? musicKit = null;
         ulong? incarnation = null;
-        if (_states.TryGetValue(slot, out var existing) && existing.UserId == userId && preserveMusic)
+        if (_states.TryGetValue(slot, out var existing) && existing.UserId == userId)
         {
-            musicKit = existing.Loadout.MusicKit;
-            incarnation = existing.Incarnation;
-        }
-        else if (existing is not null && existing.UserId == userId)
-        {
+            if (preserveMusic)
+                musicKit = existing.Loadout.MusicKit;
             incarnation = existing.Incarnation;
         }
 
