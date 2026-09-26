@@ -1,0 +1,8 @@
+[submodule ".deps/common"]
+	path = .deps/common
+	url = https://github.com/unicbm/cs2-dtr-common.git
+	branch = main
+[submodule ".deps/demoparser"]
+	path = .deps/demoparser
+	url = https://github.com/unicbm/demoparser.git
+	branch = demotracer

@@ -1,0 +1,32 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "cs2-dtr-converter",
+      "include-component-in-tag": false,
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features"
+        },
+        {
+          "type": "fix",
+          "section": "Fixes"
+        },
+        {
+          "type": "deps",
+          "section": "Dependencies"
+        },
+        {
+          "type": "refactor",
+          "section": "Maintenance"
+        },
+        {
+          "type": "perf",
+          "section": "Performance"
+        }
+      ]
+    }
+  },
+  "bootstrap-sha": "b20ffa4716a967f659c0638d262ce3b762988d5e"
+}

@@ -4277,6 +4277,15 @@ pub fn read_demo_with_options(_path: &Path, _options: ReadDemoOptions) -> Result
 }
 
 #[cfg(not(feature = "demoparser"))]
+pub fn read_demo_with_options_and_cancel(
+    _path: &Path,
+    _options: ReadDemoOptions,
+    _cancelled: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<ParsedDemo> {
+    Err(Error::FeatureDisabled("demoparser"))
+}
+
+#[cfg(not(feature = "demoparser"))]
 pub fn read_demo_bytes(_bytes: &[u8], _stem: &str, _display_path: &str) -> Result<ParsedDemo> {
     Err(Error::FeatureDisabled("demoparser"))
 }
@@ -4292,9 +4301,29 @@ pub fn read_demo_bytes_with_options(
 }
 
 #[cfg(not(feature = "demoparser"))]
+pub fn read_demo_bytes_with_options_and_cancel(
+    _bytes: &[u8],
+    _stem: &str,
+    _display_path: &str,
+    _options: ReadDemoOptions,
+    _cancelled: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<ParsedDemo> {
+    Err(Error::FeatureDisabled("demoparser"))
+}
+
+#[cfg(not(feature = "demoparser"))]
 pub fn read_loaded_demo_with_options(
     _input: &LoadedDemoInput,
     _options: ReadDemoOptions,
+) -> Result<ParsedDemo> {
+    Err(Error::FeatureDisabled("demoparser"))
+}
+
+#[cfg(not(feature = "demoparser"))]
+pub fn read_loaded_demo_with_options_and_cancel(
+    _input: &LoadedDemoInput,
+    _options: ReadDemoOptions,
+    _cancelled: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<ParsedDemo> {
     Err(Error::FeatureDisabled("demoparser"))
 }

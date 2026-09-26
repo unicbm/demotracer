@@ -227,9 +227,10 @@ mod tests {
     }
     #[test]
     fn field_registry_matches_shared_contract() {
-        let value: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../shared/contracts/replay-source-fields.v1.json"
-        ))
+        let value: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/.deps/common/contracts/replay-source-fields.v1.json"
+        )))
         .unwrap();
         let fields = value["fields"].as_array().unwrap();
         assert_eq!(

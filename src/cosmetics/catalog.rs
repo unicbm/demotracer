@@ -139,7 +139,7 @@ fn cs2_lib_econ_index() -> &'static Cs2LibEconIndex {
     INDEX.get_or_init(|| {
         let raw: RawCs2LibEconIndex = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../shared/econ/cs2-lib-econ-index.v1.json"
+            "/.deps/common/econ/cs2-lib-econ-index.v1.json"
         )))
         .expect("embedded cs2-lib-econ-index.v1.json must be valid JSON");
         let knife_defidx = raw.knife_defidx.into_iter().collect::<BTreeSet<_>>();

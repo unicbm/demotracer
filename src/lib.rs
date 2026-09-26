@@ -20,6 +20,9 @@ pub mod synthesis;
 pub mod validate;
 pub mod voice_export;
 
+/// Version of the converter library, independent of its GUI or other caller.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod dtr {
     pub use crate::model::{
         Cs2Rec, Cs2RecHeader, MovementSnapshot, ReplayProjectile, ReplayTick, SubtickMove,

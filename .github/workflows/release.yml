@@ -1,0 +1,55 @@
+name: Release
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  release:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require CI for the current release branch head
+        id: validated-head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
+          TARGET_BRANCH: main
+        shell: pwsh
+        run: |
+          $current = gh api "repos/$env:GH_REPO/git/ref/heads/$env:TARGET_BRANCH" --jq .object.sha
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($current -eq $env:VALIDATED_SHA) {
+            'current=true' >> $env:GITHUB_OUTPUT
+          } else {
+            'current=false' >> $env:GITHUB_OUTPUT
+            "Skipping release: CI validated $env:VALIDATED_SHA, but $env:TARGET_BRANCH is now $current." >> $env:GITHUB_STEP_SUMMARY
+          }
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        id: release
+        if: ${{ steps.validated-head.outputs.current == 'true' }}
+        with:
+          target-branch: main
+      - name: Run CI for the release PR explicitly
+        if: ${{ steps.release.outputs.prs_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+        shell: pwsh
+        run: |
+          foreach ($pr in ($env:RELEASE_PRS | ConvertFrom-Json)) {
+            $branch = gh pr view $pr.number --json headRefName --jq .headRefName
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            gh workflow run ci.yml --ref $branch
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
