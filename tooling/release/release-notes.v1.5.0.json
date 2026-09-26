@@ -1,0 +1,4 @@
+{
+  "zh": "1.5.0 精简界面与回放库加载，改善回放和饰品稳定性，支持新版准星预览与 Demo 战队标签。\n请先更新 GUI，再更新完整播放组件。播放环境需 Metamod 2.0 build 1469+ 与启用 KHook 的 CounterStrikeSharp。完整说明见 GitHub Release。",
+  "en": "1.5.0 streamlines the interface and replay library loading, improves replay and cosmetic reliability, and supports newer crosshair previews and recorded clan tags.\nUpdate the GUI first, then the complete playback bundle. Playback requires Metamod 2.0 build 1469+ and a KHook-enabled CounterStrikeSharp build. Full notes are on GitHub Releases."
+}

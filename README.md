@@ -26,21 +26,22 @@
   <sub>Inspect a converted match, choose where playback starts, and copy the ready-to-run server command.</sub>
 </p>
 
-## KHook Migration on `main`
+## Playback Requirements for v1.5.0
 
-The development branch now uses Metamod's shared **KHook** engine for
+Playback v1.5.0 uses Metamod's shared **KHook** engine for
 BotController and BotHider function and virtual hooks. Hook registration,
 chaining, and removal use the same engine as other KHook consumers, replacing
 the runtimes' separate hook implementations.
 
-This source update requires **Metamod 2.0 build 1469+ (plugin API 18)** and a
+This release requires **Metamod 2.0 build 1469+ (plugin API 18)** and a
 **KHook-enabled CounterStrikeSharp build**. Older API 17 Metamod installations
 cannot load these native plugins. Playback orchestration still uses
 CounterStrikeSharp; see the pinned [server requirements](server/README.md#shared-hook-runtime)
-before building or installing from source.
+before installing the playback bundle.
 
-The KHook migration has **not yet been published as an official release**.
-Existing release downloads and the stable update channel remain unchanged.
+Update the GUI first, then install the complete v1.5.0 playback bundle. Metamod
+and CounterStrikeSharp are external prerequisites and are not included in the
+bundle. Do not mix DLLs from different builds.
 
 ## From Demo to Replay
 
