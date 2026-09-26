@@ -69,7 +69,7 @@ Release plugin output is under `src/DemoTracer/bin/Release/net10.0/`.
 
 ## Packaging
 
-`tools/package.ps1` creates `dist/DemoTracer-CSS-v1.3.0.zip`, its SHA-256 file,
+`tools/package.ps1` creates `dist/DemoTracer-CSS-v1.5.0.zip`, its SHA-256 file,
 and a file-hash manifest. The archive contains:
 
 ```text
