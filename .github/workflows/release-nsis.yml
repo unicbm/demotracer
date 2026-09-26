@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -36,7 +36,7 @@ jobs:
           "commit=$($source.commit)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Checkout professional identity source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: unicbm/CS2-pro-steamid-lib
           ref: ${{ steps.pro-steamid-source.outputs.commit }}
@@ -46,19 +46,19 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Restore desktop Release cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2.9.1
         with:
           workspaces: desktop/gui/src-tauri -> target
           shared-key: desktop-release
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 11.9.0
           run_install: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -85,7 +85,7 @@ jobs:
           tooling/scripts/write-component-manifest.ps1 -OutputPath "$installerDir/component-sources.json"
 
       - name: Upload unsigned NSIS installer
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: demotracer-gui-${{ github.ref_name }}-windows-x64
           path: |
