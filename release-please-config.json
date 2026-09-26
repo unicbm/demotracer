@@ -1,0 +1,32 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "cs2-dtr-hider",
+      "include-component-in-tag": false,
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features"
+        },
+        {
+          "type": "fix",
+          "section": "Fixes"
+        },
+        {
+          "type": "deps",
+          "section": "Dependencies"
+        },
+        {
+          "type": "refactor",
+          "section": "Maintenance"
+        },
+        {
+          "type": "perf",
+          "section": "Performance"
+        }
+      ]
+    }
+  },
+  "bootstrap-sha": "055d1c3e84eb6236cac76c2778b8ee4d82683c1c"
+}

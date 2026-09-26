@@ -13,6 +13,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(DTR_COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.deps/common" CACHE PATH "cs2-dtr-common checkout")
+if(NOT EXISTS "${DTR_COMMON_DIR}/native/khook.cmake" OR
+   NOT EXISTS "${DTR_COMMON_DIR}/third_party/nlohmann/json.hpp")
+    message(FATAL_ERROR "Initialize .deps/common with git submodule update --init --recursive, or set DTR_COMMON_DIR.")
+endif()
 if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
@@ -49,7 +54,7 @@ if(NOT PROTOC_VER MATCHES "libprotoc 3\\.21\\.")
 endif()
 message(STATUS "protoc: ${PROTOC_EXE} (${PROTOC_VER})")
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../common/khook.cmake")
+include("${DTR_COMMON_DIR}/native/khook.cmake")
 
 set(PROTO_FILES network_connection.proto)
 set(GENERATED_DIR "${CMAKE_BINARY_DIR}/generated")
@@ -74,7 +79,7 @@ add_custom_command(
     VERBATIM
 )
 
-set(NLOHMANN_JSON_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../third_party")
+set(NLOHMANN_JSON_INCLUDE "${DTR_COMMON_DIR}/third_party")
 
 set(SDK_SOURCES
     ${HL2SDK}/public/tier0/memoverride.cpp
@@ -91,14 +96,15 @@ add_library(BotHider SHARED
     src/presentation_state.cpp
     src/sig_scan.cpp
     src/schema_resolver.cpp
-    ../common/sig_scan.cpp
-    ../common/schema_resolver.cpp
+    ${DTR_COMMON_DIR}/native/sig_scan.cpp
+    ${DTR_COMMON_DIR}/native/schema_resolver.cpp
     ${PROTO_SRCS}
     ${SDK_SOURCES}
 )
 
 target_include_directories(BotHider PRIVATE
     src
+    ${DTR_COMMON_DIR}
     ${NLOHMANN_JSON_INCLUDE}
     ${GENERATED_DIR}
     ${HL2SDK}/thirdparty/protobuf-3.21.8/src

@@ -96,12 +96,13 @@ CMake, and Visual Studio Build Tools. `CSGO_PROTO` is optional when
 `HL2SDKCS2/common/network_connection.proto` exists.
 
 ```powershell
-cmake -S server\runtime\BotHider -B server\runtime\BotHider\build -G "Visual Studio 18 2026" -A x64
-cmake --build server\runtime\BotHider\build --config Release --target BotHider
-dotnet build server\runtime\BotHider\csharp\BotHiderImpl\BotHiderImpl.csproj -c Release
+git submodule update --init --recursive
+cmake -S . -B build -G "Visual Studio 18 2026" -A x64
+cmake --build build --config Release --target BotHider
+dotnet build csharp/BotHiderImpl/BotHiderImpl.csproj -c Release
 ```
 
-The server package script consumes the native package under
-`server/runtime/BotHider/build/package` and the `.NET 10` C# outputs.
-Use the repository's `tooling/scripts/package-server.ps1` for the matched
-bundle. The obsolete standalone `build.ps1` distribution layout is removed.
+The native package is staged under `build/package/addons`; managed assemblies
+are under `csharp/BotHiderImpl/bin/Release/net10.0`. Install the matched native
+runtime and provider together. DemoTracer's consumer repository assembles its
+full playback bundle from these outputs.

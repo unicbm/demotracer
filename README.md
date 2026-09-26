@@ -1,11 +1,32 @@
 # DemoTracer BotHider runtime
 
-This directory contains the BotHider runtime maintained and shipped as part of
-CS2 DemoTracer. It combines a Metamod plugin with a CounterStrikeSharp
-presentation provider.
+[`unicbm/cs2-dtr-hider`](https://github.com/unicbm/cs2-dtr-hider) maintains the
+BotHider runtime shipped with CS2 DemoTracer. It combines a Metamod plugin
+with a CounterStrikeSharp presentation provider. DLL, installation,
+capability, and ABI names remain unchanged.
 
 Function and virtual hooks use Metamod's shared KHook engine. Build and run
-against the [matched Metamod and CounterStrikeSharp baseline](../../README.md#shared-hook-runtime).
+against the source pins in `.deps/common/contracts/hook-runtime.v1.json`.
+
+## Standalone checks
+
+Clone with `--recurse-submodules`, or run
+`git submodule update --init --recursive`. Shared native support and third-party
+headers come from the pinned `.deps/common` submodule.
+
+With PowerShell 7, CMake, a C++20 compiler, and .NET 10 installed:
+
+```powershell
+./tools/check.ps1
+./tools/check.ps1 -Dotnet /path/to/dotnet -NativeBuild
+```
+
+The default check builds the provider and runs Release native tests without a
+CS2 SDK. `-NativeBuild` additionally builds the plugin with the SDK environment
+described in [TECH.md](TECH.md). For a local shared-code checkout, use
+`-CommonDirectory /path/to/cs2-dtr-common`; direct CMake builds accept
+`-DDTR_COMMON_DIR=...`.
+The check script stages native installation files in `.build/native/package/`.
 
 The native layer owns fake-client adoption, synthetic persona state, ping, and
 a synchronous, main-thread C ABI (native ABI 3). The C# layer is the only publisher for visible

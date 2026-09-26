@@ -4,8 +4,10 @@ This runtime started from
 [`XBribo/CS2-Bot-Hider`](https://github.com/XBribo/CS2-Bot-Hider) commit
 `4895e6c47c7f490be79c268eef544693d9ba8f94` (2026-07-12).
 
-The copy under `server/runtime/BotHider` is the DemoTracer runtime source of truth.
-Upstream changes are reviewed and imported selectively; this directory is not
+[`unicbm/cs2-dtr-hider`](https://github.com/unicbm/cs2-dtr-hider) is the
+maintained source of truth, extracted from DemoTracer's
+`server/runtime/BotHider` without changing its public identities.
+Upstream changes are reviewed and imported selectively; this repository is not
 kept in mechanical lockstep with the upstream repository.
 
 Upstream `main` was reviewed through commit

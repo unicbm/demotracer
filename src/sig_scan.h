@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "../../common/sig_scan.h"
+#include <native/sig_scan.h>
 
 namespace cs2bh::sig
 {

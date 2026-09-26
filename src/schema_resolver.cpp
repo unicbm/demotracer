@@ -1,6 +1,6 @@
 // Each runtime retains an independent resolver and its existing namespace.
 #include "schema_resolver.h"
-#include "../../common/schema_resolver.h"
+#include <native/schema_resolver.h>
 
 namespace cs2bh::schema
 {

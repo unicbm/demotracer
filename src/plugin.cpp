@@ -25,7 +25,7 @@
 #include <utility>
 #include <vector>
 
-#include "../../common/khook.h"
+#include <native/khook.h>
 #include <nlohmann/json.hpp>
 #include <entity2/entityinstance.h>
 
