@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "components": [
+    {
+      "id": "common",
+      "path": "server/runtime/common",
+      "repository": "unicbm/cs2-dtr-common",
+      "branch": "main",
+      "tagPrefix": "v"
+    },
+    {
+      "id": "parser",
+      "path": "third_party/demoparser",
+      "repository": "unicbm/demoparser",
+      "branch": "demotracer",
+      "tagPrefix": "dtr-v"
+    },
+    {
+      "id": "controller",
+      "path": "server/runtime/BotController",
+      "repository": "unicbm/cs2-dtr-controller",
+      "branch": "main",
+      "tagPrefix": "v"
+    },
+    {
+      "id": "hider",
+      "path": "server/runtime/BotHider",
+      "repository": "unicbm/cs2-dtr-hider",
+      "branch": "main",
+      "tagPrefix": "v"
+    },
+    {
+      "id": "randomizer",
+      "path": "server/runtime/BotRandomizer",
+      "repository": "unicbm/cs2-dtr-randomizer",
+      "branch": "main",
+      "tagPrefix": "v"
+    },
+    {
+      "id": "converter",
+      "path": "desktop/converter",
+      "repository": "unicbm/cs2-dtr-converter",
+      "branch": "main",
+      "tagPrefix": "v"
+    },
+    {
+      "id": "css",
+      "path": "server/plugins/DemoTracer",
+      "repository": "unicbm/cs2-css-demotracer",
+      "branch": "main",
+      "tagPrefix": "v"
+    }
+  ]
+}

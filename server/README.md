@@ -5,16 +5,28 @@ playback. It is deliberately separate from the desktop converter.
 
 | Path | Responsibility |
 | --- | --- |
-| [`plugins/`](plugins/) | CounterStrikeSharp orchestration, commands, tests, and companion API |
-| [`runtime/`](runtime/) | Native Metamod replay and bot-presentation runtimes |
+| [`plugins/DemoTracer/`](plugins/DemoTracer/) | Pinned `cs2-css-demotracer` component; orchestration and commands in `src/DemoTracer`, configuration in `config`, regression suite in `tests/DemoTracer.Tests` |
+| [`runtime/`](runtime/) | Pinned bot runtime components and their own public APIs |
+| [`runtime/common/`](runtime/common/) | Shared native utilities, companion API, contracts and econ data |
 
-The maintained release combines these projects as one versioned playback
-bundle. Do not mix binaries from different builds: the manifest, native ABI,
+The product integration release selects compatible, independently versioned
+component releases for one playback bundle. Do not mix arbitrary binaries: the manifest, native ABI,
 BotHider API, and CounterStrikeSharp reader must remain compatible.
+Clone/init recursively before building. Component source and tests are maintained
+in their owning repositories; the root `automation/components` PR updates their
+release gitlinks after review, not their original upstream source branches.
+
+The CSS project is `plugins/DemoTracer/src/DemoTracer/DemoTracer.csproj` and
+builds to `src/DemoTracer/bin/<Configuration>/net10.0` inside the component.
+The source tree separates lifecycle, configuration, commands, native interop,
+playback, presentation, cosmetics, projectiles, voice and replay data. The
+component's [development guide](plugins/DemoTracer/docs/DEVELOPMENT.md) describes
+those responsibilities.
 
 ## Projectile hook compatibility profile
 
-The managed plugin ships `demotracer-native.json` beside `DemoTracer.dll`.
+The managed plugin ships `config/demotracer-native.json` from its source
+repository beside `DemoTracer.dll` as `demotracer-native.json`.
 The project and playback packaging script both include this file. Keep the
 profile with its matching plugin; missing or incompatible profiles disable
 projectile birth alignment with a diagnostic instead of using embedded offsets.
@@ -40,9 +52,9 @@ Bot Improver Panel and DemoTracer. Build the public package with
 `server/runtime/BotRandomizer/tools/package.ps1`; `package-server.ps1` consumes
 that package, or an explicit `-BotRandomizerPackage` ZIP with matching version,
 API, KHook pins and file hashes. It never creates a second replay implementation.
-For upstream review, `tooling/scripts/export-bot-randomizer.ps1 -Destination
-tmp/randomizer-standalone` exports complete independently buildable source,
-including the shared API, tests and CI. See the provider's
+Its submodule is already the independently buildable maintained repository,
+including the shared API, tests and CI. Submit fixes and releases there, then
+update the product's pinned release. See the provider's
 [README](runtime/BotRandomizer/README.md) and [API](runtime/BotRandomizer/API.md).
 
 BotController and BotHider use the single [KHook](https://github.com/Kenzzer/KHook)
@@ -86,18 +98,19 @@ The shared hook integration tests build the pinned upstream engine only for
 testing. After initializing its recursive submodules, run from the repo root:
 
 ```powershell
-cmake -S server/runtime/common/tests -B server/runtime/common/tests/build -A x64
-cmake --build server/runtime/common/tests/build --config Release
-ctest --test-dir server/runtime/common/tests/build -C Release --output-on-failure
+cmake -S server/runtime/common/native/tests -B server/runtime/common/.build/native-tests -A x64
+cmake --build server/runtime/common/.build/native-tests --config Release
+ctest --test-dir server/runtime/common/.build/native-tests -C Release --output-on-failure
 ```
 
-BotController ABI minor 43 marks this migration. The replay format and public
-control API are unchanged. The GUI rejects install receipts from the older
+The current playback contract requires BotController ABI 21, minor 44 or newer.
+Moving source into component repositories does not itself change the replay
+format or public control API. The GUI rejects install receipts from the older
 hook runtime and the managed heartbeat reports older BotController binaries
 as incompatible.
 
 Presentation and cosmetic plans are owned by the consumer's lifetime, not a
-periodically renewed timeout. BotHider API v2 and BotRandomizer API v3 require
+periodically renewed timeout. BotHider API v3 and BotRandomizer API v3 require
 a cancellation token at acquisition; consumers cancel it on the server thread
 on unload. Replacement keeps the same owner, and map changes or provider unload
 revoke the plans. Provider lifecycle notifications trigger reconnection, so idle
@@ -108,5 +121,5 @@ across processes.
 The native runtime is built on the foundational work in
 [XBribo/CS2-Bot-Controller](https://github.com/XBribo/CS2-Bot-Controller) and
 [XBribo/CS2-Bot-Hider](https://github.com/XBribo/CS2-Bot-Hider). See the root
-[credits](../README.md#credits-and-foundations) and the runtime-specific
+[credits](../README.md#credits-and-license) and the runtime-specific
 upstream notes for the exact maintenance boundary.

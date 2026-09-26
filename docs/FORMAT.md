@@ -466,7 +466,7 @@ Projectile metadata entries contain:
 
 Section 9, version 1, stores ordered 16-byte records: `tick_index`, `field_id`,
 `value_bits`, `present` (four little-endian u32 values). IDs and scalar types are
-specified in `shared/contracts/replay-source-fields.v1.json`. Records sort by
+specified in `server/runtime/common/contracts/replay-source-fields.v1.json`. Records sort by
 (tick_index, field_id), with no duplicate keys. The section is required even
 when empty. `present=0` removes a previously known value and requires zero bits;
 `present=1` preserves exact float/integer bits, including a real zero. Floats must

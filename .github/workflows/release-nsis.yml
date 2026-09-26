@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Read professional identity source pin
         id: pro-steamid-source
@@ -73,10 +75,21 @@ jobs:
         working-directory: desktop/gui
         run: pnpm run tauri:build --target x86_64-pc-windows-msvc -- --locked
 
+      - name: Record exact component sources
+        shell: pwsh
+        run: |
+          $installerDir = 'desktop/gui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis'
+          if (-not @(Get-ChildItem -LiteralPath $installerDir -Filter '*.exe' -File).Count) {
+            throw 'NSIS installer not found'
+          }
+          tooling/scripts/write-component-manifest.ps1 -OutputPath "$installerDir/component-sources.json"
+
       - name: Upload unsigned NSIS installer
         uses: actions/upload-artifact@v6
         with:
           name: demotracer-gui-${{ github.ref_name }}-windows-x64
-          path: desktop/gui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          path: |
+            desktop/gui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            desktop/gui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/component-sources.json
           if-no-files-found: error
           compression-level: 0

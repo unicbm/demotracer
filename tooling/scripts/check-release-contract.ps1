@@ -59,9 +59,9 @@ function Read-CargoPackageVersion([string]$RelativePath, [string]$PackageName) {
 }
 
 $contract = (Read-Text "shared\contracts\playback-contract.v1.json") | ConvertFrom-Json
-$sourceRegistry = (Read-Text "shared\contracts\replay-source-fields.v1.json") | ConvertFrom-Json
+$sourceRegistry = (Read-Text "server\runtime\common\contracts\replay-source-fields.v1.json") | ConvertFrom-Json
 $nativeSource = Read-Text "server\runtime\BotController\src\BotRecorder\ReplaySourceState.h"
-$managedSource = Read-Text "server\plugins\DemoTracer\DtrReplayReaderSourceState.cs"
+$managedSource = Read-Text "server\plugins\DemoTracer\src\DemoTracer\Data\DtrReplayReaderSourceState.cs"
 $managedFields = [regex]::Matches($managedSource, 'SourceKind\.(\w+), // (\w+)')
 $nativeFields = [regex]::Matches($nativeSource, '\{Target::(\w+), Kind::(\w+), ClockKind::(\w+), "([^"]+)", (\d+)\}')
 Assert-Equal "source-state managed field count" $managedFields.Count $sourceRegistry.fields.Count
@@ -89,17 +89,17 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 $null = Read-Text "desktop\gui\pnpm-lock.yaml"
 $tauriConfig = (Read-Text "desktop\gui\src-tauri\tauri.conf.json") | ConvertFrom-Json
 $tauriCapability = (Read-Text "desktop\gui\src-tauri\capabilities\default.json") | ConvertFrom-Json
-$playbackSourceVersion = Read-RegexValue "server\plugins\DemoTracer\DemoTracerPlugin.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "DemoTracer module version"
+$playbackSourceVersion = Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Lifecycle\DemoTracerPlugin.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "DemoTracer module version"
 if ([string]::IsNullOrWhiteSpace($PlaybackVersion)) {
     $PlaybackVersion = $playbackSourceVersion
 }
 
+$converterVersion = Read-RegexValue "desktop\converter\Cargo.toml" '(?ms)^\[package\]\s*.*?^version = "([^"]+)"' "converter version"
+Assert-Equal "converter Cargo.lock" (Read-CargoPackageVersion "desktop\converter\Cargo.lock" "cs2-demotracer") $converterVersion
+Assert-Equal "desktop converter dependency lock" (Read-CargoPackageVersion "desktop\gui\src-tauri\Cargo.lock" "cs2-demotracer") $converterVersion
 $versionSources = [ordered]@{
-    "converter Cargo.toml" = Read-RegexValue "desktop\converter\Cargo.toml" '(?ms)^\[package\]\s*.*?^version = "([^"]+)"' "converter version"
-    "converter Cargo.lock" = Read-CargoPackageVersion "desktop\converter\Cargo.lock" "cs2-demotracer"
     "desktop package.json" = [string]$desktopPackage.version
     "desktop Tauri Cargo.toml" = Read-RegexValue "desktop\gui\src-tauri\Cargo.toml" '(?ms)^\[package\]\s*.*?^version = "([^"]+)"' "desktop Tauri version"
-    "desktop converter dependency lock" = Read-CargoPackageVersion "desktop\gui\src-tauri\Cargo.lock" "cs2-demotracer"
     "desktop Tauri Cargo.lock" = Read-CargoPackageVersion "desktop\gui\src-tauri\Cargo.lock" "cs2-demotracer-gui"
     "desktop tauri.conf.json" = [string]$tauriConfig.version
 }
@@ -115,19 +115,19 @@ if ([string]::IsNullOrWhiteSpace([string]$releaseNotes.zh) -or [string]::IsNullO
 $null = Read-Text "tooling\release\github-release.v$Version.md"
 
 Assert-Equal "manifest ABI" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'DEMOTRACER_ABI:\s*i32\s*=\s*(\d+)' "manifest ABI") ([string]$contract.manifest_abi)
-Assert-Equal "CSS maximum manifest ABI" (Read-RegexValue "server\plugins\DemoTracer\DemoTracerPlugin.cs" 'MaxManifestAbiVersion\s*=\s*(\d+)' "maximum manifest ABI") ([string]$contract.manifest_abi)
+Assert-Equal "CSS maximum manifest ABI" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Lifecycle\DemoTracerPlugin.cs" 'MaxManifestAbiVersion\s*=\s*(\d+)' "maximum manifest ABI") ([string]$contract.manifest_abi)
 Assert-Equal "DTR writer" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'DTR_FORMAT_VERSION:\s*u32\s*=\s*(\d+)' "DTR writer") ([string]$contract.dtr_writer)
 Assert-Equal "DTR section codec" ([string]$contract.dtr_section_writer_codec) "zstd"
 Assert-Equal "DTR Zstd level" (Read-RegexValue "desktop\converter\src\rec_writer\mod.rs" 'ZSTD_LEVEL:\s*i32\s*=\s*(\d+)' "Zstd level") ([string]$contract.dtr_section_zstd_level)
-Assert-TextPresent "server\plugins\DemoTracer\DemoTracer.csproj" 'ZstdSharp\.Port" Version="0\.8\.8"' "managed Zstd decoder"
+Assert-TextPresent "server\plugins\DemoTracer\src\DemoTracer\DemoTracer.csproj" 'ZstdSharp\.Port" Version="0\.8\.8"' "managed Zstd decoder"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+ZstdSharp\.dll[^\r\n]+ZstdSharp\.dll' "packaged Zstd decoder"
-Assert-Equal "CSS minimum DTR reader" (Read-RegexValue "server\plugins\DemoTracer\BotControllerNativeTypes.cs" 'MinRecFormatVersion\s*=\s*(\d+)' "minimum DTR reader") ([string]$contract.dtr_reader.min)
-Assert-Equal "CSS maximum DTR reader" (Read-RegexValue "server\plugins\DemoTracer\BotControllerNativeTypes.cs" 'RecFormatVersion\s*=\s*(\d+)' "maximum DTR reader") ([string]$contract.dtr_reader.max)
-Assert-Equal "CSS native ABI" (Read-RegexValue "server\plugins\DemoTracer\BotControllerNativeTypes.cs" 'ExpectedAbiVersion\s*=\s*(\d+)' "CSS native ABI") ([string]$contract.bot_controller.abi_major)
+Assert-Equal "CSS minimum DTR reader" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'MinRecFormatVersion\s*=\s*(\d+)' "minimum DTR reader") ([string]$contract.dtr_reader.min)
+Assert-Equal "CSS maximum DTR reader" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'RecFormatVersion\s*=\s*(\d+)' "maximum DTR reader") ([string]$contract.dtr_reader.max)
+Assert-Equal "CSS native ABI" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'ExpectedAbiVersion\s*=\s*(\d+)' "CSS native ABI") ([string]$contract.bot_controller.abi_major)
 Assert-Equal "managed provider native ABI" (Read-RegexValue "server\runtime\BotController\csharp\BotControllerImpl\BotController.NativeApi.cs" 'ExpectedAbiVersion\s*=\s*(\d+)' "managed provider native ABI") ([string]$contract.bot_controller.abi_major)
 Assert-Equal "standalone binding native ABI" (Read-RegexValue "server\runtime\BotController\scripts\BotController.NativeApi.cs" 'ExpectedAbiVersion\s*=\s*(\d+)' "standalone binding native ABI") ([string]$contract.bot_controller.abi_major)
 Assert-Equal "runtime native ABI" (Read-RegexValue "server\runtime\BotController\src\common\exports.cpp" 'kBotControllerAbiMajor\s*=\s*(\d+)' "runtime native ABI") ([string]$contract.bot_controller.abi_major)
-Assert-Equal "minimum native ABI minor" (Read-RegexValue "server\plugins\DemoTracer\DemoTracerRuntimeHealth.cs" 'MinimumBotControllerAbiMinor\s*=\s*(\d+)' "minimum native ABI minor") ([string]$contract.bot_controller.min_abi_minor)
+Assert-Equal "minimum native ABI minor" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\DemoTracerRuntimeHealth.cs" 'MinimumBotControllerAbiMinor\s*=\s*(\d+)' "minimum native ABI minor") ([string]$contract.bot_controller.min_abi_minor)
 Assert-Equal "BotController public control API" (Read-RegexValue "server\runtime\BotController\src\common\exports.cpp" 'BotController_GetPublicApiVersion\(\)\s*\{\s*return\s+(\d+)' "public control API") ([string]$contract.bot_controller.public_control_api)
 Assert-Equal "BotController movement input contract" (Read-RegexValue "server\runtime\BotController\src\common\exports.cpp" 'BotController_GetMovementIntentContractVersion\(\)\s*\{\s*return\s+(\d+)' "movement input contract") ([string]$contract.bot_controller.movement_intent_version)
 Assert-Equal "BotController managed provider" (Read-RegexValue "server\runtime\BotController\csharp\BotControllerImpl\BotControllerImplPlugin.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "managed provider version") ([string]$contract.bot_controller.managed_provider_version)
@@ -139,7 +139,7 @@ if ($runtimeMinor -lt [int]$contract.bot_controller.min_abi_minor) {
     throw "runtime native ABI minor $runtimeMinor is below required $($contract.bot_controller.min_abi_minor)"
 }
 
-Assert-Equal "DemoTracer companion API" (Read-RegexValue "server\plugins\DemoTracer\BotControllerNativeTypes.cs" 'DemoTracerApiVersion\s*=\s*(\d+)' "DemoTracer companion API") ([string]$contract.demotracer.companion_api)
+Assert-Equal "DemoTracer companion API" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'DemoTracerApiVersion\s*=\s*(\d+)' "DemoTracer companion API") ([string]$contract.demotracer.companion_api)
 Assert-Equal "BotHider API" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderApi\IBotHiderApi.cs" 'ApiVersion\s*=\s*(\d+)' "BotHider API") ([string]$contract.bot_hider.api)
 Assert-Equal "BotHider clan tag limit" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderApi\IBotHiderApi.cs" 'MaxClanTagUtf8Bytes\s*=\s*(\d+)' "BotHider clan tag limit") ([string]$contract.bot_hider.clan_tag_max_utf8_bytes)
 Assert-Equal "Converter clan tag limit" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'MAX_CLAN_TAG_UTF8_BYTES:\s*usize\s*=\s*(\d+)' "Converter clan tag limit") ([string]$contract.bot_hider.clan_tag_max_utf8_bytes)
@@ -149,22 +149,26 @@ Assert-Equal "BotHider native slot bytes" (Read-RegexValue "server\runtime\BotHi
 Assert-Equal "BotHider managed slot bytes" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderImpl\NativePresentationClient.cs" 'SlotByteSize\s*=\s*(\d+)' "BotHider managed slot bytes") ([string]$contract.bot_hider.native_slot_bytes)
 Assert-Equal "BotHider native version" (Read-RegexValue "server\runtime\BotHider\src\plugin.h" 'GetVersion\(\).*?return "([^"]+)"' "BotHider native version") ([string]$contract.bot_hider.native_provider_version)
 Assert-Equal "BotHider managed version" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderImpl\BotHiderImplPlugin.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "BotHider managed version") ([string]$contract.bot_hider.managed_provider_version)
-Assert-Equal "BotRandomizer API" (Read-RegexValue "server\vendor\BotRandomizerApi\IBotRandomizerApi.cs" 'ApiVersion\s*=\s*(\d+)' "BotRandomizer API") ([string]$contract.bot_randomizer.api)
+Assert-Equal "BotRandomizer API" (Read-RegexValue "server\runtime\BotRandomizer\BotRandomizerApi\IBotRandomizerApi.cs" 'ApiVersion\s*=\s*(\d+)' "BotRandomizer API") ([string]$contract.bot_randomizer.api)
 Assert-Equal "BotRandomizer provider" (Read-RegexValue "server\runtime\BotRandomizer\BotRandomizer.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "BotRandomizer provider version") ([string]$contract.bot_randomizer.provider_version)
 Assert-Equal "BotRandomizer assembly" (Read-RegexValue "server\runtime\BotRandomizer\BotRandomizer.csproj" '<Version>([^<]+)</Version>' "BotRandomizer assembly version") ([string]$contract.bot_randomizer.provider_version)
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'import-package\.ps1' "common Randomizer package import"
 Assert-TextAbsent "tooling\scripts\package-server.ps1" 'Invoke-Checked[^\r\n]+\$botRandomizerProject' "separate replay Randomizer build"
-Assert-Equal "DemoTracer target framework" (Read-RegexValue "server\plugins\DemoTracer\DemoTracer.csproj" '<TargetFramework>([^<]+)</TargetFramework>' "DemoTracer target framework") ([string]$contract.counterstrikesharp.target_framework)
-Assert-Equal "CounterStrikeSharp minimum version" (Read-RegexValue "server\plugins\DemoTracer\DemoTracer.csproj" 'CounterStrikeSharp\.API" Version="([^"]+)"' "CounterStrikeSharp version") ([string]$contract.counterstrikesharp.minimum_version)
+Assert-Equal "DemoTracer target framework" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\DemoTracer.csproj" '<TargetFramework>([^<]+)</TargetFramework>' "DemoTracer target framework") ([string]$contract.counterstrikesharp.target_framework)
+Assert-Equal "CounterStrikeSharp minimum version" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\DemoTracer.csproj" 'CounterStrikeSharp\.API" Version="([^"]+)"' "CounterStrikeSharp version") ([string]$contract.counterstrikesharp.minimum_version)
 Assert-Equal "native hook backend" ([string]$contract.hook_runtime.backend) "khook"
 Assert-Equal "Metamod plugin API" ([string]$contract.hook_runtime.metamod_plugin_api) "18"
 Assert-Equal "runtime native ABI minor" (Read-RegexValue "server\runtime\BotController\src\common\exports.cpp" 'kBotControllerAbiMinor\s*=\s*(\d+)' "runtime native ABI minor") ([string]$contract.bot_controller.min_abi_minor)
 foreach ($pin in @("metamod_source_commit", "khook_source_commit", "counterstrikesharp_source_commit")) {
     if ([string]$contract.hook_runtime.$pin -notmatch '^[0-9a-f]{40}$') { throw "Invalid hook runtime pin: $pin" }
 }
+$commonHooks = (Read-Text "server\runtime\common\contracts\hook-runtime.v1.json") | ConvertFrom-Json
+foreach ($field in @("backend", "metamod_minimum_build", "metamod_plugin_api", "metamod_source_commit", "khook_source_commit", "counterstrikesharp_source_commit")) {
+    Assert-Equal "common hook runtime $field" ([string]$commonHooks.$field) ([string]$contract.hook_runtime.$field)
+}
 foreach ($runtime in @("BotController", "BotHider")) {
     Assert-TextAbsent "server\runtime\$runtime\CMakeLists.txt" 'funchook|core/sourcehook' "$runtime legacy hook dependencies"
-    Assert-TextPresent "server\runtime\$runtime\CMakeLists.txt" 'common/khook\.cmake' "$runtime shared KHook interface"
+    Assert-TextPresent "server\runtime\$runtime\CMakeLists.txt" 'native/khook\.cmake' "$runtime shared KHook interface"
 }
 
 Assert-PathAbsent "desktop\converter\src\main.rs" "converter CLI entrypoint"
@@ -173,7 +177,7 @@ Assert-PathAbsent "desktop\converter\src\pool.rs" "round-pool export module"
 Assert-PathAbsent "desktop\converter\src\workflows\pool.rs" "round-pool workflow"
 Assert-TextAbsent "desktop\converter\Cargo.toml" '(?m)^\s*\[\[bin\]\]' "converter binary target"
 Assert-TextAbsent "desktop\converter\src\model\mod.rs" 'RoundPool(?:Manifest|Candidate)' "round-pool manifest model"
-Assert-TextAbsent "server\plugins\DemoTracer\DemoTracerPlayback.cs" 'dtr_(?:run_pool|pool_restart|stop_pool)|case\s+"pool"' "round-pool playback command"
+Assert-TextAbsent "server\plugins\DemoTracer\src\DemoTracer\Playback\DemoTracerPlayback.cs" 'dtr_(?:run_pool|pool_restart|stop_pool)|case\s+"pool"' "round-pool playback command"
 Assert-TextAbsent "docs\COMMANDS.md" 'pool_manifest|dtr_(?:go|arm)\s+pool' "round-pool public documentation"
 
 if (-not [bool]$tauriConfig.bundle.active -or @($tauriConfig.bundle.targets) -notcontains "nsis") {
@@ -208,12 +212,12 @@ Assert-TextPresent "tooling\scripts\package-server.ps1" 'addons\\counterstrikesh
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+BotRandomizer\.dll[^\r\n]+BotRandomizer\.dll' "packaged BotRandomizer provider assembly"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+cosmetic_catalog\.json[^\r\n]+cosmetic_catalog\.json' "packaged BotRandomizer cosmetic catalog"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+cs2-lib-econ-index\.v1\.json[^\r\n]+cs2-lib-econ-index\.v1\.json' "packaged BotRandomizer replay econ index"
-Assert-TextPresent "server\plugins\DemoTracer\DemoTracerGameEvents.cs" 'OnRoundPrestart\(EventRoundPrestart' "pre-spawn replay plan preparation"
-Assert-TextPresent "server\plugins\DemoTracer\DemoTracerGameEvents.cs" 'PrepareNextSequenceRound\(\s*"round_prestart"(?:\s*,|\s*\))' "sequence plan prepared before spawn"
-Assert-TextAbsent "server\plugins\DemoTracer\DemoTracerGameEvents.cs" 'PrepareNextSequenceRound\("round_start"\)' "late sequence plan preparation"
-Assert-TextAbsent "server\plugins\DemoTracer\DemoTracerPlayback.cs" 'PollPendingSequencePreparation|PollPendingArmedPreparation' "late freeze-time replay plan preparation"
-Assert-PathAbsent "server\plugins\DemoTracer\DemoTracerCosmeticEntityWrites.cs" "DemoTracer cosmetic entity writer"
-Assert-TextAbsent "server\plugins\DemoTracer\DemoTracerCosmeticPlayback.cs" 'ChangeSubclass|FallbackPaintKit\s*=|EconGloves|SetModel\(' "DemoTracer cosmetic playback writer"
+Assert-TextPresent "server\plugins\DemoTracer\src\DemoTracer\Lifecycle\DemoTracerGameEvents.cs" 'OnRoundPrestart\(EventRoundPrestart' "pre-spawn replay plan preparation"
+Assert-TextPresent "server\plugins\DemoTracer\src\DemoTracer\Lifecycle\DemoTracerGameEvents.cs" 'PrepareNextSequenceRound\(\s*"round_prestart"(?:\s*,|\s*\))' "sequence plan prepared before spawn"
+Assert-TextAbsent "server\plugins\DemoTracer\src\DemoTracer\Lifecycle\DemoTracerGameEvents.cs" 'PrepareNextSequenceRound\("round_start"\)' "late sequence plan preparation"
+Assert-TextAbsent "server\plugins\DemoTracer\src\DemoTracer\Playback\DemoTracerPlayback.cs" 'PollPendingSequencePreparation|PollPendingArmedPreparation' "late freeze-time replay plan preparation"
+Assert-PathAbsent "server\plugins\DemoTracer\src\DemoTracer\Cosmetics\DemoTracerCosmeticEntityWrites.cs" "DemoTracer cosmetic entity writer"
+Assert-TextAbsent "server\plugins\DemoTracer\src\DemoTracer\Cosmetics\DemoTracerCosmeticPlayback.cs" 'ChangeSubclass|FallbackPaintKit\s*=|EconGloves|SetModel\(' "DemoTracer cosmetic playback writer"
 Assert-PathAbsent "tooling\scripts\package-gui-update-test.ps1" "GUI updater test packager"
 if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "tooling\scripts\publish-r2.ps1") -PathType Leaf)) {
     throw "R2 updater publisher is missing"

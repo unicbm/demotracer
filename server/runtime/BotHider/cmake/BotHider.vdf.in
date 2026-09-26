@@ -1,5 +1,0 @@
-"Metamod Plugin"
-{
-    "alias" "BotHider"
-    "file"  "@BOT_HIDER_VDF_FILE@"
-}

@@ -20,9 +20,8 @@ $firstPartyRoots = @(
     "desktop\converter\src",
     "desktop\gui",
     "server\plugins\DemoTracer",
-    "server\plugins\DemoTracer.Tests",
-    "server\plugins\DemoTracerApi",
-    "tooling\cs2-lib-data",
+    "server\runtime\common\csharp\DemoTracerApi",
+    "server\runtime\common\tools",
     "tooling\scripts"
 )
 $sourceExtensions = [System.Collections.Generic.HashSet[string]]::new(
@@ -40,8 +39,8 @@ $copyrightMarker = "Copyright (c) 2026 unicbm. All rights reserved."
 $licenseMarker = "Licensed under the GNU Affero General Public License v3.0 only."
 # Shared compatibility sources retain their original license; validate it explicitly.
 $retainedLicenseMarkers = @{
-    "server\plugins\DemoTracer\PeImageFingerprint.cs" = "SPDX-License-Identifier: GPL-3.0-or-later"
-    "server\plugins\DemoTracer.Tests\PeImageFingerprintTests.cs" = "SPDX-License-Identifier: GPL-3.0-or-later"
+    "server\plugins\DemoTracer\src\DemoTracer\Native\PeImageFingerprint.cs" = "SPDX-License-Identifier: GPL-3.0-or-later"
+    "server\plugins\DemoTracer\tests\DemoTracer.Tests\PeImageFingerprintTests.cs" = "SPDX-License-Identifier: GPL-3.0-or-later"
 }
 $missingHeaders = [System.Collections.Generic.List[string]]::new()
 $checkedCount = 0
@@ -53,14 +52,22 @@ foreach ($relativeRoot in $firstPartyRoots) {
     }
 }
 
-$repositoryFiles = @(& git -C $RepoRoot ls-files --cached --others --exclude-standard)
+$repositoryFiles = @(& git -C $RepoRoot ls-files --cached --recurse-submodules)
 if ($LASTEXITCODE -ne 0) {
     throw "could not enumerate repository files for first-party header validation"
 }
+$repositoryFiles += @(& git -C $RepoRoot ls-files --others --exclude-standard)
+if ($LASTEXITCODE -ne 0) {
+    throw "could not enumerate untracked repository files for first-party header validation"
+}
+$repositoryFiles = @($repositoryFiles | Sort-Object -Unique)
 $rootPrefixes = @($firstPartyRoots | ForEach-Object { "$_\" })
 
 foreach ($repositoryPath in $repositoryFiles) {
     $relativePath = $repositoryPath.Replace('/', '\')
+    if ($relativePath -match '(^|\\)\.deps\\') {
+        continue
+    }
     if (-not ($rootPrefixes | Where-Object {
         $relativePath.StartsWith($_, [System.StringComparison]::OrdinalIgnoreCase)
     })) {

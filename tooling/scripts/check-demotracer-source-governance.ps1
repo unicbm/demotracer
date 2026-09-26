@@ -14,8 +14,8 @@ if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
     $RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 }
 
-$sourceRoot = Join-Path $RepoRoot "server\plugins\DemoTracer"
-$entryPointPath = Join-Path $sourceRoot "DemoTracerPlugin.cs"
+$sourceRoot = Join-Path $RepoRoot "server\plugins\DemoTracer\src\DemoTracer"
+$entryPointPath = Join-Path $sourceRoot "Lifecycle\DemoTracerPlugin.cs"
 $defaultFileLimit = 1500
 $fileLimits = @{
     "DemoTracerPlugin.cs" = 600
@@ -42,7 +42,12 @@ $fileLimits = @{
 }
 
 $errors = [System.Collections.Generic.List[string]]::new()
-$sourceFiles = @(Get-ChildItem -LiteralPath $sourceRoot -Filter '*.cs' -File)
+$sourceFiles = @(
+    Get-ChildItem -LiteralPath $sourceRoot -Filter '*.cs' -File
+    Get-ChildItem -LiteralPath $sourceRoot -Directory |
+        Where-Object { $_.Name -notin @('bin', 'obj') } |
+        ForEach-Object { Get-ChildItem -LiteralPath $_.FullName -Filter '*.cs' -File -Recurse }
+)
 foreach ($file in $sourceFiles) {
     $lineCount = [System.IO.File]::ReadAllLines($file.FullName).Length
     $limit = if ($fileLimits.ContainsKey($file.Name)) {
@@ -79,7 +84,7 @@ if ($entryPointFields -gt 50) {
 }
 
 $econIndexSource = [System.IO.File]::ReadAllText(
-    (Join-Path $sourceRoot "DemoTracerEconIndex.cs"))
+    (Join-Path $sourceRoot "Cosmetics\DemoTracerEconIndex.cs"))
 if ($econIndexSource -match '\bstatic\s+ReplayEquipmentCatalog\b') {
     $errors.Add("replay equipment catalog must remain instance-owned")
 }
@@ -88,8 +93,8 @@ if ($econIndexSource -match 'Assembly\.Location') {
 }
 
 $startupLeaseFiles = @(
-    "DemoTracerBotHiderPresentation.cs",
-    "DemoTracerBotRandomizerCosmeticLease.cs"
+    "Presentation\DemoTracerBotHiderPresentation.cs",
+    "Cosmetics\DemoTracerBotRandomizerCosmeticLease.cs"
 )
 foreach ($fileName in $startupLeaseFiles) {
     $leaseSource = [System.IO.File]::ReadAllText((Join-Path $sourceRoot $fileName))
@@ -99,7 +104,7 @@ foreach ($fileName in $startupLeaseFiles) {
 }
 
 $apiProject = [System.IO.File]::ReadAllText(
-    (Join-Path $RepoRoot "server\plugins\DemoTracerApi\DemoTracerApi.csproj"))
+    (Join-Path $RepoRoot "server\runtime\common\csharp\DemoTracerApi\DemoTracerApi.csproj"))
 if ($apiProject -match '<PackageReference' -or $apiProject -match '<ProjectReference') {
     $errors.Add("DemoTracerApi must remain a contract-only assembly without runtime references")
 }

@@ -1,5 +1,0 @@
-"Metamod Plugin"
-{
-    "alias" "BotController"
-    "file"  "@BC_VDF_FILE@"
-}

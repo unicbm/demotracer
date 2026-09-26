@@ -1,0 +1,28 @@
+[submodule "server/runtime/common"]
+	path = server/runtime/common
+	url = https://github.com/unicbm/cs2-dtr-common.git
+	branch = main
+[submodule "third_party/demoparser"]
+	path = third_party/demoparser
+	url = https://github.com/unicbm/demoparser.git
+	branch = demotracer
+[submodule "server/runtime/BotController"]
+	path = server/runtime/BotController
+	url = https://github.com/unicbm/cs2-dtr-controller.git
+	branch = main
+[submodule "server/runtime/BotHider"]
+	path = server/runtime/BotHider
+	url = https://github.com/unicbm/cs2-dtr-hider.git
+	branch = main
+[submodule "server/runtime/BotRandomizer"]
+	path = server/runtime/BotRandomizer
+	url = https://github.com/unicbm/cs2-dtr-randomizer.git
+	branch = main
+[submodule "desktop/converter"]
+	path = desktop/converter
+	url = https://github.com/unicbm/cs2-dtr-converter.git
+	branch = main
+[submodule "server/plugins/DemoTracer"]
+	path = server/plugins/DemoTracer
+	url = https://github.com/unicbm/cs2-css-demotracer.git
+	branch = main

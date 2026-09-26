@@ -1,28 +1,15 @@
 # Rust
-/desktop/converter/target/
 /target/
 
 # .NET / CounterStrikeSharp
-/server/plugins/bin/
-/server/plugins/obj/
-/server/plugins/**/bin/
-/server/plugins/**/obj/
-/server/runtime/**/bin/
-/server/runtime/**/obj/
-/server/runtime/BotRandomizer/dist/
 *.user
 *.suo
 
 # Native runtime builds
-/server/runtime/BotController/build/
-/server/runtime/BotController/out/
-/server/runtime/BotController/tests/build/
-/server/runtime/common/tests/build/
 /dist/
 /desktop/gui/node_modules/
 /cloudflare/telemetry/node_modules/
 /cloudflare/telemetry/.wrangler/
-/tooling/cs2-lib-data/node_modules/
 /desktop/gui/.pnpm-store/
 /.pnpm-store/
 /desktop/gui/dist/
@@ -54,7 +41,6 @@
 /.external/
 /output/
 /tmp/
-/desktop/converter/examples/parser_benchmark.rs
 # Publish only maintained documentation; keep research and audits local.
 /docs/*
 !/docs/README.md
@@ -68,7 +54,6 @@
 !/docs/media/
 # Local offline investigation tools
 /tooling/research/
-/desktop/converter/output/
 *.dem
 *.dtr
 *.cs2rec
@@ -84,6 +69,4 @@
 __pycache__/
 *.pyc
 
-# Avoid accidentally committing full upstream checkouts or test assets.
-/third_party/demoparser/src/parser/test_demo.dem
-/third_party/demoparser/src/csgoproto/GameTracking-CS2/.git/
+# Each maintained submodule owns its own build/cache exclusions.

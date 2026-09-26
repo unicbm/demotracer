@@ -3894,7 +3894,7 @@ fn analysis_dto(
         demo_version_name: None,
         server_name: None,
         demo_source: None,
-        converter_version: env!("CARGO_PKG_VERSION").to_string(),
+        converter_version: cs2_demotracer::VERSION.to_string(),
         players: Vec::new(),
         score: None,
         round_outcomes: Vec::new(),
@@ -4552,7 +4552,7 @@ fn run_conversion_with_sink(
     selected_rounds.sort_unstable();
     selected_rounds.dedup();
     demo_info.conversion = Some(archive_info::DemoInfoConversion {
-        converter_version: env!("CARGO_PKG_VERSION").to_string(),
+        converter_version: cs2_demotracer::VERSION.to_string(),
         selected_rounds,
         side: request.side.to_string(),
         full_round: request.full_round,
@@ -6330,6 +6330,7 @@ mod tests {
             "match-aabbccddeeff",
             &analysis(),
         );
+        assert_eq!(dto.converter_version, cs2_demotracer::VERSION);
         assert!(dto.rounds[0].selected_by_default);
         assert!(dto.rounds[1].selected_by_default);
         assert_eq!(dto.rounds[1].status, "partial");

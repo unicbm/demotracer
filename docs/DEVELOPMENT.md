@@ -2,22 +2,46 @@
 
 ## Architecture
 
+This repository owns the GUI, product compatibility contract and release
+integration. The reusable components are independently maintained repositories
+mounted as Git submodules at the paths below. `components.json` records their
+maintained repositories, release branches and tag prefixes; Git records the
+exact selected commits.
+
 | Path | Responsibility |
 | --- | --- |
 | `desktop/gui/` | Supported Tauri/React application and thin Rust command bridge |
-| `desktop/converter/` | Rust parsing, analysis, `.dtr` writing, manifests, and validation |
-| `server/plugins/DemoTracer/` | CounterStrikeSharp orchestration and `dtr_` commands |
-| `server/plugins/DemoTracerApi/` | Contract-only companion API installed under CounterStrikeSharp `shared/` |
+| `desktop/converter/` | Converter component: Rust analysis, `.dtr` writing, manifests, and validation |
+| `third_party/demoparser/` | Maintained `demoparser` branch with the minimal `parser` / `csgoproto` workspace |
+| `server/plugins/DemoTracer/` | `cs2-css-demotracer` component: production project in `src/DemoTracer`, configuration in `config`, tests in `tests/DemoTracer.Tests` |
+| `server/runtime/common/csharp/DemoTracerApi/` | Contract-only companion API installed under CounterStrikeSharp `shared/` |
 | `server/runtime/BotController/` | Native replay buffers, movement/input injection, weapon control, and C ABI |
 | `server/runtime/BotHider/` | Native and managed bot identity/presentation provider |
 | `server/runtime/BotRandomizer/` | Bundled and version-locked cosmetic entity writer |
-| `shared/contracts/` | Versioned desktop/server release contracts |
-| `shared/econ/` | Cross-runtime projection generated from the pinned `@ianlucas/cs2-lib` package |
+| `server/runtime/common/native/` | Common component's shared native utilities and tests |
+| `server/runtime/common/contracts/` | Shared source-field declarations and native host/toolchain pins |
+| `server/runtime/common/econ/` | Cross-runtime projection generated from the pinned `@ianlucas/cs2-lib` package |
+| `server/runtime/common/tools/cs2-lib-data/` | Generator and source lock for that econ projection |
+| `shared/contracts/` | Product-level supported Playback compatibility contract |
 | `tooling/` | Validation, packaging, signing, and publishing automation |
 
 The Rust converter crate is the conversion truth source. The desktop backend
 calls it directly; there is no supported converter CLI. Future automation
 should use a separately versioned API instead of recreating a second UI.
+Its repository name is `cs2-dtr-converter`; the Cargo package and library remain
+`cs2-demotracer` and `cs2_demotracer`. Provider APIs live with their providers:
+BotController and BotHider under `csharp/`, and BotRandomizer under
+`BotRandomizerApi/`. They are referenced from each consumer's pinned `.deps`
+submodules instead of separate copies in this repository.
+
+The CSS project is
+`server/plugins/DemoTracer/src/DemoTracer/DemoTracer.csproj`. Its production code
+is organized by responsibility beneath that directory, with the plugin entry
+point in `Lifecycle/DemoTracerPlugin.cs` and native ABI declarations in
+`Native/BotControllerNativeTypes.cs`. Builds write to
+`src/DemoTracer/bin/<Configuration>/net10.0` inside the component. Configuration
+templates remain separate in `config/`; packaging places the native profile and
+example configuration beside the plugin DLL under their existing filenames.
 
 Demo-backed appearance rules live in `desktop/converter/src/cosmetics/`:
 
@@ -44,20 +68,21 @@ developer toolchain. Source builds require Rust stable with the Windows MSVC
 target, Node.js 22, pnpm 11.9, .NET 10, and the Tauri Windows prerequisites.
 
 Pinned parser, inspect-link, cosmetic, crosshair, flag, and professional-player
-sources are recorded under `third_party/`, `tooling/cs2-lib-data/`, lockfiles,
+sources are recorded under `third_party/`,
+`server/runtime/common/tools/cs2-lib-data/`, component manifests, lockfiles,
 and their accompanying notices. Generated catalog projections are never edited
 by hand.
 
 `server/runtime/BotController`, `server/runtime/BotHider`, and
 `server/runtime/BotRandomizer` are maintained
-derivatives of XBribo's projects. Preserve their own licenses, attribution, and
+derivatives of their recorded upstream projects. Preserve their own licenses, attribution, and
 `UPSTREAM.md` files; they are not first-party DemoTracer source for copyright
 header purposes. The playback server additionally requires Windows x64 CS2,
 Metamod:Source 2.0 build 1469+, a KHook-enabled CounterStrikeSharp host, and a
 matching DemoTracer bundle. See the pinned source baseline and native hook
 tests in [playback server requirements](../server/README.md#shared-hook-runtime).
 
-BotRandomizer 1.6 is part of the matched playback bundle and implements the v3
+BotRandomizer 1.7.0 is part of the matched playback bundle and implements the v3
 replay-plan API. DemoTracer owns normalization and plan lifetime only;
 BotRandomizer owns all cosmetic entity writes at spawn or item construction.
 Ray-Trace 1.0.16 or newer is optional for stricter handoff line-of-sight checks.
@@ -79,9 +104,40 @@ movement initializations without writing per-tick logs.
 | --- | --- |
 | `.dtr` writer / reader | v12 / v3-v12 |
 | Manifest ABI | 19 |
-| BotController native ABI | 21, minor 42+; 228-byte replay tick |
-| BotHider / BotRandomizer API | 2 / 3 |
+| BotController native ABI | 21, minor 44+; 228-byte replay tick |
+| BotHider / BotRandomizer API | 3 / 3 |
 | DemoTracer companion API | 7 |
+
+## Component Maintenance
+
+For a fresh source checkout or after pulling a product pin update:
+
+```powershell
+git clone --recurse-submodules https://github.com/unicbm/demotracer.git
+# Or, inside an existing checkout:
+git submodule update --init --recursive
+node server\runtime\common\tools\check-components.mjs
+```
+
+The component-pin check verifies that recursive consumers use the same shared
+component revisions selected by the product. A mixed set of common, parser or
+provider revisions must be reconciled through consumer releases before product
+integration. Do not use `git submodule update --remote` to bypass the recorded
+release gitlinks.
+
+Make a component change in its own repository and submit its PR there. Run its
+`tools/check.ps1` and any required live-server checks, then publish the reviewed
+component release. The release workflow manages that component's source version
+and changelog. Consumers and this product use the `automation/components` PR to
+propose released gitlinks; product CI validates the resulting bundle before merge.
+This automation follows our maintained repositories and release tags. Reviewing
+or importing original upstream changes remains a separate maintenance decision.
+
+GUI changes stay in `desktop/gui` in this repository. Component source versions,
+GUI/Playback product versions, `.dtr` and manifest versions, and public API/ABI
+versions are independent. A new source tag does not imply an API/ABI bump or a
+compatible bundle. Update the product contract and all affected readers/writers
+when a real compatibility change requires it.
 
 ## Build and Test
 
@@ -117,14 +173,15 @@ requires measuring both compressed size and the additional decoding path.
 Run the narrowest affected checks first:
 
 ```powershell
-cd tooling\cs2-lib-data
+cd server\runtime\common\tools\cs2-lib-data
 npm.cmd ci --ignore-scripts
 npm.cmd run check
+npm.cmd test
 
-cd ..\..\desktop\converter
-cargo test --locked
+cd ..\..\..\..\..
+pwsh -NoProfile -File desktop\converter\tools\check.ps1
 
-cd ..\gui
+cd desktop\gui
 pnpm install --frozen-lockfile
 pnpm run check
 pnpm test
@@ -137,12 +194,19 @@ cd ..\..
 
 ### Parser implementation and diagnostics
 
-The vendored parser's unit tests use its own locked development dependencies.
-The upstream demo fixtures are not vendored; run the remaining tests with:
+The maintained parser submodule uses a root Cargo workspace and lockfile. Its
+default tests are self-contained synthetic regressions; no demo is bundled:
 
 ```powershell
-cargo test --manifest-path third_party\demoparser\src\parser\Cargo.toml --locked --lib -- --skip e2e_test
+pwsh -NoProfile -File third_party\demoparser\tools\check.ps1
 ```
+
+The script also compiles the original fixture golden tests, without executing
+them. They remain behind `external-demo-tests` and explicit ignored annotations.
+To run them, supply the original upstream `test_demo.dem` using the script's
+`-FixtureTests -DemoPath <path>` options. Missing data fails explicitly; a default
+green run does not claim the external fixture lane passed. See the parser's
+README for the fixture provenance boundary.
 
 `DEMOTRACER_PROFILE` enables coarse stderr timings for first/second pass, column
 merge, converter channels/fallback reasons, hashing, sorting and row materialization.
@@ -232,10 +296,11 @@ returns. When the JSON file does not exist, the application imports the existing
 startup cache once and creates it automatically. The workspace background remains
 the separate bounded `appearance/workspace-background.png` asset.
 
-Refresh `shared/econ/cs2-lib-econ-index.v1.json` only by updating the exact
-`@ianlucas/cs2-lib` dependency and lockfile under `tooling/cs2-lib-data`, then
-running `npm.cmd run generate` there. Do not add or patch item IDs in the
-generated JSON.
+Refresh `server/runtime/common/econ/cs2-lib-econ-index.v1.json` only in the
+common repository by updating the exact `@ianlucas/cs2-lib` dependency and
+lockfile under its `tools/cs2-lib-data`, then running `npm.cmd run generate`
+there. Release and pin that shared change through its consumers. Do not add or
+patch item IDs in the generated JSON or create consumer-local copies.
 
 Build the supported desktop target:
 
@@ -319,7 +384,10 @@ pre-roll performs full pawn preparation at most once for each pre-roll token.
 Remaining readiness checks use a bounded 50 ms cadence; polls must not perform
 full-roster inventory or entity reconstruction.
 
-`test-css.ps1` also enforces the managed-source boundaries: the
+`test-css.ps1` runs the CSS component's `tests/DemoTracer.Tests` suite and
+recursively checks production code under `src/DemoTracer`, excluding `bin/` and
+`obj/`. Existing file limits follow each filename across responsibility
+directories. It enforces the managed-source boundaries: the
 CounterStrikeSharp entry point remains a small composition root and ordinary
 source files cannot grow past the maintained limit. Playback planning, playoff,
 replay-target safety, global teardown, slot lifecycle, and loaded metadata remain

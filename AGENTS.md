@@ -1,8 +1,10 @@
 # Agent Guidance
 
-This is the public canonical monorepo for **DemoTracer**, whose product name is
-**CS2 DemoTracer**. Keep the desktop application, Rust converter, server
-plugins, native runtimes, contracts, and release tooling aligned.
+This is the public GUI and product-integration repository for **DemoTracer**,
+whose product name is **CS2 DemoTracer**. The GUI remains here. Maintained parser,
+converter, server and shared-infrastructure repositories are pinned Git
+submodules, listed in `components.json`. Keep their selected releases, product
+contracts and packaging aligned.
 
 ## Project Boundaries
 
@@ -21,6 +23,16 @@ plugins, native runtimes, contracts, and release tooling aligned.
 
 ## Engineering Workflow
 
+- Clone with `--recurse-submodules`, or run `git submodule update --init
+  --recursive` before building. Preserve every recorded gitlink and recursive
+  dependency pin; do not replace components with copied source trees.
+- Make component changes in the owning repository, validate its own checks,
+  and publish its reviewed release before updating product pins. The
+  `automation/components` PR proposes maintained component release gitlinks;
+  it does not synchronize original upstream branches automatically.
+- Component source releases, GUI/Playback versions, and API/ABI versions are
+  independent. A source tag does not automatically change an API/ABI. Contract
+  changes still require coordinated readers, writers and integration checks.
 - Make the smallest evidence-backed change and run the narrowest relevant
   validation first.
 - Use release builds for performance and Windows installer checks.
@@ -39,10 +51,11 @@ plugins, native runtimes, contracts, and release tooling aligned.
 
 ## Validation
 
-    cd desktop\converter
-    cargo test --locked
+    git submodule update --init --recursive
+    node server\runtime\common\tools\check-components.mjs
+    pwsh -NoProfile -File desktop\converter\tools\check.ps1
 
-    cd ..\gui
+    cd desktop\gui
     pnpm install --frozen-lockfile
     pnpm run check
     pnpm test
@@ -54,6 +67,14 @@ plugins, native runtimes, contracts, and release tooling aligned.
     git diff --check
 
 Native runtime changes additionally require the maintained CMake release build
-and CTest suite. Before every public push, inspect the staged set and scan it
+and CTest suite in the owning component. Shared native sources/tests live in
+`server/runtime/common/native`, companion API in its `csharp/DemoTracerApi`,
+shared fields in its `contracts`, and the econ generator in its
+`tools/cs2-lib-data`. The `cs2-css-demotracer` component is mounted at
+`server/plugins/DemoTracer`; its project and production source live under
+`src/DemoTracer`, organized by responsibility. Configuration templates live in
+`config`, and regression tests in `tests/DemoTracer.Tests`. Provider APIs remain
+with their providers.
+Before every public push, inspect the staged set and scan it
 for local paths, demos, replay data, logs, credentials, keys, certificates, and
 build artifacts.

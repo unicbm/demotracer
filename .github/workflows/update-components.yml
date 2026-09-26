@@ -1,0 +1,41 @@
+name: Update maintained components
+on:
+  schedule:
+    - cron: '23 3 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+concurrency:
+  group: component-updates
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          submodules: recursive
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Select maintained releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node server/runtime/common/tools/bump-components.mjs
+      - uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
+        id: pr
+        with:
+          branch: automation/components
+          base: main
+          commit-message: 'deps: update maintained components'
+          title: 'deps: update maintained components'
+          body-path: ${{ runner.temp }}/component-update.md
+      - name: Run CI for the update PR explicitly
+        if: ${{ steps.pr.outputs.pull-request-operation == 'created' || steps.pr.outputs.pull-request-operation == 'updated' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref automation/components

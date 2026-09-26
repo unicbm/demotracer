@@ -37,14 +37,20 @@ $botHiderRuntimeRoot = if ([System.IO.Path]::IsPathRooted($BotHiderRuntimePackag
 } else {
     Join-Path $repoRoot $BotHiderRuntimePackage
 }
-$cssOut = Join-Path $repoRoot "server\plugins\DemoTracer\bin\$Configuration\net10.0"
-$apiOut = Join-Path $repoRoot "server\plugins\DemoTracerApi\bin\$Configuration\net10.0"
+$cssOut = Join-Path $repoRoot "server\plugins\DemoTracer\src\DemoTracer\bin\$Configuration\net10.0"
+$commonRoot = Join-Path $repoRoot "server\runtime\common"
+$apiOut = Join-Path $commonRoot "csharp\DemoTracerApi\bin\$Configuration\net10.0"
 $botHiderCssOut = Join-Path $repoRoot "server\runtime\BotHider\csharp\BotHiderImpl\bin\$Configuration\net10.0"
 $botHiderApiOut = Join-Path $repoRoot "server\runtime\BotHider\csharp\BotHiderApi\bin\$Configuration\net10.0"
 $botControllerCssOut = Join-Path $repoRoot "server\runtime\BotController\csharp\BotControllerImpl\bin\$Configuration"
 $botControllerApiOut = Join-Path $repoRoot "server\runtime\BotController\csharp\BotControllerApi\bin\$Configuration"
 $playbackContractPath = Join-Path $repoRoot "shared\contracts\playback-contract.v1.json"
 $nugetConfigPath = Join-Path $repoRoot "NuGet.Config"
+$componentArguments = @(
+    "-p:DtrCommonRoot=$commonRoot",
+    "-p:DtrHiderRoot=$(Join-Path $repoRoot 'server/runtime/BotHider')",
+    "-p:DtrRandomizerRoot=$(Join-Path $repoRoot 'server/runtime/BotRandomizer')"
+)
 
 & (Join-Path $PSScriptRoot "assert-clean-worktree.ps1") -RepoRoot $repoRoot
 & (Join-Path $PSScriptRoot "check-release-contract.ps1") -PlaybackVersion $Version
@@ -204,15 +210,15 @@ if (-not $SkipCssBuild) {
     $resolvedDotnetPath = Resolve-DotnetPath $DotnetPath
     # Keep build-machine paths out of assembly debug records and optional symbols.
     $sourcePathMap = "-p:PathMap=$repoRoot=/_/demotracer"
-    $demoTracerProject = Join-Path $repoRoot "server\plugins\DemoTracer\DemoTracer.csproj"
+    $demoTracerProject = Join-Path $repoRoot "server\plugins\DemoTracer\src\DemoTracer\DemoTracer.csproj"
     $botHiderProject = Join-Path $repoRoot "server\runtime\BotHider\csharp\BotHiderImpl\BotHiderImpl.csproj"
     $botControllerProject = Join-Path $repoRoot "server\runtime\BotController\csharp\BotControllerImpl\BotControllerImpl.csproj"
-    Invoke-Checked $resolvedDotnetPath @("restore", $botControllerProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false")
-    Invoke-Checked $resolvedDotnetPath @("build", $botControllerProject, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false", $sourcePathMap)
-    Invoke-Checked $resolvedDotnetPath @("restore", $demoTracerProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false")
-    Invoke-Checked $resolvedDotnetPath @("restore", $botHiderProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false")
-    Invoke-Checked $resolvedDotnetPath @("build", $demoTracerProject, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false", $sourcePathMap)
-    Invoke-Checked $resolvedDotnetPath @("build", $botHiderProject, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false", $sourcePathMap)
+    Invoke-Checked $resolvedDotnetPath (@("restore", $botControllerProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false") + $componentArguments)
+    Invoke-Checked $resolvedDotnetPath (@("build", $botControllerProject, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false", $sourcePathMap) + $componentArguments)
+    Invoke-Checked $resolvedDotnetPath (@("restore", $demoTracerProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false") + $componentArguments)
+    Invoke-Checked $resolvedDotnetPath (@("restore", $botHiderProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false") + $componentArguments)
+    Invoke-Checked $resolvedDotnetPath (@("build", $demoTracerProject, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false", $sourcePathMap) + $componentArguments)
+    Invoke-Checked $resolvedDotnetPath (@("build", $botHiderProject, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false", $sourcePathMap) + $componentArguments)
 }
 
 Require-Path $playbackContractPath "playback compatibility contract"
@@ -221,7 +227,7 @@ $randomizerTools = Join-Path $repoRoot "server\runtime\BotRandomizer\tools"
 if (-not $BotRandomizerPackage) {
     $randomizerOutput = Join-Path $outputRootPath "randomizer"
     $randomizerDotnet = Resolve-DotnetPath $DotnetPath
-    & (Join-Path $randomizerTools "package.ps1") -OutputDirectory $randomizerOutput -DotnetPath $randomizerDotnet -SkipBuild:$SkipCssBuild | Out-Host
+    & (Join-Path $randomizerTools "package.ps1") -OutputDirectory $randomizerOutput -DotnetPath $randomizerDotnet -CommonRoot $commonRoot -SkipBuild:$SkipCssBuild | Out-Host
     $BotRandomizerPackage = Join-Path $randomizerOutput "BotRandomizer-v$($playbackContract.bot_randomizer.provider_version).zip"
 }
 # Consume the same public package ordinary bot servers install. No replay-only build.
@@ -231,11 +237,7 @@ $randomizerStage = Join-Path $outputRootPath ("randomizer-import-" + [guid]::New
 $botRandomizerOut = Join-Path $randomizerStage "addons\counterstrikesharp\plugins\BotRandomizer"
 $botRandomizerApiOut = Join-Path $randomizerStage "addons\counterstrikesharp\shared\BotRandomizerApi"
 if ((Get-FileHash (Join-Path $botRandomizerOut "cs2-lib-econ-index.v1.json")).Hash -ne
-    (Get-FileHash (Join-Path $repoRoot "shared\econ\cs2-lib-econ-index.v1.json")).Hash) {
-    throw "Common Randomizer package and playback consumers must use the same econ catalog"
-}
-if ((Get-FileHash (Join-Path $botRandomizerOut "cs2-lib-econ-index.v1.json")).Hash -ne
-    (Get-FileHash (Join-Path $repoRoot "shared\econ\cs2-lib-econ-index.v1.json")).Hash) {
+    (Get-FileHash (Join-Path $commonRoot "econ\cs2-lib-econ-index.v1.json")).Hash) {
     throw "Common Randomizer package and playback consumers must use the same econ catalog"
 }
 $defaultRuntimeRoot = Join-Path $repoRoot "server\runtime\BotController\build\package"
@@ -337,7 +339,7 @@ Copy-RequiredFile (Join-Path $cssOut "DemoTracer.dll") (Join-Path $pluginOut "De
 Copy-RequiredFile (Join-Path $cssOut "ZstdSharp.dll") (Join-Path $pluginOut "ZstdSharp.dll")
 Copy-RequiredFile (Join-Path $repoRoot "server\plugins\DemoTracer\THIRD_PARTY_NOTICES.md") (Join-Path $pluginOut "THIRD_PARTY_NOTICES.md")
 Copy-RequiredFile (Join-Path $cssOut "cs2-lib-econ-index.v1.json") (Join-Path $pluginOut "cs2-lib-econ-index.v1.json")
-Copy-RequiredFile (Join-Path $repoRoot "server\plugins\DemoTracer\demotracer.config.example.json") (Join-Path $pluginOut "demotracer.config.example.json")
+Copy-RequiredFile (Join-Path $repoRoot "server\plugins\DemoTracer\config\demotracer.config.example.json") (Join-Path $pluginOut "demotracer.config.example.json")
 Copy-RequiredFile (Join-Path $cssOut "demotracer-native.json") (Join-Path $pluginOut "demotracer-native.json")
 $demoTracerApiSharedOut = Join-Path $stageRoot "addons\counterstrikesharp\shared\DemoTracerApi"
 Copy-RequiredFile (Join-Path $apiOut "DemoTracerApi.dll") (Join-Path $demoTracerApiSharedOut "DemoTracerApi.dll")
@@ -377,6 +379,7 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($gitCommit)) {
     throw "Unable to resolve the release Git commit."
 }
 
+& (Join-Path $PSScriptRoot "write-component-manifest.ps1") -OutputPath (Join-Path $addonsOut "demotracer-sources.v1.json")
 $receiptFiles = @(
     Get-ChildItem -LiteralPath $addonsOut -Recurse -File |
         Sort-Object FullName |

@@ -11,11 +11,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$projectPath = Join-Path $repoRoot "server\plugins\DemoTracer.Tests\DemoTracer.Tests.csproj"
+$projectPath = Join-Path $repoRoot "server\plugins\DemoTracer\tests\DemoTracer.Tests\DemoTracer.Tests.csproj"
 $botRandomizerSelfTest = Join-Path $repoRoot "server\runtime\BotRandomizer\tests\BotRandomizer.SelfTest\BotRandomizer.SelfTest.csproj"
 $botRandomizerProvider = Join-Path $repoRoot "server\runtime\BotRandomizer\BotRandomizer.csproj"
-$botRandomizerCatalog = Join-Path $repoRoot "server\runtime\BotRandomizer\cosmetic_catalog.json"
-$replayEconIndex = Join-Path $repoRoot "shared\econ\cs2-lib-econ-index.v1.json"
+$botRandomizerCatalog = Join-Path $repoRoot "server\runtime\BotRandomizer\bin\$Configuration\net10.0\cosmetic_catalog.json"
+$replayEconIndex = Join-Path $repoRoot "server\runtime\BotRandomizer\bin\$Configuration\net10.0\cs2-lib-econ-index.v1.json"
+$componentArguments = @(
+    "-p:DtrCommonRoot=$(Join-Path $repoRoot 'server/runtime/common')",
+    "-p:DtrHiderRoot=$(Join-Path $repoRoot 'server/runtime/BotHider')",
+    "-p:DtrRandomizerRoot=$(Join-Path $repoRoot 'server/runtime/BotRandomizer')",
+    "-p:DtrControllerRoot=$(Join-Path $repoRoot 'server/runtime/BotController')"
+)
 $nugetConfigPath = Join-Path $repoRoot "NuGet.Config"
 
 function Test-DotnetHasSdk([string]$Command) {
@@ -48,7 +54,9 @@ function Resolve-DotnetPath([string]$PreferredPath) {
 }
 
 function Invoke-Dotnet([string]$Command, [string[]]$Arguments) {
-    & $Command @Arguments
+    $verb = $Arguments[0]
+    $remainingArguments = @($Arguments | Select-Object -Skip 1)
+    & $Command $verb @componentArguments @remainingArguments
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet failed with exit code $LASTEXITCODE"
     }

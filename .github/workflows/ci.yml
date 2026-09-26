@@ -5,6 +5,7 @@ on:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -20,13 +21,14 @@ env:
 jobs:
   gate:
     runs-on: windows-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 2
+          submodules: recursive
 
       - name: Install Rust formatter
         uses: dtolnay/rust-toolchain@stable
@@ -41,6 +43,9 @@ jobs:
         working-directory: desktop/gui/src-tauri
         run: cargo fmt --check
 
+      - name: Check matched component pins
+        run: node server/runtime/common/tools/check-components.mjs
+
       - name: Check release contract
         shell: pwsh
         run: tooling\scripts\check-release-contract.ps1
@@ -48,7 +53,7 @@ jobs:
       - name: Check public-source hygiene
         shell: pwsh
         run: |
-          $forbiddenTracked = git ls-files |
+          $forbiddenTracked = git ls-files --recurse-submodules |
             Where-Object {
               $_ -match '(^|/)(target|bin|obj|tmp|output)(/|$)' -or
               $_ -match '\.(dem|dtr|cs2rec|log)$'
@@ -74,6 +79,16 @@ jobs:
           $hits
           exit 1
 
+      - name: Check recursive private-source hygiene
+        shell: pwsh
+        run: |
+          $privateFiles = @(git grep --recurse-submodules -I -l -i -E 'C:\\Users\\|-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY-----' -- .)
+          $scanExit = $LASTEXITCODE
+          if ($scanExit -eq 1) { exit 0 }
+          if ($scanExit -ne 0) { exit $scanExit }
+          Write-Error ("Private source data detected in tracked files: " + ($privateFiles -join ', '))
+          exit 1
+
       - name: Check commit whitespace
         run: git show --check --format= HEAD
 
@@ -85,6 +100,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -108,6 +125,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Read professional identity source pin
         id: pro-steamid-source
@@ -137,11 +156,11 @@ jobs:
           cache-dependency-path: desktop/gui/pnpm-lock.yaml
 
       - name: Install pinned cs2-lib data dependency
-        working-directory: tooling/cs2-lib-data
+        working-directory: server/runtime/common/tools/cs2-lib-data
         run: npm.cmd ci --ignore-scripts
 
       - name: Check generated cs2-lib econ projection
-        working-directory: tooling/cs2-lib-data
+        working-directory: server/runtime/common/tools/cs2-lib-data
         run: |
           npm.cmd run check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -174,6 +193,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -197,6 +218,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Install .NET
         uses: actions/setup-dotnet@v5
@@ -221,24 +244,17 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
       - uses: actions/setup-node@v6
         with:
           node-version: 22
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
-      - name: Export complete standalone source
+      - name: Test and package maintained Randomizer
         shell: pwsh
-        run: tooling/scripts/export-bot-randomizer.ps1 -Destination tmp/randomizer-standalone
-      - name: Build and test without DemoTracer dependencies
-        shell: pwsh
-        run: tmp/randomizer-standalone/tools/test.ps1
-      - name: Build the public package
-        shell: pwsh
-        run: tmp/randomizer-standalone/tools/package.ps1
-      - name: Verify common package ingestion
-        shell: pwsh
-        run: tmp/randomizer-standalone/tools/test-package.ps1
+        run: server/runtime/BotRandomizer/tools/check.ps1
 
   native-windows:
     needs: gate
@@ -248,6 +264,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Configure native replay safety tests
         run: cmake -S server\runtime\BotController\tests -B server\runtime\BotController\out\replay-safety-ci -A x64
@@ -257,6 +275,15 @@ jobs:
 
       - name: Test native replay safety
         run: ctest --test-dir server\runtime\BotController\out\replay-safety-ci -C Release --output-on-failure
+
+      - name: Configure native presentation tests
+        run: cmake -S server/runtime/BotHider/tests -B server/runtime/BotHider/.build/tests -A x64
+
+      - name: Build native presentation tests
+        run: cmake --build server/runtime/BotHider/.build/tests --config Release
+
+      - name: Test native presentation
+        run: ctest --test-dir server/runtime/BotHider/.build/tests -C Release --output-on-failure
 
       - name: Read shared hook source pin
         id: metamod-source
@@ -276,13 +303,13 @@ jobs:
       - name: Configure shared hook integration tests
         env:
           MMSOURCE_DEV: ${{ github.workspace }}/.external/metamod-khook
-        run: cmake -S server\runtime\common\tests -B server\runtime\common\tests\build -A x64
+        run: cmake -S server\runtime\common\native\tests -B server\runtime\common\native\tests\build -A x64
 
       - name: Build shared hook integration tests
-        run: cmake --build server\runtime\common\tests\build --config Release
+        run: cmake --build server\runtime\common\native\tests\build --config Release
 
       - name: Test shared hook chain and lifecycle
-        run: ctest --test-dir server\runtime\common\tests\build -C Release --output-on-failure
+        run: ctest --test-dir server\runtime\common\native\tests\build -C Release --output-on-failure
 
   native-fuzz-smoke:
     needs: gate
@@ -292,6 +319,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Configure production replay ABI fuzz target
         run: >-
@@ -318,11 +347,114 @@ jobs:
           -rss_limit_mb=1024
           -print_final_stats=1
 
+  parser:
+    needs: gate
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          workspaces: third_party/demoparser -> target
+      - name: Check maintained parser and fixture-test compilation
+        shell: pwsh
+        run: third_party/demoparser/tools/check.ps1
+
+  native-products:
+    needs: gate
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        component: [BotController, BotHider]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Read toolchain pins
+        id: native
+        shell: pwsh
+        run: |
+          & server/runtime/common/tools/check-native-toolchain.ps1
+          $hooks = Get-Content server/runtime/common/contracts/hook-runtime.v1.json -Raw | ConvertFrom-Json
+          $sdk = Get-Content server/runtime/common/contracts/native-toolchain.v1.json -Raw | ConvertFrom-Json
+          "metamod=$($hooks.metamod_source_commit)" >> $env:GITHUB_OUTPUT
+          "sdk=$($sdk.hl2sdk_commit)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v6
+        with:
+          repository: alliedmodders/metamod-source
+          ref: ${{ steps.native.outputs.metamod }}
+          path: .external/metamod-khook
+          submodules: recursive
+      - uses: actions/checkout@v6
+        with:
+          repository: alliedmodders/hl2sdk
+          ref: ${{ steps.native.outputs.sdk }}
+          path: .external/hl2sdk
+      - name: Build full native DLL and managed provider
+        shell: pwsh
+        env:
+          MMSOURCE_DEV: ${{ github.workspace }}/.external/metamod-khook
+          HL2SDKCS2: ${{ github.workspace }}/.external/hl2sdk
+          PROTOC: ${{ github.workspace }}/.external/hl2sdk/devtools/bin/protoc.exe
+        run: server/runtime/${{ matrix.component }}/tools/check.ps1 -NativeBuild
+
+      - name: Save native package for product integration
+        uses: actions/upload-artifact@v6
+        with:
+          name: native-${{ matrix.component }}
+          path: server/runtime/${{ matrix.component }}/.build/native/package/
+          if-no-files-found: error
+
+  playback-package:
+    needs: [gate, css, randomizer-standalone, native-products]
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v6
+        with:
+          name: native-BotController
+          path: server/runtime/BotController/build/package
+      - uses: actions/download-artifact@v6
+        with:
+          name: native-BotHider
+          path: server/runtime/BotHider/build/package
+      - name: Assemble matched playback bundle and source manifest
+        shell: pwsh
+        run: |
+          $plugin = Get-Content server/plugins/DemoTracer/src/DemoTracer/Lifecycle/DemoTracerPlugin.cs -Raw
+          $version = [regex]::Match($plugin, 'ModuleVersion\s*=>\s*"([^"]+)"').Groups[1].Value
+          if (-not $version) { throw 'Playback version not found' }
+          tooling/scripts/package-server.ps1 -Version $version
+      - uses: actions/upload-artifact@v6
+        with:
+          name: demotracer-playback-windows-x64
+          path: dist/demotracer-css-v*.zip
+          if-no-files-found: error
+
   validate:
     name: validate
     if: ${{ always() }}
     needs:
       - gate
+      - parser
+      - native-products
+      - playback-package
       - converter
       - frontend
       - desktop-rust
@@ -338,6 +470,9 @@ jobs:
         if: >-
           ${{
             needs.gate.result != 'success' ||
+            needs.parser.result != 'success' ||
+            needs.native-products.result != 'success' ||
+            needs.playback-package.result != 'success' ||
             needs.converter.result != 'success' ||
             needs.frontend.result != 'success' ||
             needs.desktop-rust.result != 'success' ||

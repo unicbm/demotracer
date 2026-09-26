@@ -11,7 +11,7 @@
 | BotController | [gamedata.json](../server/runtime/BotController/configs/addons/BotController/gamedata.json) | server 签名、私有偏移、移动服务虚表槽，以及可选 engine2 / panorama HUD 桥接 |
 | BotHider | [gamedata.json](../server/runtime/BotHider/configs/addons/BotHider/gamedata.json) | server / engine2 签名、客户端列表和身份字段布局 |
 | 独立 BotRandomizer | [BotRandomizer.cs](../server/runtime/BotRandomizer/BotRandomizer.cs) | attribute writer 与 item-view constructor 的内联签名 |
-| 投掷物物理钩子 | [ProjectilePhysicsHook.cs](../server/plugins/DemoTracer/ProjectilePhysicsHook.cs) | 入口、模块与函数体哈希、虚表和调用约定 |
+| 投掷物物理钩子 | [ProjectilePhysicsHook.cs](../server/plugins/DemoTracer/src/DemoTracer/Projectiles/ProjectilePhysicsHook.cs) | 入口、模块与函数体哈希、虚表和调用约定 |
 | 动态 Schema | [version_targets.cpp](../server/runtime/BotController/src/common/version_targets.cpp) | 必需字段解析；不把运行时结果另抄成固定偏移 |
 
 版本与 API 要求以 [playback contract](../shared/contracts/playback-contract.v1.json) 为准。
