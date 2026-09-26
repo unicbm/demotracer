@@ -7,6 +7,7 @@ param([string]$DotnetPath = 'dotnet')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $required = @(
+    'src/DemoTracer/DemoTracer.csproj',
     '.deps/common/csharp/DemoTracerApi/DemoTracerApi.csproj',
     '.deps/common/econ/cs2-lib-econ-index.v1.json',
     '.deps/hider/csharp/BotHiderImpl/BotHiderImpl.csproj',

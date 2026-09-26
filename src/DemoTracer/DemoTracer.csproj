@@ -5,10 +5,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>DemoTracer</AssemblyName>
     <RootNamespace>DemoTracer</RootNamespace>
-    <DtrCommonRoot Condition="'$(DtrCommonRoot)' == ''">$(MSBuildThisFileDirectory).deps\common</DtrCommonRoot>
-    <DtrHiderRoot Condition="'$(DtrHiderRoot)' == ''">$(MSBuildThisFileDirectory).deps\hider</DtrHiderRoot>
-    <DtrRandomizerRoot Condition="'$(DtrRandomizerRoot)' == ''">$(MSBuildThisFileDirectory).deps\randomizer</DtrRandomizerRoot>
-    <DefaultItemExcludes>$(DefaultItemExcludes);.deps\**;tests\**;dist\**</DefaultItemExcludes>
+    <DtrCommonRoot Condition="'$(DtrCommonRoot)' == ''">$(MSBuildThisFileDirectory)..\..\.deps\common</DtrCommonRoot>
+    <DtrHiderRoot Condition="'$(DtrHiderRoot)' == ''">$(MSBuildThisFileDirectory)..\..\.deps\hider</DtrHiderRoot>
+    <DtrRandomizerRoot Condition="'$(DtrRandomizerRoot)' == ''">$(MSBuildThisFileDirectory)..\..\.deps\randomizer</DtrRandomizerRoot>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,9 +26,9 @@
 
   <ItemGroup>
     <None Include="$(DtrCommonRoot)\econ\cs2-lib-econ-index.v1.json" Link="cs2-lib-econ-index.v1.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="demotracer.config.example.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Update="demotracer-native.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Update="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\config\demotracer.config.example.json" Link="demotracer.config.example.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\config\demotracer-native.json" Link="demotracer-native.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

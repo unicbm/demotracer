@@ -2,7 +2,7 @@
   "packages": {
     ".": {
       "release-type": "simple",
-      "package-name": "cs2-css-demotrace",
+      "package-name": "cs2-css-demotracer",
       "include-component-in-tag": false,
       "changelog-sections": [
         {

@@ -8,12 +8,17 @@ This component was extracted from
 - complete managed regression suite: `server/plugins/DemoTracer.Tests/`;
 - license: the original root `LICENSE` (AGPL-3.0-only).
 
-`unicbm/cs2-css-demotrace` is the maintained source repository for this
+`unicbm/cs2-css-demotracer` is the maintained source repository for this
 component. Subsequent product builds consume a pinned dependency revision;
 the product repository does not maintain another editable source copy.
 Runtime assembly, install directory, capability, and public API identifiers
 are preserved by the extraction. Dependency path changes do not introduce a
 new playback protocol or change native ABI requirements.
+
+The component organizes that source under `src/DemoTracer/` by responsibility,
+with tests under `tests/`, configuration inputs under `config/`, and maintenance
+documentation under `docs/`. This layout change preserves the source contents,
+namespaces, class names, and runtime identifiers.
 
 ZstdSharp.Port/Zstandard attribution and license texts remain in
 `THIRD_PARTY_NOTICES.md`. Econ data is generated and maintained in the pinned

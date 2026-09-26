@@ -20,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\DemoTracer.csproj" />
+    <ProjectReference Include="..\..\src\DemoTracer\DemoTracer.csproj" />
     <ProjectReference Include="$(DtrHiderRoot)\csharp\BotHiderImpl\BotHiderImpl.csproj" />
     <ProjectReference Include="$(DtrControllerRoot)\csharp\BotControllerImpl\BotControllerImpl.csproj" />
     <ProjectReference Include="$(DtrControllerRoot)\csharp\BotControllerApi\BotControllerApi.csproj" />
