@@ -5,8 +5,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 mod analysis;
-mod cosmetics;
 pub mod browser_analysis;
+mod cosmetics;
 pub mod demo_id;
 pub mod demo_reader;
 pub mod demo_series;
