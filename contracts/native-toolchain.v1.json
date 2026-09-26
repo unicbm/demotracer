@@ -1,0 +1,6 @@
+{
+  "hl2sdk_repository": "alliedmodders/hl2sdk",
+  "hl2sdk_commit": "5f891c9026230cce0fc0a3fc4b5fef1c467a1385",
+  "protoc": "devtools/bin/protoc.exe",
+  "protoc_version": "3.21.8"
+}

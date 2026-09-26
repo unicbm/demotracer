@@ -1,0 +1,57 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Check source whitespace
+        run: git show --check --format= HEAD
+      - name: Check recursive private-source hygiene
+        shell: pwsh
+        run: |
+          $privateFiles = @(git grep --recurse-submodules -I -l -i -E 'C:\\Users\\|-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY-----' -- .)
+          $scanExit = $LASTEXITCODE
+          if ($scanExit -eq 1) { exit 0 }
+          if ($scanExit -ne 0) { exit $scanExit }
+          Write-Error ("Private source data detected in tracked files: " + ($privateFiles -join ', '))
+          exit 1
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Read native toolchain pins
+        id: native
+        shell: pwsh
+        run: |
+          & ./tools/check-native-toolchain.ps1
+          $hooks = Get-Content ./contracts/hook-runtime.v1.json -Raw | ConvertFrom-Json
+          $sdk = Get-Content ./contracts/native-toolchain.v1.json -Raw | ConvertFrom-Json
+          "metamod=$($hooks.metamod_source_commit)" >> $env:GITHUB_OUTPUT
+          "sdk=$($sdk.hl2sdk_commit)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v6
+        with:
+          repository: alliedmodders/metamod-source
+          ref: ${{ steps.native.outputs.metamod }}
+          submodules: recursive
+          path: .external/metamod
+      - name: Test common infrastructure
+        shell: pwsh
+        env:
+          MMSOURCE_DEV: ${{ github.workspace }}/.external/metamod
+        run: tools/check.ps1
