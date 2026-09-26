@@ -12,7 +12,7 @@ export function readComponentRegistry(directory) {
   const ids = new Set(), paths = new Set();
   for (const component of registry.components) {
     if (!/^[a-z][a-z0-9-]*$/.test(component.id ?? '')
-        || !/^unicbm\/(cs2-dtr-[a-z-]+|cs2-css-demotrace|demoparser)$/.test(component.repository ?? '')
+        || !/^unicbm\/(cs2-dtr-[a-z-]+|cs2-css-demotracer|demoparser)$/.test(component.repository ?? '')
         || !/^[a-zA-Z0-9._/-]+$/.test(component.path ?? '')
         || component.path.split('/').some(part => !part || part === '.' || part === '..')
         || !/^[a-zA-Z0-9._/-]+$/.test(component.branch ?? '')
