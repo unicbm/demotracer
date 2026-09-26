@@ -15,10 +15,31 @@ add_executable(BotControllerLiveEntityTests live_entities_tests.cpp ../src/commo
 target_include_directories(BotControllerLiveEntityTests PRIVATE ../src/common ../../third_party)
 add_test(NAME BotControllerLiveEntityTests COMMAND BotControllerLiveEntityTests)
 
+add_executable(BotControllerProjectileBirthTests projectile_birth_align_tests.cpp ../src/common/projectile_birth_align.cpp)
+target_include_directories(BotControllerProjectileBirthTests PRIVATE ../src/common ../../third_party)
+target_compile_definitions(BotControllerProjectileBirthTests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME BotControllerProjectileBirthTests COMMAND BotControllerProjectileBirthTests)
+if(MSVC)
+    target_compile_options(BotControllerLiveEntityTests PRIVATE /utf-8 /EHsc)
+    target_compile_options(BotControllerProjectileBirthTests PRIVATE /utf-8 /EHsc)
+endif()
+
 add_executable(BotHiderPresentationTests hider_presentation_tests.cpp ../../BotHider/src/presentation_state.cpp)
 target_include_directories(BotHiderPresentationTests PRIVATE ../../BotHider/src)
 target_compile_definitions(BotHiderPresentationTests PRIVATE _CRT_SECURE_NO_WARNINGS)
 add_test(NAME BotHiderPresentationTests COMMAND BotHiderPresentationTests)
+
+add_executable(BotHiderIdentityTests hider_identity_tests.cpp
+    ../../BotHider/src/bot_info.cpp
+    ../../BotHider/src/fake_client_manager.cpp
+    ../../BotHider/src/ping_display.cpp
+    ../../BotHider/src/presentation_state.cpp)
+target_include_directories(BotHiderIdentityTests PRIVATE ../../BotHider/src ../../third_party)
+if(MSVC)
+    target_compile_definitions(BotHiderIdentityTests PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(BotHiderIdentityTests PRIVATE /utf-8 /EHsc)
+endif()
+add_test(NAME BotHiderIdentityTests COMMAND BotHiderIdentityTests)
 
 add_executable(BotControllerAvatarPublicationTests avatar_publication_tests.cpp)
 target_include_directories(BotControllerAvatarPublicationTests PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../src/common")

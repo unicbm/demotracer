@@ -46,8 +46,6 @@ namespace BotController::targets
     // entity -> m_CBodyComponent -> m_pSceneNode -> m_vecAbsOrigin.
     inline int kEnt_BodyComponent = 0x30;
     inline int kBody_SceneNode = 0x08;
-    // Legacy direct entity -> m_pGameSceneNode path, kept as a fallback for old builds.
-    inline int kEnt_GameSceneNode = 0;
     inline int kNode_AbsOrigin = 0xC8;
 
     // ---- CCSPlayerPawn ----

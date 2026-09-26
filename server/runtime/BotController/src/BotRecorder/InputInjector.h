@@ -33,7 +33,8 @@ namespace BotController
 
         // Short-lived, per-slot movement input lease. This is a low-level
         // usercmd/movedata primitive; policy lives in the caller. Only
-        // movement button bits (WASD/duck/jump/walk) are applied.
+        // movement button bits (WASD/duck/jump/walk) and primary attack are applied.
+        // The lease belongs to the current autonomous bot pawn incarnation.
         // Contract 1: +forward is W and +left is A in both command and movedata.
         // Owned button edges preserve single-tick presses and native unowned input.
         //
@@ -66,7 +67,6 @@ namespace BotController
         bool SetLeftHandDesiredLatch(int slot, bool enabled, bool leftHandDesired);
         bool ClearLeftHandDesiredLatch(int slot);
         void ClearAllLeftHandDesiredLatches();
-        bool GetLeftHandDesiredLatch(int slot, bool *enabled, bool *leftHandDesired);
 
         const char *Status();
 
@@ -83,6 +83,8 @@ namespace BotController
         // This is a fallback for builds where CPlayerPawnComponent's helper
         // pointer is missing or stale inside movement services.
         bool SetReplayPawn(int slot, void *pawn);
+        bool PrepareReplayPawn(int slot);
+        bool IsReplayPawnCurrent(int slot, const void *pawn);
         // Clear only the buffer's pawn association. Execution/input/equipment
         // release is a separate ownership boundary, not a mapping side effect.
         void ClearReplayPawn(int slot);

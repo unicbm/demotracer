@@ -208,7 +208,7 @@ internal sealed class DtrReplayPrefetch
 
     internal DtrReplayPrefetch(Func<string, DtrReplayFile>? readReplay = null)
     {
-        _readReplay = readReplay ?? DtrReplayReader.Read;
+        _readReplay = readReplay ?? DtrReplayReader.ReadForPlayback;
     }
 
     public bool HasGeneration

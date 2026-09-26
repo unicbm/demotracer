@@ -27,7 +27,6 @@ namespace BotController
     namespace WeaponLockerHooks
     {
         static EquipBestWeapon_t g_origEquipBestWeapon = nullptr;
-        static EquipPistol_t g_origEquipPistol = nullptr;
         static SelectItem_t g_origSelectItem = nullptr;
         static GetSlot_t g_pGetSlot = nullptr;
 
@@ -203,7 +202,6 @@ namespace BotController
                 g_hookEquipPistol.Remove();
                 g_hookSelectItem.Remove();
                 g_origEquipBestWeapon = nullptr;
-                g_origEquipPistol = nullptr;
                 g_origSelectItem = nullptr;
                 return false;
             };
@@ -217,8 +215,7 @@ namespace BotController
             }
 
             if (!g_hookEquipPistol.Create(g_addrEquipPistol,
-                                          &HookedEquipPistol,
-                                          &g_origEquipPistol))
+                                          &HookedEquipPistol))
             {
                 g_status = "failed: Create EquipPistol";
                 return failCleanup("Create EquipPistol");
@@ -259,7 +256,6 @@ namespace BotController
             g_hookEquipPistol.Remove();
             g_hookEquipBestWeapon.Remove();
             g_origEquipBestWeapon = nullptr;
-            g_origEquipPistol = nullptr;
             g_origSelectItem = nullptr;
             g_installed = false;
             g_status = "not_attempted";

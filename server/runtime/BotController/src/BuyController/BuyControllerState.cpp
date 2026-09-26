@@ -19,14 +19,6 @@ namespace BotController
         static std::array<Entry, kMaxSlots> g_plans{};
         static std::mutex g_mu;
 
-        bool HasPlan(int slot)
-        {
-            if (slot < 0 || slot >= kMaxSlots)
-                return false;
-            std::lock_guard<std::mutex> lk(g_mu);
-            return g_plans[slot].present;
-        }
-
         void Set(int slot, const std::vector<std::string> &items, bool skip)
         {
             if (slot < 0 || slot >= kMaxSlots)

@@ -25,7 +25,7 @@ No additional upstream runtime changes were imported as part of that review.
 The gamedata-driven team offset refinement from
 `4e4768adf5bec2970e8d082e6e87475c04e31837` is extended here to the dangerous
 `CServerSideClient::SetName`, entity-system, and entity-identity layout targets.
-The managed shared-memory writer also follows upstream's strict fixed-field
+The managed synchronous native publisher also follows upstream's strict fixed-field
 UTF-8 encoding rule: an overlong value is rejected rather than truncated in
 the middle of a sequence.
 
@@ -42,6 +42,13 @@ or take over gameplay lifecycle decisions from DemoTracer and the engine.
 
 The upstream `tools/BotHiderFlairGenerator` utility is intentionally excluded
 because it is not part of DemoTracer server runtime or packaging.
+
+DemoTracer also removes the unused persona FIFO, rematch rebuild entry point,
+experimental controller-flag helper, and separate roster-based SteamID
+provider. Persona bases are selected before adoption and published through
+one native identity snapshot; no configured roster means the engine bot's
+zero SteamID base. Native updates require a full server restart, and active
+managed bots prevent native unload rather than permitting partial cleanup.
 
 BotHider remains licensed under AGPL-3.0-only. Original copyright, attribution,
 and license files are preserved in this directory.

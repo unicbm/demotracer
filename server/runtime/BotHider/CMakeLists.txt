@@ -85,14 +85,14 @@ set(SDK_SOURCES
 
 add_library(BotHider SHARED
     src/plugin.cpp
-    src/personas.cpp
-    src/steamid_provider.cpp
     src/ping_display.cpp
     src/fake_client_manager.cpp
     src/bot_info.cpp
     src/presentation_state.cpp
     src/sig_scan.cpp
     src/schema_resolver.cpp
+    ../common/sig_scan.cpp
+    ../common/schema_resolver.cpp
     ${PROTO_SRCS}
     ${SDK_SOURCES}
 )

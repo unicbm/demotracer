@@ -73,6 +73,30 @@ static std::string ComputeGamedataPath()
     return p + "/gamedata.json";
 }
 
+// Required-load failures and normal unload release the same native state.
+// Avatars initialize only after every required runtime has loaded.
+static void ResetRuntime()
+{
+    BotController::MotionRecorder::ClearAll();
+    BotController::InputInjector::Remove();
+    BotController::BuyControllerHooks::Remove();
+    BotController::BuyControllerState::ClearAll();
+    BotController::BotControllerHooks::Remove();
+    BotController::WeaponLockerHooks::Remove();
+    BotController::WeaponLockerState::ClearAll();
+    BotController::BotControllerState::ClearAllAll();
+    BotController::BotControllerState::ClearAllAim();
+    BotController::Dispatch::g_pEngine = nullptr;
+    BotController::Dispatch::g_pGameClients = nullptr;
+    BotController::VoiceSender::SetInterfaces(nullptr, nullptr);
+    BotController::Commands::g_pEngine = nullptr;
+    BotController::Commands::g_pStringTables = nullptr;
+    BotController::LiveEntities::Reset();
+    BotController::Schema::Reset();
+    ConVar_Unregister();
+    g_pCVar = nullptr;
+}
+
 bool BotControllerPlugin::Load(PluginId id, ISmmAPI *ismm,
                                char *error, size_t maxlen, bool /*late*/)
 {
@@ -109,6 +133,11 @@ bool BotControllerPlugin::Load(PluginId id, ISmmAPI *ismm,
         return false;
     }
     ConVar_Register(FCVAR_RELEASE | FCVAR_GAMEDLL);
+    struct LoadRollback
+    {
+        bool armed = true;
+        ~LoadRollback() { if (armed) ResetRuntime(); }
+    } rollback;
 
     // IVEngineServer2::ClientCommand
     BotController::Dispatch::g_pEngine = static_cast<IVEngineServer2 *>(
@@ -198,10 +227,7 @@ bool BotControllerPlugin::Load(PluginId id, ISmmAPI *ismm,
         return false;
 
     if (!BotController::BotControllerHooks::Install(gd, serverModule, error, maxlen))
-    {
-        BotController::WeaponLockerHooks::Remove();
         return false;
-    }
 
     // BuyController is optional; missing sig only disables buy control.
     char buyErr[256] = {0};
@@ -215,16 +241,13 @@ bool BotControllerPlugin::Load(PluginId id, ISmmAPI *ismm,
         BotController::DebugOut(dbg);
     }
 
-    // movement hooks for record/replay
+    // Movement is the product's core. Never publish a loaded runtime whose
+    // replay ownership can freeze output without any hook advancing it.
     char injErr[256] = {0};
     if (!BotController::InputInjector::Install(gd, serverModule, injErr, sizeof(injErr)))
     {
-        char dbg[320];
-        std::snprintf(dbg, sizeof(dbg),
-                      "[BotController] WARN: InputInjector::Install failed (%s); "
-                      "record/replay movement will be a no-op\n",
-                      injErr);
-        BotController::DebugOut(dbg);
+        std::snprintf(error, maxlen, "InputInjector::Install failed: %s", injErr);
+        return false;
     }
 
     BotController::Avatars::Init(
@@ -232,6 +255,7 @@ bool BotControllerPlugin::Load(PluginId id, ISmmAPI *ismm,
         static_cast<INetworkStringTableContainer *>(ismm->GetEngineFactory()(
             INTERFACENAME_NETWORKSTRINGTABLECLIENT, nullptr)), gd);
     BotController::DebugOut("[BotController] plugin loaded successfully\n");
+    rollback.armed = false;
     return true;
 }
 
@@ -242,24 +266,7 @@ bool BotControllerPlugin::Unload(char *error, size_t maxlen)
         std::snprintf(error, maxlen, "Local avatar bridge must unload on the engine main thread");
         return false;
     }
-    BotController::MotionRecorder::ClearAll();
-    BotController::InputInjector::Remove();
-    BotController::BuyControllerHooks::Remove();
-    BotController::BuyControllerState::ClearAll();
-    BotController::BotControllerHooks::Remove();
-    BotController::WeaponLockerHooks::Remove();
-    BotController::WeaponLockerState::ClearAll();
-    BotController::BotControllerState::ClearAllAll();
-    BotController::BotControllerState::ClearAllAim();
-    BotController::Dispatch::g_pEngine = nullptr;
-    BotController::Dispatch::g_pGameClients = nullptr;
-    BotController::VoiceSender::SetInterfaces(nullptr, nullptr);
-    BotController::Commands::g_pEngine = nullptr;
-    BotController::Commands::g_pStringTables = nullptr;
-    BotController::LiveEntities::Reset();
-    BotController::Schema::Reset();
-    ConVar_Unregister();
-    g_pCVar = nullptr;
+    ResetRuntime();
     BotController::DebugOut("[BotController] plugin unloaded\n");
     return true;
 }

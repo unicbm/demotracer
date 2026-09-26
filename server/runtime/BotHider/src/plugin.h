@@ -74,9 +74,8 @@ namespace cs2bh
 #endif
 
         // Toggle disguise globally
-        void SetDisguiseEnabled(bool enabled);
+        bool SetDisguiseEnabled(bool enabled);
 
-        void RebuildBots();
         bool PublishIdentity(int slot, uint64_t session, uint64_t incarnation, uint64_t sid, const char *name);
         bool PublishCrosshair(int slot, uint64_t session, uint64_t incarnation, uint32_t controllerHandle);
         bool PublishPing(int slot, uint64_t session, uint64_t incarnation, uint32_t controllerHandle);
@@ -88,7 +87,6 @@ namespace cs2bh
         void *m_pHookedGameServer = nullptr;
         std::unique_ptr<KHook::__Hook> m_StartChangeLevelHook;
         std::vector<std::unique_ptr<KHook::__Hook>> m_Hooks;
-        bool m_bSelfDisabled = false;
         unsigned int m_TickCounter = 0; // throttles per-tick idle-timer reset
         // Master disguise switch
         bool m_bDisguiseEnabled = true;

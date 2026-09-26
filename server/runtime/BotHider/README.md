@@ -27,10 +27,12 @@ restore the previous lease or current base presentation.
 
 The native API checks its own live session and slot incarnation at each
 identity write. There is no shared-memory queue or cross-process mapping.
-Native reload revokes leases and an unloaded provider reports disconnected.
+Provider reload revokes leases and an unloaded provider reports disconnected.
 Name and SteamID changes share one userinfo publication; unchanged identities
 do not force another publication. Native adoption/release and managed
-spawn/death/round events coalesce into one next-frame reconcile. Ping changes
+spawn/death/takeover events coalesce into one next-frame reconcile for affected
+controller slots. Takeover includes the original bot controller; round, map,
+and session events reconcile the full roster. Ping changes
 queue only the affected slots and publish only their ping through a guarded
 native field write; they never trigger identity or crosshair reconciliation.
 There is no periodic presentation sweep. Provider lifecycle notifications
@@ -91,12 +93,28 @@ fragile `client.dll` signature hook.
 
 The bundle ships `bot_info.example.json` and never overwrites a server-local
 `bot_info.json`. Copy and customize the example only when explicit persona base
-data is wanted; otherwise the native fallback remains available.
+data is wanted. Without it, the base keeps the engine bot name and SteamID 0;
+name, clan, crosshair, and other presentation fields remain usable. A lease may
+temporarily supply an exact nonzero SteamID and release back to that zero base.
+Explicit lease requests for SteamID 0 are rejected. Configured persona SteamID
+collisions are resolved before adoption, so the base and initial published
+identity agree and release does not undo that choice.
+
+`bh_disguise` may rebuild bots. It preserves the existing `bot_quota` value and
+`bot_quota_mode`, including a quota of zero; it does not infer a fill-mode quota
+from the number of humans and bots.
 
 Raw per-slot mutation commands are intentionally not exposed. DTR overrides
 must use the presentation lease API.
 
 ## Co-installation
+
+Install or update the native runtime with a full server restart. Native late
+loading is rejected, and native unload is rejected while managed bots remain
+connected, before any hook is removed. Disguised bots depend on those hooks;
+clearing the plugin's slot table cannot safely undo their engine state. Managed
+provider reload still releases its leases and can reconnect to the loaded
+native runtime.
 
 The maintained provider installs as `BotHiderImpl/BotHiderImpl.dll` for Panel
 file detection; its capability is `demotracer:bot-hider:v3`. Replace the

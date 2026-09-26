@@ -1,12 +1,31 @@
-// sig_scan.h
+// Shared signature scanner derived from the maintained BotController/BotHider runtimes.
+// Licensed under the GNU Affero General Public License v3.0 only.
 
 #pragma once
 
-#include "../../common/sig_scan.h"
+#include <cstdint>
+#include <cstddef>
+#include <string>
+#include <vector>
 
-namespace cs2bh::sig
+#include <nlohmann/json.hpp>
+
+namespace DemoTracerRuntime::Sig
 {
-    using ModuleInfo = DemoTracerRuntime::Sig::ModuleInfo;
+    struct ModuleSegment
+    {
+        unsigned char *Base = nullptr;
+        size_t Size = 0;
+    };
+
+    struct ModuleInfo
+    {
+        unsigned char *Base = nullptr;
+        size_t Size = 0;
+        std::vector<ModuleSegment> Segments;
+
+        explicit operator bool() const { return Base != nullptr && Size != 0; }
+    };
 
     // Read + parse gamedata.json into `out`. Returns false on open/parse error
     bool LoadGamedata(const char *path, nlohmann::json &out);
@@ -39,4 +58,6 @@ namespace cs2bh::sig
 
     ModuleInfo ModuleFromInterfacePtr(void *interfacePtr);
 
+    void *ResolveSig(const nlohmann::json &gamedata, const ModuleInfo &module,
+                     const char *name, char *errorOut, size_t errorOutLen);
 }

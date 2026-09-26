@@ -155,7 +155,6 @@ namespace BotController
             PlayerRunCommandHook = 2,
             PhysicsSimulateHook = 3,
             SyncReplayLocalView = 4,
-            VirtualQuery = 6,
             ReplayTickRead = 7,
             SubtickRebuild = 8,
             SubticksAdded = 9,
@@ -173,7 +172,7 @@ namespace BotController
             uint64_t playerRunCommandHooks;
             uint64_t physicsSimulateHooks;
             uint64_t syncReplayLocalViewCalls;
-            uint64_t virtualQueryCalls;
+            uint64_t virtualQueryCalls; // Reserved ABI field; always zero.
             uint64_t replayTickReads;
             uint64_t subtickRebuilds;
             uint64_t subticksAdded;
@@ -199,9 +198,6 @@ namespace BotController
             const ReplayTick *tick;
             const SubtickMove *subticks;
             const ReplayCommandFrameData *command;
-            const ReplayInputHistoryTick *inputHistoryTick;
-            const ReplayInputHistoryEntry *inputHistory;
-            int32_t inputHistoryCount;
             int32_t subtickCount;
             int32_t weaponSelect;
             MovementSnapshot commandView;
@@ -293,14 +289,6 @@ namespace BotController
         bool ReplaySpectatorView(int slot, MovementSnapshot &out);
         // Last tick already applied; used by external status readers.
         bool CurrentReplayTick(int slot, ReplayTick &out);
-        // Copy the current tick's subtick moves into out
-        // Returns count, or -1 if not replaying.
-        int CurrentReplaySubticks(int slot, SubtickMove *out, int maxOut);
-
-        // Buttons of the tick about to be simulated
-        bool CurrentReplayInputButtons(int slot, uint64_t &b0, uint64_t &b1,
-                                       uint64_t &b2);
-
         // Initialize movement once at a start/seek/loop boundary, then prepare
         // the command view. Returns false without injecting a command on failure.
         bool OnReplayCommandPre(int slot, void *services, const ReplayTick &tick,
@@ -316,9 +304,6 @@ namespace BotController
         // same normalization as recorded WeaponDefIndex (knife -> kKnifeDef).
         // -1 if no ws / no active weapon. For C# to reconcile replay weapon.
         int BotActiveWeaponDef(int slot);
-
-        // Entity index to write into cmd.weaponselect this replay tick
-        int CurrentReplayWeaponSelect(int slot);
 
         // ---- replay write hooks ----
         // SetupMove (post): supply the demo's pre kinematics once, before

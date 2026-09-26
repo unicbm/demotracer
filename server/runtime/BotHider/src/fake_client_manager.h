@@ -2,13 +2,10 @@
 
 #pragma once
 
-#include "personas.h"
 #include "ping_display.h"
-#include "steamid_provider.h"
 
 #include <array>
 #include <cstdint>
-#include <memory>
 #include <mutex>
 
 namespace cs2bh
@@ -17,11 +14,8 @@ namespace cs2bh
     struct ManagedSlot
     {
         bool Active = false;
-        uint64_t SyntheticSid = 0;
-        uint32_t ScoreboardFlair = 0;
         PingJitter Jitter{50}; // 50ms baseline
         PingDisplay Display;
-        bool SteamIdWritten = false;
     };
 
     class FakeClientManager
@@ -29,7 +23,7 @@ namespace cs2bh
     public:
         FakeClientManager();
 
-        void Init();
+        static constexpr int kMaxSlots = 64;
 
         bool AdoptSlot(int slot, const char *pszName, uint64_t steamId64,
                        const char *crosshairCode, uint32_t scoreboardFlair);
@@ -43,17 +37,15 @@ namespace cs2bh
         // True if the slot has a managed bot bound
         bool IsManaged(int slot) const;
 
-        uint64_t GetSyntheticSid(int slot) const;
-
-        // Override the SteamID64
-        void SetSyntheticSid(int slot, uint64_t sid);
-
-        SteamIdProvider *SteamIds() { return m_pSteamIds.get(); }
+        bool HasManagedSlots() const;
 
     private:
         mutable std::mutex m_Mutex;
-        std::array<ManagedSlot, PersonaPool::kMaxSlots> m_Slots;
-        std::unique_ptr<SteamIdProvider> m_pSteamIds;
+        // PackEntities may query Active from a worker thread. Identity itself
+        // lives only in the main-thread SlotPublisher; keep this lock for the
+        // worker-visible managed set and ping state.
+        std::array<ManagedSlot, kMaxSlots> m_Slots;
+        uint64_t m_PingSeed;
     };
 
     FakeClientManager &Manager();

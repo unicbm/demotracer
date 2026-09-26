@@ -3,7 +3,6 @@
 
 #include "plugin.h"
 #include "bot_info.h"
-#include "personas.h"
 #include "fake_client_manager.h"
 #include "ping_display.h"
 #include "serversideclient_ref.h"
@@ -82,14 +81,12 @@ using MaintainQuotaFn = int64_t(__fastcall *)(void * /*CCSBotManager*/);
 #else
 using MaintainQuotaFn = int64_t (*)(void * /*CCSBotManager*/);
 #endif
-static MaintainQuotaFn g_pfnQuotaTramp = nullptr;
 static DemoTracerHooks::Hook<MaintainQuotaFn> g_QuotaHook;
 static void *g_pQuotaHookTarget = nullptr;
 
 #if defined(_WIN32)
 using HandleJoinTeamFn = int64_t(__fastcall *)(void * /*CCSPlayerController*/,
                                                unsigned int, bool);
-static HandleJoinTeamFn g_pfnHandleJoinTeamTramp = nullptr;
 static DemoTracerHooks::Hook<HandleJoinTeamFn> g_JoinTeamHook;
 static void *g_pHandleJoinTeamHookTarget = nullptr;
 #endif
@@ -99,7 +96,6 @@ using PackEntitiesFn = void(__fastcall *)(void *, void *, int, void *, void *);
 #else
 using PackEntitiesFn = void (*)(void *, void *, int, void *, void *);
 #endif
-static PackEntitiesFn g_pfnPackEntitiesTramp = nullptr;
 static DemoTracerHooks::Hook<PackEntitiesFn> g_PackEntitiesHook;
 static void *g_pPackEntitiesHookTarget = nullptr;
 static std::atomic_bool g_PackEntitiesFirstCallLogged = false;
@@ -110,6 +106,12 @@ struct BotPawnRef
 {
     void *Instance = nullptr;
     uint32_t Handle = 0xFFFFFFFF;
+};
+
+struct BotPawnBatch
+{
+    std::array<BotPawnRef, cs2bh::FakeClientManager::kMaxSlots> Items{};
+    size_t Count = 0;
 };
 
 struct ManagedControllerFlagSnapshot
@@ -146,8 +148,8 @@ struct ManagedControllerTrace
 
 namespace cs2bh
 {
-    std::vector<BotPawnRef> ApplyBotFlagOverride();
-    void RestoreBotFlagOverride(const std::vector<BotPawnRef> &pawns);
+    BotPawnBatch ApplyBotFlagOverride();
+    void RestoreBotFlagOverride(const BotPawnBatch &pawns);
 #if defined(_WIN32)
     ManagedControllerTrace TraceManagedController(void *controller);
     bool SetJoinTeamFakeClientFlag(void *controller, uint32_t handle, bool enabled);
@@ -185,7 +187,7 @@ public:
     }
 
 private:
-    std::vector<BotPawnRef> m_ModifiedPawns;
+    BotPawnBatch m_ModifiedPawns;
 };
 
 #if defined(_WIN32)
@@ -249,10 +251,10 @@ static KHook::Return<void> Detour_PackEntities(void *serverObject, void *packCon
 
 // Prepare typed callbacks, then attach after schema initialization.
 template <typename Function, typename Callback>
-static bool PrepareKHook(DemoTracerHooks::Hook<Function> &hook, Function &original,
+static bool PrepareKHook(DemoTracerHooks::Hook<Function> &hook,
                          void *target, Callback callback, const char *name)
 {
-    if (hook.Create(target, callback, &original)) return true;
+    if (hook.Create(target, callback)) return true;
     META_CONPRINTF("[BOTHIDER] warning: KHook preparation failed for %s\n", name);
     return false;
 }
@@ -355,7 +357,6 @@ namespace cs2bh
         std::string Persona;
         std::string ConnectedName;
         bool UseBotInfoName = false;
-        bool Enabled = false;
         bool ConnectedObserved = false;
         int ConnectedSlot = -1;
     };
@@ -365,10 +366,10 @@ namespace cs2bh
 #endif
 
     // Per-slot bound bot_info entry
-    static std::array<const BotEntry *, PersonaPool::kMaxSlots> g_SlotEntry{};
+    static std::array<const BotEntry *, FakeClientManager::kMaxSlots> g_SlotEntry{};
 
     // Original engine names used when an HLTV slot was adopted before its flag initialized
-    static std::array<std::string, PersonaPool::kMaxSlots> g_OriginalSlotName{};
+    static std::array<std::string, FakeClientManager::kMaxSlots> g_OriginalSlotName{};
 
     // Maps where bots stay disguised, loaded from map_whitelist.json
     static std::vector<std::string> g_DisguiseWhitelist;
@@ -377,6 +378,18 @@ namespace cs2bh
     static int g_BotPawnHandleOffset = -1;
     static int g_ControllerCrosshairOffset = -1;
     static int g_ControllerPingOffset = -1;
+
+    static std::string ReadPublishedName(int slot)
+    {
+        PresentationSlot state;
+        return Publisher().ReadSlot(slot, state) && state.Managed ? state.Name : "";
+    }
+
+    static uint64_t ReadPublishedSteamId(int slot)
+    {
+        PresentationSlot state;
+        return Publisher().ReadSlot(slot, state) && state.Managed ? state.SteamId : 0;
+    }
 
 #if !defined(_WIN32)
     static void ClearFakeClientCallStack()
@@ -406,7 +419,7 @@ namespace cs2bh
     // Rebuild CMsgPlayerInfo from CServerSideClient and broadcast it
     static bool RefreshClientUserInfo(int slot)
     {
-        if (!g_pNetworkServerService || slot < 0 || slot >= PersonaPool::kMaxSlots)
+        if (!g_pNetworkServerService || slot < 0 || slot >= FakeClientManager::kMaxSlots)
             return false;
         auto *gameServer = g_pNetworkServerService->GetIGameServer();
         if (!gameServer)
@@ -414,33 +427,6 @@ namespace cs2bh
 
         gameServer->UserInfoChanged(CPlayerSlot(slot));
         return true;
-    }
-
-    // Count online human clients
-    static int CountHumanClients()
-    {
-        if (!g_pNetworkServerService)
-            return 0;
-        auto *gs = g_pNetworkServerService->GetIGameServer();
-        if (!gs)
-            return 0;
-        auto *vec = reinterpret_cast<CUtlVector<void *> *>(
-            reinterpret_cast<unsigned char *>(gs) + targets::kClientListOffset);
-        int count = vec->Count();
-        if (count < 0 || count > 256)
-            return 0;
-        int humans = 0;
-        for (int i = 0; i < count; ++i)
-        {
-            void *pClient = vec->Element(i);
-            if (!pClient)
-                continue;
-            void *netChan = *reinterpret_cast<void **>(
-                reinterpret_cast<unsigned char *>(pClient) + ssc::OFFSET_m_NetChannel);
-            if (netChan)
-                ++humans;
-        }
-        return humans;
     }
 
     // True if sid is already live on any connected client other than exceptSlot
@@ -474,25 +460,10 @@ namespace cs2bh
     // Resolve a SteamID for slot that collides with other client
     static uint64_t MakeUniqueSteamId(int slot, uint64_t desired)
     {
-        if (desired != 0 && !IsSteamIdInUseByOther(desired, slot))
-            return desired;
-
-        // Scan bot_info entries for a non-colliding SteamID64
-        for (const auto &e : BotInfo().All())
+        return BotInfo().ResolveBaseSteamId(desired, [slot](uint64_t sid)
         {
-            if (e.SteamId64 != 0 && !IsSteamIdInUseByOther(e.SteamId64, slot))
-                return e.SteamId64;
-        }
-
-        // Bump the AccountId off a base until it is free
-        uint64_t base = desired != 0 ? desired : BotInfoStore::kSteamId64Base + 1;
-        for (int bump = 1; bump <= 4096; ++bump)
-        {
-            uint64_t candidate = base + static_cast<uint64_t>(bump);
-            if (!IsSteamIdInUseByOther(candidate, slot))
-                return candidate;
-        }
-        return desired; // give up
+            return IsSteamIdInUseByOther(sid, slot);
+        });
     }
 
     // Resolve UTIL_Remove from the server module
@@ -626,7 +597,7 @@ namespace cs2bh
             META_CONPRINTF("[BOTHIDER] warning: MaintainBotQuota sig not found — quota fix disabled\n");
             return;
         }
-        if (PrepareKHook(g_QuotaHook, g_pfnQuotaTramp, target,
+        if (PrepareKHook(g_QuotaHook, target,
                             &Detour_MaintainBotQuota,
                             "CCSBotManager::MaintainBotQuota"))
             g_pQuotaHookTarget = target;
@@ -660,7 +631,7 @@ namespace cs2bh
         }
 
         void *target = matches.front();
-        if (PrepareKHook(g_JoinTeamHook, g_pfnHandleJoinTeamTramp, target,
+        if (PrepareKHook(g_JoinTeamHook, target,
                             &Detour_HandleCommandJoinTeam,
                             "CCSPlayerController::HandleCommand_JoinTeam"))
             g_pHandleJoinTeamHookTarget = target;
@@ -698,7 +669,7 @@ namespace cs2bh
 
         void *target = matches.front();
         g_PackEntitiesFirstCallLogged.store(false, std::memory_order_relaxed);
-        if (PrepareKHook(g_PackEntitiesHook, g_pfnPackEntitiesTramp, target,
+        if (PrepareKHook(g_PackEntitiesHook, target,
                             &Detour_PackEntities,
                             "CNetworkGameServer::PackEntities"))
             g_pPackEntitiesHookTarget = target;
@@ -837,7 +808,7 @@ namespace cs2bh
             return trace;
         }
 
-        for (int idx = 0; idx < PersonaPool::kMaxSlots; ++idx)
+        for (int idx = 0; idx < FakeClientManager::kMaxSlots; ++idx)
         {
             if (!Manager().IsManaged(idx))
                 continue;
@@ -962,39 +933,40 @@ namespace cs2bh
     }
 
     // Collects every current managed bot pawn before any flags are modified
-    static std::vector<BotPawnRef> CollectManagedBotPawns()
+    static BotPawnBatch CollectManagedBotPawns()
     {
-        std::vector<BotPawnRef> pawns;
-        pawns.reserve(PersonaPool::kMaxSlots);
-        for (int slot = 0; slot < PersonaPool::kMaxSlots; ++slot)
+        BotPawnBatch pawns;
+        for (int slot = 0; slot < FakeClientManager::kMaxSlots; ++slot)
         {
             BotPawnRef pawn = ResolveManagedBotPawn(slot);
             if (!pawn.Instance)
                 continue;
 
             auto duplicate = std::find_if(
-                pawns.begin(), pawns.end(),
+                pawns.Items.begin(), pawns.Items.begin() + pawns.Count,
                 [&pawn](const BotPawnRef &existing)
                 {
                     return existing.Instance == pawn.Instance;
                 });
-            if (duplicate == pawns.end())
-                pawns.push_back(pawn);
+            if (duplicate == pawns.Items.begin() + pawns.Count)
+                pawns.Items[pawns.Count++] = pawn;
         }
         return pawns;
     }
 
     // Clears FL_BOT for collected pawns and marks only those field writes changed
-    std::vector<BotPawnRef> ApplyBotFlagOverride()
+    BotPawnBatch ApplyBotFlagOverride()
     {
         if (targets::kBaseEntity_FlagsOffset < 0)
             return {};
 
-        std::vector<BotPawnRef> pawns = CollectManagedBotPawns();
-        std::vector<BotPawnRef> modified;
-        modified.reserve(pawns.size());
-        for (const BotPawnRef &pawn : pawns)
+        BotPawnBatch pawns = CollectManagedBotPawns();
+        // Finish collecting before the first write, then compact only modified
+        // entries into the same fixed-capacity buffer for scope restoration.
+        size_t modified = 0;
+        for (size_t i = 0; i < pawns.Count; ++i)
         {
+            const BotPawnRef pawn = pawns.Items[i];
             auto *flags = reinterpret_cast<uint32_t *>(
                 reinterpret_cast<unsigned char *>(pawn.Instance) +
                 targets::kBaseEntity_FlagsOffset);
@@ -1004,16 +976,18 @@ namespace cs2bh
             *flags &= ~targets::kEntityFlagBot;
             MarkEntityFieldChanged(pawn.Instance,
                                    static_cast<uint32_t>(targets::kBaseEntity_FlagsOffset));
-            modified.push_back(pawn);
+            pawns.Items[modified++] = pawn;
         }
-        return modified;
+        pawns.Count = modified;
+        return pawns;
     }
 
     // Restores only FL_BOT on still-current pawns without marking network changes
-    void RestoreBotFlagOverride(const std::vector<BotPawnRef> &pawns)
+    void RestoreBotFlagOverride(const BotPawnBatch &pawns)
     {
-        for (const BotPawnRef &pawn : pawns)
+        for (size_t i = 0; i < pawns.Count; ++i)
         {
+            const BotPawnRef &pawn = pawns.Items[i];
             int pawnIndex = static_cast<int>(pawn.Handle & 0x7FFF);
             void *currentPawn = ResolveEntityInstance(pawnIndex, nullptr, 0);
             if (currentPawn != pawn.Instance || IsEntityBeingDeleted(currentPawn))
@@ -1086,7 +1060,7 @@ namespace cs2bh
 
     static bool IsControllerReferencedByClient(void *controller, uint16_t *userIdOut)
     {
-        for (int slot = 0; slot < PersonaPool::kMaxSlots; ++slot)
+        for (int slot = 0; slot < FakeClientManager::kMaxSlots; ++slot)
         {
             void *client = ResolveClientBySlot(slot);
             if (!client)
@@ -1218,7 +1192,7 @@ namespace cs2bh
         const int kCtrlOff = targets::kController_FakeClientFlagsOffset;
         constexpr uint32_t kBit = 0x100;
         int touched = 0;
-        for (int idx = 0; idx < PersonaPool::kMaxSlots; ++idx)
+        for (int idx = 0; idx < FakeClientManager::kMaxSlots; ++idx)
         {
             if (!restore)
                 (*saved)[idx] = ManagedControllerFlagSnapshot{};
@@ -1270,54 +1244,6 @@ namespace cs2bh
                 }
                 *p &= ~kBit;
                 snapshot = ManagedControllerFlagSnapshot{};
-                ++touched;
-            }
-        }
-        return touched;
-    }
-
-    // EXPERIMENT: !restore clears +904 0x100 on managed bots reading as bot and records them
-    int ClearManagedController904(bool restore, std::array<bool, 64> *saved)
-    {
-        if (!saved)
-            return 0;
-        const int kCtrlOff = targets::kController_FakeClientFlagsOffset;
-        constexpr uint32_t kBit = 0x100;
-        int touched = 0;
-        for (int idx = 0; idx < PersonaPool::kMaxSlots; ++idx)
-        {
-            if (!restore)
-                (*saved)[idx] = false;
-            if (!restore && !Manager().IsManaged(idx))
-                continue;
-            if (restore && !(*saved)[idx])
-                continue;
-
-            void *pClient = ResolveClientBySlot(idx);
-            if (!pClient)
-                continue;
-            int entIdx = *reinterpret_cast<int *>(
-                reinterpret_cast<unsigned char *>(pClient) + ssc::OFFSET_m_nEntityIndex);
-            char cls[64];
-            void *ctrl = ResolveEntityInstance(entIdx, cls, sizeof(cls));
-            if (!ctrl || std::strcmp(cls, "cs_player_controller") != 0)
-                continue;
-
-            auto *p = reinterpret_cast<uint32_t *>(
-                reinterpret_cast<unsigned char *>(ctrl) + kCtrlOff);
-            if (!restore)
-            {
-                if ((*p & kBit) != 0) // only clear slots currently reading as bot
-                {
-                    *p &= ~kBit;
-                    (*saved)[idx] = true;
-                    ++touched;
-                }
-            }
-            else
-            {
-                *p |= kBit;
-                (*saved)[idx] = false;
                 ++touched;
             }
         }
@@ -1420,7 +1346,7 @@ namespace cs2bh
     // Releases an HLTV slot that was temporarily misclassified as a managed bot
     static bool ReleaseManagedHltvSlot(HiderPlugin *plugin, int slot, void *pClient)
     {
-        if (!plugin || slot < 0 || slot >= PersonaPool::kMaxSlots || !pClient ||
+        if (!plugin || slot < 0 || slot >= FakeClientManager::kMaxSlots || !pClient ||
             !Manager().IsManaged(slot) || !ssc::IsHltv(pClient))
             return false;
 
@@ -1447,11 +1373,11 @@ namespace cs2bh
                                                   const char *pszNetworkID, const char * /*pszAddress*/,
                                                   bool bFakePlayer)
     {
-        if (m_bSelfDisabled || !bFakePlayer || IsHltvConnection(pszName, pszNetworkID))
+        if (!bFakePlayer || IsHltvConnection(pszName, pszNetworkID))
             return {KHook::Action::Ignore};
 #if defined(_WIN32)
         int idx = slot.Get();
-        if (idx < 0 || idx >= PersonaPool::kMaxSlots)
+        if (idx < 0 || idx >= FakeClientManager::kMaxSlots)
             return {KHook::Action::Ignore};
         if (Manager().IsManaged(idx))
             return {KHook::Action::Ignore};
@@ -1468,8 +1394,6 @@ namespace cs2bh
             displayName = pszName;
         else if (entry)
             displayName = entry->Name;
-        else
-            displayName = Personas().PickFromRoster();
 
         if (displayName.empty())
         {
@@ -1477,12 +1401,11 @@ namespace cs2bh
             return {KHook::Action::Ignore};
         }
 
-        const uint64_t configuredSid =
-            (entry && entry->SteamId64 != 0) ? entry->SteamId64 : 0;
+        const uint64_t baseSid = MakeUniqueSteamId(idx, entry ? entry->SteamId64 : 0);
         const char *crosshairCode = entry ? entry->CrosshairCode.c_str() : nullptr;
         const uint32_t scoreboardFlair = entry ? entry->ScoreboardFlair : 0;
         if (!Manager().AdoptSlot(
-                idx, displayName.c_str(), configuredSid,
+                idx, displayName.c_str(), baseSid,
                 crosshairCode, scoreboardFlair))
         {
             BotInfo().ReleaseAssignment(entry);
@@ -1497,29 +1420,22 @@ namespace cs2bh
             SetControllerFakeClientFlag(idx, false);
         }
 
-        uint64_t sid = 0;
-        if (configuredSid != 0)
-        {
-            sid = MakeUniqueSteamId(idx, configuredSid);
-            ssc::WriteSteamId(pClient, sid);
-            Manager().SetSyntheticSid(idx, sid);
-            Publisher().UpdateSyntheticSid(idx, sid);
-        }
+        ssc::WriteSteamId(pClient, baseSid);
 
         META_CONPRINTF("[BOTHIDER] slot=%d adopted name='%s' steamid64=%llu\n",
                        idx, displayName.c_str(),
-                       static_cast<unsigned long long>(sid));
+                       static_cast<unsigned long long>(baseSid));
         return {KHook::Action::Ignore};
 #else
         if (g_FakeClientCallStack.empty())
             return {KHook::Action::Ignore};
 
         int idx = slot.Get();
-        if (idx < 0 || idx >= PersonaPool::kMaxSlots)
+        if (idx < 0 || idx >= FakeClientManager::kMaxSlots)
             return {KHook::Action::Ignore};
 
         auto &context = g_FakeClientCallStack.back();
-        if (!context.Enabled || context.ConnectedObserved)
+        if (context.ConnectedObserved)
             return {KHook::Action::Ignore};
 
         context.ConnectedObserved = true;
@@ -1534,8 +1450,6 @@ namespace cs2bh
     KHook::Return<void> HiderPlugin::Hook_ClientPutInServer_Post(IServerGameClients *, CPlayerSlot slot, char const *pszName,
                                                   int type, uint64 /*xuid*/)
     {
-        if (m_bSelfDisabled)
-            return {KHook::Action::Ignore};
 #if defined(_WIN32)
         // OnClientConnected already classified the client before disguise
         // changed its fake-client fields
@@ -1545,9 +1459,9 @@ namespace cs2bh
             return {KHook::Action::Ignore};
 #endif
         int idx = slot.Get();
-        if (idx < 0 || idx >= PersonaPool::kMaxSlots)
+        if (idx < 0 || idx >= FakeClientManager::kMaxSlots)
             return {KHook::Action::Ignore};
-        if (!Personas().IsSlotManaged(idx))
+        if (!Manager().IsManaged(idx))
             return {KHook::Action::Ignore};
 
         void *pClient = ResolveClientBySlot(idx);
@@ -1562,16 +1476,11 @@ namespace cs2bh
             SetControllerFakeClientFlag(idx, false);
         }
 
-        auto *entry = g_SlotEntry[idx];
-        if (entry && entry->SteamId64 != 0)
-        {
-            uint64_t sid = MakeUniqueSteamId(idx, entry->SteamId64);
-            ssc::WriteSteamId(pClient, sid);
-            Manager().SetSyntheticSid(idx, sid);
-            Publisher().UpdateSyntheticSid(idx, sid);
-        }
+        // Reassert the adopted identity after the engine initializes the slot;
+        // choosing another persona here would invalidate the immutable base.
+        ssc::WriteSteamId(pClient, ReadPublishedSteamId(idx));
 
-        std::string visibleName = Personas().GetSlotName(idx);
+        std::string visibleName = ReadPublishedName(idx);
         if (visibleName.empty() && pszName)
             visibleName = pszName;
         if (!visibleName.empty())
@@ -1614,16 +1523,14 @@ namespace cs2bh
                                                 const char * /*pszName*/, uint64 /*xuid*/,
                                                 const char * /*pszNetworkID*/)
     {
-        if (m_bSelfDisabled)
-            return {KHook::Action::Ignore};
         int idx = slot.Get();
-        if (idx < 0 || idx >= PersonaPool::kMaxSlots)
+        if (idx < 0 || idx >= FakeClientManager::kMaxSlots)
             return {KHook::Action::Ignore};
-        if (!Personas().IsSlotManaged(idx))
+        if (!Manager().IsManaged(idx))
             return {KHook::Action::Ignore};
 
         // Capture the persona name
-        std::string persona = Personas().GetSlotName(idx);
+        std::string persona = ReadPublishedName(idx);
 
         // Restore engine-side bot identity
         void *pClient = ResolveClientBySlot(idx);
@@ -1697,11 +1604,11 @@ namespace cs2bh
     {
         if (!name || !name[0])
             return -1;
-        for (int idx = 0; idx < PersonaPool::kMaxSlots; ++idx)
+        for (int idx = 0; idx < FakeClientManager::kMaxSlots; ++idx)
         {
             if (!Manager().IsManaged(idx))
                 continue;
-            std::string persona = Personas().GetSlotName(idx);
+            std::string persona = ReadPublishedName(idx);
             if (persona == name)
                 return idx;
         }
@@ -1815,8 +1722,6 @@ namespace cs2bh
     KHook::Return<void> HiderPlugin::Hook_DispatchConCommand_Pre(ICvar *, ConCommandRef cmd, const CCommandContext &,
                                                   const CCommand &args)
     {
-        if (m_bSelfDisabled)
-            return {KHook::Action::Ignore};
         if (!cmd.IsValidRef())
             return {KHook::Action::Ignore};
         const char *cmdName = cmd.GetName();
@@ -1874,7 +1779,7 @@ namespace cs2bh
         m_AdjustQuotaAfterKick = std::strcmp(cmdName, "bot_kick") != 0;
         if (m_AdjustQuotaAfterKick)
         {
-            for (int idx = 0; idx < PersonaPool::kMaxSlots; ++idx)
+            for (int idx = 0; idx < FakeClientManager::kMaxSlots; ++idx)
             {
                 if (Manager().IsManaged(idx))
                     ++m_ManagedBeforeKick;
@@ -1886,9 +1791,9 @@ namespace cs2bh
         }
 
         int restored = 0;
-        for (int idx = 0; idx < PersonaPool::kMaxSlots; ++idx)
+        for (int idx = 0; idx < FakeClientManager::kMaxSlots; ++idx)
         {
-            if (!Personas().IsSlotManaged(idx))
+            if (!Manager().IsManaged(idx))
                 continue;
             void *pClient = ResolveClientBySlot(idx);
             if (!pClient)
@@ -1907,8 +1812,6 @@ namespace cs2bh
     KHook::Return<void> HiderPlugin::Hook_DispatchConCommand_Post(ICvar *, ConCommandRef cmd, const CCommandContext &,
                                                    const CCommand & /*args*/)
     {
-        if (m_bSelfDisabled)
-            return {KHook::Action::Ignore};
         if (!cmd.IsValidRef())
             return {KHook::Action::Ignore};
         const char *cmdName = cmd.GetName();
@@ -1941,7 +1844,7 @@ namespace cs2bh
 
         int redisguised = 0;
         int managedAfterKick = 0;
-        for (int idx = 0; idx < PersonaPool::kMaxSlots; ++idx)
+        for (int idx = 0; idx < FakeClientManager::kMaxSlots; ++idx)
         {
             if (!Manager().IsManaged(idx))
                 continue;
@@ -1954,7 +1857,7 @@ namespace cs2bh
                 ssc::ClearFakePlayer(pClient);
                 SetControllerFakeClientFlag(idx, false);
             }
-            uint64_t sid = Manager().GetSyntheticSid(idx);
+            uint64_t sid = ReadPublishedSteamId(idx);
             if (sid != 0)
                 ssc::WriteSteamId(pClient, sid);
             RefreshClientUserInfo(idx);
@@ -1988,22 +1891,31 @@ namespace cs2bh
     } // end Hook_DispatchConCommand_Post
 
     // Toggle disguise: off restores m_bFakePlayer=1 so the bot manager spawns bots again
-    void HiderPlugin::SetDisguiseEnabled(bool enabled)
+    bool HiderPlugin::SetDisguiseEnabled(bool enabled)
     {
         if (m_bDisguiseEnabled == enabled)
-            return;
-        m_bDisguiseEnabled = enabled;
+            return true;
 
         // Count managed bots
         int managed = 0;
-        for (int idx = 0; idx < PersonaPool::kMaxSlots; ++idx)
+        for (int idx = 0; idx < FakeClientManager::kMaxSlots; ++idx)
             if (Manager().IsManaged(idx))
                 ++managed;
 
         // Rebuild
         if (engine && managed > 0)
         {
-            for (int idx = 0; idx < PersonaPool::kMaxSlots; ++idx)
+            ConVarRefAbstract botQuota("bot_quota");
+            if (!botQuota.IsValidRef())
+            {
+                META_CONPRINTF("[BOTHIDER] disguise change rejected: bot_quota unavailable\n");
+                return false;
+            }
+            // Preserve the operator's quota and mode. Deriving a value from
+            // humans + bots only works for fill mode, not normal or match.
+            const int quota = botQuota.GetInt();
+            m_bDisguiseEnabled = enabled;
+            for (int idx = 0; idx < FakeClientManager::kMaxSlots; ++idx)
             {
                 if (!Manager().IsManaged(idx))
                     continue;
@@ -2015,19 +1927,18 @@ namespace cs2bh
                 }
             }
             m_bRebuilding = true;
-            // fill-mode quota = humans + bot
-            int quota = CountHumanClients() + managed;
             char quotaCmd[48];
             std::snprintf(quotaCmd, sizeof(quotaCmd), "bot_quota %d\n", quota);
             engine->ServerCommand("bot_kick\n");
             engine->ServerCommand(quotaCmd);
             META_CONPRINTF("[BOTHIDER] disguise %s — rebuilding %d bot(s), quota=%d\n",
                            enabled ? "ON" : "OFF", managed, quota);
-            return;
+            return true;
         }
 
         // Fallback
-        for (int idx = 0; idx < PersonaPool::kMaxSlots; ++idx)
+        m_bDisguiseEnabled = enabled;
+        for (int idx = 0; idx < FakeClientManager::kMaxSlots; ++idx)
         {
             if (!Manager().IsManaged(idx))
                 continue;
@@ -2038,7 +1949,7 @@ namespace cs2bh
             {
                 ssc::ClearFakePlayer(pClient);
                 SetControllerFakeClientFlag(idx, false);
-                uint64_t sid = Manager().GetSyntheticSid(idx);
+                uint64_t sid = ReadPublishedSteamId(idx);
                 if (sid != 0)
                     ssc::WriteSteamId(pClient, sid);
             }
@@ -2051,47 +1962,7 @@ namespace cs2bh
             RefreshClientUserInfo(idx);
         }
         META_CONPRINTF("[BOTHIDER] disguise %s (no rebuild)\n", enabled ? "ON" : "OFF");
-    }
-
-    // Clean-rebuild on rematch
-    void HiderPlugin::RebuildBots()
-    {
-        if (m_bSelfDisabled || !m_bDisguiseEnabled || !engine || m_bRebuilding)
-            return;
-
-        // Restore m_bFakePlayer
-        int managed = 0;
-        for (int idx = 0; idx < PersonaPool::kMaxSlots; ++idx)
-        {
-            if (!Manager().IsManaged(idx))
-                continue;
-            void *pClient = ResolveClientBySlot(idx);
-            if (pClient)
-            {
-                ssc::SetFakePlayer(pClient);
-                SetControllerFakeClientFlag(idx, true);
-            }
-            ++managed;
-        }
-        if (managed == 0)
-            return;
-
-        // Re-fill
-        int quota = managed;
-        ConVarRefAbstract botQuota("bot_quota");
-        if (botQuota.IsValidRef())
-            quota = botQuota.GetInt();
-
-        m_bRebuilding = true;
-        char quotaCmd[48];
-        std::snprintf(quotaCmd, sizeof(quotaCmd), "bot_quota %d\n", quota);
-        // Drop quota to 0 before kicking: otherwise the engine keeps bots alive to
-        // satisfy the live quota mid-kick, and survivors skip CreateFakeClient
-        engine->ServerCommand("bot_quota 0\n");
-        engine->ServerCommand("bot_kick all\n");
-        engine->ServerCommand(quotaCmd);
-        META_CONPRINTF("[BOTHIDER] rematch rebuild — kicked %d bot(s), bot_quota->%d\n",
-                       managed, quota);
+        return true;
     }
 
 #if !defined(_WIN32)
@@ -2101,20 +1972,13 @@ namespace cs2bh
         FakeClientCallContext context;
         context.RequestedName = (netname && netname[0]) ? netname : "";
         context.UseBotInfoName = m_bUseBotInfoName;
-        context.Enabled = !m_bSelfDisabled;
-
-        if (context.Enabled)
-        {
-            context.Entry = BotInfo().PickForBot(netname);
-            if (context.UseBotInfoName && context.Entry)
-                context.Persona = context.Entry->Name;
-            else if (netname && netname[0])
-                context.Persona = netname;
-            else if (context.Entry)
-                context.Persona = context.Entry->Name;
-            else
-                context.Persona = Personas().PickFromRoster();
-        }
+        context.Entry = BotInfo().PickForBot(netname);
+        if (context.UseBotInfoName && context.Entry)
+            context.Persona = context.Entry->Name;
+        else if (netname && netname[0])
+            context.Persona = netname;
+        else if (context.Entry)
+            context.Persona = context.Entry->Name;
 
         g_FakeClientCallStack.push_back(std::move(context));
         META_CONPRINTF("[BOTHIDER] CreateFakeClient begin depth=%zu requested='%s'\n",
@@ -2134,9 +1998,6 @@ namespace cs2bh
         FakeClientCallContext context = std::move(g_FakeClientCallStack.back());
         g_FakeClientCallStack.pop_back();
 
-        if (!context.Enabled)
-            return {KHook::Action::Ignore, CPlayerSlot(-1)};
-
         if (KHook::WasOriginalFunctionSkipped())
         {
             BotInfo().ReleaseAssignment(context.Entry);
@@ -2144,7 +2005,7 @@ namespace cs2bh
         }
         const int returnedSlot = KHook::GetOriginalReturn<CPlayerSlot>().Get();
 
-        if (returnedSlot < 0 || returnedSlot >= PersonaPool::kMaxSlots)
+        if (returnedSlot < 0 || returnedSlot >= FakeClientManager::kMaxSlots)
         {
             BotInfo().ReleaseAssignment(context.Entry);
             META_CONPRINTF("[BOTHIDER] CreateFakeClient failed returned=%d requested='%s'\n",
@@ -2199,10 +2060,10 @@ namespace cs2bh
         }
 
         const BotEntry *cfg = context.Entry;
-        uint64_t cfgSid = (cfg && cfg->SteamId64 != 0) ? cfg->SteamId64 : 0;
+        const uint64_t baseSid = MakeUniqueSteamId(returnedSlot, cfg ? cfg->SteamId64 : 0);
         const char *cfgCross = cfg ? cfg->CrosshairCode.c_str() : nullptr;
         uint32_t cfgFlair = cfg ? cfg->ScoreboardFlair : 0;
-        if (!Manager().AdoptSlot(returnedSlot, boundName, cfgSid, cfgCross, cfgFlair))
+        if (!Manager().AdoptSlot(returnedSlot, boundName, baseSid, cfgCross, cfgFlair))
         {
             if (nameChanged && !engineName.empty())
             {
@@ -2223,18 +2084,11 @@ namespace cs2bh
             SetControllerFakeClientFlag(returnedSlot, false);
         }
 
-        uint64_t sid = 0;
-        if (cfgSid != 0)
-        {
-            sid = MakeUniqueSteamId(returnedSlot, cfgSid);
-            ssc::WriteSteamId(pClient, sid);
-            Manager().SetSyntheticSid(returnedSlot, sid);
-            Publisher().UpdateSyntheticSid(returnedSlot, sid);
-        }
+        ssc::WriteSteamId(pClient, baseSid);
         RefreshClientUserInfo(returnedSlot);
 
         META_CONPRINTF("[BOTHIDER] slot=%d steamid64=%llu name='%s'\n",
-                       returnedSlot, static_cast<unsigned long long>(sid),
+                       returnedSlot, static_cast<unsigned long long>(baseSid),
                        boundName && boundName[0] ? boundName : "<null>");
         META_CONPRINTF("[BOTHIDER] CreateFakeClient end slot=%d depth=%zu\n",
                        returnedSlot, g_FakeClientCallStack.size());
@@ -2244,10 +2098,6 @@ namespace cs2bh
 
     KHook::Return<CUtlVector<INetworkGameClient *> *> HiderPlugin::Hook_StartChangeLevel_Pre(INetworkGameServer *, const char *mapName, const char *landmark, void * /*changelevelState*/)
     {
-        if (m_bSelfDisabled)
-        {
-            return {KHook::Action::Ignore, nullptr};
-        }
 #if !defined(_WIN32)
         ClearFakeClientCallStack();
 #endif
@@ -2262,8 +2112,8 @@ namespace cs2bh
     bool HiderPlugin::PublishIdentity(int slot, uint64_t session, uint64_t incarnation,
                                        uint64_t sid, const char *name)
     {
-        if (!Publisher().Matches(slot, session, incarnation) || !Manager().IsManaged(slot) ||
-            !sid || !name || !name[0] || !std::memchr(name, 0, 32)) return false;
+        if (!Publisher().CanPublishSteamId(slot, session, incarnation, sid) || !Manager().IsManaged(slot) ||
+            !name || !name[0] || !std::memchr(name, 0, 32)) return false;
         void *client = ResolveClientBySlot(slot);
         if (!client || ssc::IsHltv(client)) return false;
         // A connected human must never receive a bot persona, even during a
@@ -2290,8 +2140,6 @@ namespace cs2bh
         else if (sidChanged && !RefreshClientUserInfo(slot)) return false;
         // Windows SetName already publishes the final name + SID combination.
         if (!Publisher().Matches(slot, session, incarnation)) return false;
-        Manager().SetSyntheticSid(slot, sid);
-        Personas().MarkSlotManaged(slot, name);
         Publisher().UpdateSyntheticSid(slot, sid);
         Publisher().UpdatePersonaName(slot, name);
         return true;
@@ -2345,12 +2193,12 @@ namespace cs2bh
     // Tick driver
     KHook::Return<void> HiderPlugin::Hook_GameFrame_Post(IServerGameDLL *, bool simulating, bool /*bFirst*/, bool /*bLast*/)
     {
-        if (m_bSelfDisabled || !simulating)
+        if (!simulating)
             return {KHook::Action::Ignore};
 
         DrainPendingControllerRemovals();
 
-        for (int idx = 0; idx < PersonaPool::kMaxSlots; ++idx)
+        for (int idx = 0; idx < FakeClientManager::kMaxSlots; ++idx)
         {
             if (!Manager().IsManaged(idx))
                 continue;
@@ -2373,7 +2221,7 @@ namespace cs2bh
             }
 #endif
 
-            for (int idx = 0; idx < PersonaPool::kMaxSlots; ++idx)
+            for (int idx = 0; idx < FakeClientManager::kMaxSlots; ++idx)
             {
                 if (!Manager().IsManaged(idx))
                     continue;
@@ -2431,9 +2279,15 @@ namespace cs2bh
         META_CONPRINTF("[BOTHIDER] OnLevelShutdown — state drained\n");
     }
 
-    bool HiderPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, bool /*late*/)
+    bool HiderPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, bool late)
     {
         PLUGIN_SAVEVARS();
+        if (late)
+        {
+            std::snprintf(error, maxlen,
+                          "late loading is unsupported; fully restart the server to load BotHider");
+            return false;
+        }
         if (!KHook::__exported__khook)
         {
             std::snprintf(error, maxlen, "Metamod did not provide the shared KHook interface");
@@ -2578,13 +2432,11 @@ namespace cs2bh
         }
 #endif
 
-        Manager().Init();
-
         // Initialize the synchronous in-process presentation API
         if (Publisher().Init())
         {
             META_CONPRINTF("[BOTHIDER] native presentation ABI %d ready\n", kNativePresentationAbi);
-            // Rebind a managed subscriber after a native hot reload.
+            // Notify any managed subscriber already present during startup.
             if (engine) engine->ServerCommand("bh_native_ready\n");
             // Publish resolved hook/sig addresses for bh_status (0 = unresolved)
             Publisher().PublishSignature("UTIL_Remove", reinterpret_cast<void *>(g_pfnUtilRemove));
@@ -2610,7 +2462,7 @@ namespace cs2bh
         else
         {
             META_CONPRINTF("[BOTHIDER] warning: bot_info.json not found or parse error at '%s' — "
-                           "bot identity will fall back to curated roster\n",
+                           "bots will retain their engine names and zero SteamID base\n",
                            jsonPath.c_str());
         }
 
@@ -2652,15 +2504,21 @@ namespace cs2bh
             return false;
         }
 
-        META_CONPRINTF("[BOTHIDER] loaded — m_bFakePlayer offset=%d, OCC=#%d CPiS=#%d\n",
-                       ssc::OFFSET_m_bFakePlayer,
-                       targets::kVTSlot_OnClientConnected,
-                       targets::kVTSlot_ClientPutInServer);
+        META_CONPRINTF("[BOTHIDER] loaded — m_bFakePlayer offset=%d\n",
+                       ssc::OFFSET_m_bFakePlayer);
         return true;
     }
 
     bool HiderPlugin::Unload(char *error, size_t maxlen)
     {
+        // Disguised clients still depend on our quota/team/identity hooks.
+        // Refuse before removing any hook instead of leaving partial engine state.
+        if (Manager().HasManagedSlots())
+        {
+            std::snprintf(error, maxlen,
+                          "managed bots are still connected; fully restart the server to update BotHider");
+            return false;
+        }
         if (!RemoveHooks())
         {
             std::snprintf(error, maxlen, "cannot remove KHook callbacks during entity packing");
@@ -2672,6 +2530,7 @@ namespace cs2bh
         g_PendingControllerRemovals.clear();
         Manager().ReleaseAll();
         Publisher().Shutdown();
+        schema::Reset();
         return true;
     }
 
@@ -2706,7 +2565,7 @@ BH_EXPORT int BotHider_SetOption(uint64_t session, int option, int value)
     if (!session || cs2bh::Publisher().Session() != session) return -1;
     switch (option)
     {
-        case 1: cs2bh::g_Plugin.SetDisguiseEnabled(value != 0); break;
+        case 1: return cs2bh::g_Plugin.SetDisguiseEnabled(value != 0) ? 0 : -1;
         case 2: cs2bh::g_Plugin.SetUseBotInfoName(value != 0); break;
         default: return -1;
     }

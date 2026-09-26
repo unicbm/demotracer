@@ -1,7 +1,9 @@
 #include "projectile_birth_align.h"
 
 #include "ccsbot_slot.h"
+#include "scene_node.h"
 #include "version_targets.h"
+#include "live_entities.h"
 
 #include <algorithm>
 #include <array>
@@ -24,6 +26,7 @@ namespace BotController::ProjectileBirthAlign
         struct Pending
         {
             uint64_t entityPtr;
+            uint32_t entityHandle;
             std::array<float, 3> position;
             std::array<float, 3> velocity;
         };
@@ -74,44 +77,13 @@ namespace BotController::ProjectileBirthAlign
             std::memcpy(base + offset, value.data(), sizeof(float) * value.size());
         }
 
-        char *ResolveSceneNode(char *entity)
-        {
-            if (!entity)
-                return nullptr;
-
-            if (targets::kEnt_BodyComponent > 0 && targets::kBody_SceneNode >= 0 &&
-                CanWriteMemory(entity + targets::kEnt_BodyComponent, sizeof(void *)))
-            {
-                char *body = nullptr;
-                if (!SafeRead(entity, targets::kEnt_BodyComponent, body))
-                    return nullptr;
-                if (body &&
-                    CanWriteMemory(body + targets::kBody_SceneNode, sizeof(void *)))
-                {
-                    char *node = nullptr;
-                    if (!SafeRead(body, targets::kBody_SceneNode, node))
-                        return nullptr;
-                    if (node)
-                        return node;
-                }
-            }
-
-            if (targets::kEnt_GameSceneNode > 0 &&
-                CanWriteMemory(entity + targets::kEnt_GameSceneNode, sizeof(void *)))
-            {
-                char *node = nullptr;
-                return SafeRead(entity, targets::kEnt_GameSceneNode, node) ? node : nullptr;
-            }
-            return nullptr;
-        }
-
         bool Apply(Pending &pending)
         {
             if (g_initialPositionOffset < 0 || g_initialVelocityOffset < 0)
                 return false;
 
             auto *entity = reinterpret_cast<char *>(static_cast<uintptr_t>(pending.entityPtr));
-            if (!entity)
+            if (!entity || LiveEntities::FromHandle(pending.entityHandle) != entity)
                 return false;
 
             if (!CanWriteMemory(entity + g_initialPositionOffset, sizeof(float) * 3) ||
@@ -125,7 +97,7 @@ namespace BotController::ProjectileBirthAlign
             WriteVec3(entity, g_initialVelocityOffset, pending.velocity);
             WriteVec3(entity, targets::kEnt_AbsVelocity, pending.velocity);
 
-            auto *node = ResolveSceneNode(entity);
+            auto *node = static_cast<char *>(SceneNodeForEntity(entity));
             if (node && CanWriteMemory(node + targets::kNode_AbsOrigin, sizeof(float) * 3))
                 WriteVec3(node, targets::kNode_AbsOrigin, pending.position);
 
@@ -155,6 +127,9 @@ namespace BotController::ProjectileBirthAlign
     {
         if (entityPtr == 0)
             return -2;
+        const uint32_t entityHandle = LiveEntities::HandleForEntity(
+            reinterpret_cast<void *>(static_cast<uintptr_t>(entityPtr)));
+        if (!entityHandle) return -2;
 
         std::scoped_lock lock(g_mutex);
         if (g_initialPositionOffset < 0 || g_initialVelocityOffset < 0)
@@ -168,6 +143,7 @@ namespace BotController::ProjectileBirthAlign
 
         g_pending.push_back(Pending{
             entityPtr,
+            entityHandle,
             {posX, posY, posZ},
             {velX, velY, velZ}});
         g_pendingCount.store(static_cast<int>(g_pending.size()),
@@ -217,16 +193,14 @@ namespace BotController::ProjectileBirthAlign
             return;
         }
 
-        auto it = g_pending.begin();
-        while (it != g_pending.end())
+        for (auto &pending : g_pending)
         {
-            if (Apply(*it))
+            if (Apply(pending))
                 ++g_applied;
             else
                 ++g_failed;
-            it = g_pending.erase(it);
         }
-        g_pendingCount.store(static_cast<int>(g_pending.size()),
-                             std::memory_order_release);
+        g_pending.clear();
+        g_pendingCount.store(0, std::memory_order_release);
     }
 } // namespace BotController::ProjectileBirthAlign

@@ -354,6 +354,95 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Fact]
+    public void PlaybackReadValidatesButDoesNotRetainUnusedEvidence()
+    {
+        var path = WriteAuxiliaryReplay(ValidHistoryPayload(), new byte[48]);
+        var full = DtrReplayReader.Read(path);
+        var playback = DtrReplayReader.ReadForPlayback(path);
+
+        Assert.Single(full.MovementExtras);
+        Assert.Single(full.InputHistoryTicks);
+        Assert.Single(full.InputHistoryEntries);
+        Assert.Empty(playback.MovementExtras);
+        Assert.Empty(playback.InputHistoryTicks);
+        Assert.Empty(playback.InputHistoryEntries);
+        Assert.Equal(full.Ticks, playback.Ticks);
+        Assert.Equal(full.Subticks, playback.Subticks);
+        Assert.Equal(full.CommandFrames, playback.CommandFrames);
+        Assert.Equal(full.SourceState, playback.SourceState);
+        Assert.Equal(full.TickRate, playback.TickRate);
+        Assert.Equal(48 + 16 + 128,
+            DtrReplayPrefetch.EstimateReplayBytes(full) - DtrReplayPrefetch.EstimateReplayBytes(playback));
+    }
+
+    [Theory]
+    [InlineData("history_fields", "unknown fields")]
+    [InlineData("history_float", "finite")]
+    [InlineData("history_index", "outside")]
+    [InlineData("history_count", "exceeds")]
+    [InlineData("history_trailing", "trailing bytes")]
+    [InlineData("extra_float", "finite")]
+    public void PlaybackReadRejectsInvalidDiscardedEvidence(string mutation, string message)
+    {
+        var history = ValidHistoryPayload();
+        var extras = new byte[48];
+        switch (mutation)
+        {
+            case "history_fields": BitConverter.GetBytes(1U << 31).CopyTo(history, 16); break;
+            case "history_float": BitConverter.GetBytes(float.NaN).CopyTo(history, 20); break;
+            case "history_index": BitConverter.GetBytes(1).CopyTo(history, 4); break;
+            case "history_count": BitConverter.GetBytes(65U).CopyTo(history, 12); break;
+            case "history_trailing": history = [.. history, 0]; break;
+            case "extra_float": BitConverter.GetBytes(float.PositiveInfinity).CopyTo(extras, 4); break;
+        }
+        var path = WriteAuxiliaryReplay(history, extras);
+        Assert.Contains(message, Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path)).Message);
+        Assert.Contains(message, Assert.Throws<InvalidDataException>(() => DtrReplayReader.ReadForPlayback(path)).Message);
+    }
+
+    [Theory]
+    [InlineData(false, "missing required section input history")]
+    [InlineData(true, "duplicate")]
+    public void PlaybackReadStillEnforcesHistorySectionPresenceAndUniqueness(bool duplicate, string message)
+    {
+        var path = WriteAuxiliaryReplay(ValidHistoryPayload(), new byte[48], duplicate ? 2 : 0);
+        Assert.Contains(message, Assert.Throws<InvalidDataException>(() => DtrReplayReader.ReadForPlayback(path)).Message);
+    }
+
+    [Fact]
+    public void PlaybackReadRejectsTruncatedDiscardedHistory()
+    {
+        var path = WriteAuxiliaryReplay(ValidHistoryPayload()[..^1], new byte[48]);
+        Assert.Throws<EndOfStreamException>(() => DtrReplayReader.ReadForPlayback(path));
+    }
+
+    private static byte[] ValidHistoryPayload()
+    {
+        var history = new byte[16 + 128];
+        BitConverter.GetBytes(100).CopyTo(history, 0);
+        BitConverter.GetBytes(-1).CopyTo(history, 4);
+        BitConverter.GetBytes(-1).CopyTo(history, 8);
+        BitConverter.GetBytes(1U).CopyTo(history, 12);
+        BitConverter.GetBytes(1U).CopyTo(history, 16);
+        BitConverter.GetBytes(12.0f).CopyTo(history, 20);
+        return history;
+    }
+
+    private string WriteAuxiliaryReplay(byte[] history, byte[] extras, int historySections = 1)
+        => WriteFile(writer =>
+        {
+            WriteCompleteHeader(writer, version: 9, tickCount: 1, subtickCount: 0);
+            writer.Write((uint)(4 + historySections));
+            WriteSection(writer, 1, CodecNone, 2,
+                BuildV2SnapshotPayload([new NativeMovementSnapshot(), new NativeMovementSnapshot()]), sectionVersion: 2);
+            WriteSection(writer, 2, CodecNone, 1, new byte[8]);
+            WriteSection(writer, 5, CodecNone, 0, []);
+            WriteSection(writer, 7, CodecNone, 1, extras);
+            for (var i = 0; i < historySections; i++)
+                WriteSection(writer, 8, CodecNone, 1, history);
+        });
+
+    [Fact]
     public void ReadsV10BackdatedSubtickWhenBitExactly()
     {
         const float when = -1.671875f;

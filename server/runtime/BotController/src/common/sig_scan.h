@@ -2,28 +2,11 @@
 
 #pragma once
 
-#include <cstdint>
-#include <cstddef>
-#include <string>
-#include <vector>
-
-#include <nlohmann/json.hpp>
+#include "../../../common/sig_scan.h"
 
 namespace BotController::Sig
 {
-    struct ModuleSegment
-    {
-        unsigned char *Base = nullptr;
-        size_t Size = 0;
-    };
-
-    struct ModuleInfo
-    {
-        unsigned char *Base = nullptr;
-        size_t Size = 0;
-        std::vector<ModuleSegment> Segments;
-        explicit operator bool() const { return Base != nullptr && Size != 0; }
-    };
+    using ModuleInfo = DemoTracerRuntime::Sig::ModuleInfo;
 
     // Read + parse gamedata.json into out; false on open/parse error
     bool LoadGamedata(const char *path, nlohmann::json &out);
@@ -31,7 +14,6 @@ namespace BotController::Sig
     std::string FindPlatformSig(const nlohmann::json &gamedata, const std::string &name);
     // gamedata[name].offsets[platform]; fallback if missing/non-integer
     int FindPlatformOffset(const nlohmann::json &gamedata, const std::string &name, int fallback);
-    const char *PlatformName();
     bool ParseSigString(const std::string &sigStr,
                         std::vector<uint8_t> &outBytes, std::vector<bool> &outWild);
     void *FindPatternIn(const ModuleInfo &module,

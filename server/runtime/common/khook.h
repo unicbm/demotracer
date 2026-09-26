@@ -30,15 +30,16 @@ namespace DemoTracerHooks
         Hook &operator=(const Hook &) = delete;
         ~Hook() { Remove(); }
 
-        bool Create(void *target, Callback pre, Function *original, Callback post = nullptr)
+        bool Create(void *target, Callback pre, Function *original = nullptr, Callback post = nullptr)
         {
-            if (m_target || !target || (!pre && !post) || !original)
+            if (m_target || !target || (!pre && !post))
                 return false;
             m_target = reinterpret_cast<Function>(target);
             m_pre = pre;
             m_post = post;
             m_original = original;
-            *original = nullptr;
+            if (original)
+                *original = nullptr;
             return true;
         }
 
@@ -50,7 +51,8 @@ namespace DemoTracerHooks
             if (!hook->Active())
                 return false;
             // Only explicit raw engine calls outside callbacks use this bypass.
-            *m_original = reinterpret_cast<Function>(KHook::FindOriginal(reinterpret_cast<void *>(m_target)));
+            if (m_original)
+                *m_original = reinterpret_cast<Function>(KHook::FindOriginal(reinterpret_cast<void *>(m_target)));
             m_hook = std::move(hook);
             return true;
         }

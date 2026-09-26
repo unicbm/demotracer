@@ -205,7 +205,9 @@ does not advertise or perform input-history injection. `CSGOUserCmdPB` and its
 entries are engine-owned; even in-place protobuf mutation can corrupt the live
 command ring across the module ABI boundary. When the capability is absent,
 the managed loader uses the extended replay entry point and leaves the entire
-live input-history graph untouched. The section remains available for a future
+live input-history graph untouched. Playback and prefetch validate the complete
+section, including entry fields and attack indexes, then discard its decoded
+arrays. Full inspection reads retain them. The section remains available for a future
 engine-owned injection path. `target_ent_index` additionally requires live
 identity remapping because demo entity indexes are not stable on the replay
 server.
@@ -372,6 +374,10 @@ Readers retain the historical `[0, 1)` validation for DTR v3 through v9.
 | pad | 3 bytes | |
 
 ### `MovementExtraV1`
+
+Legacy movement extras remain readable and validated, but the current runtime
+does not consume them. Playback discards the decoded values; native compatibility
+entry points validate these arguments without retaining a second copy.
 
 | Field | Type |
 | --- | --- |

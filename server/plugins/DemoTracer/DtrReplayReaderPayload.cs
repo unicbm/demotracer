@@ -362,14 +362,14 @@ internal static partial class DtrReplayReader
         throw new InvalidDataException($"{name} varint is too long");
     }
 
-    private static NativeReplayMovementExtra[] ReadMovementExtrasFromSection(byte[] body, int count)
+    private static NativeReplayMovementExtra[] ReadMovementExtrasFromSection(byte[] body, int count, bool retainData)
     {
         using var stream = new MemoryStream(body, writable: false);
         using var reader = new BinaryReader(stream);
-        var extras = new NativeReplayMovementExtra[count];
+        var extras = retainData ? new NativeReplayMovementExtra[count] : [];
         for (var i = 0; i < count; i++)
         {
-            extras[i] = new NativeReplayMovementExtra
+            var extra = new NativeReplayMovementExtra
             {
                 Fields = reader.ReadUInt32(),
                 JumpPressedTime = reader.ReadSingle(),
@@ -384,6 +384,9 @@ internal static partial class DtrReplayReader
                 LastLandedVelocityY = reader.ReadSingle(),
                 LastLandedVelocityZ = reader.ReadSingle()
             };
+            ValidateMovementExtra(in extra, i);
+            if (retainData)
+                extras[i] = extra;
         }
         RequireConsumed(stream, "movement extras");
         return extras;

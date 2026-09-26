@@ -13,7 +13,7 @@ public partial class BotControllerPlugin
 
     private sealed class PendingProjectileCandidate
     {
-        public required int EntityIndex { get; init; }
+        public required uint EntityHandle { get; init; }
         public required nint EntityPtr { get; init; }
         public required ReplayProjectileKind Kind { get; init; }
         public required int WeaponDefIndex { get; init; }
@@ -78,7 +78,7 @@ public partial class BotControllerPlugin
 
         var candidate = new PendingProjectileCandidate
         {
-            EntityIndex = unchecked((int)entity.Index),
+            EntityHandle = entity.EntityHandle.Raw,
             EntityPtr = entity.Handle,
             Kind = kind,
             WeaponDefIndex = weaponDefIndex,
@@ -109,8 +109,8 @@ public partial class BotControllerPlugin
     // Captures or aligns one projectile once its thrower and engine fields are available
     private bool TryProcessProjectileCandidate(PendingProjectileCandidate candidate)
     {
-        var projectile = new CBaseCSGrenadeProjectile(candidate.EntityPtr);
-        if (!projectile.IsValid) return true;
+        var projectile = ResolveCandidate(candidate);
+        if (projectile == null) return true;
         if (!TryGetProjectileThrowerSlot(projectile, out int slot)) return false;
 
         if (_recordedProjectiles.ContainsKey(slot))
@@ -135,8 +135,15 @@ public partial class BotControllerPlugin
     private static bool TryCandidateSlot(PendingProjectileCandidate candidate, out int slot)
     {
         slot = -1;
-        var projectile = new CBaseCSGrenadeProjectile(candidate.EntityPtr);
-        return projectile.IsValid && TryGetProjectileThrowerSlot(projectile, out slot);
+        var projectile = ResolveCandidate(candidate);
+        return projectile != null && TryGetProjectileThrowerSlot(projectile, out slot);
+    }
+
+    private static CBaseCSGrenadeProjectile? ResolveCandidate(PendingProjectileCandidate candidate)
+    {
+        var projectile = new CHandle<CBaseCSGrenadeProjectile>(candidate.EntityHandle).Value;
+        return projectile is { IsValid: true } && projectile.Handle == candidate.EntityPtr
+            ? projectile : null;
     }
 
     // Captures the native projectile birth vectors for the active recording tick

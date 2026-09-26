@@ -68,9 +68,12 @@ the input-boundary fix previously validated by the Bot Improver consumer.
 
 The `LeftHandIntent` names are compatibility aliases. The native primitive
 writes short-lived button and analog movement intent into the usercmd/movedata
-path only; it does not aim, pick enemies, switch weapons, attack, teleport, or
-write absolute velocity. Only movement button bits (WASD, duck, jump) are
-applied; non-movement bits are ignored. Active DTR replay owns its replay slot,
+path only. Its supported button mask is WASD, duck, jump, walk, and primary
+attack (`IN_ATTACK`); callers own the decision to set or clear those buttons.
+It does not choose targets, aim, switch weapons, teleport, or write absolute
+velocity. Other button bits are ignored. Intent and replay execution require
+the current autonomous bot pawn; human players can still be recorded. A pawn
+replacement or human takeover invalidates existing control. Active DTR replay owns its replay slot,
 and replay load/start/stop/finish/clear paths clear any movement intent on that
 slot.
 
@@ -202,6 +205,11 @@ engine-owned `CSGOUserCmdPB` history entries across the module ABI boundary can
 corrupt the command ring. Matched callers fall back to `LoadReplayExtended`,
 preserving command, movement, and subtick playback while leaving native input
 history untouched.
+
+The input-history and movement-extra ABI parameters still receive validation
+for compatibility with older integrations. Their unsupported playback data is
+not retained in native replay buffers. Current replay state restoration uses
+the source-state timeline.
 
 Replay handoff integrations can probe `CapabilityNativePerception`, then read
 `TryGetNativePerceptionState`. During replay, the native vision detours disable

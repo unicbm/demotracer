@@ -82,9 +82,16 @@ public sealed unsafe class NativePresentationClient : IDisposable
     public bool TryConnect() => Session != 0;
     public bool IsConnected() => Session != 0;
     internal bool TryGetSlot(int slot, out Slot state)
+        => TryGetSlot(slot, Session, out state);
+
+    // A caller that just observed Session may reuse it for this synchronous
+    // read. Native still checks the server thread, and its returned session
+    // must match before the state can be consumed.
+    internal bool TryGetSlot(int slot, ulong observedSession, out Slot state)
     {
         state = default;
-        return slot is >= 0 and < 64 && Session != 0 && BotHider_ReadSlot(slot, out state, sizeof(Slot)) == 0;
+        return !_disposed && slot is >= 0 and < 64 && observedSession != 0 &&
+               BotHider_ReadSlot(slot, out state, sizeof(Slot)) == 0 && state.Session == observedSession;
     }
     public bool IsManagedBot(int slot) => TryGetSlot(slot, out var s) && s.Managed != 0;
     public ulong GetPublishedSteamId(int slot) => TryGetSlot(slot, out var s) ? s.SteamId : 0;

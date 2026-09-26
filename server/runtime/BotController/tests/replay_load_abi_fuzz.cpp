@@ -52,12 +52,11 @@ namespace
         std::uint64_t hash = 1469598103934665603ull;
         const std::size_t sizes[] = {
             staged.ticks.size(), staged.subs.size(), staged.commands.size(),
-            staged.movementExtras.size(), staged.offsets.size()};
+            staged.offsets.size()};
         HashBytes(hash, sizes, std::size(sizes));
         HashBytes(hash, staged.ticks.data(), staged.ticks.size());
         HashBytes(hash, staged.subs.data(), staged.subs.size());
         HashBytes(hash, staged.commands.data(), staged.commands.size());
-        HashBytes(hash, staged.movementExtras.data(), staged.movementExtras.size());
         HashBytes(hash, staged.offsets.data(), staged.offsets.size());
         return hash;
     }

@@ -4,6 +4,7 @@
 
 #include "ccsbot_slot.h"
 #include "version_targets.h"
+#include "live_entities.h"
 
 #include <entity2/entityinstance.h>
 
@@ -23,6 +24,8 @@ namespace BotController::ReplayPawnEquipment
             std::atomic<bool> applied{false};
             std::atomic<void *> pawn{nullptr};
             std::atomic<void *> controller{nullptr};
+            std::atomic<uint32_t> pawnHandle{0};
+            std::atomic<uint32_t> controllerHandle{0};
             std::atomic<int> armor{0};
             std::atomic<uint8_t> helmet{0};
             std::atomic<uint8_t> defuser{0};
@@ -55,6 +58,8 @@ namespace BotController::ReplayPawnEquipment
             void *controller = state.controller.load(std::memory_order_acquire);
             void *itemServices = nullptr;
             return pawn && controller &&
+                   LiveEntities::FromHandle(state.pawnHandle.load(std::memory_order_relaxed)) == pawn &&
+                   LiveEntities::FromHandle(state.controllerHandle.load(std::memory_order_relaxed)) == controller &&
                    SafeRead(pawn, tg::kPawn_ItemServices, itemServices) &&
                    itemServices &&
                    SafeRead(pawn, tg::kPawn_ArmorValue, pawnArmor) &&
@@ -77,7 +82,9 @@ namespace BotController::ReplayPawnEquipment
             void *pawn = state.pawn.load(std::memory_order_acquire);
             void *controller = state.controller.load(std::memory_order_acquire);
             if (!pawn || !controller ||
-                ControllerSlotForPawn(pawn) != slot ||
+                LiveEntities::BotPawnForSlot(slot) != pawn ||
+                LiveEntities::FromHandle(state.pawnHandle.load(std::memory_order_relaxed)) != pawn ||
+                LiveEntities::FromHandle(state.controllerHandle.load(std::memory_order_relaxed)) != controller ||
                 ControllerToSlot(controller) != slot)
             {
                 return false;
@@ -136,16 +143,21 @@ namespace BotController::ReplayPawnEquipment
     {
         if (!ValidSlot(slot) || !pawn || !controller ||
             armor < 0 || armor > 100 ||
-            ControllerSlotForPawn(pawn) != slot ||
+            LiveEntities::BotPawnForSlot(slot) != pawn ||
             ControllerToSlot(controller) != slot)
         {
             return false;
         }
+        const uint32_t pawnHandle = LiveEntities::HandleForEntity(pawn);
+        const uint32_t controllerHandle = LiveEntities::HandleForEntity(controller);
+        if (!pawnHandle || !controllerHandle) return false;
 
         SlotState &state = g_slots[slot];
         state.configured.store(false, std::memory_order_release);
         state.pawn.store(pawn, std::memory_order_relaxed);
         state.controller.store(controller, std::memory_order_relaxed);
+        state.pawnHandle.store(pawnHandle, std::memory_order_relaxed);
+        state.controllerHandle.store(controllerHandle, std::memory_order_relaxed);
         state.armor.store(armor, std::memory_order_relaxed);
         state.helmet.store(helmet ? 1 : 0, std::memory_order_relaxed);
         state.defuser.store(defuser ? 1 : 0, std::memory_order_relaxed);
@@ -200,6 +212,8 @@ namespace BotController::ReplayPawnEquipment
         state.applied.store(false, std::memory_order_relaxed);
         state.pawn.store(nullptr, std::memory_order_relaxed);
         state.controller.store(nullptr, std::memory_order_relaxed);
+        state.pawnHandle.store(0, std::memory_order_relaxed);
+        state.controllerHandle.store(0, std::memory_order_relaxed);
         state.armor.store(0, std::memory_order_relaxed);
         state.helmet.store(0, std::memory_order_relaxed);
         state.defuser.store(0, std::memory_order_relaxed);

@@ -105,6 +105,21 @@ namespace
         expectScope = false;
         calls = peers = posts = 0;
         Require(invoke(1,2,3,4,5,6) == 91 && calls == 1 && peers == 1 && posts == 1, "removing one consumer removed its peer");
+        Require(!around.Create(reinterpret_cast<void *>(invoke), nullptr), "accepted missing callbacks");
+        Require(around.Create(reinterpret_cast<void *>(invoke), Around) && around.Enable(),
+                "callback-only hook required an unused bypass pointer");
+        expectScope = true;
+        WaitFor([&] { return invoke(1,2,3,4,5,6) == 101; });
+        calls = peers = posts = 0;
+        scopeValid = true;
+        Require(invoke(1,2,3,4,5,6) == 101 && calls == 1 && peers == 1 && posts == 1,
+                "callback-only hook changed the shared chain");
+        Require(!original && scopeValid && !scoped, "callback-only hook leaked bypass or scope state");
+        around.Remove();
+        around.Remove();
+        expectScope = false;
+        Require(!around.Active() && invoke(1,2,3,4,5,6) == 91,
+                "callback-only hook survived removal");
     }
 
     using VoidFn = void (*)(int *);

@@ -24,11 +24,7 @@ namespace BotController
             std::vector<ReplayTick> ticks;
             std::vector<SubtickMove> subs;
             std::vector<ReplayCommandFrameData> commands;
-            std::vector<ReplayMovementExtra> movementExtras;
-            std::vector<ReplayInputHistoryTick> inputHistoryTicks;
-            std::vector<ReplayInputHistoryEntry> inputHistoryEntries;
             std::vector<std::size_t> offsets;
-            std::vector<std::size_t> inputHistoryOffsets;
 
             void Swap(ReplayLoadStaging &other) noexcept;
         };
@@ -52,7 +48,8 @@ namespace BotController
             std::size_t &begin,
             std::size_t &end) noexcept;
 
-        // Validate and copy every parallel ABI buffer into one transaction.
+        // Validate every parallel ABI buffer and stage the supported playback data.
+        // Legacy movement extras and unsupported input history are validated only.
         // On failure, staged is left unchanged.
         bool TryStageReplayLoad(
             const ReplayTick *ticks,

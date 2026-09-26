@@ -419,11 +419,10 @@ CON_COMMAND_F(bc_perf,
         (unsigned long long)perf.physicsSimulateHooks);
     Commands::PrintToCaller(
         context,
-        "[BC] replay: tick_reads=%llu command_frames=%llu sync_local_view=%llu virtual_query=%llu\n",
+        "[BC] replay: tick_reads=%llu command_frames=%llu sync_local_view=%llu\n",
         (unsigned long long)perf.replayTickReads,
         (unsigned long long)perf.replayCommandFrameReads,
-        (unsigned long long)perf.syncReplayLocalViewCalls,
-        (unsigned long long)perf.virtualQueryCalls);
+        (unsigned long long)perf.syncReplayLocalViewCalls);
     Commands::PrintToCaller(
         context,
         "[BC] movement: inputs=%llu initializations=%llu\n",

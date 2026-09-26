@@ -13,6 +13,13 @@ The private native/C# C ABI is version 3; it keeps immutable
 persona base name/SteamID fields separate from the effective values published
 by lease-controlled publication calls.
 
+`SlotPublisher` owns the native identity snapshot. `FakeClientManager` keeps
+only ping simulation and a mutex-protected active-slot set, because entity
+packing can query that set from a worker thread. Base SteamID selection runs
+once before adoption. An absent roster preserves SteamID 0; native publication
+accepts zero only for a zero-base incarnation, while the managed API rejects
+explicitly requested zero SteamIDs.
+
 ## Capability
 
 The provider registers `demotracer:bot-hider:v3` and exposes
@@ -36,6 +43,11 @@ ABI. Session, slot incarnation, and complete controller handles fence writes.
 The managed provider registers one native change callback and unregisters it
 on unload; native shutdown clears it. Notifications queue reconciliation on the
 server thread and do not perform entity writes inside native adoption hooks.
+Slot notifications and player lifecycle events use a 64-bit dirty-slot mask;
+map, round, and native-session boundaries still reconcile all managed slots.
+Takeover events queue both controllers and retain their complete handles so a
+subsequent human death can still reconcile the original bot after the engine
+clears its relationship field. Map/round teardown clears those associations.
 Ping notifications carry the changed slot and coalesce separately. Their writer
 uses the same live session, incarnation, controller handle, and NetChannel
 checks as crosshair publication, then updates only non-networked `m_iPing`.
@@ -67,6 +79,16 @@ at actual lifecycle/change events and schedules reconciliation after spawn/death
 prevents engine lifecycle writes from exposing the persona base while a lease
 is active.
 
+Native loading after server startup is unsupported. Unload refuses while the
+active-slot set is nonempty, before removing hooks or clearing presentation
+state. Deploy native updates with a full server restart. The remaining empty
+runtime unload path drains callbacks and clears schema state.
+
+Entity packing gathers and deduplicates all managed pawn handles into one
+fixed 64-entry buffer before writing any flag. It then compacts the modified
+entries for scope restoration, retaining the complete-handle checks and
+restoring only `FL_BOT` without publishing the transient server-side bit.
+
 ## Build
 
 Windows native prerequisites are `HL2SDKCS2`, `MMSOURCE_DEV`, protoc 3.21.x,
@@ -81,3 +103,5 @@ dotnet build server\runtime\BotHider\csharp\BotHiderImpl\BotHiderImpl.csproj -c 
 
 The server package script consumes the native package under
 `server/runtime/BotHider/build/package` and the `.NET 10` C# outputs.
+Use the repository's `tooling/scripts/package-server.ps1` for the matched
+bundle. The obsolete standalone `build.ps1` distribution layout is removed.

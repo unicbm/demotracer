@@ -69,13 +69,6 @@ namespace cs2bh::ssc
         return primary == steamId && mirror == steamId;
     }
 
-    // Checks whether the client has the fake-player flag
-    inline bool IsFakePlayerSet(const void *client)
-    {
-        auto *raw = reinterpret_cast<const unsigned char *>(client);
-        return raw[OFFSET_m_bFakePlayer] == 0x01;
-    }
-
     // Checks whether the client is SourceTV
     inline bool IsHltv(const void *client)
     {
