@@ -64,10 +64,25 @@ namespace BotController::LiveEntities
         return pawn;
     }
 
-    void *BotForSlot(int slot)
+    uint32_t HandleForEntity(const void *entity)
+    {
+        void *identity = nullptr;
+        uint32_t handle = 0;
+        return entity && SafeRead(entity, targets::kEnt_Identity, identity) && identity &&
+            SafeRead(identity, targets::kEntIdentity_EHandle, handle) &&
+            FromHandle(handle) == entity ? handle : 0;
+    }
+
+    void *BotPawnForSlot(int slot)
     {
         void *pawn = PawnForSlot(slot), *bot = nullptr, *botPawn = nullptr;
         return pawn && SafeRead(pawn, botOffset, bot) && bot &&
-            SafeRead(bot, targets::kBot_Pawn, botPawn) && botPawn == pawn ? bot : nullptr;
+            SafeRead(bot, targets::kBot_Pawn, botPawn) && botPawn == pawn ? pawn : nullptr;
+    }
+
+    void *BotForSlot(int slot)
+    {
+        void *pawn = BotPawnForSlot(slot), *bot = nullptr;
+        return pawn && SafeRead(pawn, botOffset, bot) ? bot : nullptr;
     }
 }

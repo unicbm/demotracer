@@ -47,7 +47,6 @@ namespace BotController::Avatars
         Hook<SetCallback> callbackHook;
         Hook<RemoveTables> removeHook;
         SetCallback setCallback = nullptr;
-        RemoveTables removeTables = nullptr;
         CreateEvent createEvent = nullptr;
         QueueEvent queueEvent = nullptr;
         void **uiEngine = nullptr;
@@ -337,7 +336,7 @@ namespace BotController::Avatars
         uiEngine = static_cast<void **>(Relative(panoramaModule, command + 0x38, 3, 7));
         if (!uiEngine ||
             !callbackHook.Create(setter, OnSetCallback, &setCallback) ||
-            !removeHook.Create(remover, OnRemoveTables, &removeTables) ||
+            !removeHook.Create(remover, OnRemoveTables) ||
             !removeHook.Enable() || !callbackHook.Enable())
         {
             callbackHook.Remove();

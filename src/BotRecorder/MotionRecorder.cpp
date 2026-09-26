@@ -9,6 +9,7 @@
 #include "ReplaySubtickLayout.h"
 #include "WeaponLocker.h"
 #include "ccsbot_slot.h"
+#include "scene_node.h"
 #include "version_targets.h"
 
 #include <array>
@@ -16,10 +17,6 @@
 #include <cmath>
 #include <mutex>
 #include <vector>
-
-#ifdef _WIN32
-#include <Windows.h>
-#endif
 
 namespace tg = BotController::targets;
 
@@ -51,7 +48,6 @@ namespace BotController
             std::vector<ReplayTick> ticks;
             std::vector<SubtickMove> subs;
             std::vector<ReplayCommandFrameData> commands;
-            std::vector<ReplayMovementExtra> movementExtras;
             ReplaySourceState::Timeline sourceState;
             bool hasSourceState = false;
             float sourceTickRate = 0;
@@ -59,9 +55,6 @@ namespace BotController
             // Remember complete entity handles, including serial numbers. Switching
             // back to an existing weapon must not reset its native cooldown/reload.
             std::vector<std::pair<uint32_t, uint32_t>> restoredWeapons;
-            std::vector<ReplayInputHistoryTick> inputHistoryTicks;
-            std::vector<ReplayInputHistoryEntry> inputHistoryEntries;
-            std::vector<size_t> inputHistoryOffset;
             std::vector<size_t> subOffset; // prefix sum, size ticks.size()+1
             std::atomic<int> cursor{0};
             std::atomic<int> startCursor{0};
@@ -102,10 +95,6 @@ namespace BotController
             std::vector<ReplayTick>().swap(p.ticks);
             std::vector<SubtickMove>().swap(p.subs);
             std::vector<ReplayCommandFrameData>().swap(p.commands);
-            std::vector<ReplayMovementExtra>().swap(p.movementExtras);
-            std::vector<ReplayInputHistoryTick>().swap(p.inputHistoryTicks);
-            std::vector<ReplayInputHistoryEntry>().swap(p.inputHistoryEntries);
-            std::vector<size_t>().swap(p.inputHistoryOffset);
             std::vector<size_t>().swap(p.subOffset);
         }
 
@@ -124,7 +113,6 @@ namespace BotController
             std::atomic<uint64_t> playerRunCommandHooks{0};
             std::atomic<uint64_t> physicsSimulateHooks{0};
             std::atomic<uint64_t> syncReplayLocalViewCalls{0};
-            std::atomic<uint64_t> virtualQueryCalls{0};
             std::atomic<uint64_t> replayTickReads{0};
             std::atomic<uint64_t> subtickRebuilds{0};
             std::atomic<uint64_t> subticksAdded{0};
@@ -138,7 +126,6 @@ namespace BotController
         static ReplayPerfState g_perf;
 
         static bool ValidSlot(int s) { return s >= 0 && s < kMaxSlots; }
-        static bool CanWriteMemory(void *ptr, size_t len);
 
         static void ClearReplayStopButtonResidue(void *services)
         {
@@ -171,7 +158,8 @@ namespace BotController
             // old slot still holds these movement services. Require the pawn's
             // current controller, never its original-controller fallback,
             // before touching either the pawn or its service-side buttons.
-            if (!pawn || !SafeRead(pawn, tg::kPawn_Controller, controllerHandle) ||
+            if (!InputInjector::IsReplayPawnCurrent(slot, pawn) ||
+                !SafeRead(pawn, tg::kPawn_Controller, controllerHandle) ||
                 (controllerHandle & 0x7FFFu) != static_cast<uint32_t>(slot + 1))
                 return;
 
@@ -232,9 +220,6 @@ namespace BotController
             case ReplayPerfCounter::SyncReplayLocalView:
                 g_perf.syncReplayLocalViewCalls.fetch_add(amount, std::memory_order_relaxed);
                 break;
-            case ReplayPerfCounter::VirtualQuery:
-                g_perf.virtualQueryCalls.fetch_add(amount, std::memory_order_relaxed);
-                break;
             case ReplayPerfCounter::ReplayTickRead:
                 g_perf.replayTickReads.fetch_add(amount, std::memory_order_relaxed);
                 break;
@@ -279,7 +264,6 @@ namespace BotController
             g_perf.playerRunCommandHooks.store(0, std::memory_order_relaxed);
             g_perf.physicsSimulateHooks.store(0, std::memory_order_relaxed);
             g_perf.syncReplayLocalViewCalls.store(0, std::memory_order_relaxed);
-            g_perf.virtualQueryCalls.store(0, std::memory_order_relaxed);
             g_perf.replayTickReads.store(0, std::memory_order_relaxed);
             g_perf.subtickRebuilds.store(0, std::memory_order_relaxed);
             g_perf.subticksAdded.store(0, std::memory_order_relaxed);
@@ -298,7 +282,7 @@ namespace BotController
                 g_perf.playerRunCommandHooks.load(std::memory_order_relaxed),
                 g_perf.physicsSimulateHooks.load(std::memory_order_relaxed),
                 g_perf.syncReplayLocalViewCalls.load(std::memory_order_relaxed),
-                g_perf.virtualQueryCalls.load(std::memory_order_relaxed),
+                0, // Reserved ABI field from the retired pointer-probing path.
                 g_perf.replayTickReads.load(std::memory_order_relaxed),
                 g_perf.subtickRebuilds.load(std::memory_order_relaxed),
                 g_perf.subticksAdded.load(std::memory_order_relaxed),
@@ -308,54 +292,6 @@ namespace BotController
                 g_perf.movementInputs.load(std::memory_order_relaxed),
                 g_perf.movementInitializations.load(std::memory_order_relaxed),
             };
-        }
-
-        static void *ResolveSceneNode(char *entity)
-        {
-            if (!entity)
-                return nullptr;
-
-#if defined(_WIN32)
-            if (tg::kEnt_BodyComponent > 0 && tg::kBody_SceneNode >= 0)
-            {
-                void *body = nullptr;
-                if (SafeRead(entity, tg::kEnt_BodyComponent, body) && body)
-                {
-                    void *node = nullptr;
-                    if (SafeRead(body, tg::kBody_SceneNode, node) && node)
-                        return node;
-                }
-            }
-
-            if (tg::kEnt_GameSceneNode > 0)
-            {
-                void *node = nullptr;
-                if (SafeRead(entity, tg::kEnt_GameSceneNode, node))
-                    return node;
-            }
-#else
-            if (tg::kEnt_BodyComponent > 0 && tg::kBody_SceneNode >= 0 &&
-                CanWriteMemory(entity + tg::kEnt_BodyComponent, sizeof(void *)))
-            {
-                void *body = *reinterpret_cast<void **>(entity + tg::kEnt_BodyComponent);
-                if (body &&
-                    CanWriteMemory(reinterpret_cast<char *>(body) + tg::kBody_SceneNode,
-                                   sizeof(void *)))
-                {
-                    void *node = *reinterpret_cast<void **>(
-                        reinterpret_cast<char *>(body) + tg::kBody_SceneNode);
-                    if (node)
-                        return node;
-                }
-            }
-
-            if (tg::kEnt_GameSceneNode > 0 &&
-                CanWriteMemory(entity + tg::kEnt_GameSceneNode, sizeof(void *)))
-            {
-                return *reinterpret_cast<void **>(entity + tg::kEnt_GameSceneNode);
-            }
-#endif
-            return nullptr;
         }
 
         // Read a MovementSnapshot from live engine state (services -> pawn).
@@ -397,7 +333,7 @@ namespace BotController
             value.yaw = viewAngles[1];
             value.roll = viewAngles[2];
 
-            void *node = ResolveSceneNode(reinterpret_cast<char *>(pawn));
+            void *node = SceneNodeForEntity(pawn);
             if (node)
             {
                 std::array<float, 3> origin{};
@@ -837,10 +773,6 @@ namespace BotController
                 p.ticks.swap(staged.ticks);
                 p.subs.swap(staged.subs);
                 p.commands.swap(staged.commands);
-                p.movementExtras.swap(staged.movementExtras);
-                p.inputHistoryTicks.swap(staged.inputHistoryTicks);
-                p.inputHistoryEntries.swap(staged.inputHistoryEntries);
-                p.inputHistoryOffset.swap(staged.inputHistoryOffsets);
                 p.subOffset.swap(staged.offsets);
                 committed = true;
                 p.cursor.store(0, std::memory_order_relaxed);
@@ -906,6 +838,7 @@ namespace BotController
             {
                 return false;
             }
+            if (!InputInjector::PrepareReplayPawn(slot)) return false;
             // Equipment initialization is best-effort here. A newly spawned
             // Pawn may not expose ItemServices until its first movement hook;
             // refusing to start would prevent that final one-shot pass.
@@ -945,7 +878,8 @@ namespace BotController
             {
                 return false;
             }
-            if (!CanInitializeMovement(p.ticks[startIndex].pre)) return false;
+            if (!InputInjector::PrepareReplayPawn(slot) ||
+                !CanInitializeMovement(p.ticks[startIndex].pre)) return false;
             ReplayPawnEquipment::PrepareForReplayStart(slot);
             p.cursor.store(startIndex, std::memory_order_relaxed);
             p.startCursor.store(startIndex, std::memory_order_relaxed);
@@ -1100,23 +1034,6 @@ namespace BotController
             if (cur >= 0 && static_cast<size_t>(cur) < p.commands.size())
                 command = &p.commands[static_cast<size_t>(cur)];
 
-            const ReplayInputHistoryTick *inputHistoryTick = nullptr;
-            const ReplayInputHistoryEntry *inputHistory = nullptr;
-            int32_t inputHistoryCount = 0;
-            if (cur >= 0 && static_cast<size_t>(cur) < p.inputHistoryTicks.size() &&
-                p.inputHistoryOffset.size() == p.inputHistoryTicks.size() + 1)
-            {
-                const size_t historyBegin = p.inputHistoryOffset[static_cast<size_t>(cur)];
-                const size_t historyEnd = p.inputHistoryOffset[static_cast<size_t>(cur) + 1];
-                if (historyBegin <= historyEnd && historyEnd <= p.inputHistoryEntries.size())
-                {
-                    inputHistoryTick = &p.inputHistoryTicks[static_cast<size_t>(cur)];
-                    inputHistoryCount = static_cast<int32_t>(historyEnd - historyBegin);
-                    if (inputHistoryCount > 0)
-                        inputHistory = p.inputHistoryEntries.data() + historyBegin;
-                }
-            }
-
             const bool hasCommandButtons =
                 command && ((command->fields & kCommandFieldButtons) != 0);
             if (hasCommandButtons)
@@ -1155,9 +1072,6 @@ namespace BotController
             out.tick = tick;
             out.subticks = subticks;
             out.command = command;
-            out.inputHistoryTick = inputHistoryTick;
-            out.inputHistory = inputHistory;
-            out.inputHistoryCount = inputHistoryCount;
             out.subtickCount = subtickCount;
             out.weaponSelect = ReplayWeaponSelectForDef(slot, tick->weaponDefIndex);
             out.commandView = tick->pre;
@@ -1250,66 +1164,6 @@ namespace BotController
             return true;
         }
 
-        int CurrentReplaySubticks(int slot, SubtickMove *out, int maxOut)
-        {
-            if (!ValidSlot(slot) || !out || maxOut <= 0)
-                return -1;
-            ReplayState &p = g_rep[slot];
-            if (!p.playing.load(std::memory_order_acquire))
-                return -1;
-            int total = static_cast<int>(p.ticks.size());
-            int idx = p.cursor.load(std::memory_order_relaxed);
-            if (idx < 0 || idx >= total)
-                return -1;
-            size_t begin = 0;
-            size_t end = 0;
-            if (!ReplaySubtickLayout::TryGetReplaySubtickRange(
-                    p.ticks.data(), p.ticks.size(), p.subOffset, p.subs.size(),
-                    static_cast<size_t>(idx), begin, end))
-            {
-                return -1;
-            }
-            int n = static_cast<int>(end - begin);
-            if (n > maxOut)
-                n = maxOut;
-            for (int i = 0; i < n; ++i)
-                out[i] = p.subs[begin + static_cast<size_t>(i)];
-            return n;
-        }
-
-        bool CurrentReplayInputButtons(int slot, uint64_t &b0, uint64_t &b1,
-                                       uint64_t &b2)
-        {
-            if (!ValidSlot(slot))
-                return false;
-            ReplayState &p = g_rep[slot];
-            if (!p.playing.load(std::memory_order_acquire))
-                return false;
-            int cur = -1;
-            int total = 0;
-            const ReplayTick *tick = CurrentReplayTickPtr(p, cur, total);
-            if (!tick)
-                return false;
-            const MovementSnapshot &pre = tick->pre;
-            b0 = pre.buttons;
-            b1 = pre.buttons1;
-            b2 = pre.buttons2;
-            if (b1 == 0 && b2 == 0)
-            {
-                // Older offline records only stored the held mask. Keep them
-                // playable by synthesizing a canonical three-plane transition
-                // from adjacent ticks.
-                uint64_t heldPrev = (cur > 0) ? p.ticks[static_cast<size_t>(cur - 1)].pre.buttons : 0;
-                const ButtonState::Planes planes =
-                    ButtonState::EncodeAdjacentHeld(b0, heldPrev);
-                b1 = planes.state2;
-                b2 = planes.state3;
-            }
-            const uint64_t pressed = ButtonState::Decode(b0, b1, b2).pressed;
-            b1 |= ReplayPrimeAttackButtonsForStart(p, cur, b0, pressed);
-            return true;
-        }
-
         bool SwitchBotWeaponByDef(int slot, int defIndex)
         {
             if (!ValidSlot(slot) || defIndex < 0)
@@ -1337,28 +1191,6 @@ namespace BotController
             return WeaponLockerHooks::ActiveWeaponDef(ws);
         }
 
-        // Entity index for cmd.weaponselect this replay tick
-        int CurrentReplayWeaponSelect(int slot)
-        {
-            if (!ValidSlot(slot))
-                return -1;
-
-            // Recorded def for the tick about to be simulated
-            int recordedDef;
-            {
-                ReplayState &p = g_rep[slot];
-                if (!p.playing.load(std::memory_order_acquire))
-                    return -1;
-                int cur = -1;
-                int total = 0;
-                const ReplayTick *tick = CurrentReplayTickPtr(p, cur, total);
-                if (!tick)
-                    return -1;
-                recordedDef = tick->weaponDefIndex;
-            }
-            return ReplayWeaponSelectForDef(slot, recordedDef);
-        }
-
         // Only simulation-local angles belong to replay. The engine updates
         // m_angEyeAngles and its dirty state by reading our getter after FinishMove.
         static void WriteLocalViewAnglesToPawn(char *p, float pitch, float yaw)
@@ -1382,37 +1214,11 @@ namespace BotController
             *reinterpret_cast<float *>(sv + tg::kServices_OldViewAngles + 8) = 0.0f;
         }
 
-        static bool CanWriteMemory(void *ptr, size_t len)
-        {
-            if (!ptr || len == 0)
-                return false;
-
-            MEMORY_BASIC_INFORMATION mbi{};
-            AddReplayPerf(ReplayPerfCounter::VirtualQuery);
-            if (VirtualQuery(ptr, &mbi, sizeof(mbi)) == 0)
-                return false;
-            if (mbi.State != MEM_COMMIT)
-                return false;
-            if (mbi.Protect & (PAGE_GUARD | PAGE_NOACCESS))
-                return false;
-
-            const DWORD writable =
-                PAGE_READWRITE | PAGE_WRITECOPY |
-                PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
-            if ((mbi.Protect & writable) == 0)
-                return false;
-
-            const auto begin = reinterpret_cast<uintptr_t>(ptr);
-            const auto end = begin + len;
-            const auto regionEnd = reinterpret_cast<uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
-            return end >= begin && end <= regionEnd;
-        }
-
         static bool SyncReplayLocalView(int slot, void *services,
                                         const MovementSnapshot &s)
         {
             void *pawn = InputInjector::ResolveReplayPawn(slot, services);
-            if (!pawn)
+            if (!InputInjector::IsReplayPawnCurrent(slot, pawn))
                 return false;
             auto *p = reinterpret_cast<char *>(pawn);
 
@@ -1456,7 +1262,7 @@ namespace BotController
             if (!ValidSlot(slot) || !services || !IsReplaying(slot))
                 return false;
             void *pawn = InputInjector::ResolveReplayPawn(slot, services);
-            if (!pawn)
+            if (!InputInjector::IsReplayPawnCurrent(slot, pawn))
                 return false;
 
             ReplayState &p = g_rep[slot];

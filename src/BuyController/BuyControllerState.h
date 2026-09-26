@@ -17,7 +17,6 @@ namespace BotController
     {
         constexpr int kMaxSlots = 64;
 
-        bool HasPlan(int slot);
         void Set(int slot, const std::vector<std::string> &items, bool skip);
         bool Copy(int slot, BuyPlan &out);
         void Clear(int slot);

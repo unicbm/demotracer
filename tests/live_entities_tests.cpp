@@ -38,6 +38,9 @@ int main()
     Put(identities.data(), 112, controller.data()); Put(identities.data(), 112 + 16, owner);
     Put(identities.data(), 224, oldPawn.data()); Put(identities.data(), 224 + 16, oldHandle);
     Put(controller.data(), 8, oldHandle);
+    Put(controller.data(), targets::kEnt_Identity, identities.data() + 112);
+    Put(oldPawn.data(), targets::kEnt_Identity, identities.data() + 224);
+    Put(newPawn.data(), targets::kEnt_Identity, identities.data() + 224);
     targets::kPawn_Controller = 24;
     Put(oldPawn.data(), 24, owner); Put(newPawn.data(), 24, owner);
     Put(oldPawn.data(), 32, oldBot.data()); Put(newPawn.data(), 32, newBot.data());
@@ -46,16 +49,24 @@ int main()
     if (!LiveEntities::Init(service.data(), {})) return 1;
     if (LiveEntities::PawnForSlot(0) != oldPawn.data()) return 2;
     if (LiveEntities::BotForSlot(0) != oldBot.data()) return 8;
+    if (LiveEntities::BotPawnForSlot(0) != oldPawn.data() ||
+        LiveEntities::HandleForEntity(oldPawn.data()) != oldHandle) return 11;
     Put(identities.data(), 224, newPawn.data()); Put(identities.data(), 224 + 16, replacement);
     if (LiveEntities::FromHandle(oldHandle) || LiveEntities::PawnForSlot(0)) return 3;
     Put(controller.data(), 8, replacement);
     if (LiveEntities::PawnForSlot(0) != newPawn.data()) return 4;
     if (LiveEntities::BotForSlot(0) != newBot.data()) return 9;
+    if (LiveEntities::HandleForEntity(oldPawn.data()) != 0 ||
+        LiveEntities::HandleForEntity(newPawn.data()) != replacement) return 12;
+    // A normal human pawn has no CCSBot, even though its owner relationship is valid.
+    Put(newPawn.data(), 32, static_cast<void *>(nullptr));
+    if (LiveEntities::PawnForSlot(0) != newPawn.data() ||
+        LiveEntities::BotPawnForSlot(0) || LiveEntities::BotForSlot(0)) return 13;
     Put(newPawn.data(), 32, oldBot.data());
     if (LiveEntities::BotForSlot(0)) return 10;
     Put(newPawn.data(), 32, newBot.data());
     Put(controller.data(), 12, uint8_t{1});
-    if (LiveEntities::PawnForSlot(0)) return 5;
+    if (LiveEntities::PawnForSlot(0) || LiveEntities::BotPawnForSlot(0)) return 5;
     Put(controller.data(), 12, uint8_t{0}); Put(newPawn.data(), 24, uint32_t{0x10001});
     if (LiveEntities::PawnForSlot(0)) return 6;
     LiveEntities::Reset();

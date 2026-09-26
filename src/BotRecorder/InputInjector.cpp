@@ -20,6 +20,7 @@
 #include "ReplaySubtickLayout.h"
 #include "projectile_birth_align.h"
 #include "version_targets.h"
+#include "live_entities.h"
 #include "hook.h"
 #include "platform.h"
 #include <entity2/entityinstance.h>
@@ -46,17 +47,12 @@ namespace BotController
 {
     namespace InputInjector
     {
-        static ProcessMovement_t g_origProcessMovement = nullptr;
-        static FinishMove_t g_origFinishMove = nullptr;
-        static SetupMove_t g_origSetupMove = nullptr;
         static SetEntityVector_t g_setAbsOrigin = nullptr;
         static SetEntityVector_t g_setAbsVelocity = nullptr;
         using SetMoveType_t = void(BC_FASTCALL *)(void *, uint8_t, uint8_t);
         static SetMoveType_t g_setMoveType = nullptr;
         static int g_moveCollideOffset = -1, g_tickBaseOffset = -1;
         static std::array<std::atomic<void *>, kMaxSlots> g_slotControllers{};
-        static PlayerRunCommand_t g_origPlayerRunCommand = nullptr;
-        static PhysicsSimulate_t g_origPhysicsSimulate = nullptr;
 
         static void *g_addrProcessMovement = nullptr;
         static void *g_addrFinishMove = nullptr;
@@ -77,11 +73,13 @@ namespace BotController
         // True once PlayerRunCommand is hooked
         static bool g_subtickActive = false;
         static UsercmdRequests g_requests;
+        static std::array<std::atomic<uint32_t>, kMaxSlots> g_publicControlHandles{};
         static std::string g_status = "not_attempted";
 
         // slot -> live CCSPlayer_MovementServices*
         static std::array<std::atomic<void *>, kMaxSlots> g_slotServices{};
         static std::array<std::atomic<void *>, kMaxSlots> g_slotPawns{};
+        static std::array<std::atomic<uint32_t>, kMaxSlots> g_replayPawnHandles{};
         static std::array<std::atomic<bool>, kMaxSlots> g_slotControllingBot{};
         static std::atomic<int> g_controllerControllingBotOffset{-1};
 
@@ -121,7 +119,9 @@ namespace BotController
         static std::array<std::atomic<float>, kMaxSlots> g_intentAnalogLeft{};
         static std::array<std::atomic<int>, kMaxSlots> g_intentFlags{};
         static std::array<std::atomic<int64_t>, kMaxSlots> g_intentExpireMs{};
+        static std::array<std::atomic<uint32_t>, kMaxSlots> g_intentPawnHandles{};
         static std::array<LeftHandDesiredLatch, kMaxSlots> g_leftHandLatches{};
+        static void EnsureVtableHooks(void *services);
 
         static int64_t NowMs()
         {
@@ -140,9 +140,16 @@ namespace BotController
 
         static bool CanUsePublicControl(int slot)
         {
-            return g_subtickActive && slot >= 0 && slot < kMaxSlots &&
-                BotControllerHooks::BotForSlot(slot) && !IsSlotControllingBot(slot) &&
-                !MotionRecorder::IsReplaying(slot) && !BotControllerState::GetAll(slot);
+            if (!g_subtickActive || slot < 0 || slot >= kMaxSlots ||
+                MotionRecorder::IsReplaying(slot) || BotControllerState::GetAll(slot)) return false;
+            const uint32_t handle = LiveEntities::HandleForEntity(LiveEntities::BotPawnForSlot(slot));
+            if (!handle) return false;
+            if (g_publicControlHandles[slot].load(std::memory_order_acquire) != handle)
+            {
+                g_requests.Clear(slot);
+                g_publicControlHandles[slot].store(handle, std::memory_order_release);
+            }
+            return true;
         }
 
         int64_t InjectUsercmd(int slot, uint64_t buttons, int durationMs)
@@ -173,7 +180,12 @@ namespace BotController
         }
         bool CancelUsercmdSuppression(int slot, int64_t id)
         { return g_requests.Cancel(slot, UsercmdRequests::Kind::Suppression, id); }
-        void ClearUsercmdInjections(int slot) { g_requests.Clear(slot); }
+        void ClearUsercmdInjections(int slot)
+        {
+            g_requests.Clear(slot);
+            if (slot >= 0 && slot < kMaxSlots)
+                g_publicControlHandles[slot].store(0, std::memory_order_release);
+        }
 
         static void ApplyPublicControl(int slot, PlayerCommand *pc, CBaseUserCmdPB *base)
         {
@@ -225,7 +237,7 @@ namespace BotController
                    g_slotControllingBot[slot].load(std::memory_order_acquire);
         }
 
-        static bool ActiveUsercmdMovementIntent(int slot, UsercmdMovementIntentFrame &out)
+        static bool ActiveUsercmdMovementIntent(int slot, void *services, UsercmdMovementIntentFrame &out)
         {
             if (slot < 0 || slot >= kMaxSlots)
                 return false;
@@ -233,6 +245,13 @@ namespace BotController
             int64_t expiresAt = g_intentExpireMs[slot].load(std::memory_order_acquire);
             if (expiresAt <= 0)
                 return false;
+            void *pawn = LiveEntities::BotPawnForSlot(slot);
+            if (!pawn || ResolveReplayPawn(slot, services) != pawn || LiveEntities::HandleForEntity(pawn) !=
+                    g_intentPawnHandles[slot].load(std::memory_order_acquire))
+            {
+                ClearUsercmdMovementIntent(slot);
+                return false;
+            }
             if (expiresAt <= NowMs())
             {
                 int64_t expected = expiresAt;
@@ -391,10 +410,14 @@ namespace BotController
                 return false;
             if (durationMs <= 0)
                 return ClearUsercmdMovementIntent(slot);
+            const uint32_t handle = LiveEntities::HandleForEntity(LiveEntities::BotPawnForSlot(slot));
+            if (!g_subtickActive || !handle || MotionRecorder::IsReplaying(slot))
+                return false;
 
             const int clampedDuration = std::clamp(durationMs, 1, kMaxIntentDurationMs);
             const int64_t expiresAt = NowMs() + clampedDuration;
             g_intentExpireMs[slot].store(0, std::memory_order_release);
+            g_intentPawnHandles[slot].store(handle, std::memory_order_relaxed);
             g_intentButtonsSet[slot].store(
                 buttonsSet & kMovementIntentButtons, std::memory_order_relaxed);
             g_intentButtonsClear[slot].store(
@@ -413,6 +436,7 @@ namespace BotController
                 return false;
             ClearUsercmdInjections(slot);
             g_intentExpireMs[slot].store(0, std::memory_order_release);
+            g_intentPawnHandles[slot].store(0, std::memory_order_relaxed);
             g_intentButtonsSet[slot].store(0, std::memory_order_relaxed);
             g_intentButtonsClear[slot].store(0, std::memory_order_relaxed);
             g_intentAnalogForward[slot].store(0.0f, std::memory_order_relaxed);
@@ -468,18 +492,6 @@ namespace BotController
                 ClearLeftHandDesiredLatch(slot);
         }
 
-        bool GetLeftHandDesiredLatch(int slot, bool *enabled, bool *leftHandDesired)
-        {
-            if (slot < 0 || slot >= kMaxSlots)
-                return false;
-
-            bool desired = false;
-            const bool active = g_leftHandLatches[slot].Get(desired);
-            if (enabled) *enabled = active;
-            if (leftHandDesired) *leftHandDesired = desired;
-            return true;
-        }
-
         void *LiveMovementServices(int slot)
         {
             return slot >= 0 && slot < kMaxSlots
@@ -494,33 +506,58 @@ namespace BotController
 
         bool SetReplayPawn(int slot, void *pawn)
         {
-            if (!ValidSlotIndex(slot))
+            if (!ValidSlotIndex(slot) || !pawn || LiveEntities::BotPawnForSlot(slot) != pawn)
                 return false;
-            if (!pawn)
-                return false;
-
-            void *identity = nullptr;
-            uint32_t handle = 0;
-            if (!SafeRead(pawn, tg::kEnt_Identity, identity) || !identity ||
-                !SafeRead(identity, tg::kEntIdentity_EHandle, handle) ||
-                handle == 0u || handle == 0xFFFFFFFFu || handle == 0xFFFFFFFEu)
-                return false;
-
-            int ownerSlot = ControllerSlotForPawn(pawn);
-            if (ownerSlot >= 0 && ownerSlot != slot)
+            const uint32_t handle = LiveEntities::HandleForEntity(pawn);
+            if (!handle) return false;
+            if (MotionRecorder::IsReplaying(slot) && !IsReplayPawnCurrent(slot, pawn))
                 return false;
 
             void *previous = g_slotPawns[slot].load(std::memory_order_acquire);
-            if (previous != pawn)
+            if (previous != pawn || g_replayPawnHandles[slot].load(std::memory_order_relaxed) != handle)
                 ReplayPawnEquipment::Clear(slot);
+            g_replayPawnHandles[slot].store(handle, std::memory_order_relaxed);
             g_slotPawns[slot].store(pawn, std::memory_order_release);
+            return true;
+        }
+
+        bool IsReplayPawnCurrent(int slot, const void *pawn)
+        {
+            if (!ValidSlotIndex(slot) || !pawn ||
+                g_slotPawns[slot].load(std::memory_order_acquire) != pawn ||
+                LiveEntities::BotPawnForSlot(slot) != pawn) return false;
+            const uint32_t handle = g_replayPawnHandles[slot].load(std::memory_order_relaxed);
+            return handle != 0 && LiveEntities::FromHandle(handle) == pawn;
+        }
+
+        bool PrepareReplayPawn(int slot)
+        {
+            if (!g_installed || !ValidSlotIndex(slot)) return false;
+            void *pawn = LiveEntities::BotPawnForSlot(slot);
+            if (!pawn) return false;
+            // Explicitly starting a stopped buffer may target a respawned bot.
+            // A seek or held replay remains bound to its original incarnation.
+            if (!MotionRecorder::IsReplaying(slot) && !SetReplayPawn(slot, pawn))
+                return false;
+            if (!IsReplayPawnCurrent(slot, pawn)) return false;
+            void *services = nullptr;
+            if (!SafeRead(pawn, tg::kPawn_MovementServices, services) || !services) return false;
+            EnsureVtableHooks(services);
+            if (!g_setupMoveActive || !g_finishMoveActive || !g_subtickActive) return false;
+            // PhysicsSimulate can precede this pawn's first ProcessMovement.
+            // Publish its validated services now, never the preceding life's cache.
+            g_slotServices[slot].store(services, std::memory_order_release);
+            g_slotControllingBot[slot].store(false, std::memory_order_release);
             return true;
         }
 
         void ClearReplayPawn(int slot)
         {
             if (ValidSlotIndex(slot))
+            {
                 g_slotPawns[slot].store(nullptr, std::memory_order_release);
+                g_replayPawnHandles[slot].store(0, std::memory_order_relaxed);
+            }
         }
 
         static void *ServicesToPawnField(void *services)
@@ -613,7 +650,7 @@ namespace BotController
             return SafeRead(controller, offset, value) && value != 0;
         }
 
-        static bool ReplayActiveAndSafe(int slot)
+        static bool ReplayActiveAndSafe(int slot, void *services)
         {
             if (slot < 0 || slot >= kMaxSlots || !MotionRecorder::IsReplaying(slot))
                 return false;
@@ -621,6 +658,11 @@ namespace BotController
             {
                 MotionRecorder::StopReplay(slot);
                 DebugOut("[BotController] stopped replay: required command/movement/view boundary hooks unavailable\n");
+                return false;
+            }
+            if (!IsReplayPawnCurrent(slot, ResolveReplayPawn(slot, services)))
+            {
+                MotionRecorder::StopReplay(slot);
                 return false;
             }
             if (!g_slotControllingBot[slot].load(std::memory_order_acquire))
@@ -679,15 +721,12 @@ namespace BotController
         {
             g_hookSetupMove.Continue(services, cmd, moveData);
             const int slot = ServicesToSlot(services);
-            if (ReplayActiveAndSafe(slot))
+            if (ReplayActiveAndSafe(slot, services))
                 MotionRecorder::OnReplaySetupMove(slot, moveData);
             return {KHook::Action::Ignore};
         }
 
         // ---- ProcessMovement: record pre/post; replay simulation is native ----
-
-        // Defined after HookedFinishMove
-        static void EnsureVtableHooks(void *services);
 
         static KHook::Return<void> BC_FASTCALL HookedProcessMovement(void *services, void *moveData)
         {
@@ -705,7 +744,7 @@ namespace BotController
 
             bool recording = slot >= 0 && slot < kMaxSlots &&
                              MotionRecorder::IsRecording(slot);
-            bool replaying = ReplayActiveAndSafe(slot);
+            bool replaying = ReplayActiveAndSafe(slot, services);
             if (replaying)
             {
                 ReplayPawnEquipment::ApplyPendingForPawn(
@@ -714,7 +753,7 @@ namespace BotController
             UsercmdMovementIntentFrame movementIntent{};
             bool hasMovementIntent =
                 !replaying && !IsSlotControllingBot(slot) &&
-                ActiveUsercmdMovementIntent(slot, movementIntent);
+                ActiveUsercmdMovementIntent(slot, services, movementIntent);
 
             // Recording weapon tap
             if (recording)
@@ -742,7 +781,7 @@ namespace BotController
         {
             MotionRecorder::AddReplayPerf(MotionRecorder::ReplayPerfCounter::FinishMoveHook);
             int slot = ServicesToSlot(services);
-            bool replaying = ReplayActiveAndSafe(slot);
+            bool replaying = ReplayActiveAndSafe(slot, services);
 
             // Publish the engine's output through its normal origin/velocity
             // setters. Never replace it with post snapshots or fake an origin delta.
@@ -764,7 +803,7 @@ namespace BotController
             int slot = ServicesToSlot(services);
             bool recording = slot >= 0 && slot < kMaxSlots &&
                              MotionRecorder::IsRecording(slot);
-            bool replaying = ReplayActiveAndSafe(slot);
+            bool replaying = ReplayActiveAndSafe(slot, services);
             if (replaying)
             {
                 ReplayPawnEquipment::ApplyPendingForPawn(
@@ -773,7 +812,7 @@ namespace BotController
             UsercmdMovementIntentFrame movementIntent{};
             bool hasMovementIntent =
                 !replaying && !IsSlotControllingBot(slot) &&
-                ActiveUsercmdMovementIntent(slot, movementIntent);
+                ActiveUsercmdMovementIntent(slot, services, movementIntent);
             bool leftHandDesired = false;
             bool hasLeftHandLatch = slot >= 0 && slot < kMaxSlots &&
                                     g_leftHandLatches[slot].Get(leftHandDesired);
@@ -787,11 +826,13 @@ namespace BotController
             }
 
             bool hasPublicControl = g_requests.Pending(slot);
-            if (hasPublicControl && !CanUsePublicControl(slot))
+            if (hasPublicControl && (!CanUsePublicControl(slot) ||
+                ResolveReplayPawn(slot, services) != LiveEntities::BotPawnForSlot(slot)))
             {
                 ClearUsercmdInjections(slot);
                 hasPublicControl = false;
             }
+            hasPublicControl = hasPublicControl && g_requests.Pending(slot);
             if (cmd && (recording || replaying || hasMovementIntent || hasLeftHandLatch || hasPublicControl))
             {
                 // Compiler computes the multiple-inheritance adjust here.
@@ -999,7 +1040,7 @@ namespace BotController
                 g_slotControllingBot[slot].store(ControllerIsControllingBot(controller), std::memory_order_release);
             }
 
-            bool replaying = services && ReplayActiveAndSafe(slot);
+            bool replaying = services && ReplayActiveAndSafe(slot, services);
 
             // pre: snapshot start-of-tick state once (before any subtick mover).
             if (recording)
@@ -1042,8 +1083,7 @@ namespace BotController
                 g_addrSetupMove = nullptr;
             if (g_addrSetupMove &&
                 g_hookSetupMove.Create(g_addrSetupMove,
-                                       &HookedSetupMove,
-                                       &g_origSetupMove) &&
+                                       &HookedSetupMove) &&
                 g_hookSetupMove.Enable())
             {
                 g_setupMoveActive = true;
@@ -1052,7 +1092,6 @@ namespace BotController
             {
                 g_hookSetupMove.Remove();
                 g_addrSetupMove = nullptr;
-                g_origSetupMove = nullptr;
             }
 
             if (!SafeRead(vt,
@@ -1061,8 +1100,7 @@ namespace BotController
                 g_addrFinishMove = nullptr;
             if (g_addrFinishMove &&
                 g_hookFinishMove.Create(g_addrFinishMove,
-                                        &HookedFinishMove,
-                                        &g_origFinishMove) &&
+                                        &HookedFinishMove) &&
                 g_hookFinishMove.Enable())
             {
                 g_finishMoveActive = true;
@@ -1071,7 +1109,6 @@ namespace BotController
             {
                 g_hookFinishMove.Remove();
                 g_addrFinishMove = nullptr;
-                g_origFinishMove = nullptr;
             }
 
             // PlayerRunCommand (subtick record/re-inject)
@@ -1081,8 +1118,7 @@ namespace BotController
                 g_addrPlayerRunCommand = nullptr;
             if (g_addrPlayerRunCommand &&
                 g_hookPlayerRunCommand.Create(g_addrPlayerRunCommand,
-                                              &HookedPlayerRunCommand,
-                                              &g_origPlayerRunCommand) &&
+                                              &HookedPlayerRunCommand) &&
                 g_hookPlayerRunCommand.Enable())
             {
                 g_subtickActive = true;
@@ -1091,7 +1127,6 @@ namespace BotController
             {
                 g_hookPlayerRunCommand.Remove();
                 g_addrPlayerRunCommand = nullptr;
-                g_origPlayerRunCommand = nullptr;
             }
 
             if (!g_setupMoveActive || !g_finishMoveActive || !g_subtickActive)
@@ -1142,13 +1177,11 @@ namespace BotController
                 return false;
             }
             if (!g_hookProcessMovement.Create(g_addrProcessMovement,
-                                              &HookedProcessMovement,
-                                              &g_origProcessMovement) ||
+                                              &HookedProcessMovement) ||
                 !g_hookProcessMovement.Enable())
             {
                 std::snprintf(errorOut, errorOutLen, "hook ProcessMovement failed");
                 g_hookProcessMovement.Remove();
-                g_origProcessMovement = nullptr;
                 g_status = "failed: hook ProcessMovement";
                 return false;
             }
@@ -1160,8 +1193,7 @@ namespace BotController
                 psErr, sizeof(psErr));
             if (g_addrPhysicsSimulate &&
                 g_hookPhysicsSimulate.Create(g_addrPhysicsSimulate,
-                                             &HookedPhysicsSimulate,
-                                             &g_origPhysicsSimulate) &&
+                                             &HookedPhysicsSimulate) &&
                 g_hookPhysicsSimulate.Enable())
             {
                 g_physicsActive = true;
@@ -1173,7 +1205,6 @@ namespace BotController
                     g_hookPhysicsSimulate.Remove();
                     g_addrPhysicsSimulate = nullptr;
                 }
-                g_origPhysicsSimulate = nullptr;
                 char dbg[320];
                 std::snprintf(dbg, sizeof(dbg),
                               "[BotController] WARN: PhysicsSimulate hook unavailable (%s); "
@@ -1202,15 +1233,10 @@ namespace BotController
             g_hookSetupMove.Remove();
             g_hookPlayerRunCommand.Remove();
             g_hookPhysicsSimulate.Remove();
-            g_origProcessMovement = nullptr;
-            g_origFinishMove = nullptr;
-            g_origSetupMove = nullptr;
             g_setAbsOrigin = nullptr;
             g_setAbsVelocity = nullptr;
             g_setMoveType = nullptr;
             for (auto &controller : g_slotControllers) controller.store(nullptr, std::memory_order_release);
-            g_origPlayerRunCommand = nullptr;
-            g_origPhysicsSimulate = nullptr;
             g_addrProcessMovement = nullptr;
             g_addrFinishMove = nullptr;
             g_addrSetupMove = nullptr;

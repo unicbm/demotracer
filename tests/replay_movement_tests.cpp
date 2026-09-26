@@ -22,6 +22,7 @@ namespace
     constexpr int slot = 3;
     alignas(16) std::array<std::byte, 0x3000> pawn{};
     alignas(16) std::array<std::byte, 0x1000> services{};
+    alignas(16) std::array<std::byte, 0x100> body{};
     alignas(16) std::array<std::byte, 0x400> node{};
     alignas(16) std::array<std::byte, 0x1000> aim{};
     int initializations = 0;
@@ -29,6 +30,8 @@ namespace
     int equipmentReleases = 0;
     bool allowInitialization = true;
     bool humanOwnsPawn = false;
+    bool replayHooksReady = true;
+    bool currentBotPawn = true;
     bool weaponsAvailable = false, weaponActive = false;
     int publishes = 0, deploys = 0;
     alignas(16) std::array<std::byte, 0x1000> weapon{}, weaponServices{};
@@ -91,16 +94,19 @@ namespace
         mr::ReleaseReplayBuffer(slot);
         pawn.fill(std::byte{});
         services.fill(std::byte{});
+        body.fill(std::byte{});
         node.fill(std::byte{});
         aim.fill(std::byte{});
         Put(pawn, 0x2000, static_cast<void *>(aim.data()));
-        Put(pawn, tg::kEnt_GameSceneNode, static_cast<void *>(node.data()));
+        Put(pawn, tg::kEnt_BodyComponent, static_cast<void *>(body.data()));
+        Put(body, tg::kBody_SceneNode, static_cast<void *>(node.data()));
         Put(pawn, tg::kPawn_Controller, uint32_t{slot + 1});
         Put(pawn, tg::kEnt_MoveType, uint8_t{2});
         Put(pawn, tg::kEnt_ActualMoveType, uint8_t{2});
         initializations = inputReleases = equipmentReleases = 0;
         allowInitialization = true;
         humanOwnsPawn = false;
+        replayHooksReady = currentBotPawn = true;
         weaponsAvailable = weaponActive = false;
         publishes = deploys = 0;
         weapon.fill(std::byte{}); weaponServices.fill(std::byte{}); weaponIdentity.fill(std::byte{});
@@ -117,6 +123,22 @@ namespace
         Check(mr::ReplayCommandFrameForSimulation(slot, frame), "read command frame");
         Check(mr::OnReplayCommandPre(slot, services.data(), *frame.tick, frame.commandView),
               "prepare command");
+    }
+
+    void RecordingUsesBodySceneNode()
+    {
+        Reset();
+        Check(mr::StartRecord(slot), "start recording");
+        Put(node, tg::kNode_AbsOrigin, std::array<float, 3>{10, 20, 30});
+        mr::OnCapturePre(slot, services.data(), nullptr);
+        Put(node, tg::kNode_AbsOrigin, std::array<float, 3>{40, 50, 60});
+        mr::OnCapturePost(slot, services.data(), nullptr);
+        ReplayTick captured{};
+        Check(mr::CopyTicks(slot, &captured, 1) == 1 &&
+              captured.pre.originX == 10 && captured.pre.originY == 20 && captured.pre.originZ == 30 &&
+              captured.post.originX == 40 && captured.post.originY == 50 && captured.post.originZ == 60,
+              "recording did not follow the live body/scene-node chain");
+        Check(mr::ClearRecordedMotion(slot), "release recorded fixture");
     }
 
     void SimulatedOutput()
@@ -272,6 +294,38 @@ namespace
             Check(pawn == beforePawn && node == beforeNode && services == expectedServices,
                   "stop altered native velocity, ground, duck or retained ladder state");
         }
+    }
+
+    void StartAndStopRespectPawnOwnership()
+    {
+        Reset();
+        replayHooksReady = false;
+        Check(!mr::StartReplay(slot, false) && !mr::IsReplaying(slot),
+              "missing command hooks acquired replay ownership");
+        replayHooksReady = true;
+        currentBotPawn = false;
+        Check(!mr::StartReplay(slot, false) && !mr::StartReplayUntil(slot, false, 0, 2),
+              "human or stale pawn acquired replay ownership");
+        // Recording is intentionally permitted for a normal human player.
+        Check(mr::StartRecord(slot) && mr::StopRecord(slot), "human recording was restricted");
+        currentBotPawn = true;
+        Check(mr::StartReplay(slot, false), "valid bot cannot start after rejected starts");
+        Prepare();
+        Put(services, tg::kServices_Buttons, uint64_t{5});
+        currentBotPawn = false; // Same slot/pointer can now belong to another incarnation.
+        const auto servicesBefore = services;
+        const auto pawnBefore = pawn;
+        const auto nodeBefore = node;
+        const auto ticks = Ticks();
+        Check(!mr::OnReplayCommandPre(slot, services.data(), ticks[0], ticks[0].pre),
+              "replacement pawn received replay input");
+        mr::OnReplayFinalView(slot, services.data());
+        Check(mr::StopReplay(slot), "stale replay failed to stop");
+        Check(services == servicesBefore && pawn == pawnBefore && node == nodeBefore,
+              "stale replay cleanup wrote into replacement pawn storage");
+        Check(!mr::IsReplaying(slot) && inputReleases > 0 && equipmentReleases > 0,
+              "stale replay did not retire its owned state");
+        currentBotPawn = true;
     }
 
     void SourceStateRestoresAtBoundariesOnly()
@@ -481,6 +535,8 @@ namespace BotController
     }
     namespace InputInjector
     {
+        bool PrepareReplayPawn(int s) { return s == slot && replayHooksReady && currentBotPawn && !humanOwnsPawn; }
+        bool IsReplayPawnCurrent(int s, const void *p) { return s == slot && p == pawn.data() && currentBotPawn && !humanOwnsPawn; }
         void PublishReplayState(void *) { ++publishes; }
         void *ResolveReplayPawn(int s, void *sv) { return s == slot && sv == services.data() ? pawn.data() : nullptr; }
         void *LiveMovementServices(int s) { return s == slot ? services.data() : nullptr; }
@@ -535,12 +591,14 @@ namespace BotController
 
 int main()
 {
+    RecordingUsesBodySceneNode();
     ContinuousInputAndEngineOutput();
     StartSeekLoopAndHeldResume();
     FinishAndHumanTakeover();
     InitializationFailureDoesNotConsumeBoundary();
     CommandAxisPresence();
     StopPreservesNativeMovementState();
+    StartAndStopRespectPawnOwnership();
     SourceStateRestoresAtBoundariesOnly();
     CompactSourceClocksMatchDenseTimeline();
     LadderStartRequiresContact();

@@ -28,7 +28,6 @@ namespace BotController
 {
     namespace BuyControllerHooks
     {
-        static BuyUpdate_t g_origOnUpdate = nullptr;
         static void *g_addrOnUpdate = nullptr;
         static Hook<BuyUpdate_t> g_hookOnUpdate;
         static bool g_installed = false;
@@ -127,13 +126,11 @@ namespace BotController
             }
 
             if (!g_hookOnUpdate.Create(g_addrOnUpdate,
-                                       &HookedOnUpdate,
-                                       &g_origOnUpdate) ||
+                                       &HookedOnUpdate) ||
                 !g_hookOnUpdate.Enable())
             {
                 std::snprintf(errorOut, errorOutLen, "hook BuyState::OnUpdate failed");
                 g_hookOnUpdate.Remove();
-                g_origOnUpdate = nullptr;
                 g_status = "failed: hook OnUpdate";
                 return false;
             }
@@ -152,13 +149,12 @@ namespace BotController
             if (!g_installed)
                 return;
             g_hookOnUpdate.Remove();
-            g_origOnUpdate = nullptr;
             g_installed = false;
             g_status = "not_attempted";
             ResetAllInitialDelayLatches();
         }
 
-        bool Ready() { return g_installed && g_origOnUpdate; }
+        bool Ready() { return g_installed && g_hookOnUpdate.Active(); }
         const char *Status() { return g_status.c_str(); }
         void *OnUpdateAddress() { return g_addrOnUpdate; }
     }

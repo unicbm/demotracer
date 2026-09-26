@@ -40,23 +40,15 @@ namespace BotController
     namespace BotControllerHooks
     {
         using LadderUpdate_t = bool(BC_FASTCALL *)(void *ladderState);
-        static LadderUpdate_t g_origLadderUpdate = nullptr;
         static Update_t g_invalidatePath = nullptr;
         static Hook<LadderUpdate_t> g_hookLadderUpdate;
         static std::array<std::atomic<bool>, 64> g_replayLadderSuppressed{};
-        static Update_t g_origUpdate = nullptr;
         static void *g_addrUpdate = nullptr;
-        static Upkeep_t g_origUpkeep = nullptr;
         static void *g_addrUpkeep = nullptr;
-        static IsVisiblePos_t g_origIsVisiblePos = nullptr;
         static void *g_addrIsVisiblePos = nullptr;
-        static IsVisiblePlayer_t g_origIsVisiblePlayer = nullptr;
         static void *g_addrIsVisiblePlayer = nullptr;
-        static UpdateLookAngles_t g_origUpdateLookAngles = nullptr;
         static void *g_addrUpdateLookAngles = nullptr;
-        static SetEyeAngles_t g_origSetEyeAngles = nullptr;
         static void *g_addrSetEyeAngles = nullptr;
-        static GetEyeAngles_t g_origGetEyeAngles = nullptr;
         static void *g_addrGetEyeAngles = nullptr;
         static std::string g_status = "not_attempted";
 
@@ -165,7 +157,8 @@ namespace BotController
         {
             if (slot < 0 || slot >= 64 || !g_replayLadderSuppressed[slot].exchange(false)) return;
             void *bot = BotForSlot(slot);
-            if (bot && g_invalidatePath && !InputInjector::IsSlotControllingBot(slot))
+            if (bot && g_invalidatePath && !InputInjector::IsSlotControllingBot(slot) &&
+                InputInjector::IsReplayPawnCurrent(slot, LiveEntities::BotPawnForSlot(slot)))
                 g_invalidatePath(bot); // retire obsolete AI path; never alter Pawn physics
         }
 
@@ -269,7 +262,8 @@ namespace BotController
         static KHook::Return<void> BC_FASTCALL HookedSetEyeAngles(void *pawn, float *angle)
         {
             int slot = pawn ? ControllerSlotForPawn(pawn) : -1;
-            if (slot >= 0 && MotionRecorder::IsReplaying(slot))
+            if (slot >= 0 && MotionRecorder::IsReplaying(slot) &&
+                InputInjector::IsReplayPawnCurrent(slot, pawn))
             {
                 return {KHook::Action::Supersede};
             }
@@ -281,7 +275,8 @@ namespace BotController
         {
             int slot = pawn ? ControllerSlotForPawn(pawn) : -1;
 
-            if (slot >= 0 && out && MotionRecorder::IsReplaying(slot))
+            if (slot >= 0 && out && MotionRecorder::IsReplaying(slot) &&
+                InputInjector::IsReplayPawnCurrent(slot, pawn))
             {
                 MovementSnapshot view{};
                 if (MotionRecorder::ReplaySpectatorView(slot, view))
@@ -424,19 +419,17 @@ namespace BotController
             void *ladderUpdate = Sig::ResolveSig(gd, serverModule, "CCSBot::LadderStateUpdate", errorOut, errorOutLen);
             g_invalidatePath = reinterpret_cast<Update_t>(Sig::ResolveSig(gd, serverModule, "CCSBot::InvalidatePath", errorOut, errorOutLen));
             if (!ladderUpdate || !g_invalidatePath ||
-                !g_hookLadderUpdate.Create(ladderUpdate, &HookedLadderUpdate, &g_origLadderUpdate) ||
+                !g_hookLadderUpdate.Create(ladderUpdate, &HookedLadderUpdate) ||
                 !g_hookLadderUpdate.Enable())
             {
                 g_hookLadderUpdate.Remove();
-                g_origLadderUpdate = nullptr;
                 g_status = "failed: replay ladder navigation hook";
                 return false;
             }
 
             // required: Update
             if (!g_hookUpdate.Create(g_addrUpdate,
-                                     &HookedUpdate,
-                                     &g_origUpdate) ||
+                                     &HookedUpdate) ||
                 !g_hookUpdate.Enable())
             {
                 std::snprintf(errorOut, errorOutLen, "hook CCSBot::Update failed");
@@ -447,8 +440,7 @@ namespace BotController
 
             // required: Upkeep
             if (!g_hookUpkeep.Create(g_addrUpkeep,
-                                     &HookedUpkeep,
-                                     &g_origUpkeep) ||
+                                     &HookedUpkeep) ||
                 !g_hookUpkeep.Enable())
             {
                 std::snprintf(errorOut, errorOutLen, "hook CCSBot::Upkeep failed");
@@ -461,13 +453,11 @@ namespace BotController
             if (g_addrIsVisiblePos)
             {
                 if (!g_hookIsVisiblePos.Create(g_addrIsVisiblePos,
-                                                &HookedIsVisiblePos,
-                                                &g_origIsVisiblePos) ||
+                                                &HookedIsVisiblePos) ||
                     !g_hookIsVisiblePos.Enable())
                 {
                     DebugOut("[BotController] WARN: hook CCSBot::IsVisible(pos) failed; native replay 360 partial/disabled\n");
                     g_hookIsVisiblePos.Remove();
-                    g_origIsVisiblePos = nullptr;
                     g_addrIsVisiblePos = nullptr;
                 }
             }
@@ -475,13 +465,11 @@ namespace BotController
             if (g_addrIsVisiblePlayer)
             {
                 if (!g_hookIsVisiblePlayer.Create(g_addrIsVisiblePlayer,
-                                                   &HookedIsVisiblePlayer,
-                                                   &g_origIsVisiblePlayer) ||
+                                                   &HookedIsVisiblePlayer) ||
                     !g_hookIsVisiblePlayer.Enable())
                 {
                     DebugOut("[BotController] WARN: hook CCSBot::IsVisible(player) failed; native replay 360 partial/disabled\n");
                     g_hookIsVisiblePlayer.Remove();
-                    g_origIsVisiblePlayer = nullptr;
                     g_addrIsVisiblePlayer = nullptr;
                 }
             }
@@ -490,20 +478,17 @@ namespace BotController
             if (g_addrUpdateLookAngles)
             {
                 if (!g_hookUpdateLookAngles.Create(g_addrUpdateLookAngles,
-                                                   &HookedUpdateLookAngles,
-                                                   &g_origUpdateLookAngles) ||
+                                                   &HookedUpdateLookAngles) ||
                     !g_hookUpdateLookAngles.Enable())
                 {
                     DebugOut("[BotController] WARN: hook UpdateLookAngles failed; replay view-drive disabled\n");
                     g_hookUpdateLookAngles.Remove();
-                    g_origUpdateLookAngles = nullptr;
                     g_addrUpdateLookAngles = nullptr;
                 }
             }
 
             if (!g_hookSetEyeAngles.Create(g_addrSetEyeAngles,
-                                           &HookedSetEyeAngles,
-                                           &g_origSetEyeAngles) ||
+                                           &HookedSetEyeAngles) ||
                 !g_hookSetEyeAngles.Enable())
             {
                 std::snprintf(errorOut, errorOutLen, "hook SetEyeAngles failed");
@@ -512,8 +497,7 @@ namespace BotController
                 return false;
             }
             if (!g_hookGetEyeAngles.Create(g_addrGetEyeAngles,
-                                           &HookedGetEyeAngles,
-                                           &g_origGetEyeAngles) ||
+                                           &HookedGetEyeAngles) ||
                 !g_hookGetEyeAngles.Enable())
             {
                 std::snprintf(errorOut, errorOutLen, "hook GetEyeAngles failed");
@@ -539,25 +523,17 @@ namespace BotController
         {
             for (int slot = 0; slot < 64; ++slot) ReleaseReplayNavigation(slot);
             g_hookLadderUpdate.Remove();
-            g_origLadderUpdate = nullptr;
             g_invalidatePath = nullptr;
             // Also roll back partially installed required view hooks.
             g_hookGetEyeAngles.Remove();
-            g_origGetEyeAngles = nullptr;
             g_hookSetEyeAngles.Remove();
-            g_origSetEyeAngles = nullptr;
             g_hookUpdateLookAngles.Remove();
-            g_origUpdateLookAngles = nullptr;
             g_hookIsVisiblePlayer.Remove();
-            g_origIsVisiblePlayer = nullptr;
             g_addrIsVisiblePlayer = nullptr;
             g_hookIsVisiblePos.Remove();
-            g_origIsVisiblePos = nullptr;
             g_addrIsVisiblePos = nullptr;
             g_hookUpkeep.Remove();
-            g_origUpkeep = nullptr;
             g_hookUpdate.Remove();
-            g_origUpdate = nullptr;
             g_nativePerception.fill({});
             for (size_t slot = 0; slot < g_pendingBestWeaponBots.size(); ++slot)
             {

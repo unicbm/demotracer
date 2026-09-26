@@ -146,11 +146,7 @@ namespace BotController::ReplaySubtickLayout
         ticks.swap(other.ticks);
         subs.swap(other.subs);
         commands.swap(other.commands);
-        movementExtras.swap(other.movementExtras);
-        inputHistoryTicks.swap(other.inputHistoryTicks);
-        inputHistoryEntries.swap(other.inputHistoryEntries);
         offsets.swap(other.offsets);
-        inputHistoryOffsets.swap(other.inputHistoryOffsets);
     }
 
     bool TryBuildReplaySubtickOffsets(
@@ -307,17 +303,9 @@ namespace BotController::ReplaySubtickLayout
                 candidate.subs.assign(subs, subs + subCount);
             if (commandCount > 0)
                 candidate.commands.assign(commands, commands + commandCount);
-            if (movementExtraCount > 0)
-            {
-                candidate.movementExtras.assign(
-                    movementExtras, movementExtras + movementExtraCount);
-            }
             if (inputHistoryTickCount > 0)
             {
                 std::uint64_t total = 0;
-                candidate.inputHistoryOffsets.reserve(
-                    static_cast<std::size_t>(inputHistoryTickCount) + 1);
-                candidate.inputHistoryOffsets.push_back(0);
                 for (int i = 0; i < inputHistoryTickCount; ++i)
                 {
                     const auto &tick = inputHistoryTicks[i];
@@ -332,17 +320,9 @@ namespace BotController::ReplaySubtickLayout
                     total += tick.numEntries;
                     if (total > static_cast<std::uint64_t>(inputHistoryEntryCount))
                         return false;
-                    candidate.inputHistoryOffsets.push_back(static_cast<std::size_t>(total));
                 }
                 if (total != static_cast<std::uint64_t>(inputHistoryEntryCount))
                     return false;
-                candidate.inputHistoryTicks.assign(
-                    inputHistoryTicks, inputHistoryTicks + inputHistoryTickCount);
-                if (inputHistoryEntryCount > 0)
-                {
-                    candidate.inputHistoryEntries.assign(
-                        inputHistoryEntries, inputHistoryEntries + inputHistoryEntryCount);
-                }
             }
 
             const ReplayTick *candidateTicks =

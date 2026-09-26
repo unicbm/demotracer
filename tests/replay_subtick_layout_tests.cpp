@@ -73,9 +73,6 @@ namespace
               "staged subticks changed");
         Check(staged.commands.size() == 2 && staged.commands[1].forwardMove == 2.0f,
               "staged commands changed");
-        Check(staged.movementExtras.size() == 2 &&
-                  staged.movementExtras[1].jumpPressedTime == 4.0f,
-              "staged movement extras changed");
         Check(staged.offsets == std::vector<std::size_t>({0, 1, 1}),
               "staged offsets changed");
     }
@@ -124,7 +121,7 @@ namespace
                   &dummy, 0, nullptr, 0, nullptr, 0, nullptr, 0, staged),
               "zero tick/subtick staging rejected");
         Check(staged.ticks.empty() && staged.subs.empty() &&
-                  staged.commands.empty() && staged.movementExtras.empty() &&
+                  staged.commands.empty() &&
                   staged.offsets == std::vector<std::size_t>({0}),
               "zero tick/subtick staging is wrong");
     }
@@ -226,6 +223,16 @@ namespace
                   commandsA.data(), static_cast<int>(commandsA.size()),
                   extrasA.data(), static_cast<int>(extrasA.size()), staged),
               "valid replay staging failed");
+        CheckStagingA(staged);
+
+        auto invalidExtras = extrasA;
+        invalidExtras[0].jumpPressedTime = std::numeric_limits<float>::quiet_NaN();
+        Check(!TryStageReplayLoad(
+                  ticksA.data(), static_cast<int>(ticksA.size()),
+                  subsA.data(), static_cast<int>(subsA.size()),
+                  commandsA.data(), static_cast<int>(commandsA.size()),
+                  invalidExtras.data(), static_cast<int>(invalidExtras.size()), staged),
+              "legacy movement extras must still be validated even though they are not retained");
         CheckStagingA(staged);
 
         const std::vector<ReplayTick> invalidTicks{Tick(100), Tick(1)};
@@ -335,13 +342,9 @@ namespace
                   historyTicks.data(), static_cast<int>(historyTicks.size()),
                   entries.data(), static_cast<int>(entries.size()), staged),
               "valid input history rejected");
-        Check(staged.inputHistoryTicks.size() == 2,
-              "input history tick descriptors were not staged");
-        Check(staged.inputHistoryEntries.size() == 1 &&
-                  staged.inputHistoryEntries[0].renderTickCount == 99,
-              "input history entry was not staged");
-        Check(staged.inputHistoryOffsets == std::vector<std::size_t>({0, 1, 1}),
-              "input history offsets are wrong");
+        Check(staged.ticks.size() == 2 && staged.ticks[0].weaponDefIndex == 7 &&
+                  staged.offsets == std::vector<std::size_t>({0, 0, 0}),
+              "legacy history must not change the supported replay payload");
 
         auto invalidTicks = historyTicks;
         invalidTicks[0].attack1StartHistoryIndex = 1;
@@ -351,7 +354,8 @@ namespace
                   invalidTicks.data(), static_cast<int>(invalidTicks.size()),
                   entries.data(), static_cast<int>(entries.size()), staged),
               "out-of-range attack history index accepted");
-        Check(staged.inputHistoryOffsets == std::vector<std::size_t>({0, 1, 1}),
+        Check(staged.ticks.size() == 2 && staged.ticks[0].weaponDefIndex == 7 &&
+                  staged.offsets == std::vector<std::size_t>({0, 0, 0}),
               "rejected input history changed staging");
     }
 } // namespace
