@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>BotRandomizerApi</AssemblyName>
+    <RootNamespace>BotRandomizerApi</RootNamespace>
+  </PropertyGroup>
+
+</Project>

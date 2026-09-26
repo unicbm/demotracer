@@ -6,17 +6,18 @@
     <AssemblyName>BotRandomizer</AssemblyName>
     <RootNamespace>BotRandomizer</RootNamespace>
     <Version>1.7.0</Version>
+    <DtrCommonRoot Condition="'$(DtrCommonRoot)' == ''">$(MSBuildThisFileDirectory).deps\common</DtrCommonRoot>
+    <DefaultItemExcludes>$(DefaultItemExcludes);.deps\**;BotRandomizerApi\**;tests\**;dist\**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="tests\**\*.cs" />
     <PackageReference Include="CounterStrikeSharp.API" Version="1.0.371" />
-    <ProjectReference Include="..\..\vendor\BotRandomizerApi\BotRandomizerApi.csproj">
+    <ProjectReference Include="BotRandomizerApi\BotRandomizerApi.csproj">
       <Private>false</Private>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\..\shared\econ\cs2-lib-econ-index.v1.json" Link="cs2-lib-econ-index.v1.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(DtrCommonRoot)\econ\cs2-lib-econ-index.v1.json" Link="cs2-lib-econ-index.v1.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(DtrCommonRoot)\econ\randomizer-catalog.json" Link="cosmetic_catalog.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="charm_placements.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Update="cosmetic_catalog.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,18 @@
 # Upstream tracking
 
+## Maintained component source
+
+`unicbm/cs2-dtr-randomizer` owns the provider and its optional API source. The
+initial split preserves the working provider from `unicbm/demotracer` commit
+`012d978ecdce8a949306fdcec39e4dcd9bf7624e`, paths
+`server/runtime/BotRandomizer/` and `server/vendor/BotRandomizerApi/`, including
+the existing attribution and licenses. The product consumes pinned revisions;
+it does not export or edit another copy of the provider.
+
+Generated catalogs and their generator are maintained once in `.deps/common`.
+The installed `cosmetic_catalog.json` is linked from common's
+`econ/randomizer-catalog.json`; it is not a separate maintained snapshot.
+
 ## Current baseline: 2026-09-24
 
 Unified provider **1.7.0**, replay API **v3**, reviews standalone `main` at
@@ -18,15 +31,15 @@ commit `94a5fce488f5976255d74b643bd58f993c04a86f`. This adds 579 stickers
 music pools. The generator also recognizes compound sticker finishes such as
 Ranked and Champion instead of classifying them as paper. Historical aggregate
 knife preferences remain unchanged. See
-[`tooling/cs2-lib-data`](../../../tooling/cs2-lib-data/README.md) for the exact
+the pinned common dependency's `tools/cs2-lib-data/README.md` for the exact
 pin, reproducible generation, source monitoring and review-only candidate CI.
 Unpublished cs2-lib main changes are not silently mixed into this release.
 
-The standalone export includes the complete optional API, provider, self-tests,
-data generation and CI. `tools/package.ps1` produces one common ZIP for ordinary
+This repository includes the complete optional API, provider, and self-tests.
+The common dependency owns data generation. `tools/package.ps1` produces one common ZIP for ordinary
 bot matches and playback. DemoTracer's packager validates and imports that ZIP;
 it does not compile a different replay provider. Upstream submission remains a
-separate maintainer-reviewed action; a local export is not an upstream release.
+separate maintainer-reviewed action; extraction is not an upstream release.
 
 Hook management uses the shared KHook host baseline in the playback contract.
 The pinned CounterStrikeSharp source routes managed `Hook/Unhook` to
@@ -39,7 +52,7 @@ The existing September 23 Windows attribute-writer signature is retained: it
 already targets the new entrypoint and is more specific than the proposed
 upstream PR #8 pattern. That PR was still unmerged at review. The Linux pattern
 and real-server behavior are not certified by this data update; see
-[`docs/SIGNATURES.md`](../../../docs/SIGNATURES.md) for the platform baseline.
+the [product signature baseline](https://github.com/unicbm/demotracer/blob/main/docs/SIGNATURES.md).
 
 The following sections describe historical comparisons; their API/version
 numbers identify those historical providers, not the current contract.
@@ -93,7 +106,7 @@ functional change removed the runtime enable/category switches and the admin
 gate on `br_reroll`. Version 1.6.3 restores the categories under the actual
 1.4.4 Panel command contract; `br_reroll` retains its existing behavior.
 
-This monorepo intentionally retains downstream-only material:
+This maintained fork intentionally retains downstream-only material:
 
 - catalog provenance and demo-evidence validation;
 - standalone documentation, tools, notices, and self-tests;

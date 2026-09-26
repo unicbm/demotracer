@@ -6,10 +6,13 @@
 param(
     [string]$OutputDirectory = '',
     [string]$DotnetPath = 'dotnet',
+    [string]$CommonRoot = '',
     [switch]$SkipBuild
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+if (-not $CommonRoot) { $CommonRoot = Join-Path $root '.deps/common' }
+$CommonRoot = [IO.Path]::GetFullPath($CommonRoot)
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root 'dist' }
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $project = Join-Path $root 'BotRandomizer.csproj'
@@ -19,19 +22,14 @@ $apiRoot = Split-Path $apiProject
 $version = [regex]::Match((Get-Content (Join-Path $root 'BotRandomizer.cs') -Raw), 'ModuleVersion\s*=>\s*"([^"]+)"').Groups[1].Value
 $apiVersion = [int][regex]::Match((Get-Content (Join-Path $apiRoot 'IBotRandomizerApi.cs') -Raw), 'ApiVersion\s*=\s*(\d+)').Groups[1].Value
 if ($version -notmatch '^\d+\.\d+\.\d+$' -or $apiVersion -le 0) { throw 'Invalid provider version/API' }
-$hostContract = Join-Path $root 'host-contract.json'
-if (Test-Path $hostContract) {
-    $hooks = Get-Content $hostContract -Raw | ConvertFrom-Json
-} else {
-    $contract = Get-Content (Join-Path $root '../../../shared/contracts/playback-contract.v1.json') -Raw | ConvertFrom-Json
-    $hooks = $contract.hook_runtime
-    if ($contract.bot_randomizer.provider_version -ne $version -or $contract.bot_randomizer.api -ne $apiVersion) {
-        throw 'Provider does not match playback contract'
-    }
+$hostContract = Join-Path $CommonRoot 'contracts/hook-runtime.v1.json'
+if (-not (Test-Path -LiteralPath $hostContract -PathType Leaf)) {
+    throw 'Missing common dependency; run git submodule update --init --recursive'
 }
+$hooks = Get-Content -LiteralPath $hostContract -Raw | ConvertFrom-Json
 if ($hooks.backend -ne 'khook') { throw 'The unified provider requires shared KHook' }
 if (-not $SkipBuild) {
-    & $DotnetPath build $project -c Release '-p:NuGetAudit=false' '-p:UseSharedCompilation=false' '-p:DebugType=None' '-p:DebugSymbols=false' '-m:1' '-nodeReuse:false' "-p:PathMap=$root=/_/BotRandomizer"
+    & $DotnetPath build $project -c Release '-p:NuGetAudit=false' '-p:UseSharedCompilation=false' '-p:DebugType=None' '-p:DebugSymbols=false' '-m:1' '-nodeReuse:false' "-p:PathMap=$root=/_/BotRandomizer" "-p:DtrCommonRoot=$CommonRoot"
     if ($LASTEXITCODE -ne 0) { throw 'Provider build failed' }
 }
 $output = Join-Path $root 'bin/Release/net10.0'

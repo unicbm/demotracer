@@ -10,15 +10,10 @@ $version = [regex]::Match((Get-Content (Join-Path $root 'BotRandomizer.cs') -Raw
 if (-not $Package) { $Package = Join-Path $root "dist/BotRandomizer-v$version.zip" }
 $work = Join-Path $root ('dist/package-test-' + [guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($work) | Out-Null
-if (Test-Path (Join-Path $root 'host-contract.json')) {
-    $hooks = Get-Content (Join-Path $root 'host-contract.json') -Raw | ConvertFrom-Json
-    [xml]$xml = Get-Content (Join-Path $root 'BotRandomizer.csproj') -Raw
-    $apiRoot = Split-Path ([IO.Path]::GetFullPath((Join-Path $root ([string]$xml.Project.ItemGroup.ProjectReference.Include))))
-    $api = [int][regex]::Match((Get-Content (Join-Path $apiRoot 'IBotRandomizerApi.cs') -Raw), 'ApiVersion\s*=\s*(\d+)').Groups[1].Value
-    $contract = @{bot_randomizer = @{provider_version = $version; api = $api}; hook_runtime = $hooks}
-} else {
-    $contract = Get-Content (Join-Path $root '../../../shared/contracts/playback-contract.v1.json') -Raw | ConvertFrom-Json
-}
+$hooks = Get-Content (Join-Path $root '.deps/common/contracts/hook-runtime.v1.json') -Raw | ConvertFrom-Json
+$apiRoot = Join-Path $root 'BotRandomizerApi'
+$api = [int][regex]::Match((Get-Content (Join-Path $apiRoot 'IBotRandomizerApi.cs') -Raw), 'ApiVersion\s*=\s*(\d+)').Groups[1].Value
+$contract = @{bot_randomizer = @{provider_version = $version; api = $api}; hook_runtime = $hooks}
 $expected = Join-Path $work 'contract.json'
 [IO.File]::WriteAllText($expected, ($contract | ConvertTo-Json -Depth 12))
 $valid = Join-Path $work 'valid'

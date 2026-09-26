@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\vendor\BotRandomizerApi\BotRandomizerApi.csproj" />
+    <ProjectReference Include="..\..\BotRandomizerApi\BotRandomizerApi.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,4 @@
+[submodule ".deps/common"]
+	path = .deps/common
+	url = https://github.com/unicbm/cs2-dtr-common.git
+	branch = main

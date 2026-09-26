@@ -1,5 +1,7 @@
 # CS2 Bot Randomizer
 
+Canonical source: [`unicbm/cs2-dtr-randomizer`](https://github.com/unicbm/cs2-dtr-randomizer).
+
 One provider supplies stable per-bot weapon skins, knives, gloves, stickers,
 charms, agents and music kits, with optional externally owned cosmetic plans.
 The same binaries support ordinary bot matches, Bot Improver Panel controls,
@@ -75,25 +77,39 @@ pickup and reload behavior still require game-server testing.
 
 ## Build and maintain
 
-In the standalone source checkout:
+Clone with submodules (`git clone --recurse-submodules`, or
+`git submodule update --init --recursive` in an existing checkout). In this
+standalone source checkout:
 
 ```powershell
-pwsh -NoProfile -File tools/test.ps1
+pwsh -NoProfile -File tools/check.ps1
 pwsh -NoProfile -File tools/package.ps1
-pwsh -NoProfile -File tools/data/update.ps1 -CheckOnly
-pwsh -NoProfile -File tools/data/update.ps1
+pwsh -NoProfile -File tools/test-package.ps1
 ```
 
-The data tool pins published cs2-lib, regenerates both catalogs, and verifies
-coverage. It reports upstream changes without accepting them automatically.
-CI builds the actual plugin, runs data and ownership tests, and uploads one
-installable package. Scheduled updates produce review patches, not automatic
-commits or PRs. A game update still needs signature and live-server smoke tests.
+The .NET scripts accept `-DotnetPath`; the provider targets .NET 10. The optional
+`tools/test.ps1` entry point delegates to `tools/check.ps1`. The API source is
+owned here under `BotRandomizerApi/`, and its assembly, shared install path, and
+v3 capability are unchanged.
 
-In DemoTracer's monorepo, `tooling/scripts/export-bot-randomizer.ps1` produces
-this standalone source from the same maintained files. Never hand-maintain two
-providers. The playback packager accepts this exact public ZIP and validates
-its contract and hashes instead of building a different replay implementation.
+Product integration may override the `DtrCommonRoot` MSBuild property, or use
+`tools/package.ps1 -CommonRoot <checkout>`, to select its pinned common source.
+Standalone builds default to `.deps/common`. Catalog self-tests read the normal
+build output so they also validate the provider-local charm placement file.
+
+The pinned `.deps/common` submodule owns the econ index, Randomizer catalog,
+their generator under `tools/cs2-lib-data`, and `contracts/hook-runtime.v1.json`.
+The project links `econ/randomizer-catalog.json` as the installed
+`cosmetic_catalog.json`; there is no second source snapshot here. Run generator
+checks and prepare data updates in common, review and commit them there, then
+update this submodule pin. Provider self-tests consume those exact common
+catalogs and check runtime loading and ownership behavior.
+
+`charm_placements.json` remains provider-local. Native signature and live-server
+smoke tests remain required after game updates. DemoTracer consumes a pinned
+revision of this component and imports the same public ZIP used for ordinary
+bot matches; it does not maintain a second replay provider or exported source
+copy. Product releases validate the package's host contract and hashes.
 
 Original work: ed0ard, Misaka17032, unicbm and XBribo. See `LICENSE`,
 `THIRD_PARTY_NOTICES.md`, and upstream history for attribution.
