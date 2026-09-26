@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
           submodules: recursive
@@ -99,7 +99,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -107,7 +107,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Restore converter Rust cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: desktop/converter -> target
           shared-key: converter
@@ -124,7 +124,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -136,20 +136,20 @@ jobs:
           "commit=$($source.commit)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Checkout professional identity source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: unicbm/CS2-pro-steamid-lib
           ref: ${{ steps.pro-steamid-source.outputs.commit }}
           path: .external/CS2-pro-steamid-lib
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 11.9.0
           run_install: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -192,7 +192,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -200,7 +200,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Restore desktop Rust cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: desktop/gui/src-tauri -> target
           shared-key: desktop-debug
@@ -217,12 +217,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
       - name: Install .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
@@ -243,13 +243,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
       - name: Test and package maintained Randomizer
@@ -263,7 +263,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -293,7 +293,7 @@ jobs:
           "commit=$($contract.hook_runtime.metamod_source_commit)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Checkout shared hook engine
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: alliedmodders/metamod-source
           ref: ${{ steps.metamod-source.outputs.commit }}
@@ -318,7 +318,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -352,11 +352,11 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: third_party/demoparser -> target
       - name: Check maintained parser and fixture-test compilation
@@ -371,10 +371,10 @@ jobs:
       matrix:
         component: [BotController, BotHider]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
       - name: Read toolchain pins
@@ -386,13 +386,13 @@ jobs:
           $sdk = Get-Content server/runtime/common/contracts/native-toolchain.v1.json -Raw | ConvertFrom-Json
           "metamod=$($hooks.metamod_source_commit)" >> $env:GITHUB_OUTPUT
           "sdk=$($sdk.hl2sdk_commit)" >> $env:GITHUB_OUTPUT
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           repository: alliedmodders/metamod-source
           ref: ${{ steps.native.outputs.metamod }}
           path: .external/metamod-khook
           submodules: recursive
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           repository: alliedmodders/hl2sdk
           ref: ${{ steps.native.outputs.sdk }}
@@ -406,7 +406,7 @@ jobs:
         run: server/runtime/${{ matrix.component }}/tools/check.ps1 -NativeBuild
 
       - name: Save native package for product integration
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.component }}
           path: server/runtime/${{ matrix.component }}/.build/native/package/
@@ -417,20 +417,20 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           name: native-BotController
           path: server/runtime/BotController/build/package
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           name: native-BotHider
           path: server/runtime/BotHider/build/package
@@ -441,7 +441,7 @@ jobs:
           $version = [regex]::Match($plugin, 'ModuleVersion\s*=>\s*"([^"]+)"').Groups[1].Value
           if (-not $version) { throw 'Playback version not found' }
           tooling/scripts/package-server.ps1 -Version $version
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: demotracer-playback-windows-x64
           path: dist/demotracer-css-v*.zip
