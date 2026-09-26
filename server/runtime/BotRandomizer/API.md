@@ -16,6 +16,10 @@ On the server thread:
 5. Call `ReleaseReplayPlan` on stop; cancel the owner's token on consumer
    unload. All calls, including cancellation, belong on the server thread.
 
+Host-facing API calls from another thread throw before accessing host state. The replay
+index is required for plan validation; if it fails to load, replay plans are
+unavailable while the independent random catalog can still operate.
+
 Plans never expire on a timer. Two owners cannot claim the same bot. Invalid
 batches leave existing ownership intact. Incarnations prevent slot reuse from
 inheriting old plans. Map change and provider unload revoke all plans. Subscribe

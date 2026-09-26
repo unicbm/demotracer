@@ -25,6 +25,7 @@
     <Compile Include="..\..\Cosmetics\RandomizerOptions.cs" Link="Cosmetics\RandomizerOptions.cs" />
     <Compile Include="..\..\Cosmetics\IntroAgentAssignment.cs" Link="Cosmetics\IntroAgentAssignment.cs" />
     <Compile Include="..\..\Cosmetics\ReplayEconIndex.cs" Link="Cosmetics\ReplayEconIndex.cs" />
+    <Compile Include="..\..\Cosmetics\ReplayPlanValidator.cs" Link="Cosmetics\ReplayPlanValidator.cs" />
     <Compile Include="..\..\Cosmetics\WeaponWearAllocator.cs" Link="Cosmetics\WeaponWearAllocator.cs" />
   </ItemGroup>
 

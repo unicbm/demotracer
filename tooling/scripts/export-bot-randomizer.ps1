@@ -21,7 +21,7 @@ if (Test-Path (Join-Path $target 'BotRandomizer.cs')) {
 }
 $provider = Join-Path $repo 'server/runtime/BotRandomizer'
 $copies = [ordered]@{}
-foreach ($name in @('BotRandomizer.cs', 'BotRandomizerApiFacade.cs', 'BotRandomizerIntro.cs', 'BotRandomizer.csproj', 'cosmetic_catalog.json', 'charm_placements.json', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'UPSTREAM.md', 'README.md', 'API.md')) {
+foreach ($name in @('BotRandomizer.cs', 'BotRandomizerItems.cs', 'BotRandomizerApiFacade.cs', 'BotRandomizerIntro.cs', 'BotRandomizer.csproj', 'cosmetic_catalog.json', 'charm_placements.json', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'UPSTREAM.md', 'README.md', 'API.md')) {
     $copies[$name] = Join-Path $provider $name
 }
 foreach ($dir in @('Cosmetics', 'tests', 'tools')) {

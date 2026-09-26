@@ -104,7 +104,11 @@ internal sealed record ReplayEconIdentity(
     ulong? OriginalOwnerSteamId,
     uint? ItemAccountId,
     ulong? ItemId,
-    string? CustomName);
+    string? CustomName)
+{
+    internal int ResolveQuality(int defaultQuality)
+        => Quality ?? (StattrakCounter is not null ? 9 : defaultQuality);
+}
 
 internal static class ReplayOriginalOwner
 {

@@ -34,49 +34,18 @@ internal sealed class WeaponItemViewStore : IDisposable
         KnifeSelection selection,
         ulong steamId,
         out nint itemViewHandle)
-    {
-        itemViewHandle = nint.Zero;
-        if (_disposed || _constructor is null || _setAttributeByName is null)
-            return false;
-
-        try
-        {
-            if (!TryGetOrCreateItemView(state, selection.DefIndex, out itemViewHandle))
-                return false;
-
-            var item = new CEconItemView(itemViewHandle);
-            var networkedAttributes = item.NetworkedDynamicAttributes;
-            var attributeList = item.AttributeList;
-            if (networkedAttributes.Handle == nint.Zero || attributeList.Handle == nint.Zero)
-                return false;
-
-            item.Initialized = true;
-            item.ItemDefinitionIndex = selection.DefIndex;
-            AssignItemId(item);
-            item.AccountID = AccountIdFromSteamId(steamId);
-            item.EntityQuality = 3;
-            item.CustomName = string.Empty;
-
-            networkedAttributes.Attributes.RemoveAll();
-            attributeList.Attributes.RemoveAll();
-            SetTextureAttributes(networkedAttributes, selection.PaintKit, 0, selection.Wear);
-            SetTextureAttributes(attributeList, selection.PaintKit, 0, selection.Wear);
-            return true;
-        }
-        catch (Exception exception)
-        {
-            LogPreparationError(exception);
-            itemViewHandle = nint.Zero;
-            return false;
-        }
-    }
+        => TryPrepareItemView(
+            state, selection.DefIndex, selection.PaintKit, seed: 0, selection.Wear,
+            identity: null, steamId, defaultQuality: 3, out itemViewHandle);
 
     internal bool TryPrepareReplayKnife(
         SlotCosmeticState state,
         ReplayItemSelection selection,
         ulong steamId,
         out nint itemViewHandle)
-        => TryPrepareReplayItem(state, selection, steamId, defaultQuality: 3, out itemViewHandle);
+        => TryPrepareItemView(
+            state, selection.DefIndex, selection.PaintKit, selection.Seed, selection.Wear,
+            selection.Identity, steamId, defaultQuality: 3, out itemViewHandle);
 
     internal bool TryPrepareReplayWeapon(
         SlotCosmeticState state,
@@ -84,17 +53,9 @@ internal sealed class WeaponItemViewStore : IDisposable
         ulong steamId,
         out nint itemViewHandle)
     {
-        if (!TryPrepareReplayItem(
-                state,
-                new ReplayItemSelection(
-                    selection.DefIndex,
-                    selection.PaintKit,
-                    selection.Seed,
-                    selection.Wear,
-                    selection.Identity),
-                steamId,
-                defaultQuality: 4,
-                out itemViewHandle))
+        if (!TryPrepareItemView(
+                state, selection.DefIndex, selection.PaintKit, selection.Seed, selection.Wear,
+                selection.Identity, steamId, defaultQuality: 4, out itemViewHandle))
             return false;
 
         try
@@ -179,9 +140,13 @@ internal sealed class WeaponItemViewStore : IDisposable
         }
     }
 
-    private bool TryPrepareReplayItem(
+    private bool TryPrepareItemView(
         SlotCosmeticState state,
-        ReplayItemSelection selection,
+        ushort defIndex,
+        int paintKit,
+        int seed,
+        float wear,
+        ReplayEconIdentity? identity,
         ulong steamId,
         int defaultQuality,
         out nint itemViewHandle)
@@ -192,7 +157,7 @@ internal sealed class WeaponItemViewStore : IDisposable
 
         try
         {
-            if (!TryGetOrCreateItemView(state, selection.DefIndex, out itemViewHandle))
+            if (!TryGetOrCreateItemView(state, defIndex, out itemViewHandle))
                 return false;
 
             var item = new CEconItemView(itemViewHandle);
@@ -202,13 +167,23 @@ internal sealed class WeaponItemViewStore : IDisposable
                 return false;
 
             item.Initialized = true;
-            item.ItemDefinitionIndex = selection.DefIndex;
-            AssignReplayIdentity(item, selection.Identity, steamId, defaultQuality);
+            item.ItemDefinitionIndex = defIndex;
+            if (identity is null)
+            {
+                AssignItemId(item);
+                item.AccountID = AccountIdFromSteamId(steamId);
+                item.EntityQuality = defaultQuality;
+                item.CustomName = string.Empty;
+            }
+            else
+            {
+                AssignReplayIdentity(item, identity, steamId, defaultQuality);
+            }
             networked.Attributes.RemoveAll();
             attributes.Attributes.RemoveAll();
-            SetTextureAttributes(networked, selection.PaintKit, selection.Seed, selection.Wear);
-            SetTextureAttributes(attributes, selection.PaintKit, selection.Seed, selection.Wear);
-            if (selection.Identity.StattrakCounter is { } counter)
+            SetTextureAttributes(networked, paintKit, seed, wear);
+            SetTextureAttributes(attributes, paintKit, seed, wear);
+            if (identity?.StattrakCounter is { } counter)
             {
                 SetStattrakAttributes(networked, counter);
                 SetStattrakAttributes(attributes, counter);
@@ -354,8 +329,7 @@ internal sealed class WeaponItemViewStore : IDisposable
     {
         var owner = identity.OriginalOwnerSteamId.GetValueOrDefault(fallbackSteamId);
         item.AccountID = identity.ItemAccountId ?? AccountIdFromSteamId(owner);
-        item.EntityQuality = identity.Quality ??
-            (identity.StattrakCounter is not null ? 9 : defaultQuality);
+        item.EntityQuality = identity.ResolveQuality(defaultQuality);
         var itemId = identity.ItemId.GetValueOrDefault();
         if (itemId == 0)
             itemId = EconItemIdAllocator.Next();

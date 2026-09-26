@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using BotRandomizerApi;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
@@ -6,7 +5,6 @@ using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Core.Capabilities;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Memory;
-using CounterStrikeSharp.API.Modules.Memory.DynamicFunctions;
 using CounterStrikeSharp.API.Modules.Timers;
 using CounterStrikeSharp.API.Modules.Utils;
 using Microsoft.Extensions.Logging;
@@ -33,6 +31,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
     private bool _giveNamedItemHooked;
     private bool _giveNamedItemErrorLogged;
     private bool _draining;
+    private int _serverThreadId;
     private ulong _mapEpoch = 1;
 
     public BotRandomizerPlugin()
@@ -49,8 +48,10 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
 
     public override void Load(bool hotReload)
     {
+        _serverThreadId = Environment.CurrentManagedThreadId;
         _draining = false;
         LoadCatalog();
+        LoadReplayEconIndex();
         LoadAttributeWriter();
 
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
@@ -112,73 +113,41 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         {
             var catalogPath = Path.Combine(ModuleDirectory, "cosmetic_catalog.json");
             var placementPath = Path.Combine(ModuleDirectory, "charm_placements.json");
-            var replayEconIndexPath = Path.Combine(ModuleDirectory, "cs2-lib-econ-index.v1.json");
             _catalog = CosmeticCatalog.Load(catalogPath);
-            _replayEconIndex = ReplayEconIndex.Load(replayEconIndexPath);
             var charmPlacements = CharmPlacementCatalog.Load(placementPath, _catalog);
             _roller = new CosmeticRoller(_catalog, charmPlacements);
             Logger.LogInformation(
-                "[BotRandomizer] Catalog {Commit}: {Weapons} weapons, {Paints} random weapon paints, {Stickers} stickers, {Charms} charms; replay econ {ReplayEconVersion} has {ReplayWeaponPaints} weapon paints and {ReplayMusicKits} music kits; {CharmPositions} charm positions for {CharmWeapons} weapons; compact priors from {ProDemos} pro maps and {KnifeObservations} knife observations",
+                "[BotRandomizer] Catalog {Commit}: {Weapons} weapons, {Paints} paints, {Stickers} stickers, {Charms} charms; {CharmPositions} charm positions for {CharmWeapons} weapons",
                 _catalog.SourceCommit[..12],
                 _catalog.WeaponCount,
                 _catalog.WeaponPaintCount,
                 _catalog.StickerKits.Count,
                 _catalog.KeychainDefinitions.Count,
-                _replayEconIndex.SourceVersion,
-                _replayEconIndex.WeaponPaintCount,
-                _replayEconIndex.MusicKitCount,
                 charmPlacements.PlacementCount,
-                charmPlacements.WeaponCount,
-                _catalog.SourceLogicalMaps,
-                _catalog.SourceKnifeObservations);
+                charmPlacements.WeaponCount);
         }
         catch (Exception exception)
         {
             _catalog = null;
-            _replayEconIndex = null;
             _roller = null;
             Logger.LogError(
                 exception,
-                "[BotRandomizer] cosmetic_catalog.json, cs2-lib-econ-index.v1.json, or charm_placements.json is invalid; randomization disabled");
+                "[BotRandomizer] cosmetic_catalog.json or charm_placements.json is invalid; randomization disabled");
         }
     }
 
-    private void LoadAttributeWriter()
+    private void LoadReplayEconIndex()
     {
-        MemoryFunctionWithReturn<nint, string, float, int>? writer = null;
         try
         {
-            writer = new MemoryFunctionWithReturn<nint, string, float, int>(
-                RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-                    ? "55 48 89 E5 41 57 41 56 49 89 FE 41 55 41 54 53 48 89 F3 48 83 EC ? F3 0F 11 85"
-                    : "48 89 4C 24 08 53 41 55 41 56 48 81 EC A0 00 00 00 0F 29 74 24 70 48 8B DA 0F 28 F2 4C 8B E9 E8 ? ? ? ?");
+            _replayEconIndex = ReplayEconIndex.Load(Path.Combine(ModuleDirectory, "cs2-lib-econ-index.v1.json"));
         }
         catch (Exception exception)
         {
-            Logger.LogError(
-                exception,
-                "[BotRandomizer] SetOrAddAttributeValueByName signature failed; economic cosmetics disabled");
+            _replayEconIndex = null;
+            Logger.LogError(exception,
+                "[BotRandomizer] Replay econ index is invalid; replay plans disabled, randomization unaffected");
         }
-
-        _applicator = new CosmeticApplicator(writer, Logger);
-        MemoryFunctionWithReturn<nint, nint>? itemViewConstructor = null;
-        if (writer is not null)
-        {
-            try
-            {
-                itemViewConstructor = new MemoryFunctionWithReturn<nint, nint>(
-                    RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-                        ? "55 48 8D 05 ? ? ? ? 66 0F EF C0 48 89 E5 41 57 45 31 FF"
-                        : "48 89 5C 24 ? 48 89 6C 24 ? 48 89 74 24 ? 57 41 54 41 55 41 56 41 57 48 83 EC ? 48 8B F9 48 8D 05");
-            }
-            catch (Exception exception)
-            {
-                Logger.LogError(
-                    exception,
-                    "[BotRandomizer] CEconItemView constructor signature failed; weapon cosmetics disabled");
-            }
-        }
-        _weaponItemViews = new WeaponItemViewStore(itemViewConstructor, writer, Logger);
     }
 
     private void OnMapStart(string mapName)
@@ -218,110 +187,8 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
     {
         ConsumePendingReroll(@event.Userid);
         var state = GetOrCreateState(@event.Userid);
-        if (state is null)
-            return HookResult.Continue;
-
-        var slot = state.Slot;
-        var userId = state.UserId;
-        var generation = state.Generation;
-        Server.NextFrame(() =>
-        {
-            if (!TryResolveCurrentBot(slot, userId, generation, out var player, out var pawn, out var current))
-                return;
-
-            ApplyIdentity(player, pawn, current, CosmeticScope.Agent | CosmeticScope.MusicKit);
-            ApplyWearables(player, pawn, current);
-            ScheduleWearableRetry(slot, userId, generation, 0.10f);
-            ScheduleWearableRetry(slot, userId, generation, 0.25f);
-        });
-
-        return HookResult.Continue;
-    }
-
-    private HookResult OnGiveNamedItemPre(DynamicHook hook)
-    {
-        if (_draining || _catalog is null
-            || _roller is null
-            || _weaponItemViews is null)
-        {
-            return HookResult.Continue;
-        }
-
-        try
-        {
-            var itemServices = hook.GetParam<CCSPlayer_ItemServices>(0);
-            var designerName = hook.GetParam<string>(1);
-            if (string.IsNullOrWhiteSpace(designerName))
-                return HookResult.Continue;
-
-            var player = GetPlayerFromItemServices(itemServices);
-            if (player is null)
-                return HookResult.Continue;
-
-            var state = GetOrCreateState(player);
-            if (state is null)
-                return HookResult.Continue;
-
-            TryGetWritePolicy(state, out var writePolicy);
-            if (designerName is "weapon_knife" or "weapon_knife_t")
-            {
-                if (writePolicy?.Knife is null && !_options.Knives)
-                    return HookResult.Continue;
-
-                var prepared = writePolicy?.Knife is { } replayKnife
-                    ? _weaponItemViews.TryPrepareReplayKnife(
-                        state, replayKnife, player.SteamID, out var knifeItemViewHandle)
-                    : _weaponItemViews.TryPrepareKnife(
-                        state, state.Loadout.Knife, player.SteamID, out knifeItemViewHandle);
-                if (prepared)
-                {
-                    hook.SetParam(3, knifeItemViewHandle);
-                }
-                return HookResult.Continue;
-            }
-
-            if (!_catalog.TryGetWeapon(designerName, out var weapon))
-            {
-                return HookResult.Continue;
-            }
-
-            if (writePolicy is not null
-                && writePolicy.TryGetWeapon(weapon.DefIndex, out var replayWeapon))
-            {
-                if (_weaponItemViews.TryPrepareReplayWeapon(
-                        state,
-                        replayWeapon,
-                        player.SteamID,
-                        out var replayItemViewHandle))
-                {
-                    hook.SetParam(3, replayItemViewHandle);
-                }
-                return HookResult.Continue;
-            }
-
-            if (!_options.HasWeaponCosmetics)
-                return HookResult.Continue;
-
-            var selection = _options.ResolveWeapon(
-                weapon, _roller.GetOrCreateWeapon(state.Loadout, weapon.DefIndex));
-            if (selection is not null && _weaponItemViews.TryPrepare(
-                    state,
-                    weapon,
-                    selection,
-                    player.SteamID,
-                    out var itemViewHandle))
-            {
-                hook.SetParam(3, itemViewHandle);
-            }
-        }
-        catch (Exception exception)
-        {
-            if (!_giveNamedItemErrorLogged)
-            {
-                _giveNamedItemErrorLogged = true;
-                Logger.LogError(exception, "[BotRandomizer] GiveNamedItem pre-hook failed");
-            }
-        }
+        if (state is not null)
+            ScheduleRestore(state, CosmeticScope.All);
 
         return HookResult.Continue;
     }
@@ -377,11 +244,8 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         var state = _states.Reroll(
             player.Slot,
             userId,
-            (byte)@event.Team,
             preserveMusic: true,
             music => _roller.RollLoadout((byte)@event.Team, music));
-        if (state is null)
-            return HookResult.Continue;
 
         var slot = player.Slot;
         var generation = state.Generation;
@@ -394,65 +258,6 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
             },
             TimerFlags.STOP_ON_MAPCHANGE);
         return HookResult.Continue;
-    }
-
-    private HookResult OnGiveNamedItemPost(DynamicHook hook)
-    {
-        try
-        {
-            var weaponHandle = hook.GetReturn<nint>();
-            if (weaponHandle == nint.Zero)
-                return HookResult.Continue;
-
-            var itemServices = hook.GetParam<CCSPlayer_ItemServices>(0);
-            var player = GetPlayerFromItemServices(itemServices);
-            var state = GetOrCreateState(player);
-            if (player is null || state is null ||
-                !TryGetWritePolicy(state, out var writePolicy))
-            {
-                return HookResult.Continue;
-            }
-
-            var weapon = new CBasePlayerWeapon(weaponHandle);
-            var item = weapon.AttributeManager?.Item;
-            if (!weapon.IsValid || item is null)
-                return HookResult.Continue;
-
-            ReplayEconIdentity? identity = null;
-            if (hook.GetParam<string>(1) is "weapon_knife" or "weapon_knife_t")
-                identity = writePolicy.Knife?.Identity;
-            else if (writePolicy.TryGetWeapon(item.ItemDefinitionIndex, out var replayWeapon))
-                identity = replayWeapon.Identity;
-
-            if (identity is not null)
-                ApplyReplayOriginalOwner(weapon, identity, player.SteamID);
-        }
-        catch (Exception exception)
-        {
-            if (!_giveNamedItemErrorLogged)
-            {
-                _giveNamedItemErrorLogged = true;
-                Logger.LogError(exception, "[BotRandomizer] GiveNamedItem post-hook failed");
-            }
-        }
-
-        return HookResult.Continue;
-    }
-
-    private static void ApplyReplayOriginalOwner(
-        CBasePlayerWeapon weapon,
-        ReplayEconIdentity identity,
-        ulong fallbackSteamId)
-    {
-        var owner = ReplayOriginalOwner.ResolveSteamId(identity, fallbackSteamId);
-        if (owner == 0)
-            return;
-
-        var (low, high) = ReplayOriginalOwner.SplitSteamId(owner);
-        weapon.OriginalOwnerXuidLow = low;
-        weapon.OriginalOwnerXuidHigh = high;
-        Utilities.SetStateChanged(weapon, "CEconEntity", "m_OriginalOwnerXuidLow");
-        Utilities.SetStateChanged(weapon, "CEconEntity", "m_OriginalOwnerXuidHigh");
     }
 
     private HookResult OnRoundMvp(EventRoundMvp @event, GameEventInfo info)
@@ -478,7 +283,9 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         if (_draining || _roller is null
             || player is not { IsValid: true, IsBot: true, IsHLTV: false }
             || player.UserId is not int userId
-            || !IsPlayableTeam(player.TeamNum))
+            || !IsPlayableTeam(player.TeamNum)
+            || player.PlayerPawn?.Value is { IsValid: true } pawn &&
+               IsPawnControlledByAnotherController(player.Slot, pawn))
         {
             return null;
         }
@@ -670,19 +477,15 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
 
     private void RestoreBot(int slot, CosmeticScope scope)
     {
-        var player = Utilities.GetPlayerFromSlot(slot);
-        if (_roller is null
-            || player is not { IsValid: true, IsBot: true, IsHLTV: false }
-            || player.UserId is not int userId
-            || !IsPlayableTeam(player.TeamNum))
-        {
-            return;
-        }
+        var state = GetOrCreateState(Utilities.GetPlayerFromSlot(slot));
+        if (state is not null)
+            ScheduleRestore(state, scope);
+    }
 
-        var state = GetOrCreateState(player);
-        if (state is null)
-            return;
-
+    private void ScheduleRestore(SlotCosmeticState state, CosmeticScope scope)
+    {
+        var slot = state.Slot;
+        var userId = state.UserId;
         var generation = state.Generation;
         Server.NextFrame(() =>
         {
@@ -777,23 +580,12 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         _states.Reroll(
             player.Slot,
             userId,
-            team,
             preserveMusic: false,
             music => _roller.RollLoadout(team, music));
     }
 
     private static bool IsPlayableTeam(int team)
         => team is RandomizerAssets.TerroristTeam or RandomizerAssets.CounterTerroristTeam;
-
-    private static CCSPlayerController? GetPlayerFromItemServices(CCSPlayer_ItemServices itemServices)
-    {
-        var pawn = itemServices.Pawn.Value;
-        if (pawn is not { IsValid: true } || pawn.Controller.Value is not { IsValid: true } controller)
-            return null;
-
-        var player = new CCSPlayerController(controller.Handle);
-        return player is { IsValid: true, IsBot: true, IsHLTV: false } ? player : null;
-    }
 
     private static void ApplyMusicKit(CCSPlayerController player, int kitId, int musicKitMvps)
     {
