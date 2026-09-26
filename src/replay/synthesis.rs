@@ -512,6 +512,8 @@ mod tests {
             team_rounds_total: None,
             team_name: None,
             team_clan_name: None,
+            clan_tag: None,
+            clan_id: None,
         }
     }
 
