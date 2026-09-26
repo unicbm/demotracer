@@ -19,6 +19,24 @@ The Rust converter crate is the conversion truth source. The desktop backend
 calls it directly; there is no supported converter CLI. Future automation
 should use a separately versioned API instead of recreating a second UI.
 
+Demo-backed appearance rules live in `desktop/converter/src/cosmetics/`:
+
+- `mod.rs` validates appearance fields and matches player-scoped end-of-match
+  evidence for knives and gloves. Normalization does not encode inspect links.
+- `catalog.rs` owns the embedded econ index and shared equipment/item validation.
+- `inventory.rs` owns item identity, original ownership and first-valid inventory
+  observations. Purchases remain evidence even without a buyer inventory tick.
+- `playback.rs` selects round-scoped appearances. A known start inventory,
+  including an unpainted one, takes precedence over later inventory or active
+  weapon observations. Conflicting fields are omitted independently.
+
+Player analysis uses the common rules directly, without depending on `export`.
+Whole-demo ownership summaries and round-start playback retain different
+selection policies. Shared inventory snapshots may skip repeated observations
+only while holder and side are unchanged; new snapshots must still be examined.
+Inspect links are encoded at final output. Parser entity revisions, purchase
+capture, public manifest fields and runtime contracts remain separate concerns.
+
 ## Dependencies and Provenance
 
 The packaged Windows x64 desktop app requires Microsoft Edge WebView2 but no

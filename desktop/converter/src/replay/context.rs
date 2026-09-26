@@ -101,7 +101,7 @@ pub(crate) fn replay_loadout(row: &ParsedPlayerTick) -> ReplayLoadout {
 }
 
 fn normalize_weapon_def_index(def: i32) -> i32 {
-    if crate::export::valid_knife_item_def_index(def) {
+    if crate::cosmetics::catalog::valid_knife_item_def_index(def) {
         42
     } else {
         def
@@ -109,7 +109,7 @@ fn normalize_weapon_def_index(def: i32) -> i32 {
 }
 
 fn is_known_weapon_def_index(def: i32) -> bool {
-    crate::export::valid_replay_equipment_item_def_index(def)
+    crate::cosmetics::catalog::valid_replay_equipment_item_def_index(def)
 }
 
 fn is_preload_weapon_def_index(def: i32) -> bool {
