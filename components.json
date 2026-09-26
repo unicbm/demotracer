@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "components": [
+    {
+      "id": "common",
+      "path": ".deps/common",
+      "repository": "unicbm/cs2-dtr-common",
+      "branch": "main",
+      "tagPrefix": "v"
+    },
+    {
+      "id": "controller",
+      "path": ".deps/controller",
+      "repository": "unicbm/cs2-dtr-controller",
+      "branch": "main",
+      "tagPrefix": "v"
+    },
+    {
+      "id": "hider",
+      "path": ".deps/hider",
+      "repository": "unicbm/cs2-dtr-hider",
+      "branch": "main",
+      "tagPrefix": "v"
+    },
+    {
+      "id": "randomizer",
+      "path": ".deps/randomizer",
+      "repository": "unicbm/cs2-dtr-randomizer",
+      "branch": "main",
+      "tagPrefix": "v"
+    }
+  ]
+}

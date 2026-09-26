@@ -5,24 +5,28 @@
     <Nullable>enable</Nullable>
     <AssemblyName>DemoTracer</AssemblyName>
     <RootNamespace>DemoTracer</RootNamespace>
+    <DtrCommonRoot Condition="'$(DtrCommonRoot)' == ''">$(MSBuildThisFileDirectory).deps\common</DtrCommonRoot>
+    <DtrHiderRoot Condition="'$(DtrHiderRoot)' == ''">$(MSBuildThisFileDirectory).deps\hider</DtrHiderRoot>
+    <DtrRandomizerRoot Condition="'$(DtrRandomizerRoot)' == ''">$(MSBuildThisFileDirectory).deps\randomizer</DtrRandomizerRoot>
+    <DefaultItemExcludes>$(DefaultItemExcludes);.deps\**;tests\**;dist\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="CounterStrikeSharp.API" Version="1.0.371" />
     <PackageReference Include="ZstdSharp.Port" Version="0.8.8" GeneratePathProperty="true" />
-    <ProjectReference Include="..\DemoTracerApi\DemoTracerApi.csproj">
+    <ProjectReference Include="$(DtrCommonRoot)\csharp\DemoTracerApi\DemoTracerApi.csproj">
       <Private>false</Private>
     </ProjectReference>
-    <ProjectReference Include="..\..\runtime\BotHider\csharp\BotHiderApi\BotHiderApi.csproj">
+    <ProjectReference Include="$(DtrHiderRoot)\csharp\BotHiderApi\BotHiderApi.csproj">
       <Private>false</Private>
     </ProjectReference>
-    <ProjectReference Include="..\..\vendor\BotRandomizerApi\BotRandomizerApi.csproj">
+    <ProjectReference Include="$(DtrRandomizerRoot)\BotRandomizerApi\BotRandomizerApi.csproj">
       <Private>false</Private>
     </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\..\shared\econ\cs2-lib-econ-index.v1.json" Link="cs2-lib-econ-index.v1.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(DtrCommonRoot)\econ\cs2-lib-econ-index.v1.json" Link="cs2-lib-econ-index.v1.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="demotracer.config.example.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="demotracer-native.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" />

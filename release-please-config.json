@@ -1,0 +1,32 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "cs2-css-demotrace",
+      "include-component-in-tag": false,
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features"
+        },
+        {
+          "type": "fix",
+          "section": "Fixes"
+        },
+        {
+          "type": "deps",
+          "section": "Dependencies"
+        },
+        {
+          "type": "refactor",
+          "section": "Maintenance"
+        },
+        {
+          "type": "perf",
+          "section": "Performance"
+        }
+      ]
+    }
+  },
+  "bootstrap-sha": "aaed4c0a820e59f0fbee2ff2072a2718e06f05d7"
+}

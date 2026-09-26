@@ -1,0 +1,16 @@
+.build/
+build/
+out/
+target/
+**/target/
+**/bin/
+**/obj/
+**/node_modules/
+dist/
+*.user
+*.dem
+*.dtr
+*.cs2rec
+*.log
+.component-update.md
+.external/

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <DtrHiderRoot Condition="'$(DtrHiderRoot)' == ''">$(MSBuildThisFileDirectory)..\..\.deps\hider</DtrHiderRoot>
+    <DtrControllerRoot Condition="'$(DtrControllerRoot)' == ''">$(MSBuildThisFileDirectory)..\..\.deps\controller</DtrControllerRoot>
+    <DtrRandomizerRoot Condition="'$(DtrRandomizerRoot)' == ''">$(MSBuildThisFileDirectory)..\..\.deps\randomizer</DtrRandomizerRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\DemoTracer.csproj" />
+    <ProjectReference Include="$(DtrHiderRoot)\csharp\BotHiderImpl\BotHiderImpl.csproj" />
+    <ProjectReference Include="$(DtrControllerRoot)\csharp\BotControllerImpl\BotControllerImpl.csproj" />
+    <ProjectReference Include="$(DtrControllerRoot)\csharp\BotControllerApi\BotControllerApi.csproj" />
+    <ProjectReference Include="$(DtrRandomizerRoot)\BotRandomizerApi\BotRandomizerApi.csproj" />
+  </ItemGroup>
+</Project>
