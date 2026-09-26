@@ -4,11 +4,16 @@ namespace DemoTracerBotHiderApi;
 
 public static class DemoTracerBotHiderContract
 {
-    public const int ApiVersion = 2;
-    public const string Capability = "demotracer:bot-hider:v2";
+    public const int ApiVersion = 3;
+    public const string Capability = "demotracer:bot-hider:v3";
     public const string DemoTracerOwner = "demotracer";
     public const int MaxPlayerNameUtf8Bytes = 31;
     public const int MaxCrosshairCodeUtf8Bytes = 63;
+    public const int MaxClanTagUtf8Bytes = 127;
+
+    public static bool IsValidClan(BotHiderClan? clan)
+        => clan == null || (clan.Tag != null && !clan.Tag.Contains('\0') &&
+                           Encoding.UTF8.GetByteCount(clan.Tag) <= MaxClanTagUtf8Bytes);
 
     // Shared contract assembly: notifications survive provider hot reload.
     // Subscribers must unsubscribe on unload and defer engine work to a frame.
@@ -109,7 +114,12 @@ public sealed class BotHiderPresentationOverride
 
     // null keeps the current persona base; empty explicitly clears it.
     public string? CrosshairCode { get; set; }
+
+    // null restores the captured controller base; empty tag/id 0 explicitly clears.
+    public BotHiderClan? Clan { get; set; }
 }
+
+public sealed record BotHiderClan(string Tag, uint Id);
 
 public sealed class BotHiderPresentationLeaseResult
 {
