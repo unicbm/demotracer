@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "components": [
+    {
+      "id": "common",
+      "path": ".deps/common",
+      "repository": "unicbm/cs2-dtr-common",
+      "branch": "main",
+      "tagPrefix": "v"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 // Typed hooks on Metamod's shared KHook engine.
 #pragma once
-#include "../../../common/khook.h"
+#include <native/khook.h>
 
 #if defined(_MSC_VER)
 #  define BC_FASTCALL __fastcall

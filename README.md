@@ -1,8 +1,31 @@
-# CS2-Bot-Controller
+# CS2 DTR Controller
 
-**Bot replay runtime for CS2 DemoTracer**
+The maintained source repository is
+[`unicbm/cs2-dtr-controller`](https://github.com/unicbm/cs2-dtr-controller).
+It contains the BotController native runtime, managed API, and provider used
+by CS2 DemoTracer. DLL, installation, capability, and ABI names remain unchanged.
 
-## Your stars⭐ are my motivation to keep updating
+## Standalone checks
+
+Clone with `--recurse-submodules`, or run
+`git submodule update --init --recursive`. Shared native code, third-party
+headers, and DemoTracerApi come from the pinned `.deps/common` submodule.
+
+With PowerShell 7, CMake, a C++20 compiler, and .NET 10 installed:
+
+```powershell
+./tools/check.ps1
+./tools/check.ps1 -Dotnet /path/to/dotnet -NativeBuild
+```
+
+The default check builds the provider and runs Release native tests without a
+CS2 SDK. `-NativeBuild` additionally builds the plugin and requires the SDK
+environment described below. For a local shared-code checkout, use
+`-CommonDirectory /path/to/cs2-dtr-common`; direct builds accept
+`-DDTR_COMMON_DIR=...` and MSBuild `-p:DtrCommonRoot=...`.
+The check script stages native installation files in `.build/native/package/`.
+
+## Runtime
 
 CS2-Bot-Controller is a Metamod:Source plugin for Counter-Strike 2 that takes
 control of a bot's behaviour at the engine level. It can pin a bot's weapon,
@@ -105,7 +128,7 @@ The build stages a ready-to-copy `addons/` tree under `build/package/`.
 
 Env: `HL2SDKCS2`, `MMSOURCE_DEV`, `CSGO_PROTO`, `protoc` (3.21.x) on PATH.
 `MMSOURCE_DEV` must include Metamod's KHook API and initialized KHook submodule;
-use the [matched source baseline](../../README.md#shared-hook-runtime).
+use the matched source pins in `.deps/common/contracts/hook-runtime.v1.json`.
 ABI minor 43 uses Metamod's shared KHook engine for function hooks. No private
 detour engine is linked into the runtime.
 
@@ -158,7 +181,7 @@ P/Invoke binding over the native C ABI; it is not the public DemoTracer
 companion-plugin API.
 
 Companion plugins for DemoTracer should use the managed `demotracer:api`
-capability from `server/plugins/DemoTracerApi/IDemoTracerApi.cs` instead of depending on
+capability from `.deps/common/csharp/DemoTracerApi/IDemoTracerApi.cs` instead of depending on
 BotController native exports or replay buffer structs.
 
 ABI 21 keeps the upstream 228-byte replay tick layout. Its 36-byte event tail is

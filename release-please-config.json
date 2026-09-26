@@ -1,0 +1,32 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "cs2-dtr-controller",
+      "include-component-in-tag": false,
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features"
+        },
+        {
+          "type": "fix",
+          "section": "Fixes"
+        },
+        {
+          "type": "deps",
+          "section": "Dependencies"
+        },
+        {
+          "type": "refactor",
+          "section": "Maintenance"
+        },
+        {
+          "type": "perf",
+          "section": "Performance"
+        }
+      ]
+    }
+  },
+  "bootstrap-sha": "c344ff739a3f33053366f75d37e9d70a7e48e74e"
+}

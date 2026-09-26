@@ -8,6 +8,7 @@
     <AssemblyName>BotControllerImpl</AssemblyName>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <EnableDynamicLoading>true</EnableDynamicLoading>
+    <DtrCommonRoot Condition="'$(DtrCommonRoot)' == ''">$(MSBuildThisFileDirectory)../../.deps/common</DtrCommonRoot>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,7 +23,7 @@
     <ProjectReference Include="../BotControllerApi/BotControllerApi.csproj">
       <Private>false</Private>
     </ProjectReference>
-    <ProjectReference Include="../../../../plugins/DemoTracerApi/DemoTracerApi.csproj">
+    <ProjectReference Include="$(DtrCommonRoot)/csharp/DemoTracerApi/DemoTracerApi.csproj">
       <Private>false</Private>
     </ProjectReference>
   </ItemGroup>

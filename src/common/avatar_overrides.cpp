@@ -3,7 +3,7 @@
 #include "ccsbot_slot.h"
 #include "hook.h"
 #include "sig_scan.h"
-#include "../../../common/khook_signature.h"
+#include <native/khook_signature.h>
 
 #include <networkstringtabledefs.h>
 #include <convar.h>

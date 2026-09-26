@@ -1,0 +1,63 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Check recursive component pins
+        run: node .deps/common/tools/check-components.mjs
+      - name: Check source whitespace
+        run: git show --check --format= HEAD
+      - name: Check recursive private-source hygiene
+        shell: pwsh
+        run: |
+          $privateFiles = @(git grep --recurse-submodules -I -l -i -E 'C:\\Users\\|-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY-----' -- .)
+          $scanExit = $LASTEXITCODE
+          if ($scanExit -eq 1) { exit 0 }
+          if ($scanExit -ne 0) { exit $scanExit }
+          Write-Error ("Private source data detected in tracked files: " + ($privateFiles -join ', '))
+          exit 1
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Read native toolchain pins
+        id: native
+        shell: pwsh
+        run: |
+          & .deps/common/tools/check-native-toolchain.ps1
+          $hooks = Get-Content .deps/common/contracts/hook-runtime.v1.json -Raw | ConvertFrom-Json
+          $sdk = Get-Content .deps/common/contracts/native-toolchain.v1.json -Raw | ConvertFrom-Json
+          "metamod=$($hooks.metamod_source_commit)" >> $env:GITHUB_OUTPUT
+          "sdk=$($sdk.hl2sdk_commit)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v6
+        with:
+          repository: alliedmodders/metamod-source
+          ref: ${{ steps.native.outputs.metamod }}
+          submodules: recursive
+          path: .external/metamod
+      - uses: actions/checkout@v6
+        with:
+          repository: alliedmodders/hl2sdk
+          ref: ${{ steps.native.outputs.sdk }}
+          path: .external/hl2sdk
+      - name: Validate component
+        shell: pwsh
+        env:
+          MMSOURCE_DEV: ${{ github.workspace }}/.external/metamod
+          HL2SDKCS2: ${{ github.workspace }}/.external/hl2sdk
+          PROTOC: ${{ github.workspace }}/.external/hl2sdk/devtools/bin/protoc.exe
+        run: tools/check.ps1 -NativeBuild

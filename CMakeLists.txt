@@ -5,6 +5,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+set(DTR_COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.deps/common" CACHE PATH "cs2-dtr-common checkout")
+if(NOT EXISTS "${DTR_COMMON_DIR}/native/khook.cmake" OR
+   NOT EXISTS "${DTR_COMMON_DIR}/third_party/nlohmann/json.hpp")
+    message(FATAL_ERROR "Initialize .deps/common with git submodule update --init --recursive, or set DTR_COMMON_DIR.")
+endif()
 
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "BotController requires x64 build (use -A x64).")
@@ -85,7 +90,7 @@ add_custom_command(
     VERBATIM
 )
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../common/khook.cmake")
+include("${DTR_COMMON_DIR}/native/khook.cmake")
 
 set(SDK_SOURCES
     ${HL2SDK}/public/tier0/memoverride.cpp
@@ -112,8 +117,8 @@ add_library(BotController SHARED
     src/VoiceSender/VoiceSender.cpp
     src/common/sig_scan.cpp
     src/common/schema_resolver.cpp
-    ../common/sig_scan.cpp
-    ../common/schema_resolver.cpp
+    ${DTR_COMMON_DIR}/native/sig_scan.cpp
+    ${DTR_COMMON_DIR}/native/schema_resolver.cpp
     src/common/version_targets.cpp
     src/common/platform.cpp
     src/common/ccsbot_slot.cpp
@@ -134,7 +139,8 @@ target_include_directories(BotController PRIVATE
     src/BotController
     src/BotRecorder
     src/VoiceSender
-    ${CMAKE_CURRENT_SOURCE_DIR}/../third_party
+    ${DTR_COMMON_DIR}
+    ${DTR_COMMON_DIR}/third_party
     ${GENERATED_DIR}
     ${HL2SDK}/thirdparty/protobuf-3.21.8/src
     ${MMS}/core ${MMS}/core/sourcemm
