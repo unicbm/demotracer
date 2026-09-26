@@ -4,21 +4,21 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-use crate::export::{
-    glove_econ_seed_index, inventory_item_cosmetic_evidence, is_knife_cosmetic_def_index,
-    knife_econ_paint_index, matching_active_econ_knife_paint, matching_econ_glove_seed,
-    valid_music_kit_evidence_id, EconGloveSeedIndex,
+use crate::cosmetics::catalog::weapon_cosmetic_rarity;
+use crate::cosmetics::catalog::{is_knife_cosmetic_def_index, valid_music_kit_evidence_id};
+use crate::cosmetics::inventory::{
+    inventory_item_owner, observe_inventory_item, InventoryItems, InventorySnapshotTracker,
 };
-use crate::inspect_link::item_inspect;
+use crate::cosmetics::{
+    active_cosmetic_owned_by, glove_econ_seed_index, knife_econ_paint_index,
+    matching_active_econ_knife_paint, matching_econ_glove_seed, EconGloveSeedIndex,
+};
+use crate::inspect_link::{item_inspect, weapon_inspect};
 use crate::model::{
-    ParsedDemo, ParsedInventoryWeaponCosmetic, ParsedPlayerTick, ReplayItemCosmetic,
-    ReplayWeaponCharm, ReplayWeaponSticker,
+    ParsedDemo, ParsedPlayerTick, ReplayItemCosmetic, ReplayWeaponCharm, ReplayWeaponSticker,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Write as _;
-
-const STEAM_ID64_BASE: u64 = 76_561_197_960_265_728;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -215,18 +215,6 @@ impl ViewmodelKey {
     }
 }
 
-#[derive(Clone)]
-struct ObservedInventoryItem {
-    item: ParsedInventoryWeaponCosmetic,
-    sides: BTreeSet<u8>,
-}
-
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-enum InventoryItemIdentity {
-    ItemId(u64),
-    Spec(String),
-}
-
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct ItemSpec {
     item_def_index: i32,
@@ -262,7 +250,7 @@ struct EvidenceAccumulator {
     rounds: BTreeSet<u32>,
     crosshair_codes: BTreeSet<String>,
     viewmodels: BTreeSet<ViewmodelKey>,
-    inventory_items: BTreeMap<InventoryItemIdentity, ObservedInventoryItem>,
+    inventory_items: InventoryItems,
     knives: BTreeMap<u8, ItemSpec>,
     gloves: BTreeMap<u8, GloveSpec>,
     agents: BTreeMap<u8, ObservedAgent>,
@@ -283,24 +271,30 @@ pub(super) fn summarize_player_details(
     for purchase in &parsed.weapon_purchases {
         if purchase.steam_id != 0 {
             observe_inventory_item(
-                accumulators.entry(purchase.steam_id).or_default(),
+                &mut accumulators
+                    .entry(purchase.steam_id)
+                    .or_default()
+                    .inventory_items,
                 &purchase.cosmetic,
                 purchase.side,
             );
         }
     }
+    let mut inventory_snapshots = InventorySnapshotTracker::default();
     for row in parsed
         .rows
         .iter()
         .filter(|row| row.steam_id != 0 && matches!(row.team_num, 2 | 3))
     {
-        for item in row.inventory_weapon_cosmetics.iter() {
-            if let Some(owner) = inventory_item_owner(item) {
-                observe_inventory_item(
-                    accumulators.entry(owner).or_default(),
-                    item,
-                    (owner == row.steam_id).then_some(row.team_num),
-                );
+        if inventory_snapshots.changed(row) {
+            for item in row.inventory_weapon_cosmetics.iter() {
+                if let Some(owner) = inventory_item_owner(item) {
+                    observe_inventory_item(
+                        &mut accumulators.entry(owner).or_default().inventory_items,
+                        item,
+                        (owner == row.steam_id).then_some(row.team_num),
+                    );
+                }
             }
         }
         if match_window.is_some_and(|(start, end)| row.tick < start || row.tick > end) {
@@ -334,7 +328,7 @@ pub(super) fn summarize_player_details(
 
         let side = row.team_num;
         if is_knife(row.item_def_idx) {
-            let active_spec = active_item_owned_by(row)
+            let active_spec = active_cosmetic_owned_by(row)
                 .then(|| active_item_spec(row))
                 .flatten();
             let econ_spec =
@@ -431,9 +425,12 @@ fn finish_details(
     let mut cosmetics = Vec::new();
 
     for observed in accumulator.inventory_items.into_values() {
-        let Some(cosmetic) = inventory_item_cosmetic_evidence(&observed.item) else {
-            continue;
-        };
+        let mut cosmetic = observed.appearance;
+        // Encoding is an output concern: normalization never creates inspect URLs.
+        cosmetic.inspect = weapon_inspect(
+            &cosmetic,
+            weapon_cosmetic_rarity(cosmetic.weapon_def_index, cosmetic.paint_kit),
+        );
         let (item_name, finish_name) = cosmetic_names(
             parsed,
             steam_id,
@@ -632,92 +629,6 @@ fn charm_evidence(charm: ReplayWeaponCharm) -> BrowserCharmEvidence {
     }
 }
 
-fn inventory_item_owner(item: &ParsedInventoryWeaponCosmetic) -> Option<u64> {
-    item.item_account_id
-        .filter(|id| *id > 1)
-        .map(|id| STEAM_ID64_BASE + u64::from(id))
-        .or_else(|| item.original_owner_xuid.filter(|id| *id != 0))
-}
-
-fn active_item_owned_by(row: &ParsedPlayerTick) -> bool {
-    let account_id = row
-        .steam_id
-        .checked_sub(STEAM_ID64_BASE)
-        .and_then(|value| u32::try_from(value).ok());
-    row.active_weapon_item_account_id
-        .zip(account_id)
-        .is_some_and(|(actual, expected)| actual == expected)
-        || row.active_weapon_original_owner_steam_id == Some(row.steam_id)
-}
-
-fn inventory_item_identity(item: &ParsedInventoryWeaponCosmetic) -> InventoryItemIdentity {
-    if let Some(item_id) =
-        combine_item_id(item.item_id_high, item.item_id_low).filter(|value| *value != 0)
-    {
-        return InventoryItemIdentity::ItemId(item_id);
-    }
-    let mut key = format!(
-        "spec:{}:{}:{}:{}:{:?}:{:?}:{:?}:{:?}",
-        item.item_def_index,
-        item.paint_kit,
-        item.paint_seed,
-        item.paint_wear.to_bits(),
-        item.entity_quality,
-        item.original_owner_xuid,
-        item.item_account_id,
-        item.custom_name
-    );
-    for sticker in &item.stickers {
-        let _ = write!(
-            key,
-            "|s:{}:{}:{}:{}:{}:{:?}:{:?}",
-            sticker.slot,
-            sticker.sticker_id,
-            sticker.wear.to_bits(),
-            sticker.offset_x.to_bits(),
-            sticker.offset_y.to_bits(),
-            sticker.scale.map(f32::to_bits),
-            sticker.rotation.map(f32::to_bits)
-        );
-    }
-    for attribute in &item.attributes {
-        if attribute.definition_index == 80 {
-            continue;
-        }
-        let _ = write!(
-            key,
-            "|a:{}:{}",
-            attribute.definition_index, attribute.raw_value_bits
-        );
-    }
-    InventoryItemIdentity::Spec(key)
-}
-
-fn observe_inventory_item(
-    accumulator: &mut EvidenceAccumulator,
-    item: &ParsedInventoryWeaponCosmetic,
-    side: Option<u8>,
-) {
-    let observed = match accumulator
-        .inventory_items
-        .entry(inventory_item_identity(item))
-    {
-        std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
-        std::collections::btree_map::Entry::Vacant(entry) => {
-            if inventory_item_cosmetic_evidence(item).is_none() {
-                return;
-            }
-            entry.insert(ObservedInventoryItem {
-                item: item.clone(),
-                sides: BTreeSet::new(),
-            })
-        }
-    };
-    if let Some(side) = side.filter(|side| matches!(side, 2 | 3)) {
-        observed.sides.insert(side);
-    }
-}
-
 fn stable_agents_by_spec(
     agents: BTreeMap<u8, ObservedAgent>,
 ) -> BTreeMap<(u32, String), BTreeSet<u8>> {
@@ -906,10 +817,6 @@ fn normalized_f32_bits(value: f32) -> u32 {
     (if value == 0.0 { 0.0 } else { value }).to_bits()
 }
 
-fn combine_item_id(high: Option<u32>, low: Option<u32>) -> Option<u64> {
-    Some((u64::from(high?) << 32) | u64::from(low?))
-}
-
 fn is_knife(def: i32) -> bool {
     is_knife_cosmetic_def_index(def)
 }
@@ -999,7 +906,8 @@ fn weapon_display_name(def: i32) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ParsedEconItem, ParsedWeaponSticker};
+    use crate::cosmetics::STEAM_ID64_BASE;
+    use crate::model::{ParsedEconItem, ParsedInventoryWeaponCosmetic, ParsedWeaponSticker};
 
     fn inventory_item(account_id: u32, item_id: u32) -> ParsedInventoryWeaponCosmetic {
         ParsedInventoryWeaponCosmetic {
@@ -1112,6 +1020,65 @@ mod tests {
             .remove(&steam_id)
             .expect("player evidence");
         assert_eq!(incomplete_participation.stats_rounds, None);
+    }
+
+    #[test]
+    fn shared_inventory_snapshots_preserve_ownership_sides_and_first_valid_appearance() {
+        let owner = STEAM_ID64_BASE + 123;
+        let holder = STEAM_ID64_BASE + 456;
+        let owned = inventory_item(123, 7);
+        let mut incomplete = owned.clone();
+        incomplete.paint_wear = -1.0;
+        let first = player_row(holder, 10, 2, vec![incomplete]);
+        let held = player_row(holder, 20, 2, vec![owned.clone()]);
+        let mut returned = held.clone();
+        returned.steam_id = owner;
+        returned.tick = 30;
+        let mut switched = returned.clone();
+        switched.team_num = 3;
+        switched.tick = 40;
+        let mut changed = owned.clone();
+        changed.paint_kit = 309;
+        let replacement = player_row(owner, 50, 3, vec![changed]);
+        let mut another = owned;
+        another.item_id_low = Some(8);
+        another.paint_kit = 309;
+        let new_item = player_row(owner, 60, 3, vec![another]);
+        let mut rows = Vec::new();
+        for row in [first, held, returned, switched, replacement, new_item] {
+            for offset in 0..5 {
+                let mut repeated = row.clone();
+                repeated.tick += offset;
+                rows.push(repeated);
+            }
+        }
+        let mut parsed = ParsedDemo {
+            rows,
+            ..ParsedDemo::default()
+        };
+        let shared = summarize_player_details(&parsed, Some((30, 100)), Some(1));
+        // Force every row to have a distinct allocation, exercising the complete
+        // observation path as an oracle for skipping shared snapshots.
+        for row in &mut parsed.rows {
+            row.inventory_weapon_cosmetics = row.inventory_weapon_cosmetics.to_vec().into();
+        }
+        let unshared = summarize_player_details(&parsed, Some((30, 100)), Some(1));
+        assert_eq!(
+            serde_json::to_value(&shared).unwrap(),
+            serde_json::to_value(unshared).unwrap()
+        );
+        assert!(shared
+            .get(&holder)
+            .is_none_or(|details| details.cosmetics.is_empty()));
+        let cosmetics = &shared[&owner].cosmetics;
+        assert_eq!(cosmetics.len(), 2);
+        let original = cosmetics
+            .iter()
+            .find(|item| item.paint_kit == Some(926))
+            .unwrap();
+        assert_eq!(original.side, None);
+        assert!(original.inspect_command.is_some());
+        assert!(cosmetics.iter().any(|item| item.paint_kit == Some(309)));
     }
 
     #[test]

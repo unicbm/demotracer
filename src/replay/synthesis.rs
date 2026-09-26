@@ -414,7 +414,7 @@ fn is_cs2_knife_def_index(def: i32) -> bool {
     // CS2 demos can report the active knife as the equipped cosmetic item
     // definition. BotController treats canonical def 42 as "the bot's own
     // knife", so the file format stores every knife variant as 42.
-    crate::export::valid_knife_item_def_index(def)
+    crate::cosmetics::catalog::valid_knife_item_def_index(def)
 }
 
 #[cfg(test)]
