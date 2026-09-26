@@ -5995,6 +5995,7 @@ mod tests {
             side: side.to_string(),
             steam_id,
             player_name: name.to_string(),
+            clan: None,
             ticks: 100,
             subticks: 0,
             play_start_tick_index: 0,

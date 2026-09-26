@@ -831,6 +831,8 @@ pub struct ParsedPlayerTick {
     pub team_rounds_total: Option<u32>,
     pub team_name: Option<String>,
     pub team_clan_name: Option<String>,
+    pub clan_tag: Option<String>,
+    pub clan_id: Option<u32>,
 }
 
 impl ParsedPlayerTick {
@@ -1160,6 +1162,8 @@ pub struct ConvertedFile {
     pub side: String,
     pub steam_id: u64,
     pub player_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clan: Option<ReplayClan>,
     pub ticks: usize,
     pub subticks: usize,
     pub play_start_tick_index: u32,
@@ -1181,6 +1185,31 @@ pub struct ConvertedFile {
     pub view: Option<ReplayView>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scoreboard: Option<ReplayPlayerScoreboard>,
+}
+
+/// Shared application bound; not an assumed engine buffer size.
+pub const MAX_CLAN_TAG_UTF8_BYTES: usize = 127;
+
+/// A controller clan snapshot. Missing evidence is distinct from an empty tag.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ReplayClan {
+    pub tag: String,
+    pub id: u32,
+}
+
+impl ReplayClan {
+    pub fn from_row(row: &ParsedPlayerTick) -> Option<Self> {
+        let tag = row.clan_tag.as_ref()?;
+        let id = row.clan_id?;
+        // Application bound, not an assumed engine buffer size. Preserve Unicode.
+        if tag.len() > MAX_CLAN_TAG_UTF8_BYTES || tag.contains('\0') {
+            return None;
+        }
+        Some(Self {
+            tag: tag.clone(),
+            id,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]

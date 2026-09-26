@@ -9,11 +9,11 @@ against the [matched Metamod and CounterStrikeSharp baseline](../../README.md#sh
 
 The native layer owns fake-client adoption, synthetic persona state, ping, and
 a synchronous, main-thread C ABI (native ABI 3). The C# layer is the only publisher for visible
-name, SteamID64, ping, scoreboard flair, and server-replicated crosshair state.
+name, SteamID64, clan tag/group ID, ping, scoreboard flair, and server-replicated crosshair state.
 It never assigns teams or respawns bots. Ordinary bots follow the engine's
 round lifecycle; DemoTracer prepares and respawns only its own replay roster.
 
-DemoTracer consumes the versioned `demotracer:bot-hider:v2` capability. It does
+DemoTracer consumes the versioned `demotracer:bot-hider:v3` capability. It does
 not read shared-memory offsets, invoke `bh_setname`/`bh_setsid`, or write these
 presentation fields directly.
 
@@ -40,6 +40,13 @@ session, slot incarnation, and the complete controller entity handle. Failed
 notifications remain pending for retry even when the string already matches;
 an explicit crosshair lease cannot succeed while its notification is pending.
 The managed provider and native ABI 3 runtime must be installed together.
+
+Managed API v3 adds an optional `BotHiderClan` pair. The provider captures the
+controller's original clan before its first override, writes `m_szClan` and
+`m_unClanId32bit`, and submits both network field notifications. Replacement
+keeps the original base; release restores it. Missing clan evidence makes no
+schema access, allowing older demos to keep their existing presentation.
+The native ABI and CS2 font assets are unchanged.
 
 Lease rules:
 
@@ -92,7 +99,7 @@ must use the presentation lease API.
 ## Co-installation
 
 The maintained provider installs as `BotHiderImpl/BotHiderImpl.dll` for Panel
-file detection; its capability is `demotracer:bot-hider:v2`. Replace the
+file detection; its capability is `demotracer:bot-hider:v3`. Replace the
 previous `DemoTracerBotHider` directory during migration. Do not run an upstream
 provider beside this matched native/C# provider. Multiple publishers can
 overwrite the same controller presentation fields.

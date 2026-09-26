@@ -141,6 +141,8 @@ if ($runtimeMinor -lt [int]$contract.bot_controller.min_abi_minor) {
 
 Assert-Equal "DemoTracer companion API" (Read-RegexValue "server\plugins\DemoTracer\BotControllerNativeTypes.cs" 'DemoTracerApiVersion\s*=\s*(\d+)' "DemoTracer companion API") ([string]$contract.demotracer.companion_api)
 Assert-Equal "BotHider API" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderApi\IBotHiderApi.cs" 'ApiVersion\s*=\s*(\d+)' "BotHider API") ([string]$contract.bot_hider.api)
+Assert-Equal "BotHider clan tag limit" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderApi\IBotHiderApi.cs" 'MaxClanTagUtf8Bytes\s*=\s*(\d+)' "BotHider clan tag limit") ([string]$contract.bot_hider.clan_tag_max_utf8_bytes)
+Assert-Equal "Converter clan tag limit" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'MAX_CLAN_TAG_UTF8_BYTES:\s*usize\s*=\s*(\d+)' "Converter clan tag limit") ([string]$contract.bot_hider.clan_tag_max_utf8_bytes)
 Assert-Equal "BotHider native ABI" (Read-RegexValue "server\runtime\BotHider\src\presentation_state.h" 'kNativePresentationAbi\s*=\s*(\d+)' "BotHider native ABI") ([string]$contract.bot_hider.native_abi)
 Assert-Equal "BotHider managed native ABI" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderImpl\NativePresentationClient.cs" 'NativeAbi\s*=\s*(\d+)' "BotHider managed native ABI") ([string]$contract.bot_hider.native_abi)
 Assert-Equal "BotHider native slot bytes" (Read-RegexValue "server\runtime\BotHider\src\presentation_state.h" 'sizeof\(PresentationSlot\)\s*==\s*(\d+)' "BotHider native slot bytes") ([string]$contract.bot_hider.native_slot_bytes)

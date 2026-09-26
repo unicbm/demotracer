@@ -188,6 +188,8 @@ pub(crate) struct BotControllerContractWire {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct BotHiderContractWire {
     pub(crate) api: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) clan_tag_max_utf8_bytes: Option<u32>,
     #[serde(default)]
     pub(crate) native_abi: i32,
     #[serde(default)]

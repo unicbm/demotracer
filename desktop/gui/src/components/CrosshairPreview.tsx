@@ -4,8 +4,8 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { decodeCrosshairShareCode, type Crosshair } from "csgo-sharecode";
-import { useState } from "react";
+import type { Crosshair, CrosshairV1 } from "csgo-sharecode";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import ancientSceneUrl from "../assets/crosshair-scenes/ancient.webp";
 import anubisSceneUrl from "../assets/crosshair-scenes/anubis.webp";
 import cacheSceneUrl from "../assets/crosshair-scenes/cache.webp";
@@ -15,6 +15,8 @@ import mirageSceneUrl from "../assets/crosshair-scenes/mirage.webp";
 import nukeSceneUrl from "../assets/crosshair-scenes/nuke.webp";
 import {
   buildCrosshairRects,
+  decodePreviewCrosshair,
+  rasterizeCrosshair,
   resolveCrosshairColor,
   resolveCrosshairOpacity,
   resolveCrosshairOutline,
@@ -45,7 +47,7 @@ function storedSceneIndex(): number {
   }
 }
 
-function CrosshairSvg({ crosshair }: { crosshair: Crosshair }) {
+function CrosshairSvg({ crosshair }: { crosshair: CrosshairV1 }) {
   const shapes = buildCrosshairRects(crosshair, VIEWBOX_SIZE);
   const logicalOutline = resolveCrosshairOutline(crosshair);
   const outline = logicalOutline > 0
@@ -86,6 +88,22 @@ function CrosshairSvg({ crosshair }: { crosshair: Crosshair }) {
   );
 }
 
+function PixelCrosshair({ crosshair }: { crosshair: Exclude<Crosshair, CrosshairV1> }) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  useLayoutEffect(() => {
+    const target = canvas.current;
+    const context = target?.getContext("2d");
+    if (!target || !context) return;
+    const pixels = rasterizeCrosshair(crosshair, VIEWBOX_SIZE);
+    target.width = pixels.width;
+    target.height = pixels.height;
+    const image = context.createImageData(pixels.width, pixels.height);
+    image.data.set(pixels.data);
+    context.putImageData(image, 0, 0);
+  }, [crosshair]);
+  return <canvas ref={canvas} className="crosshair-preview-svg" aria-hidden="true" />;
+}
+
 export function CrosshairPreview({ code, label, unavailableLabel, words }: {
   code: string;
   label: string;
@@ -93,12 +111,10 @@ export function CrosshairPreview({ code, label, unavailableLabel, words }: {
   words: TextDictionary;
 }) {
   const [sceneIndex, setSceneIndex] = useState(storedSceneIndex);
-  let crosshair: Crosshair | null = null;
-  try {
-    crosshair = decodeCrosshairShareCode(code);
-  } catch {
-    crosshair = null;
-  }
+  const crosshair = useMemo(() => {
+    try { return decodePreviewCrosshair(code); }
+    catch { return null; }
+  }, [code]);
   const selectScene = (index: number) => {
     setSceneIndex(index);
     try {
@@ -120,7 +136,9 @@ export function CrosshairPreview({ code, label, unavailableLabel, words }: {
           ))}
         </div>
         <span className="crosshair-preview-map">{PREVIEW_SCENES[sceneIndex].map}</span>
-        {crosshair ? <CrosshairSvg crosshair={crosshair} /> : <span aria-hidden="true">×</span>}
+        {crosshair ? (crosshair.version === 1
+          ? <CrosshairSvg crosshair={crosshair} />
+          : <PixelCrosshair crosshair={crosshair} />) : <span aria-hidden="true">×</span>}
         <button className="crosshair-scene-arrow is-previous" type="button" onClick={() => moveScene(-1)} aria-label={words.previousCrosshairScene}><ArrowIcon size={16} /></button>
         <button className="crosshair-scene-arrow is-next" type="button" onClick={() => moveScene(1)} aria-label={words.nextCrosshairScene}><ArrowIcon size={16} /></button>
         <div className="crosshair-scene-dots" role="group" aria-label={words.crosshairSceneSelector}>
@@ -129,6 +147,9 @@ export function CrosshairPreview({ code, label, unavailableLabel, words }: {
           ))}
         </div>
       </div>
+      {crosshair ? <figcaption className="crosshair-preview-note">
+        {crosshair.version === 1 ? words.crosshairPreviewLegacyReference : words.crosshairPreviewPixelReference}
+      </figcaption> : null}
     </figure>
   );
 }

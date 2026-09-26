@@ -203,6 +203,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             _mapEpoch++;
             foreach (var token in _leases.Keys.ToArray())
                 RemoveLease(token, countRevocation: true);
+            RestoreCapturedClans();
             Array.Clear(_slots);
         }
     }
@@ -250,6 +251,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         var session = _client.Session;
         if (session == _nativeSession) return;
         foreach (var token in _leases.Keys.ToArray()) RemoveLease(token, countRevocation: true);
+        RestoreCapturedClans();
         Array.Clear(_slots);
         _nativeSession = session;
     }
@@ -301,6 +303,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             state.Controller == controller && state.NativeIncarnation == nativeIncarnation)
             return;
         RemoveSlotPresentation(slot);
+        RestoreCapturedClan(slot);
         state = new SlotState
         {
             UserId = userId,
@@ -315,6 +318,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         if (slot is < 0 or >= MaxSlots)
             return;
         RemoveSlotPresentation(slot);
+        RestoreCapturedClan(slot);
         _slots[slot] = default;
     }
 
@@ -387,10 +391,15 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
                 reason = $"invalid_crosshair:{requested.Slot}";
                 return false;
             }
+            if (!DemoTracerBotHiderContract.IsValidClan(requested.Clan))
+            {
+                reason = $"invalid_clan:{requested.Slot}";
+                return false;
+            }
             if (playerName == null &&
                 !requested.SteamId.HasValue &&
                 !requested.ScoreboardFlair.HasValue &&
-                crosshair == null)
+                crosshair == null && requested.Clan == null)
             {
                 reason = $"empty_override:{requested.Slot}";
                 return false;
@@ -403,7 +412,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
                 PlayerName = playerName,
                 SteamId = requested.SteamId,
                 ScoreboardFlair = requested.ScoreboardFlair,
-                CrosshairCode = crosshair
+                CrosshairCode = crosshair,
+                Clan = requested.Clan
             };
         }
 
@@ -577,6 +587,13 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
                     throw new InvalidOperationException("controller scoreboard flair write was not retained");
             }
 
+            var clanState = _slots[slot].Clan ??= new ClanPresentationState();
+            if (ApplyClan(clanState, presentationOverride?.Clan, player))
+            {
+                _publishedWrites++;
+                _controllerRepairs++;
+            }
+
             _slots[slot].PublishedController = player.EntityHandle.Raw;
             if (crosshairSynchronized) _slots[slot].SuppressedFailures = 0;
         }
@@ -586,6 +603,41 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
             ReportPresentationFailure(slot, ex.Message);
         }
     }
+
+    private static BotHiderClan ReadClan(CCSPlayerController player)
+        => new(player.Clan, Schema.GetRef<uint>(player.Handle, "CCSPlayerController", "m_unClanId32bit"));
+
+    private void RestoreCapturedClans()
+    {
+        for (var slot = 0; slot < MaxSlots; slot++)
+            RestoreCapturedClan(slot);
+    }
+
+    private void RestoreCapturedClan(int slot)
+    {
+        ref var state = ref _slots[slot];
+        if (state.Clan is not { HasOverride: true } clan)
+            return;
+        // Native release may precede the managed callback. Only restore the exact
+        // controller we previously owned; a replacement (including a human) is untouched.
+        var player = Utilities.GetPlayerFromSlot(slot);
+        if (player is not { IsValid: true } || player.UserId != state.UserId ||
+            player.EntityHandle.Raw != state.Controller)
+            return;
+        try { ApplyClan(clan, null, player); }
+        catch (Exception ex) { ReportPresentationFailure(slot, ex.Message); }
+    }
+
+    private static bool ApplyClan(ClanPresentationState state, BotHiderClan? requested, CCSPlayerController player)
+        => state.Apply(requested, () => ReadClan(player), clan =>
+        {
+            player.Clan = clan.Tag;
+            Schema.SetSchemaValue(player.Handle, "CCSPlayerController", "m_unClanId32bit", clan.Id);
+        }, () =>
+        {
+            Utilities.SetStateChanged(player, "CCSPlayerController", "m_szClan");
+            Utilities.SetStateChanged(player, "CCSPlayerController", "m_unClanId32bit");
+        });
 
     private void ReportPresentationFailure(int slot, string reason)
     {
@@ -814,7 +866,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
                     playerNameMatches,
                     steamIdMatches,
                     scoreboardFlairMatches,
-                    crosshairMatches))
+                    crosshairMatches) ||
+                (requested.Clan != null && ReadClan(player) != requested.Clan))
             {
                 reason = $"controller_presentation_not_applied:{requested.Slot}";
                 return false;
@@ -906,6 +959,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         PublishManagedSlots();
         lock (_sync)
         {
+            RestoreCapturedClans();
             Array.Clear(_slots);
             _disposed = true;
         }
@@ -926,6 +980,7 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         public ulong Incarnation, NativeIncarnation;
         public uint Controller, PublishedController;
         public bool CrosshairPending, FlairManaged, FlairPending;
+        public ClanPresentationState? Clan;
         public DateTime NextFailureLogUtc;
         public int SuppressedFailures;
 

@@ -98,7 +98,8 @@ public sealed partial class DemoTracerPlugin
         ReplayPlayerScoreboard? scoreboard = null,
         CsTeam? manifestTeam = null,
         ReplayFileMetadata? replayMetadata = null,
-        int retentionRank = ReplayRetentionPriorityParser.MaxPlayersPerTeam)
+        int retentionRank = ReplayRetentionPriorityParser.MaxPlayersPerTeam,
+        ReplayClan? clan = null)
     {
         InvalidateInitialSpawnAssignment();
         RestoreReplayBotViewmodel(slot);
@@ -145,7 +146,8 @@ public sealed partial class DemoTracerPlugin
             metadata.TickRate,
             metadata.PlayStartTickIndex,
             metadata.RoundStartOrigin,
-            retentionRank);
+            retentionRank,
+            NormalizeReplayClan(clan));
         ClearPendingWeaponSlotReplacementsForSlot(slot);
         _ = BeginReplayIdentityGeneration(slot);
         _session.LastEnsuredWeaponDef.Remove(slot);

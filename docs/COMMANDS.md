@@ -104,6 +104,13 @@ Use identity `name` or `off` when the original demo player is also connected to
 the local server. `steam` is the normal mode. `avatar` additionally applies a
 valid manifest PNG when available.
 
+Identity modes `name`, `steam`, and `avatar` also apply a recorded player clan
+tag and Steam group ID through BotHider. CS2 renders the separate native tag
+with its own font; it is never appended to the player's name. Missing clan
+evidence leaves the base presentation intact; an explicit empty tag clears it.
+Identity `off` or lease release restores the original controller clan. Tags
+follow the existing retained-identity behavior after natural playback finish.
+
 Replacement DTR bots with an unassigned TAB/HUD teammate color are repaired
 after spawning, independently of match-statistics synchronization. A recorded
 color is preferred; if it is occupied, the bot takes a free team color. Existing

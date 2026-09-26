@@ -613,6 +613,8 @@ mod demoparser_impl {
         team_rounds_total => "team_rounds_total",
         team_name => "team_name",
         team_clan_name => "team_clan_name",
+        clan_tag => "clan_name",
+        clan_id => "CCSPlayerController.m_unClanId32bit",
     }
 
     struct SingleThreadedOverlay {
@@ -1120,6 +1122,8 @@ mod demoparser_impl {
             "total_rounds_played",
             "game_time",
             "usercmd_subtick_moves",
+            "clan_name",
+            "CCSPlayerController.m_unClanId32bit",
         ]
         .into_iter()
         .filter(|prop| should_collect_player_prop(options, prop))
@@ -1494,6 +1498,8 @@ mod demoparser_impl {
                     team_rounds_total: get_u32(columns.team_rounds_total, idx),
                     team_name: get_string(columns.team_name, idx),
                     team_clan_name: get_string(columns.team_clan_name, idx),
+                    clan_tag: get_string(columns.clan_tag, idx),
+                    clan_id: get_u32(columns.clan_id, idx),
                 }
             };
         // Plan the few interpolated rows from lightweight keys before allocating

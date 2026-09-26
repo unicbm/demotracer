@@ -21,11 +21,12 @@
     "required_capabilities_hex": "0x741df"
   },
   "bot_hider": {
-    "api": 2,
+    "api": 3,
     "native_abi": 3,
     "native_slot_bytes": 172,
     "native_provider_version": "0.3.2",
-    "managed_provider_version": "0.1.7"
+    "managed_provider_version": "0.1.8",
+    "clan_tag_max_utf8_bytes": 127
   },
   "bot_randomizer": {
     "api": 3,

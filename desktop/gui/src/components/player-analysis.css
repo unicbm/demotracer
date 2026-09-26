@@ -695,6 +695,13 @@
   overflow: visible;
 }
 
+.crosshair-preview-note {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: var(--type-caption);
+  line-height: 1.5;
+}
+
 .crosshair-scene-arrow {
   position: absolute;
   z-index: 3;

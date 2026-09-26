@@ -28,6 +28,7 @@ public sealed class BotHiderTakeoverPresentationTests
         Assert.Equal(76561198000000001UL, first.SteamId);
         Assert.Equal(first.PlayerName, duringTakeover.PlayerName);
         Assert.Equal(first.SteamId, duringTakeover.SteamId);
+        Assert.Equal(new BotHiderClan("team_B1ad3", 38084528), duringTakeover.Clan);
         Assert.Equal(42UL, duringTakeover.Incarnation);
         Assert.Equal(0, provider.ProviderInfoCalls);
 
@@ -54,6 +55,23 @@ public sealed class BotHiderTakeoverPresentationTests
         return (plugin, (ManagedBotProvider)api);
     }
 
+    [Theory]
+    [InlineData("Name", true)]
+    [InlineData("Steam", true)]
+    [InlineData("Avatar", true)]
+    [InlineData("Off", false)]
+    public void ClanFollowsIdentityMode(string value, bool expected)
+    {
+        var (plugin, _) = CreatePlugin();
+        var mode = typeof(DemoTracerPlugin).GetField("_replayIdentityMode", PrivateInstance)!;
+        mode.SetValue(plugin, Enum.Parse(mode.FieldType, value));
+        var requests = BuildRequests(plugin, 7);
+        if (expected)
+            Assert.NotNull(Assert.Single(requests).Value.Clan);
+        else
+            Assert.Empty(requests);
+    }
+
     private static BotHiderPresentationOverride BuildOverride(DemoTracerPlugin plugin, int slot)
         => Assert.Single(BuildRequests(plugin, slot)).Value;
 
@@ -61,7 +79,7 @@ public sealed class BotHiderTakeoverPresentationTests
     {
         var evidenceType = typeof(DemoTracerPlugin).GetNestedType("BotHiderPresentationEvidence", BindingFlags.NonPublic)!;
         var evidence = Activator.CreateInstance(evidenceType,
-            [slot, "demo player", 76561198000000001UL, 0, null, null]);
+            [slot, "demo player", 76561198000000001UL, 0, null, null, new BotHiderClan("team_B1ad3", 38084528)]);
         var requests = new Dictionary<int, BotHiderPresentationOverride>();
         typeof(DemoTracerPlugin).GetMethod("AddBotHiderPresentationOverride", PrivateInstance)!
             .Invoke(plugin, [requests, evidence]);

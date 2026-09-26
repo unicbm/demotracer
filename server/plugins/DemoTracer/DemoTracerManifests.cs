@@ -108,6 +108,9 @@ public sealed partial class DemoTracerPlugin
         [JsonPropertyName("player_name")]
         public string PlayerName { get; set; } = string.Empty;
 
+        [JsonPropertyName("clan")]
+        public ReplayClan? Clan { get; set; }
+
         [JsonPropertyName("first_weapon_def_index")]
         public int? FirstWeaponDefIndex { get; set; }
 
@@ -152,6 +155,15 @@ public sealed partial class DemoTracerPlugin
 
         [JsonPropertyName("bytes")]
         public int Bytes { get; set; }
+    }
+
+    internal sealed class ReplayClan
+    {
+        [JsonPropertyName("tag")]
+        public string? Tag { get; set; }
+
+        [JsonPropertyName("id")]
+        public uint? Id { get; set; }
     }
 
     private sealed class ReplayLoadoutSnapshot

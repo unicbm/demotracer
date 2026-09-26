@@ -183,7 +183,8 @@ public sealed partial class DemoTracerPlugin
                     replay.SteamId,
                     replay.RetentionRank,
                     replay.ScoreboardFlair,
-                    replay.View));
+                    replay.View,
+                    replay.Clan));
         }
 
         foreach (var evidence in _retainedBotHiderPresentation.Values)
@@ -204,7 +205,10 @@ public sealed partial class DemoTracerPlugin
                 .Append(request.PlayerName).Append(':')
                 .Append(request.SteamId).Append(':')
                 .Append(request.ScoreboardFlair).Append(':')
-                .Append(request.CrosshairCode).Append('|');
+                .Append(request.CrosshairCode).Append(':')
+                .Append(request.Clan?.Tag.Length ?? -1).Append(':')
+                .Append(request.Clan?.Tag).Append(':')
+                .Append(request.Clan?.Id).Append('|');
         }
         signature = Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(signatureBuilder.ToString())));
@@ -238,7 +242,9 @@ public sealed partial class DemoTracerPlugin
             ? evidence.View.CrosshairCode
             : null;
 
-        if (playerName == null && !steamId.HasValue && !flair.HasValue && crosshair == null)
+        var clan = _replayIdentityMode == ReplayIdentityMode.Off ? null : evidence.Clan;
+
+        if (playerName == null && !steamId.HasValue && !flair.HasValue && crosshair == null && clan == null)
             return;
 
         bySlot[slot] = new BotHiderPresentationOverride
@@ -248,8 +254,17 @@ public sealed partial class DemoTracerPlugin
             PlayerName = playerName,
             SteamId = steamId,
             ScoreboardFlair = flair,
-            CrosshairCode = crosshair
+            CrosshairCode = crosshair,
+            Clan = clan
         };
+    }
+
+    internal static BotHiderClan? NormalizeReplayClan(ReplayClan? source)
+    {
+        if (source?.Tag == null || !source.Id.HasValue)
+            return null;
+        var clan = new BotHiderClan(source.Tag, source.Id.Value);
+        return DemoTracerBotHiderContract.IsValidClan(clan) ? clan : null;
     }
 
     internal static string? DeriveBotHiderPresentationName(string? source)
@@ -354,7 +369,8 @@ public sealed partial class DemoTracerPlugin
                 replay.SteamId,
                 replay.RetentionRank,
                 replay.ScoreboardFlair,
-                replay.View);
+                replay.View,
+                replay.Clan);
         }
 
         _retainedBotHiderPresentation.Clear();
@@ -424,5 +440,6 @@ public sealed partial class DemoTracerPlugin
         ulong SteamId,
         int RetentionRank,
         ReplayScoreboardFlair? ScoreboardFlair,
-        ReplayView View);
+        ReplayView View,
+        BotHiderClan? Clan);
 }

@@ -301,7 +301,8 @@ public sealed partial class DemoTracerPlugin
                 SelectReplayScoreboardEvidence(file.Scoreboard, includeScoreboardEvidence),
                 manifestTeam: ReplayTeamFromManifestSide(file.Side),
                 replayMetadata: replayMetadata,
-                retentionRank: assignment.RetentionRank);
+                retentionRank: assignment.RetentionRank,
+                clan: file.Clan);
             timing.Mark("metadata");
             if (!BotControllerNative.SetBuySkip(slot))
             {

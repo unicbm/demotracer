@@ -15,7 +15,7 @@ by lease-controlled publication calls.
 
 ## Capability
 
-The provider registers `demotracer:bot-hider:v2` and exposes
+The provider registers `demotracer:bot-hider:v3` and exposes
 `DemoTracerBotHiderApi.IBotHiderApi`.
 
 The API intentionally separates native persona base state from temporary
@@ -56,6 +56,12 @@ active exact lease override ?? current native persona base
 
 Because release recomputes from current base state, a persona refresh that
 happens while DTR is active is not overwritten by stale saved values.
+Clan is the exception: native personas do not own a clan, so the managed
+provider captures its controller base as one tag/group-ID pair, per controller
+incarnation. The nullable API v3 pair restores that base on release; an empty
+pair explicitly clears it. Failed writes or notifications retain the saved
+base and pending status for rollback/retry. Teardown restores only the exact
+previous controller handle and user ID, never a replacement player.
 The publisher also compares effective lease values with live controller fields
 at actual lifecycle/change events and schedules reconciliation after spawn/death. This
 prevents engine lifecycle writes from exposing the persona base while a lease

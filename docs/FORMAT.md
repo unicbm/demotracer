@@ -64,6 +64,20 @@ output is bounded by the declared decoded length; shorter or larger output is
 rejected. Zstd readers allocate the validated section size, never an allocation
 size supplied by the compressed frame.
 
+## Manifest Player Clan
+
+Each `files[]` entry may carry `"clan": { "tag": "example", "id": 12345 }`.
+The pair comes from `CCSPlayerController.m_szClan` and `m_unClanId32bit` at
+the replay's live-start row. `id` is the unsigned 32-bit Steam group account ID,
+not a SteamID64 or the team's `m_szClanTeamname`.
+
+Absent or incomplete evidence produces no override. An explicit empty tag and
+ID zero clears the clan. Tags preserve Unicode and are bounded to 127 UTF-8
+bytes with embedded NUL rejected; this is an application safety limit.
+The optional field is additive: manifest ABI 19 and `.dtr` v12 stay unchanged.
+Playback requires the matched BotHider managed API v3 to apply clan evidence.
+Older archives remain playable; re-export the source demo to add this evidence.
+
 ## Manifest Cosmetic Inspect Data
 
 Manifest ABI 17 cosmetics may include this additive, optional object on each

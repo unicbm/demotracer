@@ -321,7 +321,7 @@ fn export_demo_to_memory_inner(
         let pistol_round = is_pistol_round(round.round);
         let t_economy = team_economy(round_rows, round.start_tick, end_tick, 2, pistol_round);
         let ct_economy = team_economy(round_rows, round.start_tick, end_tick, 3, pistol_round);
-        let round_scoreboard = replay_round_scoreboard(round_rows);
+        let round_scoreboard = replay_round_scoreboard(round_rows, round.start_tick);
         let round_chat_messages =
             replay_chat_messages(parsed, recording_start_tick, end_tick, round_rows);
         let first_file_index = manifest.files.len();
@@ -414,6 +414,7 @@ fn export_demo_to_memory_inner(
                     side: team_dir.to_string(),
                     steam_id,
                     player_name,
+                    clan: crate::model::ReplayClan::from_row(play_start_row),
                     ticks,
                     subticks,
                     play_start_tick_index: rec.header.play_start_tick_index,
@@ -1492,7 +1493,7 @@ fn recording_start_tick_for_round(
         return live_start_tick;
     }
     let floor_tick = live_start_tick.saturating_sub(cap_ticks);
-    let mut ticks_by_player = BTreeMap::<u64, BTreeSet<i32>>::new();
+    let mut ticks_by_player = BTreeMap::<u64, BTreeMap<i32, u8>>::new();
     for row in round_rows.iter().copied().filter(|row| {
         row.tick >= floor_tick
             && row.tick <= live_start_tick
@@ -1504,21 +1505,24 @@ fn recording_start_tick_for_round(
         ticks_by_player
             .entry(row.steam_id)
             .or_default()
-            .insert(row.tick);
+            .insert(row.tick, row.team_num);
     }
 
     let mut common_start_tick = floor_tick;
     let mut found_live_player = false;
     for ticks in ticks_by_player.values() {
-        if !ticks.contains(&live_start_tick) {
+        let Some(live_side) = ticks.get(&live_start_tick) else {
             // A freeze-only player would otherwise create an isolated replay
             // fragment. Dropping pre-roll for this round is safer than
             // synthesizing across a missing interval.
             return live_start_tick;
-        }
+        };
         found_live_player = true;
         let mut player_start_tick = live_start_tick;
-        while player_start_tick > floor_tick && ticks.contains(&player_start_tick.saturating_sub(1))
+        // A pre-match side selection can happen inside one continuous freeze
+        // period. Never put its old roster/spawns in a replay with one fixed side.
+        while player_start_tick > floor_tick
+            && ticks.get(&player_start_tick.saturating_sub(1)) == Some(live_side)
         {
             player_start_tick = player_start_tick.saturating_sub(1);
         }
@@ -1739,13 +1743,19 @@ fn stable_f32(values: BTreeSet<u32>) -> Option<f32> {
         .flatten()
 }
 
-fn replay_round_scoreboard(round_rows: &[&ParsedPlayerTick]) -> Option<ReplayRoundScoreboard> {
+fn replay_round_scoreboard(
+    round_rows: &[&ParsedPlayerTick],
+    live_start_tick: i32,
+) -> Option<ReplayRoundScoreboard> {
     let mut t_score = None;
     let mut ct_score = None;
     let mut t_team_name = None;
     let mut ct_team_name = None;
 
     for &row in round_rows {
+        if row.tick < live_start_tick {
+            continue;
+        }
         match row.team_num {
             2 => {
                 if let Some(score) = row.team_rounds_total {
@@ -2206,6 +2216,39 @@ mod tests {
                 .map(|flair| flair.item_def_index),
             Some(4974)
         );
+    }
+
+    #[test]
+    fn manifest_clan_preserves_presence_unicode_and_group_id() {
+        for (tag, id) in [
+            (None, None),
+            (Some("old"), None),
+            (Some(""), Some(0)),
+            (Some("o'O 组\u{301}"), Some(4775497)),
+            (Some("bad\0tag"), Some(1)),
+        ] {
+            let mut parsed = sample_demo();
+            parsed.rows = vec![sample_row(100), sample_row(164)];
+            for row in &mut parsed.rows {
+                row.clan_tag = tag.map(str::to_owned);
+                row.clan_id = id;
+            }
+            let memory = export_memory(parsed);
+            let file = &memory.manifest.files[0];
+            let value = serde_json::to_value(file).unwrap();
+            if let (Some(tag), Some(id)) = (tag.filter(|tag| !tag.contains('\0')), id) {
+                assert_eq!(value["clan"], serde_json::json!({"tag": tag, "id": id}));
+            } else {
+                assert!(value.get("clan").is_none());
+            }
+            // Additive metadata: old manifests still deserialize without a clan.
+            let mut old = value;
+            old.as_object_mut().unwrap().remove("clan");
+            assert!(serde_json::from_value::<ConvertedFile>(old)
+                .unwrap()
+                .clan
+                .is_none());
+        }
     }
 
     #[test]
@@ -3854,6 +3897,82 @@ mod tests {
     }
 
     #[test]
+    fn freeze_side_switch_exports_only_live_roster_and_matching_scoreboard() {
+        let mut parsed = sample_demo();
+        parsed.rows.clear();
+        for (steam_id, switch_tick, live_side, name) in [(1, 50, 2, "alpha"), (2, 60, 3, "bravo")] {
+            for tick in 20..=228 {
+                let mut row = if tick < 100 {
+                    freeze_row(tick)
+                } else {
+                    sample_row(tick)
+                };
+                row.round = 0;
+                row.steam_id = steam_id;
+                row.name = name.to_string();
+                row.team_num = if tick < switch_tick {
+                    5 - live_side
+                } else {
+                    live_side
+                };
+                row.team_clan_name = Some(name.to_string());
+                row.team_rounds_total = Some(0);
+                row.origin = [row.team_num as f32, 0.0, 0.0];
+                row.item_def_idx = if row.team_num == 2 { 4 } else { 61 };
+                row.inventory_as_ids = vec![row.item_def_idx];
+                parsed.rows.push(row);
+            }
+        }
+        for side in [Side::Both, Side::T, Side::Ct] {
+            let memory = export_demo_to_memory(
+                &parsed,
+                &ConvertMemoryOptions {
+                    output_stem: None,
+                    side,
+                    selected_rounds: Some(BTreeSet::from([0])),
+                    include_suspicious: true,
+                    cut_before_bomb_plant: false,
+                    export_cosmetics: false,
+                    export_stickers: false,
+                    export_charms: false,
+                    analysis: AnalysisOptions::default(),
+                },
+            )
+            .unwrap();
+            let round = &memory.manifest.rounds[0];
+            assert_eq!(round.recording_start_tick, 60);
+            assert_eq!(round.start_tick, 100);
+            assert_eq!(round.freeze_preroll_ticks, 40);
+            let scoreboard = round.scoreboard.as_ref().unwrap();
+            assert_eq!(scoreboard.t_team_name.as_deref(), Some("alpha"));
+            assert_eq!(scoreboard.ct_team_name.as_deref(), Some("bravo"));
+            assert_eq!(
+                memory.manifest.files.len(),
+                if side == Side::Both { 2 } else { 1 }
+            );
+            for file in &memory.manifest.files {
+                let expected_side = if file.steam_id == 1 { 2 } else { 3 };
+                assert!(side.matches_team(expected_side));
+                assert_eq!(file.side, Side::team_dir(expected_side));
+                assert!(file.path.contains(&format!("/{}/", file.side)));
+                assert_eq!(file.play_start_tick_index, 40);
+                let rec = rec_for_steam(&memory, file.steam_id);
+                assert_eq!(rec.header.side, expected_side);
+                assert_eq!(rec.header.play_start_tick_index, 40);
+                assert_eq!(rec.ticks.len(), 168);
+                assert!(rec
+                    .ticks
+                    .iter()
+                    .all(|tick| tick.pre.origin[0] == expected_side as f32));
+                assert_eq!(
+                    file.loadout.weapon_def_indices,
+                    vec![if expected_side == 2 { 4 } else { 61 }]
+                );
+            }
+        }
+    }
+
+    #[test]
     fn freeze_preroll_uses_only_the_contiguous_suffix_before_live_start() {
         let mut rows = Vec::new();
         for tick in 100..=199 {
@@ -4588,6 +4707,8 @@ mod tests {
             team_rounds_total: None,
             team_name: None,
             team_clan_name: None,
+            clan_tag: None,
+            clan_id: None,
         }
     }
 

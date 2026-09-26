@@ -101,7 +101,8 @@ public sealed partial class DemoTracerPlugin
         float TickRate,
         uint PlayStartTickIndex,
         ReplayVector3? RoundStartOrigin,
-        int RetentionRank);
+        int RetentionRank,
+        BotHiderClan? Clan);
 
     private readonly record struct ReplayAssignment(
         ManifestFile File,
