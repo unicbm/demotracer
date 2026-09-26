@@ -23,8 +23,8 @@ public sealed class BotHiderImplPlugin : BasePlugin
     private NativePresentationClient? _client;
     private BotHiderPresentationService? _presentation;
     private bool _applyPending;
-    private bool _fullApplyPending;
-    private ulong _pendingPingSlots;
+    private readonly PendingPresentationPublications _pendingPublications = new();
+    private readonly Dictionary<int, TakeoverLink> _takeovers = new();
     private bool _unloaded;
     private int _mapGeneration;
     private Harmony? _harmony;
@@ -57,6 +57,8 @@ public sealed class BotHiderImplPlugin : BasePlugin
         _unloaded = true;
         IsBotPatch.Api = null;
         _applyPending = false;
+        _pendingPublications.Clear();
+        _takeovers.Clear();
         _mapGeneration++;
         try
         {
@@ -97,12 +99,13 @@ public sealed class BotHiderImplPlugin : BasePlugin
         if (_unloaded) return;
         if (reason == 1)
         {
-            ScheduleApply();
+            if (slot is >= 0 and < 64) ScheduleSlot(slot);
+            else ScheduleApply();
             DemoTracerBotHiderContract.NotifyProviderChanged();
         }
         else if (reason == 2 && slot is >= 0 and < 64)
         {
-            _pendingPingSlots |= 1UL << slot;
+            _pendingPublications.RequestPing(slot);
             SchedulePublication();
         }
     }
@@ -110,8 +113,8 @@ public sealed class BotHiderImplPlugin : BasePlugin
     private void OnMapStart(string mapName)
     {
         _applyPending = false;
-        _fullApplyPending = false;
-        _pendingPingSlots = 0;
+        _pendingPublications.Clear();
+        _takeovers.Clear();
         _mapGeneration++;
         _presentation?.ResetForMapBoundary();
         ScheduleApply();
@@ -120,14 +123,21 @@ public sealed class BotHiderImplPlugin : BasePlugin
     private void OnMapEnd()
     {
         _applyPending = false;
-        _fullApplyPending = false;
-        _pendingPingSlots = 0;
+        _pendingPublications.Clear();
+        _takeovers.Clear();
         _mapGeneration++;
         _presentation?.ResetForMapBoundary();
     }
 
     private void OnClientDisconnect(int slot)
-        => _presentation?.HandleClientDisconnect(slot);
+    {
+        if (_takeovers.Remove(slot, out var takeover))
+            ScheduleTakeoverBot(takeover);
+        foreach (var owner in _takeovers.Where(pair => pair.Value.BotSlot == slot)
+                     .Select(pair => pair.Key).ToArray())
+            _takeovers.Remove(owner);
+        _presentation?.HandleClientDisconnect(slot);
+    }
 
     private void WarnIfLegacyBotHiderPluginIsPresent()
     {
@@ -161,6 +171,7 @@ public sealed class BotHiderImplPlugin : BasePlugin
     [GameEventHandler]
     public HookResult OnRoundStart(EventRoundStart @event, GameEventInfo info)
     {
+        _takeovers.Clear();
         ScheduleApply();
         return HookResult.Continue;
     }
@@ -169,7 +180,7 @@ public sealed class BotHiderImplPlugin : BasePlugin
     public HookResult OnPlayerConnectFull(EventPlayerConnectFull @event, GameEventInfo info)
     {
         if (@event.Userid is { IsValid: true } player)
-            SchedulePresentationReconcile(player.Slot);
+            SchedulePresentationReconcile(player);
         return HookResult.Continue;
     }
 
@@ -177,7 +188,7 @@ public sealed class BotHiderImplPlugin : BasePlugin
     public HookResult OnPlayerSpawn(EventPlayerSpawn @event, GameEventInfo info)
     {
         if (@event.Userid is { IsValid: true } player)
-            SchedulePresentationReconcile(player.Slot);
+            SchedulePresentationReconcile(player);
         return HookResult.Continue;
     }
 
@@ -185,15 +196,66 @@ public sealed class BotHiderImplPlugin : BasePlugin
     public HookResult OnPlayerDeath(EventPlayerDeath @event, GameEventInfo info)
     {
         if (@event.Userid is { IsValid: true } player)
-            SchedulePresentationReconcile(player.Slot);
+            SchedulePresentationReconcile(player);
         return HookResult.Continue;
     }
 
-    private void SchedulePresentationReconcile(int slot) => ScheduleApply();
+    [GameEventHandler]
+    public HookResult OnBotTakeover(EventBotTakeover @event, GameEventInfo info)
+    {
+        if (@event.Userid is { IsValid: true } player &&
+            @event.Botid is { IsValid: true } bot)
+        {
+            // Death may clear the engine's original-controller link before its
+            // event reaches us. Keep the exact handles until that event/round.
+            _takeovers[player.Slot] = new(player.EntityHandle.Raw, bot.Slot, bot.EntityHandle.Raw);
+            ScheduleSlot(player.Slot);
+            ScheduleSlot(bot.Slot);
+        }
+        else ScheduleApply();
+        return HookResult.Continue;
+    }
+
+    private void SchedulePresentationReconcile(CCSPlayerController player)
+    {
+        ScheduleSlot(player.Slot);
+        if (_takeovers.TryGetValue(player.Slot, out var takeover))
+        {
+            if (takeover.Controller == player.EntityHandle.Raw)
+                ScheduleTakeoverBot(takeover);
+            else _takeovers.Remove(player.Slot);
+        }
+        try
+        {
+            if (player.OriginalControllerOfCurrentPawn is { IsValid: true, Value.IsValid: true } original)
+                ScheduleSlot(original.Value.Slot);
+        }
+        catch
+        {
+            // Preserve lifecycle repair if this build cannot resolve a takeover
+            // relationship; ordinary player events still use the narrow path.
+            ScheduleApply();
+        }
+    }
+
+    private void ScheduleTakeoverBot(TakeoverLink takeover)
+    {
+        var bot = Utilities.GetPlayerFromSlot(takeover.BotSlot);
+        if (bot is { IsValid: true } && bot.EntityHandle.Raw == takeover.BotController)
+            ScheduleSlot(takeover.BotSlot);
+    }
+
+    private readonly record struct TakeoverLink(uint Controller, int BotSlot, uint BotController);
+
+    private void ScheduleSlot(int slot)
+    {
+        _pendingPublications.RequestSlot(slot);
+        SchedulePublication();
+    }
 
     private void ScheduleApply()
     {
-        _fullApplyPending = true;
+        _pendingPublications.RequestAll();
         SchedulePublication();
     }
 
@@ -206,13 +268,18 @@ public sealed class BotHiderImplPlugin : BasePlugin
         {
             if (_unloaded || generation != _mapGeneration) return;
             _applyPending = false;
-            var full = _fullApplyPending;
-            var pingSlots = _pendingPingSlots;
-            _fullApplyPending = false;
-            _pendingPingSlots = 0;
-            if (full) _presentation?.PublishManagedSlots();
+            var work = _pendingPublications.Drain();
+            if (work.All) _presentation?.PublishManagedSlots();
             else
             {
+                var slots = work.Slots;
+                while (slots != 0)
+                {
+                    var slot = System.Numerics.BitOperations.TrailingZeroCount(slots);
+                    slots &= slots - 1;
+                    _presentation?.PublishManagedSlot(slot);
+                }
+                var pingSlots = work.PingSlots;
                 while (pingSlots != 0)
                 {
                     var slot = System.Numerics.BitOperations.TrailingZeroCount(pingSlots);

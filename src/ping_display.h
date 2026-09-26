@@ -21,7 +21,6 @@ namespace cs2bh
 
         void Reset();
 
-        int LastWrittenPing() const { return m_LastWritten; }
         int CurrentAverage() const;
 
     private:

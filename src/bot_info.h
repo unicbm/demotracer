@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -27,17 +28,17 @@ namespace cs2bh
         // Load from disk. Returns false + logs on failure
         bool Load(const char *path);
 
-        // Lookup by display name (case-sensitive, matches JSON key).
-        const BotEntry *FindByName(const char *name) const;
-
         const BotEntry *PickForBot(const char *engineName);
+
+        // Used only when adopting a persona base. Lease identities remain exact.
+        uint64_t ResolveBaseSteamId(uint64_t desired,
+                                   const std::function<bool(uint64_t)> &isInUse) const;
 
         // Release an entry's assignment (slot freed / mapchange).
         void ReleaseAssignment(const BotEntry *entry);
         void ResetAssignments();
 
         size_t Count() const { return m_Entries.size(); }
-        const std::vector<BotEntry> &All() const { return m_Entries; }
 
         // Steam3 → SteamID64
         static constexpr uint64_t kSteamId64Base = 76561197960265728ULL;

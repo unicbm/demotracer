@@ -33,6 +33,7 @@ namespace cs2bh
         uint64_t Session() const { return Active() ? m_session : 0; }
         bool ReadSlot(int slot, PresentationSlot &out) const;
         bool Matches(int slot, uint64_t session, uint64_t incarnation) const;
+        bool CanPublishSteamId(int slot, uint64_t session, uint64_t incarnation, uint64_t sid) const;
         void PublishAdopt(int slot, uint64_t sid, const char *name, const char *crosshair, uint32_t flair);
         void PublishRelease(int slot);
         void UpdateSyntheticSid(int slot, uint64_t sid);

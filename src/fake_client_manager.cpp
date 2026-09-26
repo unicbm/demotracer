@@ -28,73 +28,52 @@ namespace cs2bh
 
     FakeClientManager &Manager() { return g_Manager; }
 
-    FakeClientManager::FakeClientManager() = default;
-
-    void FakeClientManager::Init()
-    {
-        if (m_pSteamIds)
-            return;
-
-        char sessionId[32];
-        auto nowNs = std::chrono::system_clock::now().time_since_epoch().count();
-        std::snprintf(sessionId, sizeof(sessionId), "%lld", static_cast<long long>(nowNs));
-
-        m_pSteamIds = std::make_unique<SteamIdProvider>(sessionId);
-    }
+    FakeClientManager::FakeClientManager()
+        : m_PingSeed(static_cast<uint64_t>(
+              std::chrono::steady_clock::now().time_since_epoch().count())) {}
 
     bool FakeClientManager::AdoptSlot(int slot, const char *pszName,
                                       uint64_t steamId64, const char *crosshairCode,
                                       uint32_t scoreboardFlair)
     {
-        if (slot < 0 || slot >= PersonaPool::kMaxSlots)
-            return false;
-        if (!m_pSteamIds)
+        if (slot < 0 || slot >= kMaxSlots || !Publisher().Active())
             return false;
 
         std::lock_guard<std::mutex> g(m_Mutex);
         auto &s = m_Slots[slot];
 
         // Per-bot baseline ping: 20 + (rand % 70) → [20, 90) ms
-        uint64_t state = static_cast<uint64_t>(slot) ^ m_pSteamIds->Generate(slot);
+        uint64_t state = static_cast<uint64_t>(slot) ^ m_PingSeed;
         int baseline = 20 + static_cast<int>(SimpleRand(state) % 70);
 
         s.Active = true;
-        // Prefer the bot_info.json id
-        s.SyntheticSid = steamId64 != 0 ? steamId64 : m_pSteamIds->Generate(slot);
-        s.ScoreboardFlair = scoreboardFlair;
         s.Jitter = PingJitter(baseline);
         s.Display = PingDisplay{};
-        s.SteamIdWritten = false;
 
-        Personas().MarkSlotManaged(slot, pszName);
-        Publisher().PublishAdopt(slot, s.SyntheticSid, pszName, crosshairCode, s.ScoreboardFlair);
+        // The caller has already resolved the base identity. Zero preserves
+        // the engine bot SteamID when no configured persona was supplied.
+        Publisher().PublishAdopt(slot, steamId64, pszName, crosshairCode, scoreboardFlair);
         Publisher().UpdatePing(slot, baseline);
         return true;
     }
 
     void FakeClientManager::ReleaseSlot(int slot)
     {
-        if (slot < 0 || slot >= PersonaPool::kMaxSlots)
+        if (slot < 0 || slot >= kMaxSlots)
             return;
         std::lock_guard<std::mutex> g(m_Mutex);
         m_Slots[slot].Active = false;
-        m_Slots[slot].SteamIdWritten = false;
-        m_Slots[slot].ScoreboardFlair = 0;
         m_Slots[slot].Display.Reset();
-        Personas().ClearSlot(slot);
         Publisher().PublishRelease(slot);
     }
 
     void FakeClientManager::ReleaseAll()
     {
         std::lock_guard<std::mutex> g(m_Mutex);
-        for (int i = 0; i < PersonaPool::kMaxSlots; ++i)
+        for (int i = 0; i < kMaxSlots; ++i)
         {
             m_Slots[i].Active = false;
-            m_Slots[i].SteamIdWritten = false;
-            m_Slots[i].ScoreboardFlair = 0;
             m_Slots[i].Display.Reset();
-            Personas().ClearSlot(i);
             Publisher().PublishRelease(i);
         }
     }
@@ -106,11 +85,11 @@ namespace cs2bh
             int slot;
             int ping;
         };
-        Pending pending[PersonaPool::kMaxSlots];
+        Pending pending[kMaxSlots];
         int n = 0;
         {
             std::lock_guard<std::mutex> g(m_Mutex);
-            for (int i = 0; i < PersonaPool::kMaxSlots; ++i)
+            for (int i = 0; i < kMaxSlots; ++i)
             {
                 auto &s = m_Slots[i];
                 if (!s.Active)
@@ -127,26 +106,18 @@ namespace cs2bh
 
     bool FakeClientManager::IsManaged(int slot) const
     {
-        if (slot < 0 || slot >= PersonaPool::kMaxSlots)
+        if (slot < 0 || slot >= kMaxSlots)
             return false;
         std::lock_guard<std::mutex> g(m_Mutex);
         return m_Slots[slot].Active;
     }
 
-    uint64_t FakeClientManager::GetSyntheticSid(int slot) const
+    bool FakeClientManager::HasManagedSlots() const
     {
-        if (slot < 0 || slot >= PersonaPool::kMaxSlots)
-            return 0;
         std::lock_guard<std::mutex> g(m_Mutex);
-        return m_Slots[slot].SyntheticSid;
-    }
-
-    void FakeClientManager::SetSyntheticSid(int slot, uint64_t sid)
-    {
-        if (slot < 0 || slot >= PersonaPool::kMaxSlots)
-            return;
-        std::lock_guard<std::mutex> g(m_Mutex);
-        m_Slots[slot].SyntheticSid = sid;
+        for (const auto &slot : m_Slots)
+            if (slot.Active) return true;
+        return false;
     }
 
 } // namespace cs2bh

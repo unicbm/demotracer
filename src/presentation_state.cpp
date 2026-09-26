@@ -51,6 +51,12 @@ namespace cs2bh
         return Active() && session == m_session && incarnation != 0 && slot >= 0 && slot < 64 &&
             m_slots[slot].Managed && m_slots[slot].Incarnation == incarnation;
     }
+    bool SlotPublisher::CanPublishSteamId(int slot, uint64_t session, uint64_t incarnation, uint64_t sid) const
+    {
+        // Zero is a valid engine-bot base, never an alternative identity for a
+        // configured nonzero base. Explicit managed API overrides reject zero.
+        return Matches(slot, session, incarnation) && (sid != 0 || m_slots[slot].BaseSteamId == 0);
+    }
     void SlotPublisher::PublishAdopt(int slot, uint64_t sid, const char *name, const char *crosshair, uint32_t flair)
     {
         if (!Active() || slot < 0 || slot >= 64) return;

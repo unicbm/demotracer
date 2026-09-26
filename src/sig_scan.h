@@ -2,29 +2,11 @@
 
 #pragma once
 
-#include <cstdint>
-#include <cstddef>
-#include <string>
-#include <vector>
-
-#include <nlohmann/json.hpp>
+#include "../../common/sig_scan.h"
 
 namespace cs2bh::sig
 {
-    struct ModuleSegment
-    {
-        unsigned char *Base = nullptr;
-        size_t Size = 0;
-    };
-
-    struct ModuleInfo
-    {
-        unsigned char *Base = nullptr;
-        size_t Size = 0;
-        std::vector<ModuleSegment> Segments;
-
-        explicit operator bool() const { return Base != nullptr && Size != 0; }
-    };
+    using ModuleInfo = DemoTracerRuntime::Sig::ModuleInfo;
 
     // Read + parse gamedata.json into `out`. Returns false on open/parse error
     bool LoadGamedata(const char *path, nlohmann::json &out);
@@ -57,6 +39,4 @@ namespace cs2bh::sig
 
     ModuleInfo ModuleFromInterfacePtr(void *interfacePtr);
 
-    void *ResolveSig(const nlohmann::json &gamedata, const ModuleInfo &module,
-                     const char *name, char *errorOut, size_t errorOutLen);
 }

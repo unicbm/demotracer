@@ -279,7 +279,8 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
         native = default;
         player = null!;
         ObserveNativeSession();
-        if (_disposed || slot is < 0 or >= MaxSlots || !_client.TryGetSlot(slot, out native) || native.Managed == 0)
+        if (_disposed || slot is < 0 or >= MaxSlots ||
+            !_client.TryGetSlot(slot, _nativeSession, out native) || native.Managed == 0)
         {
             ObserveUnmanaged(slot);
             return false;
@@ -611,6 +612,15 @@ internal sealed class BotHiderPresentationService : IBotHiderApi, IDisposable
     {
         for (var slot = 0; slot < MaxSlots; slot++)
             RestoreCapturedClan(slot);
+    }
+
+    public void PublishManagedSlot(int slot)
+    {
+        lock (_sync)
+        {
+            if (!_disposed && TryReadManagedNativeSlot(slot, out var native, out var player))
+                PublishSlot(slot, native, player);
+        }
     }
 
     private void RestoreCapturedClan(int slot)

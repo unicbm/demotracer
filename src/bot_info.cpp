@@ -85,16 +85,6 @@ namespace cs2bh
         return !m_Entries.empty();
     }
 
-    const BotEntry *BotInfoStore::FindByName(const char *name) const
-    {
-        if (!name)
-            return nullptr;
-        auto it = m_ByName.find(name);
-        if (it == m_ByName.end())
-            return nullptr;
-        return &m_Entries[it->second];
-    }
-
     const BotEntry *BotInfoStore::PickForBot(const char *engineName)
     {
         if (m_Entries.empty())
@@ -136,6 +126,22 @@ namespace cs2bh
         auto it = m_ByName.find(entry->Name);
         if (it != m_ByName.end())
             m_Assigned[it->second] = false;
+    }
+
+    uint64_t BotInfoStore::ResolveBaseSteamId(
+        uint64_t desired, const std::function<bool(uint64_t)> &isInUse) const
+    {
+        // An unconfigured bot keeps the engine's zero identity. Resolve a
+        // configured collision before PublishAdopt captures the immutable base.
+        if (desired == 0 || !isInUse(desired))
+            return desired;
+        for (const auto &entry : m_Entries)
+            if (entry.SteamId64 != 0 && !isInUse(entry.SteamId64))
+                return entry.SteamId64;
+        for (uint64_t bump = 1; bump <= 4096 && desired <= UINT64_MAX - bump; ++bump)
+            if (!isInUse(desired + bump))
+                return desired + bump;
+        return 0;
     }
 
     void BotInfoStore::ResetAssignments()
