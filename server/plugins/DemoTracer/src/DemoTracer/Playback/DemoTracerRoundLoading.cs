@@ -605,7 +605,7 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        if (!BotControllerNative.TryPublishAvatarOverride(avatarSteamId, png, out var error))
+        if (!BotHiderAvatars.TryPublishAvatarOverride(avatarSteamId, png, out var error))
         {
             Server.PrintToConsole($"dtr: replay avatar publish failed slot={slot} sid={steamId}: {error}");
             return;

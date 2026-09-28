@@ -2,3 +2,7 @@
 	path = third_party/demoparser
 	url = https://github.com/unicbm/demoparser.git
 	branch = demotracer
+[submodule "third_party/BotHider"]
+	path = third_party/BotHider
+	url = https://github.com/XBribo/CS2-Bot-Hider.git
+	branch = DemoTracer

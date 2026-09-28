@@ -23,9 +23,10 @@
     },
     {
       "id": "hider",
-      "path": "server/runtime/BotHider",
-      "repository": "unicbm/demotracer",
-      "source": "product"
+      "path": "third_party/BotHider",
+      "repository": "XBribo/CS2-Bot-Hider",
+      "branch": "DemoTracer",
+      "source": "submodule"
     },
     {
       "id": "randomizer",

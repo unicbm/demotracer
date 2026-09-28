@@ -5,7 +5,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 using System.Reflection;
-using BotHiderImpl;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Commands;
 using DemoTracer;
@@ -43,34 +42,6 @@ public sealed class CommandPolicyTests
         Assert.Equal(
             commands.Select(item => item.Command).OrderBy(command => command, StringComparer.Ordinal),
             DemoTracerPlugin.GetControlCommandNames());
-    }
-
-    [Fact]
-    public void BotHiderCommandsRemainServerOnly()
-    {
-        var unsafeCommands = new List<string>();
-        var commandCount = 0;
-
-        foreach (var method in DeclaredMethods(typeof(BotHiderImplPlugin)))
-        {
-            var commands = method.GetCustomAttributes<ConsoleCommandAttribute>().ToArray();
-            commandCount += commands.Length;
-            if (commands.Length == 0)
-                continue;
-
-            var helper = method.CustomAttributes.SingleOrDefault(attribute =>
-                attribute.AttributeType == typeof(CommandHelperAttribute));
-            var serverOnly = helper is { ConstructorArguments.Count: >= 3 } &&
-                helper.ConstructorArguments[2].Value is int value &&
-                (CommandUsage)value == CommandUsage.SERVER_ONLY;
-            if (!serverOnly)
-                unsafeCommands.AddRange(commands.Select(command => command.Command));
-        }
-
-        Assert.True(commandCount > 0, "No BotHider commands were discovered.");
-        Assert.True(
-            unsafeCommands.Count == 0,
-            $"BotHider commands without an explicit server-only policy: {string.Join(", ", unsafeCommands)}");
     }
 
     [Theory]

@@ -8,3 +8,11 @@ updates:
       github-actions:
         patterns: ['*']
 # The parser fork is updated deliberately after reviewing its source changes.
+  - package-ecosystem: gitsubmodule
+    directory: /
+    allow:
+      - dependency-name: third_party/BotHider
+    schedule:
+      interval: cron
+      cronjob: '0 9 * * *'
+      timezone: Asia/Singapore

@@ -6,6 +6,7 @@
 
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using BotHiderApi;
 using DemoTracerBotHiderApi;
 
 namespace DemoTracer.Tests;
@@ -13,6 +14,19 @@ namespace DemoTracer.Tests;
 public sealed class BotHiderTakeoverPresentationTests
 {
     private const BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
+
+    [Fact]
+    public void ProviderHealthUsesTheUnifiedBotHiderContractVersion()
+    {
+        var (plugin, provider) = CreatePlugin();
+        var bridge = typeof(DemoTracerPlugin).GetField("_botHiderBridge", PrivateInstance)!
+            .GetValue(plugin)!;
+        var info = (BotHiderProviderInfo)bridge.GetType()
+            .GetMethod("GetProviderInfo")!.Invoke(bridge, null)!;
+        Assert.Equal(BotHiderContract.ApiVersion, info.ApiVersion);
+        Assert.Equal(BotHiderContract.ApiVersion, DemoTracerBotHiderContract.ApiVersion);
+        Assert.Equal(1, provider.ProviderEpochCalls);
+    }
 
     [Fact]
     public void ManagedBotKeepsDemoIdentityWithoutAReplayWritablePawn()
@@ -30,7 +44,7 @@ public sealed class BotHiderTakeoverPresentationTests
         Assert.Equal(first.SteamId, duringTakeover.SteamId);
         Assert.Equal(new BotHiderClan("team_B1ad3", 38084528), duringTakeover.Clan);
         Assert.Equal(42UL, duringTakeover.Incarnation);
-        Assert.Equal(0, provider.ProviderInfoCalls);
+        Assert.Equal(0, provider.ProviderEpochCalls);
 
         // Native management remains the authority: a real disconnect removes
         // eligibility, and a human slot is never assigned this bot's identity.
@@ -89,19 +103,24 @@ public sealed class BotHiderTakeoverPresentationTests
     public class ManagedBotProvider : DispatchProxy
     {
         public bool Managed { get; set; } = true;
-        public int ProviderInfoCalls { get; private set; }
+        public int ProviderEpochCalls { get; private set; }
 
         protected override object? Invoke(MethodInfo? method, object?[]? args)
         {
             switch (method!.Name)
             {
-                case "get_ApiVersion": return DemoTracerBotHiderContract.ApiVersion;
-                case nameof(IBotHiderApi.GetProviderInfo):
-                    ProviderInfoCalls++;
-                    return new BotHiderProviderInfo { ApiVersion = DemoTracerBotHiderContract.ApiVersion, Connected = true };
-                case nameof(IBotHiderApi.TryGetManagedSlot):
-                    args![1] = new BotHiderManagedSlot { Slot = (int)args[0]!, Incarnation = 42 };
-                    return Managed && (int)args[0]! == 7;
+                case "get_ProviderEpoch":
+                    ProviderEpochCalls++;
+                    return "test-provider";
+                case nameof(IBotHiderApi.IsManagedBot):
+                    return Managed && (int)args![0]! == 7;
+                case nameof(IBotHiderApi.GetSlotIncarnation): return 42UL;
+                case nameof(IBotHiderApi.GetBaseBotSteamId): return 1UL;
+                case nameof(IBotHiderApi.GetBotSteamId): return 1UL;
+                case nameof(IBotHiderApi.GetBasePersonaName): return "bot";
+                case nameof(IBotHiderApi.GetPing): return 0;
+                case nameof(IBotHiderApi.GetCrosshairCode): return string.Empty;
+                case nameof(IBotHiderApi.GetScoreboardFlair): return 0U;
                 default: throw new InvalidOperationException($"Unexpected provider call: {method.Name}");
             }
         }

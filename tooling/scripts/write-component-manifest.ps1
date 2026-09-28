@@ -19,7 +19,7 @@ try {
             id = $_.id
             repository = "https://github.com/$($_.repository)"
             commit = $commit
-            source_version = if ($_.source -eq 'submodule') { (Get-Content (Join-Path $componentPath 'version.txt') -Raw).Trim() } else { (Get-Content desktop/gui/package.json -Raw | ConvertFrom-Json).version }
+            source_version = if ($_.id -eq 'parser') { (Get-Content (Join-Path $componentPath 'version.txt') -Raw).Trim() } elseif ($_.source -eq 'submodule') { $commit.Substring(0, 12) } else { (Get-Content desktop/gui/package.json -Raw | ConvertFrom-Json).version }
         }
     })
     $manifest = [ordered]@{ schema_version = 1; product_commit = $productCommit; components = $components }

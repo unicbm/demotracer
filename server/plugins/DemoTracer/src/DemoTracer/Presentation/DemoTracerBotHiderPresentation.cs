@@ -67,8 +67,13 @@ public sealed partial class DemoTracerPlugin
         if (!forceReplace && _botHiderPresentationLeaseToken.Length > 0 &&
             signature.Equals(_botHiderPresentationSignature, StringComparison.Ordinal))
         {
-            _lastBotHiderPresentationError = string.Empty;
-            return true;
+            if (_botHiderBridge.Reconcile(_botHiderPresentationLeaseToken))
+            {
+                _lastBotHiderPresentationError = string.Empty;
+                return true;
+            }
+            ReportBotHiderPresentationError("controller_reconcile_failed", announce);
+            return false;
         }
         BotHiderPresentationLeaseResult result;
         if (string.IsNullOrWhiteSpace(_botHiderPresentationLeaseToken))
@@ -76,13 +81,6 @@ public sealed partial class DemoTracerPlugin
             result = _botHiderBridge.Acquire(
                 DemoTracerBotHiderContract.DemoTracerOwner,
                 requests, _presentationLifetime.Token);
-            if (!result.Ok && result.Reason.StartsWith("slot_leased:", StringComparison.Ordinal))
-            {
-                _ = _botHiderBridge.ReleaseOwner(DemoTracerBotHiderContract.DemoTracerOwner);
-                result = _botHiderBridge.Acquire(
-                    DemoTracerBotHiderContract.DemoTracerOwner,
-                    requests, _presentationLifetime.Token);
-            }
         }
         else
         {
@@ -95,14 +93,6 @@ public sealed partial class DemoTracerPlugin
                 result = _botHiderBridge.Acquire(
                     DemoTracerBotHiderContract.DemoTracerOwner,
                     requests, _presentationLifetime.Token);
-                if (!result.Ok &&
-                    result.Reason.StartsWith("slot_leased:", StringComparison.Ordinal))
-                {
-                    _ = _botHiderBridge.ReleaseOwner(DemoTracerBotHiderContract.DemoTracerOwner);
-                    result = _botHiderBridge.Acquire(
-                        DemoTracerBotHiderContract.DemoTracerOwner,
-                        requests, _presentationLifetime.Token);
-                }
             }
         }
 

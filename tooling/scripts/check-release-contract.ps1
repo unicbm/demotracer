@@ -140,15 +140,9 @@ if ($runtimeMinor -lt [int]$contract.bot_controller.min_abi_minor) {
 }
 
 Assert-Equal "DemoTracer companion API" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'DemoTracerApiVersion\s*=\s*(\d+)' "DemoTracer companion API") ([string]$contract.demotracer.companion_api)
-Assert-Equal "BotHider API" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderApi\IBotHiderApi.cs" 'ApiVersion\s*=\s*(\d+)' "BotHider API") ([string]$contract.bot_hider.api)
-Assert-Equal "BotHider clan tag limit" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderApi\IBotHiderApi.cs" 'MaxClanTagUtf8Bytes\s*=\s*(\d+)' "BotHider clan tag limit") ([string]$contract.bot_hider.clan_tag_max_utf8_bytes)
+Assert-Equal "BotHider API" (Read-RegexValue "third_party\BotHider\csharp\BotHiderApi\IBotHiderApi.cs" 'ApiVersion\s*=\s*(\d+)' "BotHider API") ([string]$contract.bot_hider.api)
+Assert-Equal "DemoTracer clan tag limit" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Presentation\BotHiderContracts.cs" 'MaxClanTagUtf8Bytes\s*=\s*(\d+)' "DemoTracer clan tag limit") ([string]$contract.bot_hider.clan_tag_max_utf8_bytes)
 Assert-Equal "Converter clan tag limit" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'MAX_CLAN_TAG_UTF8_BYTES:\s*usize\s*=\s*(\d+)' "Converter clan tag limit") ([string]$contract.bot_hider.clan_tag_max_utf8_bytes)
-Assert-Equal "BotHider native ABI" (Read-RegexValue "server\runtime\BotHider\src\presentation_state.h" 'kNativePresentationAbi\s*=\s*(\d+)' "BotHider native ABI") ([string]$contract.bot_hider.native_abi)
-Assert-Equal "BotHider managed native ABI" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderImpl\NativePresentationClient.cs" 'NativeAbi\s*=\s*(\d+)' "BotHider managed native ABI") ([string]$contract.bot_hider.native_abi)
-Assert-Equal "BotHider native slot bytes" (Read-RegexValue "server\runtime\BotHider\src\presentation_state.h" 'sizeof\(PresentationSlot\)\s*==\s*(\d+)' "BotHider native slot bytes") ([string]$contract.bot_hider.native_slot_bytes)
-Assert-Equal "BotHider managed slot bytes" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderImpl\NativePresentationClient.cs" 'SlotByteSize\s*=\s*(\d+)' "BotHider managed slot bytes") ([string]$contract.bot_hider.native_slot_bytes)
-Assert-Equal "BotHider native version" (Read-RegexValue "server\runtime\BotHider\src\plugin.h" 'GetVersion\(\).*?return "([^"]+)"' "BotHider native version") ([string]$contract.bot_hider.native_provider_version)
-Assert-Equal "BotHider managed version" (Read-RegexValue "server\runtime\BotHider\csharp\BotHiderImpl\BotHiderImplPlugin.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "BotHider managed version") ([string]$contract.bot_hider.managed_provider_version)
 Assert-Equal "BotRandomizer API" (Read-RegexValue "server\runtime\BotRandomizer\BotRandomizerApi\IBotRandomizerApi.cs" 'ApiVersion\s*=\s*(\d+)' "BotRandomizer API") ([string]$contract.bot_randomizer.api)
 Assert-Equal "BotRandomizer provider" (Read-RegexValue "server\runtime\BotRandomizer\BotRandomizer.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "BotRandomizer provider version") ([string]$contract.bot_randomizer.provider_version)
 Assert-Equal "BotRandomizer assembly" (Read-RegexValue "server\runtime\BotRandomizer\BotRandomizer.csproj" '<Version>([^<]+)</Version>' "BotRandomizer assembly version") ([string]$contract.bot_randomizer.provider_version)
@@ -166,7 +160,7 @@ $commonHooks = (Read-Text "server\runtime\common\contracts\hook-runtime.v1.json"
 foreach ($field in @("backend", "metamod_minimum_build", "metamod_plugin_api", "metamod_source_commit", "khook_source_commit", "counterstrikesharp_source_commit")) {
     Assert-Equal "common hook runtime $field" ([string]$commonHooks.$field) ([string]$contract.hook_runtime.$field)
 }
-foreach ($runtime in @("BotController", "BotHider")) {
+foreach ($runtime in @("BotController")) {
     Assert-TextAbsent "server\runtime\$runtime\CMakeLists.txt" 'funchook|core/sourcehook' "$runtime legacy hook dependencies"
     Assert-TextPresent "server\runtime\$runtime\CMakeLists.txt" 'native/khook\.cmake' "$runtime shared KHook interface"
 }

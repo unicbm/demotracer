@@ -145,7 +145,7 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        if (!BotControllerNative.TryPublishAvatarOverride(steamId.Value, png, out error))
+        if (!BotHiderAvatars.TryPublishAvatarOverride(steamId.Value, png, out error))
         {
             Server.PrintToConsole($"dtr: human team avatar publish failed slot={slot}: {error}");
             return;
@@ -163,7 +163,7 @@ public sealed partial class DemoTracerPlugin
         if (!_session.HumanTeamAvatarOverrides.TryGetValue(slot, out var applied))
             return;
 
-        if (!BotControllerNative.TryClearAvatarOverride(applied.SteamId, out var error))
+        if (!BotHiderAvatars.TryClearAvatarOverride(applied.SteamId, out var error))
         {
             Server.PrintToConsole($"dtr: human team avatar clear failed slot={slot}: {error}");
             return;
@@ -182,7 +182,7 @@ public sealed partial class DemoTracerPlugin
     private void ClearLoadedTeamAvatarOverrides(string reason)
     {
         ClearHumanTeamAvatarOverrides(reason);
-        BotControllerNative.ClearAvatarOverrides();
+        BotHiderAvatars.ClearAvatarOverrides();
         _session.TeamAvatarOverrides.Clear();
     }
 

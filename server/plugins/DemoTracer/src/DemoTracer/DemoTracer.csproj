@@ -5,8 +5,8 @@
     <Nullable>enable</Nullable>
     <AssemblyName>DemoTracer</AssemblyName>
     <RootNamespace>DemoTracer</RootNamespace>
+    <BotHiderRoot Condition="'$(BotHiderRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\..\third_party\BotHider</BotHiderRoot>
     <DtrCommonRoot Condition="'$(DtrCommonRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\runtime\common</DtrCommonRoot>
-    <DtrHiderRoot Condition="'$(DtrHiderRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\runtime\BotHider</DtrHiderRoot>
     <DtrRandomizerRoot Condition="'$(DtrRandomizerRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\runtime\BotRandomizer</DtrRandomizerRoot>
   </PropertyGroup>
 
@@ -16,7 +16,7 @@
     <ProjectReference Include="$(DtrCommonRoot)\csharp\DemoTracerApi\DemoTracerApi.csproj">
       <Private>false</Private>
     </ProjectReference>
-    <ProjectReference Include="$(DtrHiderRoot)\csharp\BotHiderApi\BotHiderApi.csproj">
+    <ProjectReference Include="$(BotHiderRoot)\csharp\BotHiderApi\BotHiderApi.csproj">
       <Private>false</Private>
     </ProjectReference>
     <ProjectReference Include="$(DtrRandomizerRoot)\BotRandomizerApi\BotRandomizerApi.csproj">

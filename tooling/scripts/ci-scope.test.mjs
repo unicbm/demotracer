@@ -17,6 +17,7 @@ test('parser changes validate converter and GUI consumers', () => {
   assert.equal(s.playback, false);
 });
 test('provider changes exercise matched playback packaging', () => {
+  assert.ok(scopeFor(['third_party/BotHider']).playback);
   assert.ok(scopeFor(['server/runtime/BotHider/src/plugin.cpp']).playback);
   assert.ok(scopeFor(['server/runtime/BotController/src/plugin.cpp']).fuzz);
 });

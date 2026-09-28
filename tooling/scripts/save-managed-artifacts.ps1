@@ -8,9 +8,7 @@ foreach ($relative in @(
     'server/plugins/DemoTracer/src/DemoTracer/bin/Release/net10.0',
     'server/runtime/common/csharp/DemoTracerApi/bin/Release/net10.0',
     'server/runtime/BotController/csharp/BotControllerImpl/bin/Release',
-    'server/runtime/BotController/csharp/BotControllerApi/bin/Release',
-    'server/runtime/BotHider/csharp/BotHiderImpl/bin/Release/net10.0',
-    'server/runtime/BotHider/csharp/BotHiderApi/bin/Release/net10.0'
+    'server/runtime/BotController/csharp/BotControllerApi/bin/Release'
 )) {
     $source = Join-Path $root $relative
     if (-not (Test-Path -LiteralPath $source)) { throw "Missing tested build output: $relative" }

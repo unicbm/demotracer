@@ -43,7 +43,6 @@ const STAGING_DIRECTORY: &str = "playback-staging-v1";
 const BACKUP_DIRECTORY: &str = "playback-backups-v1";
 const LEGACY_PROVIDER_DIRECTORIES: &[&str] = &[
     "addons/counterstrikesharp/plugins/BotControllerImpl",
-    "addons/counterstrikesharp/plugins/BotHiderImpl",
     "addons/counterstrikesharp/plugins/DemoTracerBotHider",
 ];
 
@@ -830,6 +829,15 @@ fn apply_validated_package(
                 continue;
             };
             let normalized = normalized_receipt_path(&file.path);
+            // These paths now belong to the separately installed BotHider.
+            if normalized.starts_with("addons/bothider/")
+                || normalized == "addons/metamod/bothider.vdf"
+                || normalized.starts_with("addons/counterstrikesharp/plugins/bothiderimpl/")
+                || normalized.starts_with("addons/counterstrikesharp/shared/bothiderapi/")
+                || normalized.starts_with("addons/counterstrikesharp/shared/0harmony/")
+            {
+                continue;
+            }
             if affected.contains_key(&normalized) {
                 continue;
             }

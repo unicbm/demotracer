@@ -10,7 +10,7 @@ $required = @(
     'src/DemoTracer/DemoTracer.csproj',
     '../../runtime/common/csharp/DemoTracerApi/DemoTracerApi.csproj',
     '../../runtime/common/econ/cs2-lib-econ-index.v1.json',
-    '../../runtime/BotHider/csharp/BotHiderImpl/BotHiderImpl.csproj',
+    '../../../third_party/BotHider/csharp/BotHiderApi/BotHiderApi.csproj',
     '../../runtime/BotRandomizer/BotRandomizerApi/BotRandomizerApi.csproj',
     '../../runtime/BotController/csharp/BotControllerImpl/BotControllerImpl.csproj'
 )

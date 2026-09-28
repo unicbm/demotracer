@@ -10,12 +10,10 @@ param(
     [string]$OutputRoot = "dist",
     [string]$RuntimePackage = "server\runtime\BotController\build\package",
     [string]$RuntimeBuild = "server\runtime\BotController\build",
-    [string]$BotHiderRuntimePackage = "server\runtime\BotHider\build\package",
-    [string]$BotHiderRuntimeBuild = "server\runtime\BotHider\build",
+    [string]$BotHiderRoot = "third_party/BotHider",
     [string]$BotRandomizerPackage = "",
     [string]$DotnetPath = "",
     [switch]$BuildRuntime,
-    [switch]$BuildBotHiderRuntime,
     [switch]$SkipCssBuild,
     [switch]$IncludeSymbols
 )
@@ -32,23 +30,21 @@ $runtimeRoot = if ([System.IO.Path]::IsPathRooted($RuntimePackage)) {
 } else {
     Join-Path $repoRoot $RuntimePackage
 }
-$botHiderRuntimeRoot = if ([System.IO.Path]::IsPathRooted($BotHiderRuntimePackage)) {
-    $BotHiderRuntimePackage
+$BotHiderRoot = if ([System.IO.Path]::IsPathRooted($BotHiderRoot)) {
+    $BotHiderRoot
 } else {
-    Join-Path $repoRoot $BotHiderRuntimePackage
+    Join-Path $repoRoot $BotHiderRoot
 }
 $cssOut = Join-Path $repoRoot "server\plugins\DemoTracer\src\DemoTracer\bin\$Configuration\net10.0"
 $commonRoot = Join-Path $repoRoot "server\runtime\common"
 $apiOut = Join-Path $commonRoot "csharp\DemoTracerApi\bin\$Configuration\net10.0"
-$botHiderCssOut = Join-Path $repoRoot "server\runtime\BotHider\csharp\BotHiderImpl\bin\$Configuration\net10.0"
-$botHiderApiOut = Join-Path $repoRoot "server\runtime\BotHider\csharp\BotHiderApi\bin\$Configuration\net10.0"
 $botControllerCssOut = Join-Path $repoRoot "server\runtime\BotController\csharp\BotControllerImpl\bin\$Configuration"
 $botControllerApiOut = Join-Path $repoRoot "server\runtime\BotController\csharp\BotControllerApi\bin\$Configuration"
 $playbackContractPath = Join-Path $repoRoot "shared\contracts\playback-contract.v1.json"
 $nugetConfigPath = Join-Path $repoRoot "NuGet.Config"
 $componentArguments = @(
     "-p:DtrCommonRoot=$commonRoot",
-    "-p:DtrHiderRoot=$(Join-Path $repoRoot 'server/runtime/BotHider')",
+    "-p:BotHiderRoot=$BotHiderRoot",
     "-p:DtrRandomizerRoot=$(Join-Path $repoRoot 'server/runtime/BotRandomizer')"
 )
 
@@ -202,23 +198,16 @@ if ($BuildRuntime) {
     Invoke-Checked "cmake" @("--build", (Join-Path $repoRoot $RuntimeBuild), "--config", $Configuration, "--target", "BotController")
 }
 
-if ($BuildBotHiderRuntime) {
-    Invoke-Checked "cmake" @("--build", (Join-Path $repoRoot $BotHiderRuntimeBuild), "--config", $Configuration, "--target", "BotHider")
-}
-
 if (-not $SkipCssBuild) {
     $resolvedDotnetPath = Resolve-DotnetPath $DotnetPath
     # Keep build-machine paths out of assembly debug records and optional symbols.
     $sourcePathMap = "-p:PathMap=$repoRoot=/_/demotracer"
     $demoTracerProject = Join-Path $repoRoot "server\plugins\DemoTracer\src\DemoTracer\DemoTracer.csproj"
-    $botHiderProject = Join-Path $repoRoot "server\runtime\BotHider\csharp\BotHiderImpl\BotHiderImpl.csproj"
     $botControllerProject = Join-Path $repoRoot "server\runtime\BotController\csharp\BotControllerImpl\BotControllerImpl.csproj"
     Invoke-Checked $resolvedDotnetPath (@("restore", $botControllerProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false") + $componentArguments)
     Invoke-Checked $resolvedDotnetPath (@("build", $botControllerProject, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false", $sourcePathMap) + $componentArguments)
     Invoke-Checked $resolvedDotnetPath (@("restore", $demoTracerProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false") + $componentArguments)
-    Invoke-Checked $resolvedDotnetPath (@("restore", $botHiderProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false") + $componentArguments)
     Invoke-Checked $resolvedDotnetPath (@("build", $demoTracerProject, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false", $sourcePathMap) + $componentArguments)
-    Invoke-Checked $resolvedDotnetPath (@("build", $botHiderProject, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false", $sourcePathMap) + $componentArguments)
 }
 
 Require-Path $playbackContractPath "playback compatibility contract"
@@ -241,7 +230,6 @@ if ((Get-FileHash (Join-Path $botRandomizerOut "cs2-lib-econ-index.v1.json")).Ha
     throw "Common Randomizer package and playback consumers must use the same econ catalog"
 }
 $defaultRuntimeRoot = Join-Path $repoRoot "server\runtime\BotController\build\package"
-$defaultBotHiderRuntimeRoot = Join-Path $repoRoot "server\runtime\BotHider\build\package"
 if (-not (Test-SameFullPath $runtimeRoot $defaultRuntimeRoot)) {
     Assert-ExternalRuntimeReceipt `
         -Root $runtimeRoot `
@@ -254,21 +242,6 @@ if (-not (Test-SameFullPath $runtimeRoot $defaultRuntimeRoot)) {
         -Label "BotController" `
         -ExpectedContract $playbackContract
 }
-if (-not (Test-SameFullPath $botHiderRuntimeRoot $defaultBotHiderRuntimeRoot)) {
-    Assert-ExternalRuntimeReceipt `
-        -Root $botHiderRuntimeRoot `
-        -RequiredPaths @(
-            "addons\BotHider\bin\win64\BotHider.dll",
-            "addons\BotHider\gamedata.json",
-            "addons\BotHider\map_whitelist.json",
-            "addons\BotHider\bot_info.example.json",
-            "addons\metamod\BotHider.vdf"
-        ) `
-        -Component "bot_hider_native" `
-        -Label "BotHider" `
-        -ExpectedContract $playbackContract
-}
-
 $runtimeDll = Join-Path $runtimeRoot "addons\BotController\bin\win64\BotController.dll"
 Require-Path $runtimeDll "BotController runtime DLL"
 Assert-BinaryContainsExport $runtimeDll "BotController_GetAbiInfo"
@@ -284,12 +257,6 @@ Assert-BinaryContainsExport $runtimeDll "BotController_SetReplayPawnEquipment"
 Assert-BinaryContainsExport $runtimeDll "BotController_GetReplayPawnEquipmentState"
 Require-Path (Join-Path $runtimeRoot "addons\BotController\gamedata.json") "BotController gamedata"
 Require-Path (Join-Path $runtimeRoot "addons\metamod\BotController.vdf") "BotController Metamod VDF"
-Require-Path (Join-Path $botHiderRuntimeRoot "addons\BotHider\bin\win64\BotHider.dll") "DemoTracer BotHider runtime DLL"
-foreach ($export in @("BotHider_GetNativeAbi", "BotHider_GetSession", "BotHider_ReadSlot", "BotHider_ReadSignature", "BotHider_PublishIdentity", "BotHider_SetOption")) {
-    Assert-BinaryContainsExport (Join-Path $botHiderRuntimeRoot "addons\BotHider\bin\win64\BotHider.dll") $export
-}
-Require-Path (Join-Path $botHiderRuntimeRoot "addons\BotHider\gamedata.json") "DemoTracer BotHider gamedata"
-Require-Path (Join-Path $botHiderRuntimeRoot "addons\metamod\BotHider.vdf") "DemoTracer BotHider Metamod VDF"
 Require-Path (Join-Path $cssOut "DemoTracer.dll") "DemoTracer CSS plugin"
 Require-Path (Join-Path $apiOut "DemoTracerApi.dll") "DemoTracer API assembly"
 Require-Path (Join-Path $botRandomizerApiOut "BotRandomizerApi.dll") "BotRandomizer API assembly"
@@ -298,8 +265,6 @@ Require-Path (Join-Path $botRandomizerOut "BotRandomizer.deps.json") "BotRandomi
 Require-Path (Join-Path $botRandomizerOut "cosmetic_catalog.json") "BotRandomizer cosmetic catalog"
 Require-Path (Join-Path $botRandomizerOut "cs2-lib-econ-index.v1.json") "BotRandomizer replay econ index"
 Require-Path (Join-Path $botRandomizerOut "charm_placements.json") "BotRandomizer charm placements"
-Require-Path (Join-Path $botHiderCssOut "BotHiderImpl.dll") "DemoTracer BotHider CSS plugin"
-Require-Path (Join-Path $botHiderApiOut "DemoTracerBotHiderApi.dll") "DemoTracer BotHider API assembly"
 
 if (Test-Path -LiteralPath $stageRoot) {
     Remove-Item -LiteralPath $stageRoot -Recurse -Force
@@ -315,18 +280,6 @@ Copy-RequiredFile (Join-Path $runtimeRoot "addons\BotController\gamedata.json") 
     (Join-Path $botControllerOut "gamedata.json")
 Copy-RequiredFile (Join-Path $runtimeRoot "addons\metamod\BotController.vdf") `
     (Join-Path $addonsOut "metamod\BotController.vdf")
-$botHiderOut = Join-Path $addonsOut "BotHider"
-Copy-RequiredFile (Join-Path $botHiderRuntimeRoot "addons\BotHider\bin\win64\BotHider.dll") `
-    (Join-Path $botHiderOut "bin\win64\BotHider.dll")
-Copy-RequiredFile (Join-Path $botHiderRuntimeRoot "addons\BotHider\gamedata.json") `
-    (Join-Path $botHiderOut "gamedata.json")
-Copy-RequiredFile (Join-Path $botHiderRuntimeRoot "addons\BotHider\map_whitelist.json") `
-    (Join-Path $botHiderOut "map_whitelist.json")
-Copy-RequiredFile (Join-Path $botHiderRuntimeRoot "addons\BotHider\bot_info.example.json") `
-    (Join-Path $botHiderOut "bot_info.example.json")
-Copy-RequiredFile (Join-Path $botHiderRuntimeRoot "addons\metamod\BotHider.vdf") `
-    (Join-Path $addonsOut "metamod\BotHider.vdf")
-
 $pluginOut = Join-Path $stageRoot "addons\counterstrikesharp\plugins\DemoTracer"
 $botControllerPluginOut = Join-Path $stageRoot "addons\counterstrikesharp\plugins\BotControllerImpl"
 Copy-RequiredFile (Join-Path $botControllerCssOut "BotControllerImpl.dll") (Join-Path $botControllerPluginOut "BotControllerImpl.dll")
@@ -357,19 +310,10 @@ Copy-RequiredFile (Join-Path $botRandomizerOut "UPSTREAM.md") (Join-Path $botRan
 Copy-RequiredFile (Join-Path $botRandomizerOut "THIRD_PARTY_NOTICES.md") (Join-Path $botRandomizerPluginOut "THIRD_PARTY_NOTICES.md")
 Copy-RequiredFile (Join-Path $botRandomizerOut "LICENSE") (Join-Path $botRandomizerPluginOut "LICENSE")
 
-$botHiderPluginOut = Join-Path $stageRoot "addons\counterstrikesharp\plugins\BotHiderImpl"
-Copy-RequiredFile (Join-Path $botHiderCssOut "BotHiderImpl.deps.json") (Join-Path $botHiderPluginOut "BotHiderImpl.deps.json")
-Copy-RequiredFile (Join-Path $botHiderCssOut "BotHiderImpl.dll") (Join-Path $botHiderPluginOut "BotHiderImpl.dll")
-$botHiderSharedOut = Join-Path $stageRoot "addons\counterstrikesharp\shared\DemoTracerBotHiderApi"
-Copy-RequiredFile (Join-Path $botHiderApiOut "DemoTracerBotHiderApi.dll") (Join-Path $botHiderSharedOut "DemoTracerBotHiderApi.dll")
-$harmonySource = Join-Path $botHiderCssOut "shared\0Harmony\0Harmony.dll"
-Copy-RequiredFile $harmonySource (Join-Path $stageRoot "addons\counterstrikesharp\shared\0Harmony\0Harmony.dll")
 if ($IncludeSymbols) {
     Copy-RequiredFile (Join-Path $cssOut "DemoTracer.pdb") (Join-Path $pluginOut "DemoTracer.pdb")
     Copy-RequiredFile (Join-Path $apiOut "DemoTracerApi.pdb") (Join-Path $demoTracerApiSharedOut "DemoTracerApi.pdb")
     # The common Randomizer package is identical across consumers and omits symbols.
-    Copy-RequiredFile (Join-Path $botHiderCssOut "BotHiderImpl.pdb") (Join-Path $botHiderPluginOut "BotHiderImpl.pdb")
-    Copy-RequiredFile (Join-Path $botHiderApiOut "DemoTracerBotHiderApi.pdb") (Join-Path $botHiderSharedOut "DemoTracerBotHiderApi.pdb")
 }
 
 Copy-RequiredFile (Join-Path $repoRoot "LICENSE") (Join-Path $stageRoot "LICENSE")
@@ -389,11 +333,6 @@ $receiptFiles = @(
                              $relativePath -like "addons/counterstrikesharp/plugins/BotControllerImpl/*" -or
                              $relativePath -like "addons/counterstrikesharp/shared/BotControllerApi/*") {
                 "bot_controller"
-            } elseif ($relativePath -like "addons/BotHider/*" -or $relativePath -eq "addons/metamod/BotHider.vdf") {
-                "bot_hider_native"
-            } elseif ($relativePath -like "addons/counterstrikesharp/plugins/BotHiderImpl/*" -or
-                      $relativePath -like "addons/counterstrikesharp/shared/DemoTracerBotHiderApi/*") {
-                "bot_hider_managed"
             } elseif ($relativePath -like "addons/counterstrikesharp/plugins/DemoTracer/*" -or
                       $relativePath -like "addons/counterstrikesharp/shared/DemoTracerApi/*") {
                 "demotracer"
@@ -426,10 +365,10 @@ $installReceipt | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $installRe
 $readme = @'
 # DemoTracer-CSS v__VERSION__
 
-This is the complete Windows x64 local playback package. Install it into the CS2
+This is the Windows x64 local playback package. Install it into the CS2
 server used for replay; it is not a hosted or cloud service. The bundle includes
-the Metamod BotController and BotHider runtimes plus their CounterStrikeSharp
-plugins as one matching runtime set.
+BotController and the DemoTracer playback plugins. XBribo BotHider is an
+external dependency and is not included.
 
 ## Install
 
@@ -437,10 +376,11 @@ plugins as one matching runtime set.
 2. Install Metamod:Source build __METAMOD_BUILD__+ (plugin API __METAMOD_API__)
    and the KHook-enabled CounterStrikeSharp source baseline listed below.
    They are prerequisites and are not included in this bundle.
-3. Replace the provider code with this bundle's `BotHiderImpl`. Remove legacy
-   `DemoTracerBotHider` DLL/PDB/dependency manifests while preserving user
-   configuration and recordings. Only the bundled presentation writer may run.
-4. Do not merge BotController, BotHider, `BotControllerImpl`, or `BotHiderImpl`
+3. Install XBribo/CS2-Bot-Hider at the `hider` commit recorded in
+   `addons/demotracer-sources.v1.json`: native BotHider, `BotHiderImpl`, and
+   `shared/BotHiderApi/BotHiderApi.dll`. Remove the old DemoTracer-maintained
+   BotHider provider and `DemoTracerBotHiderApi` while preserving user config.
+4. Do not merge BotController or `BotControllerImpl`
    from a full CS2-Bot-Improver package. Those builds use overlapping paths but
    are not the same vendor contract. For post-handoff AI, keep this bundle's
    native set and add only a compatible behavior-only integration.
@@ -496,13 +436,7 @@ through CS2's native `say` / `say_team` path when `dtr_chat_auto on` is enabled
 - `addons/BotController/bin/win64/BotController.dll`
 - `addons/BotController/gamedata.json`
 - `addons/metamod/BotController.vdf`
-- `addons/BotHider/bin/win64/BotHider.dll`
-- `addons/BotHider/gamedata.json`
-- `addons/BotHider/bot_info.example.json` (does not overwrite local `bot_info.json`)
-- `addons/metamod/BotHider.vdf`
 - `addons/demotracer-install.v1.json` (component contract and file hashes for desktop diagnostics)
-- `addons/counterstrikesharp/plugins/BotHiderImpl/`
-- `addons/counterstrikesharp/shared/DemoTracerBotHiderApi/`
 - `addons/counterstrikesharp/shared/BotRandomizerApi/`
 - `addons/counterstrikesharp/plugins/BotRandomizer/`
   - `cosmetic_catalog.json` random-roll pools
@@ -520,7 +454,7 @@ through CS2's native `say` / `say_team` path when `dtr_chat_auto on` is enabled
 - Required BotController native ABI minor: __BOTCONTROLLER_ABI_MINOR__ or newer
 - Supported `.dtr` reader versions: __DTR_READER_MIN__..__DTR_READER_MAX__
 - DemoTracer companion API: __DEMOTRACER_API__
-- DemoTracer BotHider API: __BOTHIDER_API__
+- External XBribo BotHider API: __BOTHIDER_API__
 - BotRandomizer replay-plan API: __BOTRANDOMIZER_API__
 - CounterStrikeSharp plugin target: __CSS_TARGET__
 - Maintained runtime platform: Windows x64
@@ -534,23 +468,21 @@ Required external server prerequisites:
   source commit `__CSS_KHOOK_COMMIT__`. A managed API version number alone does
   not prove KHook support; stock v1.0.374 and older use the previous backend.
 - Native source pins: Metamod `__METAMOD_COMMIT__`, KHook `__KHOOK_COMMIT__`.
+- XBribo/CS2-Bot-Hider native runtime, `BotHiderImpl`, and `BotHiderApi.dll`
+  from the pinned `hider` source commit. Install these separately.
 
 Included in this bundle:
 
 - `BotController` Metamod runtime
-- `BotHider` Metamod runtime maintained by DemoTracer
 - `DemoTracer` CounterStrikeSharp plugin
-- `DemoTracerBotHider` CounterStrikeSharp plugin
 - `BotRandomizer` CounterStrikeSharp replay-cosmetic provider
-- `DemoTracerBotHiderApi.dll`
 - `BotRandomizerApi.dll`
 - `DemoTracerApi.dll`
 - `cs2-lib-econ-index.v1.json`
 - `demotracer.config.example.json`
 
-Do not install a second public CS2-Bot-Hider CSS plugin beside the bundled
-`DemoTracerBotHider`. Identity and crosshair presentation use exclusive,
-versioned leases and require one publisher.
+Run only the external XBribo BotHider provider, not the old DemoTracer BotHider
+implementation. DemoTracer references its API without shipping a second copy.
 
 Do not infer BotController/BotHider compatibility from directory names or VDF
 targets. Known CS2-Bot-Improver v1.4.2 native packages use BotController ABI 14;

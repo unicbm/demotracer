@@ -28,20 +28,14 @@ pub(crate) const REQUIRED_RECEIPT_PATHS: &[&str] = &[
     "addons/metamod/botcontroller.vdf",
     "addons/counterstrikesharp/plugins/botcontrollerimpl/botcontrollerimpl.dll",
     "addons/counterstrikesharp/shared/botcontrollerapi/botcontrollerapi.dll",
-    "addons/bothider/bin/win64/bothider.dll",
-    "addons/bothider/gamedata.json",
-    "addons/metamod/bothider.vdf",
     "addons/counterstrikesharp/plugins/demotracer/demotracer.dll",
     "addons/counterstrikesharp/shared/demotracerapi/demotracerapi.dll",
     "addons/counterstrikesharp/plugins/demotracer/cs2-lib-econ-index.v1.json",
-    "addons/counterstrikesharp/plugins/bothiderimpl/bothiderimpl.dll",
-    "addons/counterstrikesharp/shared/demotracerbothiderapi/demotracerbothiderapi.dll",
     "addons/counterstrikesharp/plugins/botrandomizer/botrandomizer.dll",
     "addons/counterstrikesharp/plugins/botrandomizer/cosmetic_catalog.json",
     "addons/counterstrikesharp/plugins/botrandomizer/cs2-lib-econ-index.v1.json",
     "addons/counterstrikesharp/plugins/botrandomizer/charm_placements.json",
     "addons/counterstrikesharp/shared/botrandomizerapi/botrandomizerapi.dll",
-    "addons/counterstrikesharp/shared/0harmony/0harmony.dll",
 ];
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -190,14 +184,19 @@ pub(crate) struct BotHiderContractWire {
     pub(crate) api: i32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) clan_tag_max_utf8_bytes: Option<u32>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub(crate) native_abi: i32,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub(crate) native_slot_bytes: u32,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub(crate) native_provider_version: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub(crate) managed_provider_version: String,
+}
+
+// Retain old bundle declarations without adding them to the external API-only contract.
+fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    value == &T::default()
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -700,7 +699,7 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
         )),
         evidence_path: Some(path.display().to_string()),
         action: (!hider_compatible).then(|| {
-            "Verify DemoTracerBotHider is the only BotHider presentation provider and reinstall the matching bundle if needed."
+            "Install the pinned XBribo BotHider runtime, BotHiderImpl, and BotHiderApi separately; remove the old DemoTracer BotHider provider."
                 .to_string()
         }),
     });

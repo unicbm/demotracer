@@ -18,7 +18,7 @@ param(
     [switch]$AllowUnsignedInstaller,
     [string]$DotnetPath = "",
     [string]$RuntimePackage = "server\runtime\BotController\build\package",
-    [string]$BotHiderRuntimePackage = "server\runtime\BotHider\build\package",
+    [string]$BotHiderRoot = "third_party/BotHider",
     [switch]$SkipGuiBuild,
     [switch]$SkipCssBuild,
     [switch]$IncludeSymbols
@@ -95,7 +95,7 @@ if ($PlaybackVersion -eq $Version) {
         OutputRoot = $OutputRoot
         DotnetPath = $DotnetPath
         RuntimePackage = $RuntimePackage
-        BotHiderRuntimePackage = $BotHiderRuntimePackage
+        BotHiderRoot = $BotHiderRoot
     }
     if ($SkipCssBuild) {
         $cssArgs.SkipCssBuild = $true

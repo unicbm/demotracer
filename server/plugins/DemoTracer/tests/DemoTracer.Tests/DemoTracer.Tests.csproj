@@ -5,7 +5,6 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <DtrHiderRoot Condition="'$(DtrHiderRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\runtime\BotHider</DtrHiderRoot>
     <DtrControllerRoot Condition="'$(DtrControllerRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\runtime\BotController</DtrControllerRoot>
     <DtrRandomizerRoot Condition="'$(DtrRandomizerRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\runtime\BotRandomizer</DtrRandomizerRoot>
   </PropertyGroup>
@@ -21,7 +20,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\DemoTracer\DemoTracer.csproj" />
-    <ProjectReference Include="$(DtrHiderRoot)\csharp\BotHiderImpl\BotHiderImpl.csproj" />
     <ProjectReference Include="$(DtrControllerRoot)\csharp\BotControllerImpl\BotControllerImpl.csproj" />
     <ProjectReference Include="$(DtrControllerRoot)\csharp\BotControllerApi\BotControllerApi.csproj" />
     <ProjectReference Include="$(DtrRandomizerRoot)\BotRandomizerApi\BotRandomizerApi.csproj" />

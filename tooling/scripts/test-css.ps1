@@ -7,11 +7,20 @@
 param(
     [string]$Configuration = "Release",
     [string]$DotnetPath = "",
+    [string]$BotHiderRoot = "third_party/BotHider",
     [switch]$SkipRandomizer
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$BotHiderRoot = if ([System.IO.Path]::IsPathRooted($BotHiderRoot)) {
+    [System.IO.Path]::GetFullPath($BotHiderRoot)
+} else {
+    [System.IO.Path]::GetFullPath((Join-Path $repoRoot $BotHiderRoot))
+}
+if (-not (Test-Path -LiteralPath (Join-Path $BotHiderRoot "csharp/BotHiderApi/BotHiderApi.csproj") -PathType Leaf)) {
+    throw "BotHider API checkout not found at $BotHiderRoot; pass -BotHiderRoot pointing to XBribo/CS2-Bot-Hider."
+}
 $projectPath = Join-Path $repoRoot "server\plugins\DemoTracer\tests\DemoTracer.Tests\DemoTracer.Tests.csproj"
 $botRandomizerSelfTest = Join-Path $repoRoot "server\runtime\BotRandomizer\tests\BotRandomizer.SelfTest\BotRandomizer.SelfTest.csproj"
 $botRandomizerProvider = Join-Path $repoRoot "server\runtime\BotRandomizer\BotRandomizer.csproj"
@@ -20,7 +29,7 @@ $replayEconIndex = Join-Path $repoRoot "server\runtime\BotRandomizer\bin\$Config
 $componentArguments = @(
     "-p:PathMap=$repoRoot=/_/demotracer",
     "-p:DtrCommonRoot=$(Join-Path $repoRoot 'server/runtime/common')",
-    "-p:DtrHiderRoot=$(Join-Path $repoRoot 'server/runtime/BotHider')",
+    "-p:BotHiderRoot=$BotHiderRoot",
     "-p:DtrRandomizerRoot=$(Join-Path $repoRoot 'server/runtime/BotRandomizer')",
     "-p:DtrControllerRoot=$(Join-Path $repoRoot 'server/runtime/BotController')"
 )

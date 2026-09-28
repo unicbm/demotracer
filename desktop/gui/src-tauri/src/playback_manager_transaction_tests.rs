@@ -271,8 +271,7 @@ fn inspection_and_installation_agree_on_matching_and_newer_package_contracts() {
         assert!(validate_receipt_contract(&changed, "1.2.2").is_err());
     }
 
-    // Older desktop builds discarded these declarations when saving receipts.
-    // Keep those receipts readable for backup/rollback, but do not certify them.
+    // The external provider is validated by API, not the old bundled layout.
     let mut legacy = serde_json::to_value(
         extract_and_validate_package(&package_bytes("1.2.2"), &fixture.0.join("legacy"), "1.2.2")
             .unwrap()
@@ -291,5 +290,43 @@ fn inspection_and_installation_agree_on_matching_and_newer_package_contracts() {
             .remove(field);
     }
     let legacy: InstallReceiptWire = serde_json::from_value(legacy).unwrap();
-    assert!(validate_receipt_contract(&legacy, "1.2.2").is_err());
+    assert!(validate_receipt_contract(&legacy, "1.2.2").is_ok());
+    let mut old_provider = legacy;
+    old_provider.compatibility.bot_hider.api = 3;
+    assert!(validate_receipt_contract(&old_provider, "1.2.2").is_err());
+}
+
+// Installing playback preserves externally owned BotHider files, even in old receipts.
+#[test]
+fn install_preserves_external_bothider() {
+    let fixture = InstallFixture::new();
+    fixture.install("1.2.2").unwrap();
+    let paths = [
+        "addons/BotHider/bin/win64/BotHider.dll",
+        "addons/metamod/BotHider.vdf",
+        "addons/counterstrikesharp/plugins/BotHiderImpl/BotHiderImpl.dll",
+        "addons/counterstrikesharp/shared/BotHiderApi/BotHiderApi.dll",
+        "addons/counterstrikesharp/shared/0Harmony/0Harmony.dll",
+    ];
+    let mut previous = read_installed_receipt(&fixture.game()).unwrap().unwrap();
+    for path in paths {
+        fixture.write(path, b"external-bothider");
+        previous.files.push(ReceiptFileWire {
+            path: path.to_string(),
+            component: "bot_hider_managed".to_string(),
+            size: b"external-bothider".len() as u64,
+            sha256: sha256_hex(b"external-bothider"),
+        });
+    }
+    fixture.write(
+        INSTALL_RECEIPT_RELATIVE_PATH,
+        &serde_json::to_vec(&previous).unwrap(),
+    );
+    fixture.install("1.2.3").unwrap();
+    for path in paths {
+        assert_eq!(
+            fs::read(fixture.game().join(path)).unwrap(),
+            b"external-bothider"
+        );
+    }
 }
