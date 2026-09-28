@@ -1101,21 +1101,6 @@ export function SettingsWorkspace({
               onChange={(value) => onPlaybackChange({ handoffScope: value as "slot" | "all" })}
             />
             <SettingLine title={words.threat360} description={words.threat360Help} checked={playback.threat360 === "on"} onChange={(checked) => onPlaybackChange({ threat360: checked ? "on" : "off" })} />
-            {playback.threat360 === "on" ? (
-              <div className="settings-advanced-inline">
-                <label>
-                  <span><strong>{words.threat360Range}</strong><small>150–800</small></span>
-                  <EditableNumberInput
-                    min={150}
-                    max={800}
-                    step={10}
-                    value={playback.threat360Range}
-                    onChange={(threat360Range) => onPlaybackChange({ threat360Range })}
-                  />
-                </label>
-                <SettingLine title={words.threat360RequireLos} checked={playback.threat360Los} onChange={(threat360Los) => onPlaybackChange({ threat360Los })} />
-              </div>
-            ) : null}
           </div>
         </div>
       </section>

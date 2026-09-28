@@ -126,8 +126,6 @@ public sealed partial class DemoTracerPlugin
         _handoffMode = HandoffMode.DeathContactC4;
         _handoffAllSlots = false;
         _handoffThreat360Enabled = true;
-        _handoffThreat360Range = HandoffThreat360DefaultRange;
-        _handoffThreat360LosEnabled = true;
         _viewmodelContinuityMode = ViewmodelContinuityMode.Round;
         _chatAutoEnabled = true;
         _roundBannerEnabled = true;
@@ -342,26 +340,7 @@ public sealed partial class DemoTracerPlugin
         }
 
         if (handoff.Threat360.HasValue)
-        {
             _handoffThreat360Enabled = handoff.Threat360.Value;
-            if (!_handoffThreat360Enabled)
-                _session.PendingThreat360.Clear();
-        }
-
-        if (handoff.Threat360Range.HasValue)
-        {
-            _handoffThreat360Range = Math.Clamp(
-                handoff.Threat360Range.Value,
-                HandoffThreat360MinRange,
-                HandoffThreat360MaxRange);
-            _session.PendingThreat360.Clear();
-        }
-
-        if (handoff.Threat360Los.HasValue)
-        {
-            _handoffThreat360LosEnabled = handoff.Threat360Los.Value;
-            _session.PendingThreat360.Clear();
-        }
 
         if (!string.IsNullOrWhiteSpace(handoff.ViewmodelContinuity))
         {
@@ -402,7 +381,7 @@ public sealed partial class DemoTracerPlugin
     private void ReplyRuntimeSettings(Action<string> reply, string prefix)
     {
         reply($"{prefix} schema=v2 legacy_align={FormatOnOff(_runtimeConfigHadLegacyAlign)} new_sections={FormatOnOff(_runtimeConfigHadNewSections)}");
-        reply($"{prefix} playback identity={ReplayIdentityModeName()} allow_partial={FormatOnOff(_partialReplayEnabled)} playoff={FormatOnOff(_playoffEnabled)} chat_auto={FormatOnOff(_chatAutoEnabled)} round_banner={FormatOnOff(_roundBannerEnabled)} handoff={FormatHandoffMode(_handoffMode)}:{(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} handoff_360={FormatOnOff(_handoffThreat360Enabled)} range={_handoffThreat360Range.ToString("F0", CultureInfo.InvariantCulture)} los={FormatOnOff(_handoffThreat360LosEnabled)}");
+        reply($"{prefix} playback identity={ReplayIdentityModeName()} allow_partial={FormatOnOff(_partialReplayEnabled)} playoff={FormatOnOff(_playoffEnabled)} chat_auto={FormatOnOff(_chatAutoEnabled)} round_banner={FormatOnOff(_roundBannerEnabled)} handoff={FormatHandoffMode(_handoffMode)}:{(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} handoff_360={FormatOnOff(_handoffThreat360Enabled)}");
         reply($"{prefix} fidelity preset={AlignPresetName()} weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_mode=birth_once crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)}");
         reply($"{prefix} match preset={(_scoreboardAlignEnabled ? "scoreboard" : "off")} scoreboard={FormatOnOff(_scoreboardAlignEnabled)}");
         reply($"{prefix} cosmetics preset={CosmeticPresetName()} risk={FormatOnOff(_cosmeticAlignEnabled)} weapons={FormatOnOff(_cosmeticWeaponsEnabled)} knives={FormatOnOff(_cosmeticKnivesEnabled)} gloves={FormatOnOff(_cosmeticGlovesEnabled)} names={FormatOnOff(_cosmeticNamesEnabled)} agents={FormatOnOff(_cosmeticAgentsEnabled)} stickers={FormatOnOff(_stickerAlignEnabled)} charms={FormatOnOff(_charmAlignEnabled)} preserve_native={FormatOnOff(_preserveNativeBotCosmetics)}");
@@ -470,12 +449,6 @@ public sealed partial class DemoTracerPlugin
 
         [JsonPropertyName("threat_360")]
         public bool? Threat360 { get; set; }
-
-        [JsonPropertyName("threat_360_range")]
-        public float? Threat360Range { get; set; }
-
-        [JsonPropertyName("threat_360_los")]
-        public bool? Threat360Los { get; set; }
 
         [JsonPropertyName("viewmodel_continuity")]
         public string? ViewmodelContinuity { get; set; }

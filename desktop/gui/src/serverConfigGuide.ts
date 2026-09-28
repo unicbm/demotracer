@@ -50,15 +50,6 @@ export const SERVER_CONFIG_GUIDE: readonly ServerConfigGuideField[] = [
   enumField("handoff.mode", "handoff", ["off", "death", "contact", "death_or_contact", "death_contact_c4"], "death_contact_c4", "何时把 Bot 控制权交回原生 AI。", "When replay control returns to the native bot AI."),
   enumField("handoff.scope", "handoff", ["slot", "all"], "slot", "接触或死亡时释放当前槽位，或释放全部回放槽位。", "Release the triggering slot or every replay slot on contact/death."),
   booleanField("handoff.threat_360", "handoff", true, "回放期间允许原生 360 度威胁感知。", "Enable native 360-degree threat perception during replay."),
-  {
-    path: "handoff.threat_360_range",
-    group: "handoff",
-    type: "number",
-    accepted: ["150–800"],
-    defaultValue: "420",
-    description: { zh: "兼容回退检测器的威胁半径；超出范围会被夹取。", en: "Threat radius for the compatibility fallback detector; values are clamped." },
-  },
-  booleanField("handoff.threat_360_los", "handoff", true, "兼容回退检测器要求视线可达。", "Require line of sight in the compatibility fallback detector."),
   enumField("handoff.viewmodel_continuity", "handoff", ["round", "release"], "round", "交接后保留持枪视角到回合边界，或立即恢复。", "Keep the replay viewmodel until the round boundary or restore it immediately."),
 
   enumField("fidelity.preset", "fidelity", ["default", "full", "handoff_safe", "off"], "default", "回放保真预设；下列布尔字段可覆盖单项。", "Replay fidelity preset; the booleans below can override individual parts."),

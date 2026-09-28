@@ -75,7 +75,7 @@ public sealed partial class DemoTracerPlugin
                 continue;
             }
             if (HandoffIncludesContact(_handoffMode) &&
-                ReplayBotHasContact(slot, playerSnapshot, out var contactReason, out _))
+                ReplayBotHasContact(slot, out var contactReason))
             {
                 HandoffActiveReplays($"enemy_contact_{contactReason}_slot{slot}", slot);
                 continue;

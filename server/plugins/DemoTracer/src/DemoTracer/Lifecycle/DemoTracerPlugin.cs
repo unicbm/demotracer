@@ -39,16 +39,8 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     {
         PropertyNameCaseInsensitive = true
     };
-    private const float HandoffGraceSeconds = 0.25f;
     private const float BulletHandoffMatchSeconds = 0.25f;
     private const int BulletHandoffMinDamage = 1;
-    private const float HandoffThreat360DefaultRange = 420.0f;
-    private const float HandoffThreat360MinRange = 150.0f;
-    private const float HandoffThreat360MaxRange = 800.0f;
-    private const float HandoffThreat360ImmediateRange = 240.0f;
-    private const float HandoffThreat360HoldSeconds = 0.08f;
-    private const float HandoffThreat360MaxVerticalDelta = 128.0f;
-    private const float HandoffThreat360ChestZScale = 0.62f;
     private const int ProjectileAlignLogMaxEntries = 128;
     private const float ProjectileAlignMaxInitialPositionDistance = 128.0f;
     private const int MinManifestAbiVersion = 12;
@@ -74,7 +66,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private const string LeftHandDesiredFidelityNotice = "[DTR WARN] left_hand_desired=off 会丢失 demo 持枪侧信息。Reload loaded replays or plans for this setting to apply.";
 
     private readonly DemoTracerBotHiderBridge _botHiderBridge = new();
-    private readonly RayTraceLosProbe _rayTraceLosProbe = new();
     private readonly DemoTracerApiFacade _apiFacade;
     private bool _weaponAlignEnabled = true;
     private bool _projectileAlignEnabled = true;
@@ -102,8 +93,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private HandoffMode _handoffMode = HandoffMode.DeathContactC4;
     private bool _handoffAllSlots;
     private bool _handoffThreat360Enabled = true;
-    private float _handoffThreat360Range = HandoffThreat360DefaultRange;
-    private bool _handoffThreat360LosEnabled = true;
     private bool _partialReplayEnabled = true;
     private ReplayIdentityMode _replayIdentityMode = ReplayIdentityMode.Steam;
     private bool _mapActive = true;

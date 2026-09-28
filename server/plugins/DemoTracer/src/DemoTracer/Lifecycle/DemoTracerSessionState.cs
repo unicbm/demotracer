@@ -39,11 +39,9 @@ public sealed partial class DemoTracerPlugin
         public HashSet<int> WeaponLoadoutSyncedSlots { get; } = [];
         public ReplayPawnEquipmentSyncTracker PawnEquipmentSync { get; } = new();
         public HashSet<int> BalanceSyncedSlots { get; } = [];
-        public Dictionary<int, float> ReplayStartedAt { get; } = [];
         public Dictionary<int, uint> ReplayPerceptionBaselineSerial { get; } = [];
         public Dictionary<int, PendingBulletHit> PendingBulletHits { get; } = [];
         public Dictionary<int, PendingBulletDamage> PendingBulletDamages { get; } = [];
-        public Dictionary<int, PendingThreat360> PendingThreat360 { get; } = [];
         public HashSet<int> CosmeticSyncedSlots { get; } = [];
         public HashSet<int> ScoreboardSyncedSlots { get; } = [];
         public Dictionary<int, ReplayPawnViewState> ReplayViewmodels { get; } = [];

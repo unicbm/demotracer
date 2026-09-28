@@ -76,7 +76,6 @@ public sealed partial class DemoTracerPlugin
     {
         _retainedReplayViewmodelSlots.Remove(slot);
         _session.ReplaySlots.MarkPlaying(slot, loop, roundMedia);
-        _session.ReplayStartedAt[slot] = Server.CurrentTime;
         _session.ReplayPerceptionBaselineSerial[slot] =
             BotControllerNative.TryGetNativePerceptionState(slot, out var perception)
                 ? perception.UpdateSerial
@@ -113,7 +112,6 @@ public sealed partial class DemoTracerPlugin
                                 RetainReplayBotViewmodelForRound(slot);
         if (!retainedViewmodel)
             RestoreReplayBotViewmodel(slot);
-        _session.ReplayStartedAt.Remove(slot);
         _session.ReplayPerceptionBaselineSerial.Remove(slot);
         _session.LastEnsuredWeaponDef.Remove(slot);
         _session.LastReplayWeaponDef.Remove(slot);
@@ -130,7 +128,6 @@ public sealed partial class DemoTracerPlugin
         BotControllerNative.ClearReplayPawnEquipment(slot);
         _session.PendingBulletHits.Remove(slot);
         _session.PendingBulletDamages.Remove(slot);
-        _session.PendingThreat360.Remove(slot);
         // Native projectile birth align is a global queue without per-slot
         // cancellation. Handoff prioritizes the ownership boundary over a
         // possible in-flight alignment on another surviving replay slot.

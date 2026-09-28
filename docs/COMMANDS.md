@@ -165,13 +165,15 @@ Install one `BotRandomizer` provider in the normal plugin directory.
 
 ```text
 dtr_handoff <off|death|contact|death_or_contact|death_contact_c4> [slot|all]
-dtr_handoff_360 [0|1] [range] [los|nolos]
+dtr_handoff_360 [0|1]
 ```
 
 The default is `death_contact_c4 slot`: release an individual slot on death or
-contact; C4 planted releases all active slots. The 360 option extends contact
-detection around the replay bot and can use an optional RayTrace provider for
-line-of-sight filtering.
+contact; C4 planted releases all active slots. Contact uses fresh native bot
+perception. The 360 option disables only the native field-of-view restriction
+during replay; native visibility checks remain active. Range and LOS overrides
+are no longer supported. Existing `threat_360_range` and `threat_360_los` config
+fields are ignored; remove them when updating a server configuration.
 
 ### Chat and Voice
 

@@ -151,7 +151,6 @@ public sealed partial class DemoTracerPlugin
             _session.BalanceSyncedSlots.Remove(slot);
             _session.PendingBulletHits.Remove(slot);
             _session.PendingBulletDamages.Remove(slot);
-            _session.PendingThreat360.Remove(slot);
         }
         Server.PrintToConsole(StartReplaySlotsReady(
             slots, loop: true, ReplayStartAnchor.Live, null, restartLoop: true));

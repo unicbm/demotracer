@@ -19,8 +19,6 @@ const CONFIG_FILE_NAME: &str = "demotracer.config.json";
 const EXAMPLE_CONFIG_FILE_NAME: &str = "demotracer.config.example.json";
 const CONFIG_RELATIVE_DIRECTORY: &str = "addons/counterstrikesharp/plugins/DemoTracer";
 const MAX_CONFIG_BYTES: usize = 512 * 1024;
-const HANDOFF_THREAT_360_MIN_RANGE: f64 = 150.0;
-const HANDOFF_THREAT_360_MAX_RANGE: f64 = 800.0;
 
 const BUILTIN_DEFAULT_CONFIG: &str = r#"{
   "identity": "steam",
@@ -32,8 +30,6 @@ const BUILTIN_DEFAULT_CONFIG: &str = r#"{
     "mode": "death_contact_c4",
     "scope": "slot",
     "threat_360": true,
-    "threat_360_range": 420,
-    "threat_360_los": true,
     "viewmodel_continuity": "round"
   },
   "fidelity": {
@@ -753,8 +749,6 @@ fn validate_handoff(
             "mode",
             "scope",
             "threat_360",
-            "threat_360_range",
-            "threat_360_los",
             "viewmodel_continuity",
         ],
         unknown,
@@ -796,12 +790,6 @@ fn validate_handoff(
         warnings,
     );
     validate_bool(section, "threat_360", "$.handoff.threat_360", errors);
-    validate_bool(
-        section,
-        "threat_360_los",
-        "$.handoff.threat_360_los",
-        errors,
-    );
     validate_string_enum(
         section,
         "viewmodel_continuity",
@@ -819,27 +807,6 @@ fn validate_handoff(
         errors,
         warnings,
     );
-    if let Some(value) = get_case_insensitive(section, "threat_360_range") {
-        if value.is_null() {
-            return;
-        }
-        match value.as_f64() {
-            Some(value)
-                if !(HANDOFF_THREAT_360_MIN_RANGE..=HANDOFF_THREAT_360_MAX_RANGE)
-                    .contains(&value) =>
-            {
-                warnings.push(issue(
-                    "$.handoff.threat_360_range",
-                    "value_clamped",
-                    format!(
-                        "The CSS plugin clamps this value to {HANDOFF_THREAT_360_MIN_RANGE:.0}-{HANDOFF_THREAT_360_MAX_RANGE:.0}."
-                    ),
-                ));
-            }
-            Some(_) => {}
-            None => errors.push(type_issue("$.handoff.threat_360_range", "number or null")),
-        }
-    }
 }
 
 fn validate_align(
@@ -1140,8 +1107,6 @@ fn canonicalize_known_field_names(value: &mut Value) {
             "mode",
             "scope",
             "threat_360",
-            "threat_360_range",
-            "threat_360_los",
             "viewmodel_continuity",
         ],
     );
@@ -1386,13 +1351,36 @@ mod tests {
             .warnings
             .iter()
             .any(|issue| issue.path == "$.identity" && issue.code == "value_ignored"));
-        assert!(validation.warnings.iter().any(|issue| {
-            issue.path == "$.handoff.threat_360_range" && issue.code == "value_clamped"
-        }));
+        assert!(validation
+            .unknown_paths
+            .contains(&"$.handoff.threat_360_range".to_string()));
         assert!(validation
             .warnings
             .iter()
             .any(|issue| issue.code == "legacy_align_overridden"));
+    }
+
+    #[test]
+    fn retired_handoff_options_are_preserved_as_unknown_fields() {
+        let mut value = serde_json::json!({
+            "handoff": {
+                "threat_360": true,
+                "threat_360_range": 420,
+                "threat_360_los": false
+            }
+        });
+        let original = value.clone();
+        canonicalize_known_field_names(&mut value);
+        assert_eq!(value, original);
+        let validation = validate_config_text(&value.to_string());
+        assert!(validation.valid);
+        assert_eq!(
+            validation.unknown_paths,
+            ["$.handoff.threat_360_los", "$.handoff.threat_360_range"]
+        );
+        let defaults: Value = serde_json::from_str(BUILTIN_DEFAULT_CONFIG).unwrap();
+        assert!(defaults["handoff"].get("threat_360_range").is_none());
+        assert!(defaults["handoff"].get("threat_360_los").is_none());
     }
 
     #[test]

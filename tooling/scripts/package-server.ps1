@@ -558,10 +558,8 @@ DemoTracer requires ABI __BOTCONTROLLER_ABI__/minor __BOTCONTROLLER_ABI_MINOR__.
 `addons/demotracer-install.v1.json` and exact component hashes to detect a mixed
 or replaced vendor set.
 
-Optional:
-
-- Ray-Trace v1.0.16 or newer, only for stricter line-of-sight filtering in
-  handoff 360 threat detection.
+Contact handoff uses the bundled BotController native perception. No external
+tracing provider is required.
 
 The bundled common BotRandomizer API v3 provider is the sole cosmetic entity writer.
 DemoTracer submits validated demo evidence as a complete desired-state plan

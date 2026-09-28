@@ -58,8 +58,9 @@ are maintained upstream derivatives; preserve their licenses, attribution and
 `UPSTREAM.md` files. Generated catalogs must not be edited by hand.
 
 BotRandomizer owns cosmetic entity writes; DemoTracer submits validated plans
-through API v3. Ray-Trace 1.0.16+ is optional for stricter handoff line-of-sight
-checks. Install the matched playback bundle rather than mixing provider DLLs.
+through API v3. Contact handoff requires BotController native perception; no
+external tracing provider is needed. Install the matched playback bundle rather
+than mixing provider DLLs.
 
 Replay has one movement input path: after the engine's `SetupMove`, BotController
 supplies the demo's pre-command position and velocity in `CMoveData`. Native

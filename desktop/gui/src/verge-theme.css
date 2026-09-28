@@ -1645,12 +1645,6 @@ textarea {
   border: 0;
 }
 
-.settings-advanced-inline > .settings-toggle-line {
-  min-width: 230px;
-  padding: 0;
-  border: 0;
-}
-
 .dialog-scrim:has(.settings-modal) {
   background: color-mix(in srgb, var(--scrim) 88%, rgba(0, 0, 0, 0.32));
   backdrop-filter: blur(1.5px);

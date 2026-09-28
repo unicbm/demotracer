@@ -23,8 +23,6 @@ export interface PlaybackPresetOptions {
   handoffMode: PlaybackHandoffMode;
   handoffScope: "slot" | "all";
   threat360: PlaybackToggleOverride;
-  threat360Range: number;
-  threat360Los: boolean;
   friendlyFire: PlaybackToggleOverride;
 }
 
@@ -39,8 +37,6 @@ export const DEFAULT_PLAYBACK_ADVANCED_OPTIONS: PlaybackAdvancedOptions = {
   handoffMode: "death_contact_c4",
   handoffScope: "slot",
   threat360: "on",
-  threat360Range: 420,
-  threat360Los: true,
   friendlyFire: "off",
 };
 
@@ -69,9 +65,6 @@ export function buildPlaybackCommand(
   }
   if (options.threat360 !== defaults.threat360) {
     commands.push(`dtr_handoff_360 ${options.threat360}`);
-  } else if (options.threat360 === "on"
-    && (options.threat360Range !== defaults.threat360Range || options.threat360Los !== defaults.threat360Los)) {
-    commands.push(`dtr_handoff_360 on ${options.threat360Range} ${options.threat360Los ? "los" : "nolos"}`);
   }
   if (retentionCommand) commands.push(retentionCommand);
   commands.push(goCommand);

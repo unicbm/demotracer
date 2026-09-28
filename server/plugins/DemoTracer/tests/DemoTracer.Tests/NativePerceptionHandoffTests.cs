@@ -45,6 +45,24 @@ public sealed class NativePerceptionHandoffTests
     }
 
     [Fact]
+    public void InvalidPerceptionCannotTriggerHandoff()
+    {
+        var state = VisibleEnemy(updateSerial: 42);
+        state.Valid = 0;
+
+        Assert.False(DemoTracerPlugin.IsFreshNativeVisibleEnemy(state, baselineSerial: 41));
+    }
+
+    [Fact]
+    public void EnemyWithoutVisibleBodyPartsCannotTriggerHandoff()
+    {
+        var state = VisibleEnemy(updateSerial: 42);
+        state.VisibleEnemyParts = 0;
+
+        Assert.False(DemoTracerPlugin.IsFreshNativeVisibleEnemy(state, baselineSerial: 41));
+    }
+
+    [Fact]
     public void SerialWrapStillAcceptsFreshUpdate()
     {
         var state = VisibleEnemy(updateSerial: 0);

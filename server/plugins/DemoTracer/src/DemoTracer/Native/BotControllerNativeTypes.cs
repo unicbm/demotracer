@@ -64,6 +64,7 @@ internal static partial class BotControllerNative
         CapabilityBuyPlan |
         CapabilityControllerBotOffset |
         CapabilityExtendedReplay |
+        CapabilityNativePerception |
         CapabilityHandoffBestWeapon |
         CapabilityReplayPawnEquipment;
 

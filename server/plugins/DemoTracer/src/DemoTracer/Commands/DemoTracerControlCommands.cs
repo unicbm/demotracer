@@ -58,17 +58,22 @@ public sealed partial class DemoTracerPlugin
         command.ReplyToCommand(
             $"[DTR OK] handoff={FormatHandoffMode(_handoffMode)} scope={(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()}");
     }
-    [ConsoleCommand("dtr_handoff_360", "dtr_handoff_360 [0|1] [range] [los|nolos]")]
+    [ConsoleCommand("dtr_handoff_360", "dtr_handoff_360 [0|1]")]
     [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
     public void Handoff360Command(CCSPlayerController? player, CommandInfo command)
     {
+        if (command.ArgCount > 2)
+        {
+            command.ReplyToCommand("usage: dtr_handoff_360 [0|1]; range and LOS overrides are no longer supported; native visibility is always used");
+            return;
+        }
+
         if (command.ArgCount >= 2)
         {
             var enabled = command.GetArg(1);
             if (enabled is "0" or "off" or "false")
             {
                 _handoffThreat360Enabled = false;
-                _session.PendingThreat360.Clear();
             }
             else if (enabled is "1" or "on" or "true")
             {
@@ -76,50 +81,15 @@ public sealed partial class DemoTracerPlugin
             }
             else
             {
-                command.ReplyToCommand("usage: dtr_handoff_360 [0|1] [range] [los|nolos]");
+                command.ReplyToCommand("usage: dtr_handoff_360 [0|1]");
                 return;
             }
-        }
-
-        if (command.ArgCount >= 3)
-        {
-            if (!float.TryParse(command.GetArg(2), NumberStyles.Float, CultureInfo.InvariantCulture, out var range))
-            {
-                command.ReplyToCommand("usage: dtr_handoff_360 [0|1] [range] [los|nolos]");
-                return;
-            }
-            _handoffThreat360Range = Math.Clamp(range, HandoffThreat360MinRange, HandoffThreat360MaxRange);
-            _session.PendingThreat360.Clear();
-        }
-
-        if (command.ArgCount >= 4)
-        {
-            var los = command.GetArg(3);
-            if (los.Equals("los", StringComparison.OrdinalIgnoreCase) ||
-                los.Equals("ray", StringComparison.OrdinalIgnoreCase) ||
-                los.Equals("raytrace", StringComparison.OrdinalIgnoreCase) ||
-                los is "1" or "on" or "true")
-            {
-                _handoffThreat360LosEnabled = true;
-            }
-            else if (los.Equals("nolos", StringComparison.OrdinalIgnoreCase) ||
-                     los.Equals("off", StringComparison.OrdinalIgnoreCase) ||
-                     los is "0" or "false")
-            {
-                _handoffThreat360LosEnabled = false;
-            }
-            else
-            {
-                command.ReplyToCommand("usage: dtr_handoff_360 [0|1] [range] [los|nolos]");
-                return;
-            }
-            _session.PendingThreat360.Clear();
         }
 
         BotControllerNative.SetReplayNativeFovOverride(_handoffThreat360Enabled);
 
         command.ReplyToCommand(
-            $"dtr: handoff_360={_handoffThreat360Enabled} range={_handoffThreat360Range.ToString("F0", CultureInfo.InvariantCulture)} los={_handoffThreat360LosEnabled} raytrace={_rayTraceLosProbe.ProbeStatus}");
+            $"dtr: handoff_360={_handoffThreat360Enabled}");
     }
 
     private void SetIdentityMode(CommandInfo command)
@@ -300,7 +270,7 @@ public sealed partial class DemoTracerPlugin
             ? recordedBalance.ToString(CultureInfo.InvariantCulture)
             : "none";
         command.ReplyToCommand(
-            $"dtr: abi={BotControllerNative.AbiVersion} slot={slot} playing={state.Playing} cursor={state.Cursor} total={state.Total} handoff={FormatHandoffMode(_handoffMode)} scope={(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} handoff_360={_handoffThreat360Enabled}:{_handoffThreat360Range.ToString("F0", CultureInfo.InvariantCulture)} los={_handoffThreat360LosEnabled}:{_rayTraceLosProbe.ProbeStatus} partial={_partialReplayEnabled} identity={ReplayIdentityModeName()} projectile_align={_projectileAlignEnabled} projectile_mode=first_physics_pre cosmetic_align={_cosmeticAlignEnabled} agent_align={_cosmeticAgentsEnabled} sticker_align={_stickerAlignEnabled} charm_align={_charmAlignEnabled} preserve_native={_preserveNativeBotCosmetics} crosshair_align={_crosshairAlignEnabled} left_hand_desired={_leftHandDesiredEnabled} balance_align={_balanceAlignEnabled} round_start_balance={roundStartBalance} balance_applied={_session.BalanceSyncedSlots.Contains(slot)} scoreboard_align={_scoreboardAlignEnabled} {FormatVoiceAutoStatusInline()} {FormatChatAutoStatusInline()}{sequence}{playoff}");
+            $"dtr: abi={BotControllerNative.AbiVersion} slot={slot} playing={state.Playing} cursor={state.Cursor} total={state.Total} handoff={FormatHandoffMode(_handoffMode)} scope={(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} handoff_360={_handoffThreat360Enabled} partial={_partialReplayEnabled} identity={ReplayIdentityModeName()} projectile_align={_projectileAlignEnabled} projectile_mode=first_physics_pre cosmetic_align={_cosmeticAlignEnabled} agent_align={_cosmeticAgentsEnabled} sticker_align={_stickerAlignEnabled} charm_align={_charmAlignEnabled} preserve_native={_preserveNativeBotCosmetics} crosshair_align={_crosshairAlignEnabled} left_hand_desired={_leftHandDesiredEnabled} balance_align={_balanceAlignEnabled} round_start_balance={roundStartBalance} balance_applied={_session.BalanceSyncedSlots.Contains(slot)} scoreboard_align={_scoreboardAlignEnabled} {FormatVoiceAutoStatusInline()} {FormatChatAutoStatusInline()}{sequence}{playoff}");
     }
 
     [ConsoleCommand("dtr_runtime", "dtr_runtime")]
@@ -341,7 +311,7 @@ public sealed partial class DemoTracerPlugin
                 ? "[DTR DOCTOR] bot_hider provider=unavailable"
                 : $"[DTR DOCTOR] bot_hider api={botHiderProvider.ApiVersion} connected={botHiderProvider.Connected} draining={botHiderProvider.Draining} map_epoch={botHiderProvider.MapEpoch} leases={botHiderDiagnostics.ActiveLeases}/{botHiderDiagnostics.LeasedSlots} writes={botHiderDiagnostics.PublishedWrites} controller_repairs={botHiderDiagnostics.ControllerRepairs}");
         command.ReplyToCommand(
-            $"[DTR DOCTOR] replay loaded={_session.ReplaySlots.LoadedCount} claimed={_session.ReplaySlots.OwnedCount} managed_playing={_session.ReplaySlots.PlayingCount} native_playing={loadedPlaying} identity={ReplayIdentityModeName()} weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_mode=first_physics_pre cosmetics={FormatOnOff(_cosmeticAlignEnabled)} agents={FormatOnOff(_cosmeticAgentsEnabled)} stickers={FormatOnOff(_stickerAlignEnabled)} charms={FormatOnOff(_charmAlignEnabled)} preserve_native={FormatOnOff(_preserveNativeBotCosmetics)} crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand_desired={FormatOnOff(_leftHandDesiredEnabled)} scoreboard={FormatOnOff(_scoreboardAlignEnabled)} handoff={FormatHandoffMode(_handoffMode)}:{(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} partial={FormatOnOff(_partialReplayEnabled)} playoff={FormatOnOff(_playoffEnabled)}:{FormatPlayoffPlanStatus()} raytrace={_rayTraceLosProbe.ProbeStatus} {FormatCosmeticStatusCounts()} {FormatCrosshairStatusCounts()} {FormatViewmodelStatusCounts()} {FormatScoreboardStatusCounts()}");
+            $"[DTR DOCTOR] replay loaded={_session.ReplaySlots.LoadedCount} claimed={_session.ReplaySlots.OwnedCount} managed_playing={_session.ReplaySlots.PlayingCount} native_playing={loadedPlaying} identity={ReplayIdentityModeName()} weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_mode=first_physics_pre cosmetics={FormatOnOff(_cosmeticAlignEnabled)} agents={FormatOnOff(_cosmeticAgentsEnabled)} stickers={FormatOnOff(_stickerAlignEnabled)} charms={FormatOnOff(_charmAlignEnabled)} preserve_native={FormatOnOff(_preserveNativeBotCosmetics)} crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand_desired={FormatOnOff(_leftHandDesiredEnabled)} scoreboard={FormatOnOff(_scoreboardAlignEnabled)} handoff={FormatHandoffMode(_handoffMode)}:{(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} partial={FormatOnOff(_partialReplayEnabled)} playoff={FormatOnOff(_playoffEnabled)}:{FormatPlayoffPlanStatus()} {FormatCosmeticStatusCounts()} {FormatCrosshairStatusCounts()} {FormatViewmodelStatusCounts()} {FormatScoreboardStatusCounts()}");
 
         if (command.ArgCount >= 2)
             ReplyDoctorManifest(command, command.GetArg(1));

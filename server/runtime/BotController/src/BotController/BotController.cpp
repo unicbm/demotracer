@@ -358,7 +358,7 @@ namespace BotController
             }
 
             // Native 360-degree replay perception is optional. Failure keeps
-            // ordinary native FOV behavior and the managed fallback detector.
+            // ordinary native FOV behavior; no managed detector overrides it.
             char ivpErr[256] = {0};
             g_addrIsVisiblePos = Sig::ResolveSig(gd, serverModule,
                                                  "CCSBot::IsVisiblePos",

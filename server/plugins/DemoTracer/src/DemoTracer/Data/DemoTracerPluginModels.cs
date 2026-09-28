@@ -141,7 +141,6 @@ public sealed partial class DemoTracerPlugin
 
     private readonly record struct PendingBulletDamage(int AttackerSlot, int Damage, float Time);
 
-    private readonly record struct PendingThreat360(int EnemySlot, float FirstSeenAt);
 
     private enum ProjectileAlignDecision
     {

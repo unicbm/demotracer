@@ -208,11 +208,9 @@ public sealed partial class DemoTracerPlugin
         _session.ProjectileAlignNextBySlot.Clear();
         BotControllerNative.ClearProjectileBirthAlign();
         _session.RebuiltInventorySlots.Clear();
-        _session.ReplayStartedAt.Clear();
         _session.ReplayPerceptionBaselineSerial.Clear();
         _session.PendingBulletHits.Clear();
         _session.PendingBulletDamages.Clear();
-        _session.PendingThreat360.Clear();
         _session.SafeC4Aligned = false;
     }
 

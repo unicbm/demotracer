@@ -220,7 +220,7 @@ export function storedPlaybackPreset(): PlaybackPresetOptions {
   try {
     const saved = JSON.parse(localStorage.getItem("demotracer.playback-preset.v1") ?? "null") as Partial<PlaybackPresetOptions> | null;
     if (!saved || typeof saved !== "object") return { ...DEFAULT_PLAYBACK_PRESET };
-    const readBoolean = (key: "weapons" | "cosmetics" | "steamIdentity" | "avatar" | "voice" | "playoff" | "threat360Los") =>
+    const readBoolean = (key: "weapons" | "cosmetics" | "steamIdentity" | "avatar" | "voice" | "playoff") =>
       typeof saved[key] === "boolean" ? saved[key] : DEFAULT_PLAYBACK_PRESET[key];
     const readToggle = (key: "projectileAlignment" | "crosshairAlignment" | "leftHandAlignment" | "allowPartial" | "threat360") =>
       saved[key] === "on" || saved[key] === "off"
@@ -247,13 +247,6 @@ export function storedPlaybackPreset(): PlaybackPresetOptions {
         : DEFAULT_PLAYBACK_PRESET.handoffMode,
       handoffScope: saved.handoffScope === "all" ? "all" : "slot",
       threat360: readToggle("threat360"),
-      threat360Range: typeof saved.threat360Range === "number"
-        && Number.isFinite(saved.threat360Range)
-        && saved.threat360Range >= 150
-        && saved.threat360Range <= 800
-        ? saved.threat360Range
-        : DEFAULT_PLAYBACK_PRESET.threat360Range,
-      threat360Los: readBoolean("threat360Los"),
       friendlyFire: saved.friendlyFire === "on" ? "on" : "off",
     };
   } catch {

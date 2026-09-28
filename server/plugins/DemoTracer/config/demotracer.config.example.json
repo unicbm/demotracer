@@ -8,8 +8,6 @@
     "mode": "death_contact_c4",
     "scope": "slot",
     "threat_360": true,
-    "threat_360_range": 420,
-    "threat_360_los": true,
     // "round" keeps the final viewmodel and left/right-hand desired latch until
     // the round boundary after handoff or natural replay completion. Replay
     // input, movement, buy plans, and weapon locks are still released at once.

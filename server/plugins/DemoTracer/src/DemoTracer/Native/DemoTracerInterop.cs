@@ -621,6 +621,11 @@ internal static partial class BotControllerNative
                 LastLoadError = "replay has no ticks";
                 return false;
             }
+            if (!HasNativePerceptionCapability)
+            {
+                LastLoadError = $"replay requires native perception capability; install the matched playback bundle; {RuntimeSummary}";
+                return false;
+            }
 
             var subticks = replay.Subticks.Length == 0
                 ? [new NativeSubtickMove()]
