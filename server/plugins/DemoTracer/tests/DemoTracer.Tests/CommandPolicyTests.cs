@@ -5,7 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 using System.Reflection;
-using BotHiderImpl;
+using DtrHider;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Commands;
 using DemoTracer;
@@ -51,7 +51,7 @@ public sealed class CommandPolicyTests
         var unsafeCommands = new List<string>();
         var commandCount = 0;
 
-        foreach (var method in DeclaredMethods(typeof(BotHiderImplPlugin)))
+        foreach (var method in DeclaredMethods(typeof(DtrHiderPlugin)))
         {
             var commands = method.GetCustomAttributes<ConsoleCommandAttribute>().ToArray();
             commandCount += commands.Length;

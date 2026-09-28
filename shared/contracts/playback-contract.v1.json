@@ -11,6 +11,10 @@
     "max": 12
   },
   "bot_controller": {
+    "native_library": "dtr-controller",
+    "managed_assembly": "DtrController",
+    "managed_api": "DtrControllerApi",
+    "capability": "dtr-controller:api",
     "abi_major": 21,
     "min_abi_minor": 44,
     "movement_intent_version": 1,
@@ -21,6 +25,10 @@
     "required_capabilities_hex": "0x749df"
   },
   "bot_hider": {
+    "native_library": "dtr-hider",
+    "managed_assembly": "DtrHider",
+    "managed_api": "DtrHiderApi",
+    "capability": "dtr-hider:api:v3",
     "api": 3,
     "native_abi": 3,
     "native_slot_bytes": 172,

@@ -4,8 +4,8 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-using BotHiderImpl;
-using DemoTracerBotHiderApi;
+using DtrHider;
+using DtrHiderApi;
 
 namespace DemoTracer.Tests;
 
@@ -14,7 +14,7 @@ public sealed class BotHiderCrosshairPresentationTests
     [Fact]
     public void ContractNormalizesWithinUtf8Limit()
     {
-        Assert.True(DemoTracerBotHiderContract.TryNormalizeCrosshairCode(
+        Assert.True(DtrHiderContract.TryNormalizeCrosshairCode(
             "  CSGO-test  ",
             out var normalized));
         Assert.Equal("CSGO-test", normalized);
@@ -23,16 +23,16 @@ public sealed class BotHiderCrosshairPresentationTests
     [Fact]
     public void ContractRejectsCrosshairPastUtf8Limit()
     {
-        var source = new string('x', DemoTracerBotHiderContract.MaxCrosshairCodeUtf8Bytes + 1);
+        var source = new string('x', DtrHiderContract.MaxCrosshairCodeUtf8Bytes + 1);
 
-        Assert.False(DemoTracerBotHiderContract.TryNormalizeCrosshairCode(source, out var normalized));
+        Assert.False(DtrHiderContract.TryNormalizeCrosshairCode(source, out var normalized));
         Assert.Null(normalized);
     }
 
     [Fact]
     public void ContractRejectsEmbeddedNull()
     {
-        Assert.False(DemoTracerBotHiderContract.TryNormalizeCrosshairCode("CSGO-x\0y", out var normalized));
+        Assert.False(DtrHiderContract.TryNormalizeCrosshairCode("CSGO-x\0y", out var normalized));
         Assert.Null(normalized);
     }
 

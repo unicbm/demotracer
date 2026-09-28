@@ -15,8 +15,8 @@ export function scopeFor(files, full = false) {
   const converter = parser || any(/^desktop\/converter\//);
   const desktop = converter || any(/^desktop\/gui\/src-tauri\//);
   const frontend = all || any(/^desktop\/gui\/(?!src-tauri\/)/);
-  const playback = all || any(/^server\/(plugins\/DemoTracer|runtime\/(BotController|BotHider|BotRandomizer))\//);
-  const fuzz = all || any(/^server\/runtime\/BotController\//);
+  const playback = all || any(/^server\/(plugins\/DemoTracer|runtime\/(dtr-controller|dtr-hider|BotRandomizer))\//);
+  const fuzz = all || any(/^server\/runtime\/dtr-controller\//);
   return { parser, converter, desktop, frontend, playback, nativeCommon: all, fuzz };
 }
 

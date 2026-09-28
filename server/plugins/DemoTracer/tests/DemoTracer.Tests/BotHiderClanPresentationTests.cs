@@ -5,8 +5,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 using System.Text.Json;
-using BotHiderImpl;
-using DemoTracerBotHiderApi;
+using DtrHider;
+using DtrHiderApi;
 
 namespace DemoTracer.Tests;
 
@@ -30,9 +30,9 @@ public sealed class BotHiderClanPresentationTests
             Assert.Equal(pair, DemoTracerPlugin.NormalizeReplayClan(
                 JsonSerializer.Deserialize<DemoTracerPlugin.ReplayClan>(json)));
         }
-        Assert.False(DemoTracerBotHiderContract.IsValidClan(new("x\0y", 1)));
-        Assert.False(DemoTracerBotHiderContract.IsValidClan(new(new string('组', 43), 1)));
-        Assert.True(DemoTracerBotHiderContract.IsValidClan(new(new string('x', 127), uint.MaxValue)));
+        Assert.False(DtrHiderContract.IsValidClan(new("x\0y", 1)));
+        Assert.False(DtrHiderContract.IsValidClan(new(new string('组', 43), 1)));
+        Assert.True(DtrHiderContract.IsValidClan(new(new string('x', 127), uint.MaxValue)));
     }
 
     [Fact]

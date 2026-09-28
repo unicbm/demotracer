@@ -6,6 +6,8 @@
 *.suo
 
 # Native runtime builds
+/server/runtime/BotController/
+/server/runtime/BotHider/
 /dist/
 /desktop/gui/node_modules/
 /cloudflare/telemetry/node_modules/

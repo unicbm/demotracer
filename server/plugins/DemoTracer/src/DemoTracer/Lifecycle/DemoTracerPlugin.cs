@@ -14,7 +14,7 @@ using CounterStrikeSharp.API.Modules.Timers;
 using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API;
 using DemoTracerApi;
-using DemoTracerBotHiderApi;
+using DtrHiderApi;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -122,7 +122,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     public override void OnAllPluginsLoaded(bool hotReload)
     {
         _botHiderBridge.Refresh();
-        _ = _botHiderBridge.ReleaseOwner(DemoTracerBotHiderContract.DemoTracerOwner);
+        _ = _botHiderBridge.ReleaseOwner(DtrHiderContract.DemoTracerOwner);
         _ = SyncBotHiderPresentationLease(announce: _session.LoadedSlots.Count > 0);
         _botRandomizerBridge.Refresh();
         _ = _botRandomizerBridge.ReleaseOwner(BotRandomizerApi.BotRandomizerContract.DemoTracerOwner);

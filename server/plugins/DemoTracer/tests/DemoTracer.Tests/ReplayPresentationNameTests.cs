@@ -5,7 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 using System.Text;
-using DemoTracerBotHiderApi;
+using DtrHiderApi;
 
 namespace DemoTracer.Tests;
 
@@ -23,7 +23,7 @@ public sealed class ReplayPresentationNameTests
         Assert.InRange(
             Encoding.UTF8.GetByteCount(derived!),
             1,
-            DemoTracerBotHiderContract.MaxPlayerNameUtf8Bytes);
+            DtrHiderContract.MaxPlayerNameUtf8Bytes);
     }
 
     [Fact]
@@ -35,7 +35,7 @@ public sealed class ReplayPresentationNameTests
 
         Assert.Equal($"{prefix}😀", derived);
         Assert.Equal(
-            DemoTracerBotHiderContract.MaxPlayerNameUtf8Bytes,
+            DtrHiderContract.MaxPlayerNameUtf8Bytes,
             Encoding.UTF8.GetByteCount(derived!));
     }
 
@@ -72,7 +72,7 @@ public sealed class ReplayPresentationNameTests
 
         Assert.Equal($"{prefix}{grapheme}", derived);
         Assert.Equal(
-            DemoTracerBotHiderContract.MaxPlayerNameUtf8Bytes,
+            DtrHiderContract.MaxPlayerNameUtf8Bytes,
             Encoding.UTF8.GetByteCount(derived!));
     }
 
@@ -119,7 +119,7 @@ public sealed class ReplayPresentationNameTests
             Assert.InRange(
                 Encoding.UTF8.GetByteCount(playerName!),
                 1,
-                DemoTracerBotHiderContract.MaxPlayerNameUtf8Bytes);
+                DtrHiderContract.MaxPlayerNameUtf8Bytes);
         });
     }
 }

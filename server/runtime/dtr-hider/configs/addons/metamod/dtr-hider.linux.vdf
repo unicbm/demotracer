@@ -1,0 +1,5 @@
+"Metamod Plugin"
+{
+    "alias" "dtr-hider"
+    "file"  "addons/dtr-hider/bin/linuxsteamrt64/dtr-hider"
+}

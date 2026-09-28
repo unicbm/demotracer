@@ -8,14 +8,14 @@
   },
   {
     "id": "controller",
-    "path": "server/runtime/BotController",
+    "path": "server/runtime/dtr-controller",
     "former_repository": "unicbm/cs2-dtr-controller",
     "imported_commit": "0968663d5dea6b1d8d911a5a7b52e1ac3198bc60",
     "history_ref": "component-archive/controller/heads/main"
   },
   {
     "id": "hider",
-    "path": "server/runtime/BotHider",
+    "path": "server/runtime/dtr-hider",
     "former_repository": "unicbm/cs2-dtr-hider",
     "imported_commit": "53c36b16644dd29b3f71408d38af3693d5ec7d20",
     "history_ref": "component-archive/hider/heads/main"

@@ -8,12 +8,11 @@ use super::*;
 use crate::diagnostics::{embedded_playback_contract, ReceiptFileWire};
 use std::io::Write;
 
-const CONTROLLER: &str =
-    "addons/counterstrikesharp/plugins/BotControllerImpl/BotControllerImpl.dll";
+const CONTROLLER: &str = "addons/counterstrikesharp/plugins/DtrController/DtrController.dll";
 const OLD_HIDER: &str =
     "addons/counterstrikesharp/plugins/DemoTracerBotHider/DemoTracerBotHider.dll";
 const USER_CONFIG: &str = "addons/counterstrikesharp/plugins/DemoTracerBotHider/settings.json";
-const RECORDING: &str = "addons/counterstrikesharp/plugins/BotControllerImpl/recordings/user.json";
+const RECORDING: &str = "addons/counterstrikesharp/plugins/DtrController/recordings/user.json";
 
 struct InstallFixture(PathBuf);
 
@@ -79,6 +78,7 @@ fn package_bytes(version: &str) -> Vec<u8> {
     let options = zip::write::SimpleFileOptions::default();
     let files = REQUIRED_RECEIPT_PATHS
         .iter()
+        .chain(["addons/dtr-hider/map_whitelist.json"].iter())
         .map(|path| {
             let content = format!("{version}:{path}").into_bytes();
             zip.start_file(*path, options).unwrap();
@@ -105,6 +105,127 @@ fn package_bytes(version: &str) -> Vec<u8> {
     zip.write_all(&serde_json::to_vec(&receipt).unwrap())
         .unwrap();
     zip.finish().unwrap().into_inner()
+}
+
+const LEGACY_RUNTIME_FILES: &[&str] = &[
+    "addons/BotController/bin/win64/BotController.dll",
+    "addons/metamod/BotController.vdf",
+    "addons/counterstrikesharp/plugins/BotControllerImpl/BotControllerImpl.dll",
+    "addons/counterstrikesharp/shared/BotControllerApi/BotControllerApi.dll",
+    "addons/BotHider/bin/win64/BotHider.dll",
+    "addons/metamod/BotHider.vdf",
+    "addons/counterstrikesharp/plugins/BotHiderImpl/BotHiderImpl.dll",
+    "addons/counterstrikesharp/shared/DemoTracerBotHiderApi/DemoTracerBotHiderApi.dll",
+];
+
+fn seed_legacy_runtime(fixture: &InstallFixture) {
+    let files = LEGACY_RUNTIME_FILES
+        .iter()
+        .map(|path| {
+            fixture.write(path, b"old bundled runtime");
+            ReceiptFileWire {
+                path: path.to_string(),
+                component: "legacy".to_string(),
+                size: 19,
+                sha256: sha256_hex(b"old bundled runtime"),
+            }
+        })
+        .collect();
+    let mut compatibility = embedded_playback_contract().unwrap();
+    compatibility.bot_controller.native_library.clear();
+    compatibility.bot_hider.native_library.clear();
+    let receipt = InstallReceiptWire {
+        schema_version: 1,
+        product: "CS2 DemoTracer Playback Bundle".to_string(),
+        bundle_version: "1.5.0".to_string(),
+        git_commit: None,
+        platform: "windows-x64".to_string(),
+        compatibility,
+        files,
+    };
+    fixture.write(
+        INSTALL_RECEIPT_RELATIVE_PATH,
+        &serde_json::to_vec(&receipt).unwrap(),
+    );
+}
+
+#[test]
+fn renamed_runtime_preserves_upstream_without_a_dtr_receipt() {
+    let fixture = InstallFixture::new();
+    for path in LEGACY_RUNTIME_FILES {
+        fixture.write(path, b"upstream runtime");
+    }
+    let original = fixture.snapshot();
+    fixture.install("1.5.0").unwrap();
+    for path in LEGACY_RUNTIME_FILES {
+        assert_eq!(
+            fs::read(fixture.game().join(path)).unwrap(),
+            b"upstream runtime"
+        );
+    }
+    fixture.rollback().unwrap();
+    assert_eq!(fixture.snapshot(), original);
+}
+
+#[test]
+fn renamed_runtime_migrates_receipt_owned_code_and_user_data_with_rollback() {
+    let fixture = InstallFixture::new();
+    seed_legacy_runtime(&fixture);
+    let data = [
+        (
+            "addons/BotHider/bot_info.json",
+            "addons/dtr-hider/bot_info.json",
+        ),
+        (
+            "addons/BotHider/map_whitelist.json",
+            "addons/dtr-hider/map_whitelist.json",
+        ),
+        (
+            "addons/counterstrikesharp/plugins/BotControllerImpl/recordings/user.json",
+            "addons/counterstrikesharp/plugins/DtrController/recordings/user.json",
+        ),
+    ];
+    for (old, _) in data {
+        fixture.write(old, b"user data");
+    }
+    let original = fixture.snapshot();
+    fixture.install("1.5.0").unwrap();
+    for path in LEGACY_RUNTIME_FILES {
+        assert!(!fixture.game().join(path).exists(), "{path}");
+    }
+    for (old, new) in data {
+        assert_eq!(fs::read(fixture.game().join(old)).unwrap(), b"user data");
+        assert_eq!(fs::read(fixture.game().join(new)).unwrap(), b"user data");
+    }
+    fixture.rollback().unwrap();
+    assert_eq!(fixture.snapshot(), original);
+}
+
+#[test]
+fn renamed_runtime_keeps_dependencies_of_an_externally_replaced_provider() {
+    let fixture = InstallFixture::new();
+    seed_legacy_runtime(&fixture);
+    fixture.write(LEGACY_RUNTIME_FILES[4], b"new upstream native");
+    fixture.write("addons/BotHider/bot_info.json", b"external config");
+    fixture.write(
+        "addons/dtr-hider/map_whitelist.json",
+        b"existing DTR config",
+    );
+    let original = fixture.snapshot();
+    fixture.install("1.5.0").unwrap();
+    for path in &LEGACY_RUNTIME_FILES[4..] {
+        assert!(fixture.game().join(path).is_file());
+    }
+    assert!(!fixture
+        .game()
+        .join("addons/dtr-hider/bot_info.json")
+        .exists());
+    assert_eq!(
+        fs::read(fixture.game().join("addons/dtr-hider/map_whitelist.json")).unwrap(),
+        b"existing DTR config"
+    );
+    fixture.rollback().unwrap();
+    assert_eq!(fixture.snapshot(), original);
 }
 
 #[test]

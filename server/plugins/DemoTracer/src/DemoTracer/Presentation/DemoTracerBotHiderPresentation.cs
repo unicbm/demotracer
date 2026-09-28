@@ -8,7 +8,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using CounterStrikeSharp.API;
-using DemoTracerBotHiderApi;
+using DtrHiderApi;
 
 namespace DemoTracer;
 
@@ -74,13 +74,13 @@ public sealed partial class DemoTracerPlugin
         if (string.IsNullOrWhiteSpace(_botHiderPresentationLeaseToken))
         {
             result = _botHiderBridge.Acquire(
-                DemoTracerBotHiderContract.DemoTracerOwner,
+                DtrHiderContract.DemoTracerOwner,
                 requests, _presentationLifetime.Token);
             if (!result.Ok && result.Reason.StartsWith("slot_leased:", StringComparison.Ordinal))
             {
-                _ = _botHiderBridge.ReleaseOwner(DemoTracerBotHiderContract.DemoTracerOwner);
+                _ = _botHiderBridge.ReleaseOwner(DtrHiderContract.DemoTracerOwner);
                 result = _botHiderBridge.Acquire(
-                    DemoTracerBotHiderContract.DemoTracerOwner,
+                    DtrHiderContract.DemoTracerOwner,
                     requests, _presentationLifetime.Token);
             }
         }
@@ -93,14 +93,14 @@ public sealed partial class DemoTracerPlugin
                 _botHiderPresentationLeaseToken = string.Empty;
                 _botHiderPresentationSignature = string.Empty;
                 result = _botHiderBridge.Acquire(
-                    DemoTracerBotHiderContract.DemoTracerOwner,
+                    DtrHiderContract.DemoTracerOwner,
                     requests, _presentationLifetime.Token);
                 if (!result.Ok &&
                     result.Reason.StartsWith("slot_leased:", StringComparison.Ordinal))
                 {
-                    _ = _botHiderBridge.ReleaseOwner(DemoTracerBotHiderContract.DemoTracerOwner);
+                    _ = _botHiderBridge.ReleaseOwner(DtrHiderContract.DemoTracerOwner);
                     result = _botHiderBridge.Acquire(
-                        DemoTracerBotHiderContract.DemoTracerOwner,
+                        DtrHiderContract.DemoTracerOwner,
                         requests, _presentationLifetime.Token);
                 }
             }
@@ -264,7 +264,7 @@ public sealed partial class DemoTracerPlugin
         if (source?.Tag == null || !source.Id.HasValue)
             return null;
         var clan = new BotHiderClan(source.Tag, source.Id.Value);
-        return DemoTracerBotHiderContract.IsValidClan(clan) ? clan : null;
+        return DtrHiderContract.IsValidClan(clan) ? clan : null;
     }
 
     internal static string? DeriveBotHiderPresentationName(string? source)
@@ -301,7 +301,7 @@ public sealed partial class DemoTracerPlugin
         {
             var element = visibleElements[index];
             var elementBytes = Encoding.UTF8.GetByteCount(element);
-            if (utf8Bytes + elementBytes > DemoTracerBotHiderContract.MaxPlayerNameUtf8Bytes)
+            if (utf8Bytes + elementBytes > DtrHiderContract.MaxPlayerNameUtf8Bytes)
                 break;
 
             boundedElements.Add(element);
@@ -397,7 +397,7 @@ public sealed partial class DemoTracerPlugin
             return;
 
         if (!_botHiderBridge.Release(token))
-            _ = _botHiderBridge.ReleaseOwner(DemoTracerBotHiderContract.DemoTracerOwner);
+            _ = _botHiderBridge.ReleaseOwner(DtrHiderContract.DemoTracerOwner);
         Server.PrintToConsole($"dtr: BotHider presentation lease released reason={reason}");
     }
 

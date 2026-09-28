@@ -10,14 +10,14 @@ a pinned Git submodule. Keep product contracts and packaging aligned.
 - Keep this repository public, portable, and free of local server state.
 - The supported product is the Windows x64 Tauri GUI plus its matched playback
   bundle. There is no supported converter CLI in the 1.x line.
-- Preserve .dtr, manifest, native ABI, BotHider API, and companion API
+- Preserve .dtr, manifest, native ABI, dtr-hider API, and companion API
   alignment. Update shared/contracts/playback-contract.v1.json and all readers,
   writers, docs, tests, and package metadata together when a contract changes.
 - Never commit local paths, Steam paths, demo files, generated replay archives,
   logs, credentials, signing keys, certificates, server-local configuration,
   build output, or user inventory and session data.
-- Preserve third-party source, provenance, and license files. BotController and
-  BotHider remain AGPL-3.0-only maintained derivatives with attribution.
+- Preserve third-party source, provenance, and license files. dtr-controller and
+  dtr-hider remain AGPL-3.0-only maintained derivatives with upstream attribution.
 - Product names and official-build marks are governed by TRADEMARKS.md.
 
 ## Engineering Workflow

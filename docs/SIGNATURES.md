@@ -8,11 +8,11 @@
 
 | 范围 | 维护真源 | 需要检查的内容 |
 | --- | --- | --- |
-| BotController | [gamedata.json](../server/runtime/BotController/configs/addons/BotController/gamedata.json) | server 签名、私有偏移、移动服务虚表槽 |
-| BotHider | [gamedata.json](../server/runtime/BotHider/configs/addons/BotHider/gamedata.json) | server / engine2 签名、客户端列表和身份字段布局 |
+| BotController | [gamedata.json](../server/runtime/dtr-controller/configs/addons/dtr-controller/gamedata.json) | server 签名、私有偏移、移动服务虚表槽 |
+| BotHider | [gamedata.json](../server/runtime/dtr-hider/configs/addons/dtr-hider/gamedata.json) | server / engine2 签名、客户端列表和身份字段布局 |
 | 独立 BotRandomizer | [BotRandomizer.cs](../server/runtime/BotRandomizer/BotRandomizer.cs) | attribute writer 与 item-view constructor 的内联签名 |
 | 投掷物物理钩子 | [ProjectilePhysicsHook.cs](../server/plugins/DemoTracer/src/DemoTracer/Projectiles/ProjectilePhysicsHook.cs) | 入口、模块与函数体哈希、虚表和调用约定 |
-| 动态 Schema | [version_targets.cpp](../server/runtime/BotController/src/common/version_targets.cpp) | 必需字段解析；不把运行时结果另抄成固定偏移 |
+| 动态 Schema | [version_targets.cpp](../server/runtime/dtr-controller/src/common/version_targets.cpp) | 必需字段解析；不把运行时结果另抄成固定偏移 |
 
 版本与 API 要求以 [playback contract](../shared/contracts/playback-contract.v1.json) 为准。
 CSS、Metamod 和可选依赖的维护边界见 [server requirements](../server/README.md)。

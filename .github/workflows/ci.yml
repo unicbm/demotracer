@@ -345,24 +345,24 @@ jobs:
 
       - name: Configure production replay ABI fuzz target
         run: >-
-          cmake -S server/runtime/BotController/tests
-          -B server/runtime/BotController/out/replay-abi-fuzz-ci
+          cmake -S server/runtime/dtr-controller/tests
+          -B server/runtime/dtr-controller/out/replay-abi-fuzz-ci
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DCMAKE_CXX_COMPILER=clang++
           -DBOTCONTROLLER_BUILD_FUZZER=ON
 
       - name: Build native replay tests and fuzz target
-        run: cmake --build server/runtime/BotController/out/replay-abi-fuzz-ci --config RelWithDebInfo
+        run: cmake --build server/runtime/dtr-controller/out/replay-abi-fuzz-ci --config RelWithDebInfo
 
       - name: Test native replay safety under Clang
         run: >-
-          ctest --test-dir server/runtime/BotController/out/replay-abi-fuzz-ci
+          ctest --test-dir server/runtime/dtr-controller/out/replay-abi-fuzz-ci
           --output-on-failure
 
       - name: Smoke fuzz production replay ABI validator
         timeout-minutes: 2
         run: >-
-          server/runtime/BotController/out/replay-abi-fuzz-ci/BotControllerReplayAbiFuzz
+          server/runtime/dtr-controller/out/replay-abi-fuzz-ci/BotControllerReplayAbiFuzz
           -runs=2000
           -max_len=4096
           -rss_limit_mb=1024
@@ -392,7 +392,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        component: [BotController, BotHider]
+        component: [dtr-controller, dtr-hider]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -450,12 +450,12 @@ jobs:
           node-version: 22
       - uses: actions/download-artifact@v8
         with:
-          name: native-BotController
-          path: server/runtime/BotController/build/package
+          name: native-dtr-controller
+          path: server/runtime/dtr-controller/build/package
       - uses: actions/download-artifact@v8
         with:
-          name: native-BotHider
-          path: server/runtime/BotHider/build/package
+          name: native-dtr-hider
+          path: server/runtime/dtr-hider/build/package
       - uses: actions/download-artifact@v8
         with:
           name: managed-playback

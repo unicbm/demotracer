@@ -5,7 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 using CounterStrikeSharp.API.Core.Capabilities;
-using DemoTracerBotHiderApi;
+using DtrHiderApi;
 
 namespace DemoTracer;
 
@@ -13,8 +13,8 @@ public sealed partial class DemoTracerPlugin
 {
     private sealed class DemoTracerBotHiderBridge
     {
-        private static readonly PluginCapability<IBotHiderApi> Capability = new(DemoTracerBotHiderContract.Capability);
-        private IBotHiderApi? _api;
+        private static readonly PluginCapability<IDtrHiderApi> Capability = new(DtrHiderContract.Capability);
+        private IDtrHiderApi? _api;
         private bool _resolved;
 
         public void Refresh()
@@ -157,7 +157,7 @@ public sealed partial class DemoTracerPlugin
 
         // Provider lifecycle notifications invalidate this reference. Operations
         // still validate current native ownership; no availability TTL is used.
-        private bool TryGetApi(out IBotHiderApi api)
+        private bool TryGetApi(out IDtrHiderApi api)
         {
             if (!_resolved)
             {
@@ -166,7 +166,7 @@ public sealed partial class DemoTracerPlugin
                 catch { _api = null; }
             }
             api = _api!;
-            return api != null && api.ApiVersion == DemoTracerBotHiderContract.ApiVersion;
+            return api != null && api.ApiVersion == DtrHiderContract.ApiVersion;
         }
         private static BotHiderPresentationLeaseResult Fail(string reason)
             => new()

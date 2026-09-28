@@ -6,7 +6,7 @@
 
 using BotRandomizerApi;
 using CounterStrikeSharp.API;
-using DemoTracerBotHiderApi;
+using DtrHiderApi;
 
 namespace DemoTracer;
 
@@ -17,13 +17,13 @@ public sealed partial class DemoTracerPlugin
 
     private void StartPresentationLifetime()
     {
-        DemoTracerBotHiderContract.ProviderChanged += OnPresentationProviderChanged;
+        DtrHiderContract.ProviderChanged += OnPresentationProviderChanged;
         BotRandomizerContract.ProviderChanged += OnPresentationProviderChanged;
     }
 
     private void StopPresentationLifetime()
     {
-        DemoTracerBotHiderContract.ProviderChanged -= OnPresentationProviderChanged;
+        DtrHiderContract.ProviderChanged -= OnPresentationProviderChanged;
         BotRandomizerContract.ProviderChanged -= OnPresentationProviderChanged;
         // Cancellation releases both providers' claims even if another unload
         // cleanup failed. They never need a timer to infer that this owner left.

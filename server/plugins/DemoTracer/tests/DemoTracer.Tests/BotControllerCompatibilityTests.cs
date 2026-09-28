@@ -5,7 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 using System.Runtime.InteropServices;
-using BotControllerApi;
+using DtrControllerApi;
 
 namespace DemoTracer.Tests;
 
@@ -29,7 +29,7 @@ public sealed class BotControllerCompatibilityTests
     [Fact]
     public void ImproverControlCannotMutateDemoTracerOwnedSlots()
     {
-        var api = new BotControllerApiImpl(slot => slot == 4);
+        var api = new DtrControllerApiImpl(slot => slot == 4);
         Assert.False(api.Lock(4, LockKind.All));
         Assert.False(api.Lock(4, LockTarget.Slot3));
         Assert.False(api.Unlock(4, LockKind.Weapon));
@@ -51,7 +51,7 @@ public sealed class BotControllerCompatibilityTests
     [InlineData(64)]
     public void InvalidSlotsNeverReachEngineMemory(int slot)
     {
-        var api = new BotControllerApiImpl(_ => throw new InvalidOperationException("invalid slot reached ownership check"));
+        var api = new DtrControllerApiImpl(_ => throw new InvalidOperationException("invalid slot reached ownership check"));
         Assert.False(api.SwitchBotWeapon(slot, 9001));
         Assert.Equal(-1, api.StartUsercmdSuppression(slot, 32));
     }

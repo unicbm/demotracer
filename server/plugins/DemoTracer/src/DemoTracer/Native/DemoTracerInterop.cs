@@ -18,7 +18,7 @@ internal static partial class BotControllerNative
         {
             try
             {
-                return BotController_GetVersion();
+                return DtrController_GetVersion();
             }
             catch
             {
@@ -36,7 +36,7 @@ internal static partial class BotControllerNative
         {
             try
             {
-                return BotController_GetCapabilities();
+                return DtrController_GetCapabilities();
             }
             catch
             {
@@ -51,7 +51,7 @@ internal static partial class BotControllerNative
         {
             try
             {
-                var buildId = Marshal.PtrToStringAnsi(BotController_GetBuildId());
+                var buildId = Marshal.PtrToStringAnsi(DtrController_GetBuildId());
                 return string.IsNullOrWhiteSpace(buildId) ? "unknown" : buildId;
             }
             catch
@@ -99,7 +99,7 @@ internal static partial class BotControllerNative
             return false;
         try
         {
-            return BotController_GetNativePerceptionState(
+            return DtrController_GetNativePerceptionState(
                        slot, out state, NativePerceptionState.ByteSize) == 0 &&
                    state.Valid != 0;
         }
@@ -116,7 +116,7 @@ internal static partial class BotControllerNative
             return false;
         try
         {
-            return BotController_SetReplayNativeFovOverride(enabled ? 1 : 0) == 0;
+            return DtrController_SetReplayNativeFovOverride(enabled ? 1 : 0) == 0;
         }
         catch
         {
@@ -132,7 +132,7 @@ internal static partial class BotControllerNative
                 return false;
             try
             {
-                return BotController_CanSendVoice() == 1;
+                return DtrController_CanSendVoice() == 1;
             }
             catch
             {
@@ -149,7 +149,7 @@ internal static partial class BotControllerNative
                 return -10;
             try
             {
-                return BotController_GetVoiceStatus();
+                return DtrController_GetVoiceStatus();
             }
             catch (EntryPointNotFoundException)
             {
@@ -221,7 +221,7 @@ internal static partial class BotControllerNative
     {
         try
         {
-            return BotController_SetLeftHandDesiredLatch(
+            return DtrController_SetLeftHandDesiredLatch(
                 slot,
                 enabled ? 1 : 0,
                 leftHandDesired ? 1 : 0);
@@ -240,7 +240,7 @@ internal static partial class BotControllerNative
     {
         try
         {
-            return BotController_SetProjectileBirthAlignOffsets(
+            return DtrController_SetProjectileBirthAlignOffsets(
                 initialPositionOffset,
                 initialVelocityOffset);
         }
@@ -260,7 +260,7 @@ internal static partial class BotControllerNative
             return -2;
         try
         {
-            return BotController_QueueProjectileBirthAlign(
+            return DtrController_QueueProjectileBirthAlign(
                 entityPtr,
                 position.X,
                 position.Y,
@@ -283,7 +283,7 @@ internal static partial class BotControllerNative
     {
         try
         {
-            return BotController_ClearProjectileBirthAlign();
+            return DtrController_ClearProjectileBirthAlign();
         }
         catch (EntryPointNotFoundException)
         {
@@ -301,7 +301,7 @@ internal static partial class BotControllerNative
         {
             try
             {
-                return BotController_GetProjectileBirthAlignStatus(
+                return DtrController_GetProjectileBirthAlignStatus(
                     out var status,
                     ProjectileBirthAlignStatusByteSize) == 0
                     ? status
@@ -334,7 +334,7 @@ internal static partial class BotControllerNative
         packetOffsets ??= [];
         try
         {
-            return BotController_SendVoiceFrame(
+            return DtrController_SendVoiceFrame(
                 recipientSlot,
                 senderClient,
                 senderXuid,
@@ -365,7 +365,7 @@ internal static partial class BotControllerNative
     {
         try
         {
-            return BotController_SetControllerControllingBotOffset(offset) == 0;
+            return DtrController_SetControllerControllingBotOffset(offset) == 0;
         }
         catch
         {
@@ -380,7 +380,7 @@ internal static partial class BotControllerNative
 
         try
         {
-            return BotController_SetReplayPawn(slot, unchecked((ulong)pawnHandle)) == 0;
+            return DtrController_SetReplayPawn(slot, unchecked((ulong)pawnHandle)) == 0;
         }
         catch (EntryPointNotFoundException)
         {
@@ -411,7 +411,7 @@ internal static partial class BotControllerNative
 
         try
         {
-            return BotController_SetReplayPawnEquipment(
+            return DtrController_SetReplayPawnEquipment(
                 slot,
                 unchecked((ulong)pawnHandle),
                 unchecked((ulong)controllerHandle),
@@ -431,7 +431,7 @@ internal static partial class BotControllerNative
             return false;
         try
         {
-            return BotController_ClearReplayPawnEquipment(slot) == 0;
+            return DtrController_ClearReplayPawnEquipment(slot) == 0;
         }
         catch
         {
@@ -448,7 +448,7 @@ internal static partial class BotControllerNative
             return false;
         try
         {
-            return BotController_GetReplayPawnEquipmentState(
+            return DtrController_GetReplayPawnEquipmentState(
                 slot, out state, ReplayPawnEquipmentStateByteSize) == 0;
         }
         catch
@@ -471,7 +471,7 @@ internal static partial class BotControllerNative
             return false;
         try
         {
-            return BotController_SetUsercmdMovementIntent(
+            return DtrController_SetUsercmdMovementIntent(
                 slot, buttonsSet, buttonsClear, analogForward, analogLeft,
                 durationMs, flags) == 0;
         }
@@ -491,7 +491,7 @@ internal static partial class BotControllerNative
             return false;
         try
         {
-            return BotController_ClearUsercmdMovementIntent(slot) == 0;
+            return DtrController_ClearUsercmdMovementIntent(slot) == 0;
         }
         catch (EntryPointNotFoundException)
         {
@@ -507,8 +507,8 @@ internal static partial class BotControllerNative
     {
         try
         {
-            _ = BotController_ClearUsercmdMovementIntent(-1);
-            _ = BotController_SetUsercmdMovementIntent(-1, 0, 0, 0.0f, 0.0f, 1, 0);
+            _ = DtrController_ClearUsercmdMovementIntent(-1);
+            _ = DtrController_SetUsercmdMovementIntent(-1, 0, 0, 0.0f, 0.0f, 1, 0);
             return true;
         }
         catch (EntryPointNotFoundException)
@@ -525,8 +525,8 @@ internal static partial class BotControllerNative
     {
         try
         {
-            _ = BotController_ClearLeftHandIntent(-1);
-            _ = BotController_SetLeftHandIntent(-1, 0, 0, 0.0f, 0.0f, 1, 0);
+            _ = DtrController_ClearLeftHandIntent(-1);
+            _ = DtrController_SetLeftHandIntent(-1, 0, 0, 0.0f, 0.0f, 1, 0);
             return true;
         }
         catch (EntryPointNotFoundException)
@@ -543,7 +543,7 @@ internal static partial class BotControllerNative
     {
         try
         {
-            _ = BotController_SetLeftHandDesiredLatch(-1, 0, 0);
+            _ = DtrController_SetLeftHandDesiredLatch(-1, 0, 0);
             return true;
         }
         catch (EntryPointNotFoundException)
@@ -560,7 +560,7 @@ internal static partial class BotControllerNative
     {
         try
         {
-            return BotController_GetProjectileBirthAlignStatus(
+            return DtrController_GetProjectileBirthAlignStatus(
                 out _,
                 ProjectileBirthAlignStatusByteSize) == 0;
         }
@@ -650,7 +650,7 @@ internal static partial class BotControllerNative
                     : replay.MovementExtras;
                 // Input history is retained in the DTR for future use, but mutating
                 // the engine-owned protobuf graph is not safe from this module.
-                var extendedOk = BotController_LoadReplayExtended(
+                var extendedOk = DtrController_LoadReplayExtended(
                     slot,
                     replay.Ticks,
                     replay.Ticks.Length,
@@ -663,25 +663,25 @@ internal static partial class BotControllerNative
                 if (extendedOk && replay.Version >= 11)
                 {
                     if ((Capabilities & CapabilityReplaySourceState) == 0 ||
-                        BotController_LoadReplaySourceState(slot, replay.SourceState.Length == 0 ? [new NativeReplaySourceStateChange()] : replay.SourceState,
+                        DtrController_LoadReplaySourceState(slot, replay.SourceState.Length == 0 ? [new NativeReplaySourceStateChange()] : replay.SourceState,
                             replay.SourceState.Length, replay.TickRate, CounterStrikeSharp.API.Server.TickInterval) != 0)
                     {
-                        BotController_ReleaseReplayBuffer(slot);
+                        DtrController_ReleaseReplayBuffer(slot);
                         LastLoadError = "BotController source state load failed";
                         return false;
                     }
                 }
-                LastLoadError = extendedOk ? string.Empty : "BotController_LoadReplayExtended failed";
+                LastLoadError = extendedOk ? string.Empty : "DtrController_LoadReplayExtended failed";
                 return extendedOk;
             }
 
-            var ok = BotController_LoadReplay(
+            var ok = DtrController_LoadReplay(
                 slot,
                 replay.Ticks,
                 replay.Ticks.Length,
                 subticks,
                 replay.Subticks.Length) == 0;
-            LastLoadError = ok ? string.Empty : "BotController_LoadReplay failed";
+            LastLoadError = ok ? string.Empty : "DtrController_LoadReplay failed";
             return ok;
         }
         catch (Exception ex)
@@ -733,8 +733,8 @@ internal static partial class BotControllerNative
 
         try
         {
-            var released = BotController_ReleaseReplayBuffer(slot) == 0;
-            LastLoadError = released ? string.Empty : "BotController_ReleaseReplayBuffer failed";
+            var released = DtrController_ReleaseReplayBuffer(slot) == 0;
+            LastLoadError = released ? string.Empty : "DtrController_ReleaseReplayBuffer failed";
             return released;
         }
         catch (EntryPointNotFoundException)
@@ -761,8 +761,8 @@ internal static partial class BotControllerNative
         // state machine and perception running underneath for warm handoff.
         UnlockReplayControl(slot);
         return startIndex == 0
-            ? BotController_StartReplay(slot, loop ? 1 : 0) == 0
-            : BotController_StartReplayAt(slot, loop ? 1 : 0, checked((int)startIndex)) == 0;
+            ? DtrController_StartReplay(slot, loop ? 1 : 0) == 0
+            : DtrController_StartReplayAt(slot, loop ? 1 : 0, checked((int)startIndex)) == 0;
     }
 
     public static bool StartReplayUntil(
@@ -776,7 +776,7 @@ internal static partial class BotControllerNative
         if (holdBeforeIndex <= startIndex)
             return false;
         UnlockReplayControl(slot);
-        return BotController_StartReplayUntil(
+        return DtrController_StartReplayUntil(
             slot,
             loop ? 1 : 0,
             checked((int)startIndex),
@@ -787,7 +787,7 @@ internal static partial class BotControllerNative
     {
         if (!ValidSlot(slot))
             return false;
-        return BotController_StopReplay(slot) == 0;
+        return DtrController_StopReplay(slot) == 0;
     }
 
     public static ReplayState GetReplayState(int slot)
@@ -797,7 +797,7 @@ internal static partial class BotControllerNative
 
         try
         {
-            if (BotController_GetReplaySlotState(slot, out var state) == 0)
+            if (DtrController_GetReplaySlotState(slot, out var state) == 0)
             {
                 return new ReplayState(
                     state.Cursor,
@@ -812,19 +812,19 @@ internal static partial class BotControllerNative
         {
         }
 
-        var cursor = BotController_GetReplayCursor(slot);
-        var total = BotController_GetReplayTotal(slot);
+        var cursor = DtrController_GetReplayCursor(slot);
+        var total = DtrController_GetReplayTotal(slot);
         return new ReplayState(cursor, total, cursor >= 0, -1, -1, 0);
     }
 
     public static bool TryGetReplayTick(int slot, out NativeReplayTick tick)
     {
         tick = default;
-        return ValidSlot(slot) && BotController_GetReplayTick(slot, out tick) == 0;
+        return ValidSlot(slot) && DtrController_GetReplayTick(slot, out tick) == 0;
     }
 
     public static bool SwitchBotWeapon(int slot, int defIndex)
-        => ValidSlot(slot) && BotController_SwitchBotWeapon(slot, defIndex) == 0;
+        => ValidSlot(slot) && DtrController_SwitchBotWeapon(slot, defIndex) == 0;
 
     public static bool RequestEquipBestWeapon(int slot)
     {
@@ -832,7 +832,7 @@ internal static partial class BotControllerNative
             return false;
         try
         {
-            return BotController_RequestEquipBestWeapon(slot) == 0;
+            return DtrController_RequestEquipBestWeapon(slot) == 0;
         }
         catch
         {
@@ -841,7 +841,7 @@ internal static partial class BotControllerNative
     }
 
     public static int BotActiveWeaponDef(int slot)
-        => ValidSlot(slot) ? BotController_GetBotActiveWeaponDef(slot) : -1;
+        => ValidSlot(slot) ? DtrController_GetBotActiveWeaponDef(slot) : -1;
 
     public static bool SetBuyPlan(int slot, string aliases)
     {
@@ -849,7 +849,7 @@ internal static partial class BotControllerNative
             return false;
         try
         {
-            return BotController_SetBuyPlan(slot, aliases ?? string.Empty) == 0;
+            return DtrController_SetBuyPlan(slot, aliases ?? string.Empty) == 0;
         }
         catch
         {
@@ -863,7 +863,7 @@ internal static partial class BotControllerNative
             return false;
         try
         {
-            return BotController_SetBuySkip(slot) == 0;
+            return DtrController_SetBuySkip(slot) == 0;
         }
         catch
         {
@@ -877,7 +877,7 @@ internal static partial class BotControllerNative
             return false;
         try
         {
-            return BotController_ClearBuyPlan(slot) == 0;
+            return DtrController_ClearBuyPlan(slot) == 0;
         }
         catch
         {
@@ -889,7 +889,7 @@ internal static partial class BotControllerNative
     {
         try
         {
-            return BotController_ClearAllBuyPlans() == 0;
+            return DtrController_ClearAllBuyPlans() == 0;
         }
         catch
         {
@@ -903,7 +903,7 @@ internal static partial class BotControllerNative
             return -1;
         try
         {
-            return BotController_GetBuyPlanItemCount(slot);
+            return DtrController_GetBuyPlanItemCount(slot);
         }
         catch
         {
@@ -912,23 +912,23 @@ internal static partial class BotControllerNative
     }
 
     public static bool LockWeaponSlot(int slot, int target)
-        => ValidSlot(slot) && target is >= 1 and <= 5 && BotController_Lock(slot, LockKindWeapon, target) == 0;
+        => ValidSlot(slot) && target is >= 1 and <= 5 && DtrController_Lock(slot, LockKindWeapon, target) == 0;
 
     public static bool UnlockWeaponSlot(int slot)
-        => ValidSlot(slot) && BotController_Unlock(slot, LockKindWeapon) == 0;
+        => ValidSlot(slot) && DtrController_Unlock(slot, LockKindWeapon) == 0;
 
     public static bool LockReplayBrain(int slot)
-        => ValidSlot(slot) && BotController_Lock(slot, LockKindAll, 0) == 0;
+        => ValidSlot(slot) && DtrController_Lock(slot, LockKindAll, 0) == 0;
 
     public static bool UnlockReplayBrain(int slot)
-        => ValidSlot(slot) && BotController_Unlock(slot, LockKindAll) == 0;
+        => ValidSlot(slot) && DtrController_Unlock(slot, LockKindAll) == 0;
 
     public static void UnlockReplayControl(int slot)
     {
         if (!ValidSlot(slot))
             return;
-        BotController_Unlock(slot, LockKindAll);
-        BotController_Unlock(slot, LockKindAim);
+        DtrController_Unlock(slot, LockKindAll);
+        DtrController_Unlock(slot, LockKindAim);
     }
 
     private static bool ValidSlot(int slot)
@@ -939,7 +939,7 @@ internal static partial class BotControllerNative
         info = default;
         try
         {
-            return BotController_GetAbiInfo(out info, BotControllerAbiInfo.ByteSize) == 0;
+            return DtrController_GetAbiInfo(out info, BotControllerAbiInfo.ByteSize) == 0;
         }
         catch
         {

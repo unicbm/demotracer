@@ -6,7 +6,7 @@
 
 using System.Text;
 using System.Runtime.InteropServices;
-using BotHiderImpl;
+using DtrHider;
 
 namespace DemoTracer.Tests;
 

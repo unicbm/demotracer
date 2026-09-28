@@ -6,7 +6,7 @@
 
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
-using DemoTracerBotHiderApi;
+using DtrHiderApi;
 
 namespace DemoTracer;
 
@@ -33,7 +33,7 @@ public sealed partial class DemoTracerPlugin
 
     private static string? NormalizeCrosshairCode(string? code)
     {
-        if (!DemoTracerBotHiderContract.TryNormalizeCrosshairCode(code, out var normalized) ||
+        if (!DtrHiderContract.TryNormalizeCrosshairCode(code, out var normalized) ||
             string.IsNullOrWhiteSpace(normalized))
         {
             return null;

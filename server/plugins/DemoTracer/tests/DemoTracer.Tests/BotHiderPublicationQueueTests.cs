@@ -4,7 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-using BotHiderImpl;
+using DtrHider;
 
 namespace DemoTracer.Tests;
 

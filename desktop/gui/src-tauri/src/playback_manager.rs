@@ -41,11 +41,8 @@ const INSTALL_STATE_SCHEMA: u32 = 1;
 const INSTALL_STATE_DIRECTORY: &str = "playback-installs-v1";
 const STAGING_DIRECTORY: &str = "playback-staging-v1";
 const BACKUP_DIRECTORY: &str = "playback-backups-v1";
-const LEGACY_PROVIDER_DIRECTORIES: &[&str] = &[
-    "addons/counterstrikesharp/plugins/BotControllerImpl",
-    "addons/counterstrikesharp/plugins/BotHiderImpl",
-    "addons/counterstrikesharp/plugins/DemoTracerBotHider",
-];
+const LEGACY_PROVIDER_DIRECTORIES: &[&str] =
+    &["addons/counterstrikesharp/plugins/DemoTracerBotHider"];
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -789,6 +786,26 @@ fn validate_payload_files(payload_root: &Path, receipt: &InstallReceiptWire) -> 
     Ok(())
 }
 
+// Shared upstream names can only be retired when the old DTR receipt still
+// owns the component. A later external installation keeps its entire group.
+fn legacy_runtime_group(path: &str) -> Option<&'static str> {
+    if path.starts_with("addons/botcontroller/")
+        || path == "addons/metamod/botcontroller.vdf"
+        || path.starts_with("addons/counterstrikesharp/plugins/botcontrollerimpl/")
+        || path.starts_with("addons/counterstrikesharp/shared/botcontrollerapi/")
+    {
+        Some("controller")
+    } else if path.starts_with("addons/bothider/")
+        || path == "addons/metamod/bothider.vdf"
+        || path.starts_with("addons/counterstrikesharp/plugins/bothiderimpl/")
+        || path.starts_with("addons/counterstrikesharp/shared/demotracerbothiderapi/")
+    {
+        Some("hider")
+    } else {
+        None
+    }
+}
+
 fn apply_validated_package(
     local_data: &Path,
     paths: &crate::diagnostics::InstallPaths,
@@ -824,18 +841,114 @@ fn apply_validated_package(
         )),
     );
 
-    if let Ok(Some(previous)) = read_installed_receipt(&paths.game_csgo) {
-        for file in previous.files {
+    let previous = read_installed_receipt(&paths.game_csgo).ok().flatten();
+    let mut external_groups = BTreeSet::new();
+    if let Some(previous) = &previous {
+        for file in &previous.files {
+            let normalized = normalized_receipt_path(&file.path);
+            if let Some(group) = legacy_runtime_group(&normalized) {
+                let relative = checked_receipt_relative_path(&file.path)
+                    .map_err(|error| CommandErrorDto::new("playback_receipt_invalid", error))?;
+                let target = paths.game_csgo.join(relative);
+                ensure_no_reparse_below(&paths.game_csgo, &target)?;
+                if target.is_file()
+                    && (normalized.ends_with(".dll")
+                        || normalized.ends_with(".vdf")
+                        || normalized.ends_with(".deps.json"))
+                    && !file_matches(&target, file.size, &file.sha256)
+                {
+                    external_groups.insert(group);
+                }
+            }
+        }
+        for file in &previous.files {
             let Ok(relative) = checked_receipt_relative_path(&file.path) else {
                 continue;
             };
             let normalized = normalized_receipt_path(&file.path);
+            if legacy_runtime_group(&normalized).is_some_and(|g| external_groups.contains(g)) {
+                continue;
+            }
             if affected.contains_key(&normalized) {
                 continue;
             }
             let target = paths.game_csgo.join(relative);
             if target.is_file() && file_matches(&target, file.size, &file.sha256) {
                 affected.insert(normalized, None);
+            }
+        }
+    }
+
+    // Copy user data into the new namespace only for receipt-owned runtimes.
+    // Keep the source and any existing destination; rollback covers new copies.
+    let mut migrated_data = BTreeMap::new();
+    let whitelist = "addons/dtr-hider/map_whitelist.json";
+    let installed_whitelist = paths.game_csgo.join(path_from_public(whitelist));
+    ensure_no_reparse_below(&paths.game_csgo, &installed_whitelist)?;
+    if installed_whitelist.is_file() {
+        let content = fs::read(&installed_whitelist).map_err(|error| {
+            CommandErrorDto::at_path(
+                "playback_backup_failed",
+                error.to_string(),
+                &installed_whitelist,
+            )
+        })?;
+        affected.insert(whitelist.to_string(), Some(sha256_hex(&content)));
+        migrated_data.insert(whitelist.to_string(), installed_whitelist);
+    }
+    if let Some(previous) = &previous {
+        for (group, marker, old_root, new_root) in [
+            (
+                "hider",
+                "addons/bothider/bin/win64/bothider.dll",
+                "addons/BotHider",
+                "addons/dtr-hider",
+            ),
+            (
+                "controller",
+                "addons/counterstrikesharp/plugins/botcontrollerimpl/botcontrollerimpl.dll",
+                "addons/counterstrikesharp/plugins/BotControllerImpl/recordings",
+                "addons/counterstrikesharp/plugins/DtrController/recordings",
+            ),
+        ] {
+            if external_groups.contains(group)
+                || !previous.files.iter().any(|file| {
+                    normalized_receipt_path(&file.path) == marker
+                        && file_matches(
+                            &paths.game_csgo.join(path_from_public(marker)),
+                            file.size,
+                            &file.sha256,
+                        )
+                })
+            {
+                continue;
+            }
+            let old = paths.game_csgo.join(path_from_public(old_root));
+            ensure_no_reparse_below(&paths.game_csgo, &old)?;
+            if !old.is_dir() {
+                continue;
+            }
+            for file in collect_normal_files(&old, MAX_ZIP_ENTRIES)? {
+                let suffix = file.strip_prefix(&old).map_err(|error| {
+                    CommandErrorDto::new("playback_legacy_path_invalid", error.to_string())
+                })?;
+                if group == "hider"
+                    && suffix != Path::new("bot_info.json")
+                    && suffix != Path::new("map_whitelist.json")
+                {
+                    continue;
+                }
+                let relative = normalized_receipt_path(&format!("{new_root}/{}", suffix.display()));
+                let destination = paths.game_csgo.join(path_from_public(&relative));
+                ensure_no_reparse_below(&paths.game_csgo, &destination)?;
+                if destination.exists() {
+                    continue;
+                }
+                let content = fs::read(&file).map_err(|error| {
+                    CommandErrorDto::at_path("playback_backup_failed", error.to_string(), &file)
+                })?;
+                affected.insert(relative.clone(), Some(sha256_hex(&content)));
+                migrated_data.insert(relative, file);
             }
         }
     }
@@ -899,12 +1012,18 @@ fn apply_validated_package(
 
     let install_result: CommandResult<()> = (|| {
         for file in &package.receipt.files {
+            if migrated_data.contains_key(&normalized_receipt_path(&file.path)) {
+                continue;
+            }
             let relative = checked_receipt_relative_path(&file.path)
                 .map_err(|error| CommandErrorDto::new("playback_receipt_invalid", error))?;
             replace_file(
                 &package.payload_root.join(&relative),
                 &paths.game_csgo.join(&relative),
             )?;
+        }
+        for (relative, original) in &migrated_data {
+            replace_file(original, &paths.game_csgo.join(path_from_public(relative)))?;
         }
         replace_file(
             &package

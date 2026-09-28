@@ -41,7 +41,7 @@ provider and API. `package-server.ps1` consumes its standalone package, or an
 explicit `-BotRandomizerPackage` ZIP, checking version, API, host pins and hashes.
 Source and fixes belong in [`runtime/BotRandomizer`](runtime/BotRandomizer/README.md).
 
-BotController and BotHider use the single [KHook](https://github.com/Kenzzer/KHook)
+dtr-controller and dtr-hider use the single [KHook](https://github.com/Kenzzer/KHook)
 engine exported by Metamod for both function and virtual hooks. The playback
 server requires Metamod 2.0 build 1469 or newer (plugin API 18) and a
 KHook-enabled CounterStrikeSharp host. CounterStrikeSharp's managed API minimum
@@ -77,12 +77,12 @@ cmake --build server/runtime/common/.build/native-tests --config Release
 ctest --test-dir server/runtime/common/.build/native-tests -C Release --output-on-failure
 ```
 
-The current playback contract requires BotController ABI 21, minor 44 or newer.
+The current playback contract requires dtr-controller ABI 21, minor 44 or newer.
 The GUI rejects install receipts from the older hook runtime. The managed
-heartbeat reports older BotController binaries as incompatible.
+heartbeat reports older dtr-controller binaries as incompatible.
 
 Presentation and cosmetic plans are owned by the consumer's lifetime, not a
-periodically renewed timeout. BotHider API v3 and BotRandomizer API v3 require
+periodically renewed timeout. dtr-hider API v3 and BotRandomizer API v3 require
 a cancellation token at acquisition; consumers cancel it on the server thread
 on unload. Replacement keeps the same owner, and map changes or provider unload
 revoke the plans. Provider lifecycle notifications trigger reconnection, so idle

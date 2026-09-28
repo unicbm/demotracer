@@ -14,7 +14,7 @@ using CounterStrikeSharp.API.Modules.Timers;
 using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API;
 using DemoTracerApi;
-using DemoTracerBotHiderApi;
+using DtrHiderApi;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;

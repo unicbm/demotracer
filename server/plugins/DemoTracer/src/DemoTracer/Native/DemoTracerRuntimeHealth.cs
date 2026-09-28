@@ -7,7 +7,7 @@
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Utils;
-using DemoTracerBotHiderApi;
+using DtrHiderApi;
 using System.Text;
 using System.Text.Json;
 
@@ -128,7 +128,7 @@ public sealed partial class DemoTracerPlugin
         var provider = _botHiderBridge.ProbeProviderInfo();
         var botHiderAvailable =
             provider != null &&
-            provider.ApiVersion == DemoTracerBotHiderContract.ApiVersion &&
+            provider.ApiVersion == DtrHiderContract.ApiVersion &&
             provider.Connected &&
             !provider.Draining;
         var botRandomizerProvider = _botRandomizerBridge.ProbeProviderInfo();

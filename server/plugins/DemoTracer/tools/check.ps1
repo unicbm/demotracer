@@ -10,9 +10,9 @@ $required = @(
     'src/DemoTracer/DemoTracer.csproj',
     '../../runtime/common/csharp/DemoTracerApi/DemoTracerApi.csproj',
     '../../runtime/common/econ/cs2-lib-econ-index.v1.json',
-    '../../runtime/BotHider/csharp/BotHiderImpl/BotHiderImpl.csproj',
+    '../../runtime/dtr-hider/csharp/DtrHider/DtrHider.csproj',
     '../../runtime/BotRandomizer/BotRandomizerApi/BotRandomizerApi.csproj',
-    '../../runtime/BotController/csharp/BotControllerImpl/BotControllerImpl.csproj'
+    '../../runtime/dtr-controller/csharp/DtrController/DtrController.csproj'
 )
 foreach ($relative in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) {

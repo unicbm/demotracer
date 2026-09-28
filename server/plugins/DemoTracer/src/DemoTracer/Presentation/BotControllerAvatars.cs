@@ -11,20 +11,20 @@ namespace DemoTracer;
 
 internal static partial class BotControllerNative
 {
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_PublishAvatarOverride(ulong steamId, [In] byte[] png, int length);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_PublishAvatarOverride(ulong steamId, [In] byte[] png, int length);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_ClearAvatarOverride(ulong steamId);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_ClearAvatarOverride(ulong steamId);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern void BotController_ClearAvatarOverrides();
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void DtrController_ClearAvatarOverrides();
 
     public static bool TryPublishAvatarOverride(ulong steamId, byte[] png, out string error)
     {
         try
         {
-            var result = BotController_PublishAvatarOverride(steamId, png, png.Length);
+            var result = DtrController_PublishAvatarOverride(steamId, png, png.Length);
             error = result >= 0 ? string.Empty : $"native avatar publication failed ({result})";
             return result >= 0;
         }
@@ -39,7 +39,7 @@ internal static partial class BotControllerNative
     {
         try
         {
-            var result = BotController_ClearAvatarOverride(steamId);
+            var result = DtrController_ClearAvatarOverride(steamId);
             error = result >= 0 ? string.Empty : $"native avatar restoration failed ({result})";
             return result >= 0;
         }
@@ -52,7 +52,7 @@ internal static partial class BotControllerNative
 
     public static void ClearAvatarOverrides()
     {
-        try { BotController_ClearAvatarOverrides(); }
+        try { DtrController_ClearAvatarOverrides(); }
         catch (Exception ex) { LastLoadError = $"avatar cleanup: {ex.Message}"; }
     }
 }

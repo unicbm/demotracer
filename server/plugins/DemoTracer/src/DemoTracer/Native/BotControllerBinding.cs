@@ -10,52 +10,52 @@ namespace DemoTracer;
 
 internal static partial class BotControllerNative
 {
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_LoadReplaySourceState(int slot, [In] NativeReplaySourceStateChange[] changes, int count, float tickRate, float liveTickInterval);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_LoadReplaySourceState(int slot, [In] NativeReplaySourceStateChange[] changes, int count, float tickRate, float liveTickInterval);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_Lock(int slot, int kind, int arg);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_Lock(int slot, int kind, int arg);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_Unlock(int slot, int kind);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_Unlock(int slot, int kind);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_GetVersion();
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_GetVersion();
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_GetAbiInfo(out BotControllerAbiInfo info, int size);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_GetAbiInfo(out BotControllerAbiInfo info, int size);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern ulong BotController_GetCapabilities();
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern ulong DtrController_GetCapabilities();
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr BotController_GetBuildId();
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern IntPtr DtrController_GetBuildId();
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_GetNativePerceptionState(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_GetNativePerceptionState(
         int slot,
         out NativePerceptionState state,
         int size);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_SetReplayNativeFovOverride(int enabled);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_SetReplayNativeFovOverride(int enabled);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_RequestEquipBestWeapon(int slot);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_RequestEquipBestWeapon(int slot);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_CanSendVoice();
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_CanSendVoice();
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_GetVoiceStatus();
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_GetVoiceStatus();
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_SetProjectileBirthAlignOffsets(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_SetProjectileBirthAlignOffsets(
         int initialPositionOffset,
         int initialVelocityOffset);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_QueueProjectileBirthAlign(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_QueueProjectileBirthAlign(
         ulong entityPtr,
         float posX,
         float posY,
@@ -64,16 +64,16 @@ internal static partial class BotControllerNative
         float velY,
         float velZ);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_ClearProjectileBirthAlign();
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_ClearProjectileBirthAlign();
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_GetProjectileBirthAlignStatus(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_GetProjectileBirthAlignStatus(
         out NativeProjectileBirthAlignStatus status,
         int size);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_SendVoiceFrame(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_SendVoiceFrame(
         int recipientSlot,
         int senderClient,
         ulong senderXuid,
@@ -90,14 +90,14 @@ internal static partial class BotControllerNative
         int tick,
         int audibleMask);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_SetControllerControllingBotOffset(int offset);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_SetControllerControllingBotOffset(int offset);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_SetReplayPawn(int slot, ulong pawnPtr);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_SetReplayPawn(int slot, ulong pawnPtr);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_SetReplayPawnEquipment(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_SetReplayPawnEquipment(
         int slot,
         ulong pawnPtr,
         ulong controllerPtr,
@@ -105,17 +105,17 @@ internal static partial class BotControllerNative
         int helmet,
         int defuser);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_ClearReplayPawnEquipment(int slot);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_ClearReplayPawnEquipment(int slot);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_GetReplayPawnEquipmentState(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_GetReplayPawnEquipmentState(
         int slot,
         out NativeReplayPawnEquipmentState state,
         int size);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_SetUsercmdMovementIntent(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_SetUsercmdMovementIntent(
         int slot,
         ulong buttonsSet,
         ulong buttonsClear,
@@ -124,11 +124,11 @@ internal static partial class BotControllerNative
         int durationMs,
         int flags);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_ClearUsercmdMovementIntent(int slot);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_ClearUsercmdMovementIntent(int slot);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_SetLeftHandIntent(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_SetLeftHandIntent(
         int slot,
         ulong buttonsSet,
         ulong buttonsClear,
@@ -137,25 +137,25 @@ internal static partial class BotControllerNative
         int durationMs,
         int flags);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_ClearLeftHandIntent(int slot);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_ClearLeftHandIntent(int slot);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_SetLeftHandDesiredLatch(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_SetLeftHandDesiredLatch(
         int slot,
         int enabled,
         int leftHandDesired);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_LoadReplay(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_LoadReplay(
         int slot,
         [In] NativeReplayTick[] ticks,
         int tickCount,
         [In] NativeSubtickMove[] subs,
         int subCount);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_LoadReplayExtended(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_LoadReplayExtended(
         int slot,
         [In] NativeReplayTick[] ticks,
         int tickCount,
@@ -166,8 +166,8 @@ internal static partial class BotControllerNative
         [In] NativeReplayMovementExtra[] movementExtras,
         int movementExtraCount);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_LoadReplayWithInputHistory(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_LoadReplayWithInputHistory(
         int slot,
         [In] NativeReplayTick[] ticks,
         int tickCount,
@@ -182,59 +182,59 @@ internal static partial class BotControllerNative
         [In] NativeReplayInputHistoryEntry[] inputHistoryEntries,
         int inputHistoryEntryCount);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_StartReplay(int slot, int loop);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_StartReplay(int slot, int loop);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_StartReplayAt(int slot, int loop, int startIndex);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_StartReplayAt(int slot, int loop, int startIndex);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_StartReplayUntil(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_StartReplayUntil(
         int slot,
         int loop,
         int startIndex,
         int holdBeforeIndex);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_StopReplay(int slot);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_StopReplay(int slot);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_ReleaseReplayBuffer(int slot);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_ReleaseReplayBuffer(int slot);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_GetReplayCursor(int slot);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_GetReplayCursor(int slot);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_GetReplayTotal(int slot);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_GetReplayTotal(int slot);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_GetReplaySlotState(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_GetReplaySlotState(
         int slot,
         out NativeReplaySlotState state);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_GetReplayTick(int slot, out NativeReplayTick tick);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_GetReplayTick(int slot, out NativeReplayTick tick);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_SwitchBotWeapon(int slot, int defIndex);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_SwitchBotWeapon(int slot, int defIndex);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_GetBotActiveWeaponDef(int slot);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_GetBotActiveWeaponDef(int slot);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_SetBuyPlan(
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_SetBuyPlan(
         int slot,
         [MarshalAs(UnmanagedType.LPStr)] string aliases);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_SetBuySkip(int slot);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_SetBuySkip(int slot);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_ClearBuyPlan(int slot);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_ClearBuyPlan(int slot);
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_ClearAllBuyPlans();
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_ClearAllBuyPlans();
 
-    [DllImport("BotController", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int BotController_GetBuyPlanItemCount(int slot);
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int DtrController_GetBuyPlanItemCount(int slot);
 }

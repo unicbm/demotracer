@@ -4,7 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-using BotControllerImpl;
+using DtrController;
 
 namespace DemoTracer.Tests;
 

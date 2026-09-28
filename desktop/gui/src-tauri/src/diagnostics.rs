@@ -23,19 +23,19 @@ const MAX_RUNTIME_HEALTH_FUTURE_SKEW_MS: u64 = 60_000;
 pub(crate) const MAX_RECEIPT_FILES: usize = 256;
 pub(crate) const MAX_RECEIPT_FILE_BYTES: u64 = 128 * 1024 * 1024;
 pub(crate) const REQUIRED_RECEIPT_PATHS: &[&str] = &[
-    "addons/botcontroller/bin/win64/botcontroller.dll",
-    "addons/botcontroller/gamedata.json",
-    "addons/metamod/botcontroller.vdf",
-    "addons/counterstrikesharp/plugins/botcontrollerimpl/botcontrollerimpl.dll",
-    "addons/counterstrikesharp/shared/botcontrollerapi/botcontrollerapi.dll",
-    "addons/bothider/bin/win64/bothider.dll",
-    "addons/bothider/gamedata.json",
-    "addons/metamod/bothider.vdf",
+    "addons/dtr-controller/bin/win64/dtr-controller.dll",
+    "addons/dtr-controller/gamedata.json",
+    "addons/metamod/dtr-controller.vdf",
+    "addons/counterstrikesharp/plugins/dtrcontroller/dtrcontroller.dll",
+    "addons/counterstrikesharp/shared/dtrcontrollerapi/dtrcontrollerapi.dll",
+    "addons/dtr-hider/bin/win64/dtr-hider.dll",
+    "addons/dtr-hider/gamedata.json",
+    "addons/metamod/dtr-hider.vdf",
     "addons/counterstrikesharp/plugins/demotracer/demotracer.dll",
     "addons/counterstrikesharp/shared/demotracerapi/demotracerapi.dll",
     "addons/counterstrikesharp/plugins/demotracer/cs2-lib-econ-index.v1.json",
-    "addons/counterstrikesharp/plugins/bothiderimpl/bothiderimpl.dll",
-    "addons/counterstrikesharp/shared/demotracerbothiderapi/demotracerbothiderapi.dll",
+    "addons/counterstrikesharp/plugins/dtrhider/dtrhider.dll",
+    "addons/counterstrikesharp/shared/dtrhiderapi/dtrhiderapi.dll",
     "addons/counterstrikesharp/plugins/botrandomizer/botrandomizer.dll",
     "addons/counterstrikesharp/plugins/botrandomizer/cosmetic_catalog.json",
     "addons/counterstrikesharp/plugins/botrandomizer/cs2-lib-econ-index.v1.json",
@@ -170,6 +170,14 @@ pub(crate) struct DtrReaderContractWire {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct BotControllerContractWire {
+    #[serde(default)]
+    pub(crate) native_library: String,
+    #[serde(default)]
+    pub(crate) managed_assembly: String,
+    #[serde(default)]
+    pub(crate) managed_api: String,
+    #[serde(default)]
+    pub(crate) capability: String,
     pub(crate) abi_major: i32,
     pub(crate) min_abi_minor: i32,
     #[serde(default)]
@@ -187,6 +195,14 @@ pub(crate) struct BotControllerContractWire {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct BotHiderContractWire {
+    #[serde(default)]
+    pub(crate) native_library: String,
+    #[serde(default)]
+    pub(crate) managed_assembly: String,
+    #[serde(default)]
+    pub(crate) managed_api: String,
+    #[serde(default)]
+    pub(crate) capability: String,
     pub(crate) api: i32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) clan_tag_max_utf8_bytes: Option<u32>,
@@ -640,12 +656,12 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
         } else {
             DiagnosticStatus::Error
         },
-        title: "Live BotController contract".to_string(),
+        title: "Live dtr-controller contract".to_string(),
         summary: if controller_compatible {
-            "The loaded BotController satisfies DemoTracer's ABI, minor, capability, and companion API contract."
+            "The loaded dtr-controller satisfies DemoTracer's ABI, minor, capability, and companion API contract."
                 .to_string()
         } else {
-            "The loaded BotController does not satisfy DemoTracer's runtime contract.".to_string()
+            "The loaded dtr-controller does not satisfy DemoTracer's runtime contract.".to_string()
         },
         expected: Some(format!(
             "ABI {}/{}+, capabilities {}, DemoTracer API {}",
@@ -664,7 +680,7 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
         )),
         evidence_path: Some(path.display().to_string()),
         action: (!controller_compatible).then(|| {
-            "Stop the server and reinstall one complete DemoTracer playback bundle; do not copy BotController from another bot package."
+            "Stop the server and reinstall one complete DemoTracer playback bundle; do not copy dtr-controller from another bot package."
                 .to_string()
         }),
     });
@@ -676,11 +692,11 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
         } else {
             DiagnosticStatus::Error
         },
-        title: "Live BotHider provider".to_string(),
+        title: "Live dtr-hider provider".to_string(),
         summary: if hider_compatible {
-            "The versioned DemoTracer BotHider provider is connected and available.".to_string()
+            "The versioned dtr-hider provider is connected and available.".to_string()
         } else {
-            "The required DemoTracer BotHider provider is unavailable, disconnected, draining, or on the wrong API."
+            "The required dtr-hider provider is unavailable, disconnected, draining, or on the wrong API."
                 .to_string()
         },
         expected: Some(format!(
@@ -700,7 +716,7 @@ fn inspect_runtime_health(game_csgo: &Path) -> RuntimeAudit {
         )),
         evidence_path: Some(path.display().to_string()),
         action: (!hider_compatible).then(|| {
-            "Verify DemoTracerBotHider is the only BotHider presentation provider and reinstall the matching bundle if needed."
+            "Verify the matched dtr-hider native runtime, managed provider and DtrHiderApi are installed."
                 .to_string()
         }),
     });
@@ -967,14 +983,14 @@ fn inspect_install_receipt(
         },
         expected: embedded_playback_contract().ok().map(|expected| {
             format!(
-                "DemoTracer ABI {}/minor {}+, BotHider API {}, matching component hashes",
+                "DemoTracer ABI {}/minor {}+, dtr-hider API {}, matching component hashes",
                 expected.bot_controller.abi_major,
                 expected.bot_controller.min_abi_minor,
                 expected.bot_hider.api
             )
         }),
         actual: Some(format!(
-            "ABI {}/{}, BotHider API {}, mismatched files {}",
+            "ABI {}/{}, dtr-hider API {}, mismatched files {}",
             receipt.compatibility.bot_controller.abi_major,
             receipt.compatibility.bot_controller.min_abi_minor,
             receipt.compatibility.bot_hider.api,
@@ -1035,11 +1051,16 @@ fn verify_receipt_file(game_csgo: &Path, file: &ReceiptFileWire) -> Result<(), S
     if !metadata.is_file() {
         return Err(format!("{} is not a normal file", file.path));
     }
-    if metadata.len() != file.size {
-        return Err(format!("{} size differs", file.path));
-    }
     if metadata.len() > MAX_RECEIPT_FILE_BYTES {
         return Err(format!("{} exceeds the diagnostic size limit", file.path));
+    }
+    // This installed file is user configuration, including data migrated from
+    // the old DTR directory. Package extraction still verifies its default hash.
+    if normalized_receipt_path(&file.path) == "addons/dtr-hider/map_whitelist.json" {
+        return Ok(());
+    }
+    if metadata.len() != file.size {
+        return Err(format!("{} size differs", file.path));
     }
     let bytes = fs::read(&path).map_err(|error| format!("{}: {error}", file.path))?;
     if !sha256_hex(&bytes).eq_ignore_ascii_case(file.sha256.trim()) {
@@ -1074,18 +1095,18 @@ pub(crate) fn normalized_receipt_path(value: &str) -> String {
 }
 
 pub(crate) fn receipt_component(normalized_path: &str) -> Option<&'static str> {
-    if normalized_path.starts_with("addons/botcontroller/")
-        || normalized_path == "addons/metamod/botcontroller.vdf"
-        || normalized_path.starts_with("addons/counterstrikesharp/plugins/botcontrollerimpl/")
-        || normalized_path.starts_with("addons/counterstrikesharp/shared/botcontrollerapi/")
+    if normalized_path.starts_with("addons/dtr-controller/")
+        || normalized_path == "addons/metamod/dtr-controller.vdf"
+        || normalized_path.starts_with("addons/counterstrikesharp/plugins/dtrcontroller/")
+        || normalized_path.starts_with("addons/counterstrikesharp/shared/dtrcontrollerapi/")
     {
         Some("bot_controller")
-    } else if normalized_path.starts_with("addons/bothider/")
-        || normalized_path == "addons/metamod/bothider.vdf"
+    } else if normalized_path.starts_with("addons/dtr-hider/")
+        || normalized_path == "addons/metamod/dtr-hider.vdf"
     {
         Some("bot_hider_native")
-    } else if normalized_path.starts_with("addons/counterstrikesharp/plugins/bothiderimpl/")
-        || normalized_path.starts_with("addons/counterstrikesharp/shared/demotracerbothiderapi/")
+    } else if normalized_path.starts_with("addons/counterstrikesharp/plugins/dtrhider/")
+        || normalized_path.starts_with("addons/counterstrikesharp/shared/dtrhiderapi/")
     {
         Some("bot_hider_managed")
     } else if normalized_path.starts_with("addons/counterstrikesharp/plugins/demotracer/")
@@ -1369,6 +1390,24 @@ mod tests {
     }
 
     #[test]
+    fn user_whitelist_is_mutable_but_runtime_files_are_verified() {
+        let tree = TempTree::cs2();
+        let root = tree.game_csgo();
+        fs::create_dir_all(root.join("addons/dtr-hider")).unwrap();
+        let mut file = ReceiptFileWire {
+            path: "addons/dtr-hider/map_whitelist.json".to_string(),
+            component: "bot_hider_native".to_string(),
+            size: 2,
+            sha256: sha256_hex(b"[]"),
+        };
+        fs::write(root.join(&file.path), b"[\"de_mirage\"]").unwrap();
+        assert!(verify_receipt_file(&root, &file).is_ok());
+        file.path = "addons/dtr-hider/gamedata.json".to_string();
+        fs::write(root.join(&file.path), b"changed runtime data").unwrap();
+        assert!(verify_receipt_file(&root, &file).is_err());
+    }
+
+    #[test]
     fn parses_vdf_escaped_paths() {
         let text = r#""libraryfolders"
 {
@@ -1381,7 +1420,7 @@ mod tests {
 
     #[test]
     fn rejects_receipt_paths_outside_addons() {
-        assert!(checked_receipt_relative_path("addons/BotController/a.dll").is_ok());
+        assert!(checked_receipt_relative_path("addons/dtr-controller/a.dll").is_ok());
         assert!(checked_receipt_relative_path("addons/../outside.dll").is_err());
         assert!(checked_receipt_relative_path("C:/outside.dll").is_err());
     }
@@ -1445,11 +1484,11 @@ mod tests {
     #[test]
     fn receipt_components_are_derived_from_paths_not_labels() {
         assert_eq!(
-            receipt_component("addons/botcontroller/bin/win64/botcontroller.dll"),
+            receipt_component("addons/dtr-controller/bin/win64/dtr-controller.dll"),
             Some("bot_controller")
         );
         assert_eq!(
-            receipt_component("addons/counterstrikesharp/plugins/bothiderimpl/bothiderimpl.dll"),
+            receipt_component("addons/counterstrikesharp/plugins/dtrhider/dtrhider.dll"),
             Some("bot_hider_managed")
         );
         assert_eq!(
@@ -1733,13 +1772,13 @@ mod tests {
     fn plugin_names_and_dll_names_do_not_change_compatibility_verdicts() {
         let tree = TempTree::cs2();
         let before = inspect_cs2_install_for(tree.root().to_str().unwrap()).unwrap();
-        for name in ["WeaponPaints", "BotAI", "BotControllerImpl", "RenamedHider"] {
+        for name in ["WeaponPaints", "BotAI", "DtrController", "RenamedHider"] {
             let directory = tree
                 .game_csgo()
                 .join("addons/counterstrikesharp/plugins")
                 .join(name);
             fs::create_dir_all(&directory).unwrap();
-            fs::write(directory.join("BotHiderImpl.dll"), b"fixture").unwrap();
+            fs::write(directory.join("dtr-hider.dll"), b"fixture").unwrap();
         }
         let after = inspect_cs2_install_for(tree.root().to_str().unwrap()).unwrap();
         assert_eq!(before.overall, after.overall);

@@ -245,9 +245,9 @@ plugin with `css_plugins reload DemoTracer`.
 | `dtr_doctor [manifest.json]` | Check dependencies and optional manifest compatibility. |
 | `dtr_bots` | List candidate bots and replay ownership. |
 | `dtr_status [slot <slot>|<slot>]` | Print replay state. |
-| `bh_status` | Print BotHider provider and managed-slot state. |
-| `bc_status` | Print native hooks and per-slot locks. |
-| `bc_perf [0|1|reset]` | Print, toggle, or reset native performance counters. |
+| `dtr_hider_status` | Print BotHider provider and managed-slot state. |
+| `dtr_controller_status` | Print native hooks and per-slot locks. |
+| `dtr_controller_perf [0|1|reset]` | Print, toggle, or reset native performance counters. |
 
 ## Compatibility Aliases
 
@@ -267,7 +267,7 @@ Kept for existing scripts; new tooling should use the commands above.
 
 ## Known Boundaries
 
-- The bundled BotController `!record` / `!replay` commands capture and replay
+- The bundled BotController `!dtr_controller_record` / `!dtr_controller_replay` commands capture and replay
   public motion recordings. They do not capture or execute weapon-drop events.
   Older JSON recordings with a nonzero native event tail are rejected with an
   unsupported-event message. DTR gameplay events keep their existing executor.

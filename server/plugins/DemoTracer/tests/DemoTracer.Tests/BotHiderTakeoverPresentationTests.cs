@@ -6,7 +6,7 @@
 
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using DemoTracerBotHiderApi;
+using DtrHiderApi;
 
 namespace DemoTracer.Tests;
 
@@ -46,7 +46,7 @@ public sealed class BotHiderTakeoverPresentationTests
         var plugin = (DemoTracerPlugin)RuntimeHelpers.GetUninitializedObject(typeof(DemoTracerPlugin));
         var bridgeField = typeof(DemoTracerPlugin).GetField("_botHiderBridge", PrivateInstance)!;
         var bridge = Activator.CreateInstance(bridgeField.FieldType, nonPublic: true)!;
-        var api = DispatchProxy.Create<IBotHiderApi, ManagedBotProvider>();
+        var api = DispatchProxy.Create<IDtrHiderApi, ManagedBotProvider>();
         bridgeField.FieldType.GetField("_api", PrivateInstance)!.SetValue(bridge, api);
         bridgeField.FieldType.GetField("_resolved", PrivateInstance)!.SetValue(bridge, true);
         bridgeField.SetValue(plugin, bridge);
@@ -95,11 +95,11 @@ public sealed class BotHiderTakeoverPresentationTests
         {
             switch (method!.Name)
             {
-                case "get_ApiVersion": return DemoTracerBotHiderContract.ApiVersion;
-                case nameof(IBotHiderApi.GetProviderInfo):
+                case "get_ApiVersion": return DtrHiderContract.ApiVersion;
+                case nameof(IDtrHiderApi.GetProviderInfo):
                     ProviderInfoCalls++;
-                    return new BotHiderProviderInfo { ApiVersion = DemoTracerBotHiderContract.ApiVersion, Connected = true };
-                case nameof(IBotHiderApi.TryGetManagedSlot):
+                    return new BotHiderProviderInfo { ApiVersion = DtrHiderContract.ApiVersion, Connected = true };
+                case nameof(IDtrHiderApi.TryGetManagedSlot):
                     args![1] = new BotHiderManagedSlot { Slot = (int)args[0]!, Incarnation = 42 };
                     return Managed && (int)args[0]! == 7;
                 default: throw new InvalidOperationException($"Unexpected provider call: {method.Name}");
