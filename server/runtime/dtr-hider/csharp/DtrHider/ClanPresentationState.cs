@@ -32,7 +32,8 @@ internal sealed class ClanPresentationState
         if (changed || _pending)
         {
             _pending = true;
-            write(target);
+            if (changed)
+                write(target);
             publish();
             if (read() != target)
                 throw new InvalidOperationException("controller clan write was not retained");

@@ -959,18 +959,23 @@ fn projectile_hifi_metadata(
     projectiles: &[&ParsedProjectile],
     player_rows: &[&ParsedPlayerTick],
 ) -> Vec<ReplayProjectileMetadata> {
+    let event_index = |tick| {
+        player_rows
+            .iter()
+            .skip(1)
+            .position(|row| row.tick == tick)
+            .map(|i| i as u32)
+    };
     projectiles
         .iter()
         .filter_map(|projectile| {
-            let tick_index = tick_index_for_event(player_rows, projectile.tick)?;
+            let tick_index = event_index(projectile.tick)?;
             Some(ReplayProjectileMetadata {
                 tick_index,
                 tick: projectile.tick,
                 kind: projectile.kind,
                 weapon_def_index: projectile.weapon_def_index,
-                effect_tick_index: projectile
-                    .effect_tick
-                    .and_then(|tick| tick_index_for_event(player_rows, tick)),
+                effect_tick_index: projectile.effect_tick.and_then(event_index),
                 effect_tick: projectile.effect_tick,
                 effect_position: projectile.effect_position,
                 effect_source: projectile.effect_source,
@@ -3885,13 +3890,13 @@ mod tests {
         assert_eq!(rec.ticks.len(), 208);
         assert_eq!(rec.ticks[0].pre.origin[0], 20.0);
         assert_eq!(rec.ticks[80].pre.origin[0], 100.0);
-        assert_eq!(rec.projectiles[0].tick_index, 144);
+        assert_eq!(rec.projectiles[0].tick_index, 143);
         assert_eq!(rec.high_fidelity.schema_version, 4);
         assert_eq!(rec.high_fidelity.projectiles.len(), 1);
-        assert_eq!(rec.high_fidelity.projectiles[0].tick_index, 144);
+        assert_eq!(rec.high_fidelity.projectiles[0].tick_index, 143);
         assert_eq!(
             rec.high_fidelity.projectiles[0].effect_tick_index,
-            Some(144)
+            Some(143)
         );
         assert_eq!(rec.high_fidelity.projectiles[0].effect_confidence, 0.9);
     }

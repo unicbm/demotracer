@@ -283,6 +283,12 @@ Reconstruct replay ticks as:
 
 The sum of all `num_subtick` values must equal header `subtick_count`.
 
+Demo rows are post-command observations. For adjacent rows `i` and `i + 1`,
+the converter takes movement/source state from row `i`, and command planes,
+subticks and input history from row `i + 1`. Projectile births in row `i + 1`
+belong to replay tick `i`. This keeps jump and attack edges in the simulation
+that produces `post`; pairing row `i` inputs with row `i` state replays them late.
+
 ## Structs
 
 ### `MovementSnapshotV3`

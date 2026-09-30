@@ -32,20 +32,4 @@ public sealed class BotHiderIdentityReassertTests
         state.CrosshairPending = true;
         Assert.True(state.NeedsCrosshairPublication(0x8005));
     }
-
-    [Theory]
-    [InlineData(false, false, true)]
-    [InlineData(true, false, false)]
-    [InlineData(true, true, true)]
-    public void FlairIsPublishedForMismatchOrScheduledNextFrameReassert(
-        bool controllerMatches,
-        bool nextFrameRepublishPending,
-        bool expected)
-    {
-        Assert.Equal(
-            expected,
-            BotHiderPresentationService.ShouldPublishScoreboardFlair(
-                controllerMatches,
-                nextFrameRepublishPending));
-    }
 }

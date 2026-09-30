@@ -101,8 +101,10 @@ public sealed class BotHiderClanPresentationTests
             value => current = value, () => throw new InvalidOperationException("notification failed")));
         Assert.Equal(wanted, current);
         var notified = false;
-        state.Apply(wanted, () => current, value => current = value, () => notified = true);
+        state.Apply(wanted, () => current, _ => throw new Exception("unchanged clan was rewritten"), () => notified = true);
         Assert.True(notified);
+        state.Apply(wanted, () => current, _ => throw new Exception("unchanged clan was rewritten"),
+            () => throw new Exception("unchanged clan was republished"));
         state.Apply(null, () => current, value => current = value, () => { });
         Assert.Equal(new BotHiderClan("base", 42), current);
     }

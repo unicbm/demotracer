@@ -192,11 +192,13 @@ fn synthesize_player_rec_with_projectile_iter<'a>(
         let mut post = post_row.snapshot();
         normalize_impossible_player_velocity(&mut pre);
         normalize_impossible_player_velocity(&mut post);
-        command_frames.push(pre_row.command_frame());
-        let (input_history_tick, mut tick_input_history) = sanitize_input_history(pre_row);
+        // Demo rows contain the result of their usercmd. Replay the command
+        // that produced post from pre, not the command already reflected in pre.
+        command_frames.push(post_row.command_frame());
+        let (input_history_tick, mut tick_input_history) = sanitize_input_history(post_row);
         input_history_ticks.push(input_history_tick);
         input_history_entries.append(&mut tick_input_history);
-        let mut tick_subticks = sanitize_subticks(pre_row, &mut stats);
+        let mut tick_subticks = sanitize_subticks(post_row, &mut stats);
         let num_subtick = tick_subticks.len() as u32;
         subticks.append(&mut tick_subticks);
         ticks.push(ReplayTick {
@@ -332,7 +334,7 @@ fn synthesize_projectiles<'a>(
 
     let steam_id = rows[0].row().steam_id;
     let mut tick_to_index = BTreeMap::new();
-    for (index, row) in rows.iter().take(tick_count).enumerate() {
+    for (index, row) in rows.iter().skip(1).take(tick_count).enumerate() {
         tick_to_index.entry(row.row().tick).or_insert(index as u32);
     }
 
@@ -623,17 +625,17 @@ mod tests {
 
     #[test]
     fn synthesis_preserves_wire_order_and_bounds_subticks() {
-        let mut r0 = row(10, 7);
-        r0.subtick_moves = vec![
+        let r0 = row(10, 7);
+        let mut r1 = row(11, 7);
+        r1.subtick_moves = vec![
             subtick(-1.0 / 128.0, 4),
             subtick(0.7, 2),
             subtick(1.0, 3),
             subtick(0.1, 1),
         ];
-        r0.subtick_button_truncated = 1;
-        let mut r1 = row(11, 7);
-        r1.subtick_moves = (0..40).map(|i| subtick(i as f32 / 80.0, i)).collect();
-        let r2 = row(12, 7);
+        r1.subtick_button_truncated = 1;
+        let mut r2 = row(12, 7);
+        r2.subtick_moves = (0..40).map(|i| subtick(i as f32 / 80.0, i)).collect();
 
         let (rec, stats) = synthesize_player_rec_with_options(
             &[r0, r1, r2],
@@ -661,25 +663,43 @@ mod tests {
     }
 
     #[test]
-    fn synthesis_preserves_grenade_release_subtick_phase() {
-        let mut release = subtick(0.125, 1);
+    fn jump_throw_command_runs_from_grounded_pre_to_airborne_post() {
+        let mut grounded = row(3261, 47);
+        grounded.origin[2] = -167.96875;
+        grounded.velocity[2] = 0.0;
+        grounded.buttonstate2 = 0;
+        let mut airborne = row(3262, 47);
+        airborne.origin[2] = -165.734375;
+        airborne.velocity[2] = 292.828125;
+        airborne.entity_flags = 0;
+        airborne.buttonstate1 = 0;
+        airborne.buttonstate2 = 1;
+        airborne.buttonstate3 = 2; // Mouse-wheel jump: press and release in one command.
+        let mut jump_release = subtick(0.515625, 2);
+        jump_release.pressed = 0.0;
+        let mut release = subtick(0.625, 1);
         release.pressed = 0.0;
-        let mut first = row(10, 46);
-        first.subtick_moves = vec![release];
+        airborne.subtick_moves = vec![subtick(0.515625, 2), jump_release, release];
 
-        let rec = synthesize_player_rec(&[first, row(11, 46)], "de_mirage", 64.0, 1).unwrap();
+        let rec = synthesize_player_rec(&[grounded, airborne], "de_mirage", 64.0, 1).unwrap();
 
-        assert_eq!(rec.ticks[0].num_subtick, 1);
-        assert_eq!(rec.subticks[0].when, 0.125);
-        assert_eq!(rec.subticks[0].button, 1);
-        assert_eq!(rec.subticks[0].pressed, 0.0);
+        assert_eq!(rec.ticks[0].pre.velocity[2], 0.0);
+        assert_eq!(rec.ticks[0].pre.entity_flags & 1, 1);
+        assert_eq!(rec.ticks[0].post.velocity[2], 292.828125);
+        assert_eq!(rec.command_frames[0].buttons, 0);
+        assert_eq!(rec.command_frames[0].buttons1, 1);
+        assert_eq!(rec.command_frames[0].buttons2, 2);
+        assert_eq!(
+            rec.subticks,
+            vec![subtick(0.515625, 2), jump_release, release]
+        );
     }
 
     #[test]
     fn synthesis_always_preserves_available_subticks() {
-        let mut r0 = row(10, 7);
-        r0.subtick_moves = vec![subtick(0.25, 1)];
-        let r1 = row(11, 7);
+        let r0 = row(10, 7);
+        let mut r1 = row(11, 7);
+        r1.subtick_moves = vec![subtick(0.25, 1)];
         let (rec, stats) = synthesize_player_rec_with_options(
             &[r0, r1],
             &[],
@@ -699,7 +719,7 @@ mod tests {
 
     #[test]
     fn synthesis_keeps_only_referenced_shooting_history_and_remaps_attack_indexes() {
-        let mut first = row(500, 7);
+        let mut first = row(501, 7);
         first.usercmd_client_tick = Some(700);
         first.usercmd_attack1_start_history_index = 2;
         first.usercmd_attack2_start_history_index = 1;
@@ -725,7 +745,7 @@ mod tests {
             },
         ];
 
-        let rec = synthesize_player_rec(&[first, row(501, 7)], "de_nuke", 64.0, 1).unwrap();
+        let rec = synthesize_player_rec(&[row(500, 7), first], "de_nuke", 64.0, 1).unwrap();
 
         assert_eq!(rec.input_history_ticks.len(), 1);
         assert_eq!(rec.input_history_ticks[0].source_client_tick, 700);
@@ -739,7 +759,7 @@ mod tests {
 
     #[test]
     fn synthesis_deduplicates_shared_attack_history_entry() {
-        let mut first = row(500, 7);
+        let mut first = row(501, 7);
         first.usercmd_attack1_start_history_index = 1;
         first.usercmd_attack2_start_history_index = 1;
         first.input_history = vec![
@@ -751,7 +771,7 @@ mod tests {
             },
         ];
 
-        let rec = synthesize_player_rec(&[first, row(501, 7)], "de_nuke", 64.0, 1).unwrap();
+        let rec = synthesize_player_rec(&[row(500, 7), first], "de_nuke", 64.0, 1).unwrap();
 
         assert_eq!(rec.input_history_ticks[0].attack1_start_history_index, 0);
         assert_eq!(rec.input_history_ticks[0].attack2_start_history_index, 0);
@@ -761,7 +781,7 @@ mod tests {
 
     #[test]
     fn synthesis_omits_history_without_valid_attack_reference() {
-        let mut first = row(500, 7);
+        let mut first = row(501, 7);
         first.usercmd_client_tick = Some(700);
         first.usercmd_attack1_start_history_index = 1;
         first.input_history = vec![
@@ -776,7 +796,7 @@ mod tests {
             },
         ];
 
-        let rec = synthesize_player_rec(&[first, row(501, 7)], "de_nuke", 64.0, 1).unwrap();
+        let rec = synthesize_player_rec(&[row(500, 7), first], "de_nuke", 64.0, 1).unwrap();
 
         assert_eq!(
             rec.input_history_ticks[0],
@@ -818,15 +838,23 @@ mod tests {
         assert_eq!(borrowed_rec.projectiles, owned_rec.projectiles);
         assert_eq!(borrowed_stats, owned_stats);
         assert_eq!(borrowed_rec.projectiles.len(), 2);
-        assert_eq!(borrowed_rec.projectiles[0].tick_index, 0);
+        assert_eq!(borrowed_rec.projectiles[0].tick_index, 1);
+        assert_eq!(
+            borrowed_rec.projectiles[0].kind,
+            crate::model::ProjectileKind::Smoke
+        );
         assert_eq!(borrowed_rec.projectiles[1].tick_index, 2);
+        assert_eq!(
+            borrowed_rec.projectiles[1].kind,
+            crate::model::ProjectileKind::Molotov
+        );
     }
 
     #[test]
     fn synthesis_row_refs_match_owned_rows() {
-        let mut r0 = row(10, 7);
-        r0.subtick_moves = vec![subtick(0.25, 1)];
-        let rows = [r0, row(11, 7), row(12, 9)];
+        let mut r1 = row(11, 7);
+        r1.subtick_moves = vec![subtick(0.25, 1)];
+        let rows = [row(10, 7), r1, row(12, 9)];
         let row_refs = rows.iter().collect::<Vec<_>>();
         let projectiles = [projectile(11, 42, crate::model::ProjectileKind::Smoke)];
         let projectile_refs = projectiles.iter().collect::<Vec<_>>();

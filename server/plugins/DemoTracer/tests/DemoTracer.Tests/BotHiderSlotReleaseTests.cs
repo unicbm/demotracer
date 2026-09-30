@@ -11,6 +11,29 @@ namespace DemoTracer.Tests;
 
 public sealed class BotHiderSlotReleaseTests
 {
+    [Fact]
+    public void LeaseChangesPreservePublishedControllerUntilIncarnationChanges()
+    {
+        using var client = new NativePresentationClient();
+        using var owner = new CancellationTokenSource();
+        var service = new BotHiderPresentationService(client, _ => { });
+        service.ObserveSlot(1, 7, 0x8005, 20);
+        var slots = (BotHiderPresentationService.SlotState[])typeof(BotHiderPresentationService)
+            .GetField("_slots", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(service)!;
+        slots[1].PublishedController = 0x8005;
+        service.AddLease(new("token", "demotracer", new()
+        {
+            [1] = new() { Slot = 1, Incarnation = slots[1].Incarnation, PlayerName = "new name" }
+        }, owner.Token));
+
+        Assert.False(slots[1].NeedsCrosshairPublication(0x8005));
+        owner.Cancel();
+        Assert.False(slots[1].NeedsCrosshairPublication(0x8005));
+        service.ObserveSlot(1, 8, 0x10005, 21);
+        Assert.True(slots[1].NeedsCrosshairPublication(0x10005));
+    }
+
     [Theory]
     [InlineData("disconnect")]
     [InlineData("native_slot_lost")]
@@ -49,8 +72,8 @@ public sealed class BotHiderSlotReleaseTests
     {
         using var client = new NativePresentationClient();
         using var owner = new CancellationTokenSource();
-        var publications = 0;
-        var service = new BotHiderPresentationService(client, () => publications++);
+        var publications = new List<int>();
+        var service = new BotHiderPresentationService(client, publications.Add);
         var retained = new BotHiderPresentationOverride
         {
             Slot = 2, Incarnation = 22, PlayerName = "demo teammate", SteamId = 1234
@@ -77,9 +100,9 @@ public sealed class BotHiderSlotReleaseTests
         Assert.Same(retained, service.GetPresentationOverride(2, 22));
         owner.Cancel();
         Assert.Null(service.GetPresentationOverride(2, 22));
-        Assert.Equal(1, publications);
+        Assert.Equal(new[] { 2 }, publications);
         owner.Cancel();
-        Assert.Equal(1, publications);
+        Assert.Equal(new[] { 2 }, publications);
     }
 
     [Fact]
@@ -89,7 +112,7 @@ public sealed class BotHiderSlotReleaseTests
         using var owner = new CancellationTokenSource();
         using var nextOwner = new CancellationTokenSource();
         var publications = 0;
-        var service = new BotHiderPresentationService(client, () => publications++);
+        var service = new BotHiderPresentationService(client, _ => publications++);
         service.AddLease(new("token", "demotracer", new()
         {
             [1] = new() { Slot = 1, Incarnation = 11, PlayerName = "first" },
@@ -120,7 +143,7 @@ public sealed class BotHiderSlotReleaseTests
     {
         using var client = new NativePresentationClient();
         using var owner = new CancellationTokenSource();
-        var service = new BotHiderPresentationService(client, () => { });
+        var service = new BotHiderPresentationService(client, _ => { });
         service.ObserveSlot(1, 7, 0x8005, 20);
         service.AddLease(new("token", "demotracer", new()
         {

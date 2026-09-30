@@ -13,7 +13,7 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
     private static readonly TimeSpan PresentationFailureLogInterval = TimeSpan.FromSeconds(30);
 
     private readonly NativePresentationClient _client;
-    private readonly Action _ownerReleased;
+    private readonly Action<int> _ownerReleased;
     private readonly object _sync = new();
     private readonly string _providerEpoch = Guid.NewGuid().ToString("N");
     private readonly SlotState[] _slots = new SlotState[MaxSlots];
@@ -28,10 +28,10 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
     private int _publishedWrites;
     private int _controllerRepairs;
 
-    public BotHiderPresentationService(NativePresentationClient client, Action? ownerReleased = null)
+    public BotHiderPresentationService(NativePresentationClient client, Action<int>? ownerReleased = null)
     {
         _client = client;
-        _ownerReleased = ownerReleased ?? PublishManagedSlots;
+        _ownerReleased = ownerReleased ?? PublishManagedSlot;
     }
 
     public int ApiVersion => DtrHiderContract.ApiVersion;
@@ -87,12 +87,12 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             var token = $"{_providerEpoch}:{Guid.NewGuid():N}";
             var lease = new PresentationLease(token, owner, normalized, ownerLifetime);
             AddLease(lease);
-            PublishManagedSlots();
+            PublishSlots(lease.Overrides.Keys);
             if (IsLeaseAppliedSynchronously(lease, out var applyReason))
                 return Success(lease);
 
             RemoveLease(lease.Token, countRevocation: false);
-            PublishManagedSlots();
+            PublishSlots(lease.Overrides.Keys);
             return Fail(applyReason);
         }
     }
@@ -122,51 +122,48 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             };
             _leases[leaseToken] = replacement;
             AddLeaseMappings(replacement);
-            InvalidateSlots(existing.Overrides.Keys.Concat(normalized.Keys));
-            PublishManagedSlots();
+            var affectedSlots = existing.Overrides.Keys.Union(normalized.Keys).ToArray();
+            PublishSlots(affectedSlots);
             if (IsLeaseAppliedSynchronously(replacement, out var applyReason))
                 return Success(replacement);
 
             RemoveLeaseMappings(replacement);
             _leases[leaseToken] = existing;
             AddLeaseMappings(existing);
-            InvalidateSlots(existing.Overrides.Keys.Concat(normalized.Keys));
-            PublishManagedSlots();
+            PublishSlots(affectedSlots);
             return Fail(applyReason);
         }
     }
 
     public bool ReleasePresentationLease(string leaseToken)
     {
-        bool released;
+        PresentationLease? released;
         lock (_sync)
         {
             ObserveNativeSession();
             released = RemoveLease(leaseToken, countRevocation: false);
         }
 
-        if (released)
-            PublishManagedSlots();
-        return released;
+        if (released != null)
+            PublishSlots(released.Overrides.Keys);
+        return released != null;
     }
 
     public int ReleasePresentationLeasesByOwner(string owner)
     {
-        string[] tokens;
+        PresentationLease[] leases;
         lock (_sync)
         {
             ObserveNativeSession();
-            tokens = _leases.Values
+            leases = _leases.Values
                 .Where(lease => lease.Owner.Equals(owner, StringComparison.Ordinal))
-                .Select(lease => lease.Token)
                 .ToArray();
-            foreach (var token in tokens)
-                RemoveLease(token, countRevocation: false);
+            foreach (var lease in leases)
+                RemoveLease(lease.Token, countRevocation: false);
         }
 
-        if (tokens.Length > 0)
-            PublishManagedSlots();
-        return tokens.Length;
+        PublishSlots(leases.SelectMany(lease => lease.Overrides.Keys));
+        return leases.Length;
     }
 
     public BotHiderDiagnostics GetDiagnostics()
@@ -555,35 +552,16 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             if (!crosshairSynchronized)
                 ReportPresentationFailure(slot, "crosshair notification pending");
 
-            // A requested crosshair requires native notification submission as
-            // well as readback. This is not a remote client's rendering ACK.
-            var scoreboardFlairNeedsWrite = effectiveScoreboardFlairManaged ||
-                                             _slots[slot].FlairManaged;
-            if (scoreboardFlairNeedsWrite)
+            if (effectiveScoreboardFlairManaged || _slots[slot].FlairManaged)
             {
-                var scoreboardFlairSynchronized = ScoreboardFlairMatches(
-                    player,
-                    flair);
-                var scoreboardFlairNeedsPublish = ShouldPublishScoreboardFlair(
-                    scoreboardFlairSynchronized,
-                    _slots[slot].FlairPending);
-                if (scoreboardFlairNeedsPublish &&
-                    ApplyScoreboardFlair(player, flair))
+                if (!ScoreboardFlairMatches(player, flair))
                 {
-                    scoreboardFlairSynchronized = ScoreboardFlairMatches(
-                        player,
-                        flair);
+                    if (!ApplyScoreboardFlair(player, flair) || !ScoreboardFlairMatches(player, flair))
+                        throw new InvalidOperationException("controller scoreboard flair write was not retained");
                     _publishedWrites++;
                     _controllerRepairs++;
                 }
-
-                if (scoreboardFlairSynchronized)
-                {
-                    _slots[slot].FlairManaged = effectiveScoreboardFlairManaged;
-                    _slots[slot].FlairPending = false;
-                }
-                else
-                    throw new InvalidOperationException("controller scoreboard flair write was not retained");
+                _slots[slot].FlairManaged = effectiveScoreboardFlairManaged;
             }
 
             var clanState = _slots[slot].Clan ??= new ClanPresentationState();
@@ -615,11 +593,19 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
         }
     }
 
+    private void PublishSlots(IEnumerable<int> slots)
+    {
+        foreach (var slot in slots)
+            PublishManagedSlot(slot);
+    }
+
     private static bool ApplyClan(ClanPresentationState state, BotHiderClan? requested, CCSPlayerController player)
         => state.Apply(requested, () => ReadClan(player), clan =>
         {
-            player.Clan = clan.Tag;
-            Schema.SetSchemaValue(player.Handle, "CCSPlayerController", "m_unClanId32bit", clan.Id);
+            if (player.Clan != clan.Tag)
+                player.Clan = clan.Tag;
+            if (Schema.GetRef<uint>(player.Handle, "CCSPlayerController", "m_unClanId32bit") != clan.Id)
+                Schema.SetSchemaValue(player.Handle, "CCSPlayerController", "m_unClanId32bit", clan.Id);
         }, () =>
         {
             Utilities.SetStateChanged(player, "CCSPlayerController", "m_szClan");
@@ -664,6 +650,8 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             return false;
         for (var index = 0; index < ranks.Length; index++)
         {
+            if ((uint)ranks[index] == itemDefIndex)
+                continue;
             ranks[index] = (MedalRank_t)itemDefIndex;
             TrySetStateChanged(
                 player,
@@ -673,11 +661,6 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
         }
         return true;
     }
-
-    internal static bool ShouldPublishScoreboardFlair(
-        bool scoreboardFlairMatches,
-        bool nextFrameRepublishPending)
-        => !scoreboardFlairMatches || nextFrameRepublishPending;
 
     private static bool IsNetworkedSchemaField(string className, string fieldName)
     {
@@ -750,12 +733,13 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
     {
         _leases.Add(lease.Token, lease);
         AddLeaseMappings(lease);
-        InvalidateSlots(lease.Overrides.Keys);
         lease.OwnerRegistration = lease.OwnerLifetime.Register(() =>
         {
-            bool removed;
+            PresentationLease? removed;
             lock (_sync) removed = RemoveLease(lease.Token, countRevocation: true);
-            if (removed) _ownerReleased();
+            if (removed != null)
+                foreach (var slot in removed.Overrides.Keys)
+                    _ownerReleased(slot);
         });
     }
 
@@ -765,16 +749,15 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             _leaseBySlot[slot] = lease.Token;
     }
 
-    private bool RemoveLease(string leaseToken, bool countRevocation)
+    private PresentationLease? RemoveLease(string leaseToken, bool countRevocation)
     {
         if (string.IsNullOrWhiteSpace(leaseToken) || !_leases.Remove(leaseToken, out var lease))
-            return false;
+            return null;
         lease.OwnerRegistration.Unregister();
         RemoveLeaseMappings(lease);
-        InvalidateSlots(lease.Overrides.Keys);
         if (countRevocation)
             _revokedLeases++;
-        return true;
+        return lease;
     }
 
     private void RemoveSlotPresentation(int slot)
@@ -803,15 +786,6 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             {
                 _leaseBySlot.Remove(slot);
             }
-        }
-    }
-
-    private void InvalidateSlots(IEnumerable<int> slots)
-    {
-        foreach (var slot in slots)
-        {
-            if (slot is >= 0 and < MaxSlots)
-                _slots[slot].PublishedController = 0;
         }
     }
 
@@ -882,7 +856,6 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
 
     private BotHiderPresentationLeaseResult Success(PresentationLease lease)
     {
-        ScheduleScoreboardFlairRepublish(lease);
         return new BotHiderPresentationLeaseResult
         {
             Ok = true,
@@ -891,35 +864,6 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             Reason = "ok",
             Slots = lease.Overrides.Keys.Order().ToArray()
         };
-    }
-
-    private void ScheduleScoreboardFlairRepublish(PresentationLease lease)
-    {
-        var slots = lease.Overrides.Values
-            .Where(requested => requested.ScoreboardFlair.HasValue)
-            .Select(requested => requested.Slot)
-            .ToArray();
-        if (slots.Length == 0)
-            return;
-
-        var leaseToken = lease.Token;
-        Server.NextFrame(() =>
-        {
-            lock (_sync)
-            {
-                if (_disposed)
-                    return;
-                foreach (var slot in slots)
-                {
-                    if (_leaseBySlot.TryGetValue(slot, out var currentToken) &&
-                        currentToken.Equals(leaseToken, StringComparison.Ordinal))
-                    {
-                        _slots[slot].FlairPending = true;
-                    }
-                }
-            }
-            PublishManagedSlots();
-        });
     }
 
     private BotHiderPresentationLeaseResult Fail(string reason)
@@ -965,7 +909,7 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
         public int UserId;
         public ulong Incarnation, NativeIncarnation;
         public uint Controller, PublishedController;
-        public bool CrosshairPending, FlairManaged, FlairPending;
+        public bool CrosshairPending, FlairManaged;
         public ClanPresentationState? Clan;
         public DateTime NextFailureLogUtc;
         public int SuppressedFailures;
