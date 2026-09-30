@@ -73,6 +73,8 @@ pub(crate) struct PlaybackContractWire {
     pub(crate) manifest_abi: i32,
     pub(crate) dtr_writer: u32,
     #[serde(default)]
+    pub(crate) inventory_plan_schema: u32,
+    #[serde(default)]
     pub(crate) dtr_section_writer_codec: String,
     #[serde(default)]
     pub(crate) dtr_section_zstd_level: i32,

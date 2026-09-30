@@ -123,7 +123,7 @@ public sealed partial class DemoTracerPlugin
             if (hasLoadedReplay)
             {
                 ProcessReplayInventory(slot, replay, state.Cursor);
-                ProcessReplayHifiEvents(slot, replay, state.Cursor);
+                ProcessReplayUtilityGrants(slot, replay, state.Cursor);
             }
 
             if (!_weaponAlignEnabled)
@@ -143,69 +143,22 @@ public sealed partial class DemoTracerPlugin
         }
     }
 
-    private void ProcessReplayHifiEvents(int slot, LoadedReplay replay, int cursor)
+    private void ProcessReplayUtilityGrants(int slot, LoadedReplay replay, int cursor)
     {
-        if (cursor < 0 || replay.HifiEvents.Length == 0)
+        if (cursor < 0 || replay.UtilityGrants.Length == 0)
             return;
 
-        var next = _session.ReplayHifiEventNextBySlot.GetValueOrDefault(slot);
-        while (next < replay.HifiEvents.Length && replay.HifiEvents[next].TickIndex <= (uint)cursor)
+        var next = _session.ReplayUtilityGrantNextBySlot.GetValueOrDefault(slot);
+        while (next < replay.UtilityGrants.Length && replay.UtilityGrants[next].TickIndex <= (uint)cursor)
         {
-            ExecuteReplayHifiEvent(slot, replay, replay.HifiEvents[next]);
+            QueueReplayUtilityGrant(slot, replay.UtilityGrants[next]);
             next++;
         }
-        _session.ReplayHifiEventNextBySlot[slot] = next;
+        _session.ReplayUtilityGrantNextBySlot[slot] = next;
     }
 
-    private void ExecuteReplayHifiEvent(int slot, LoadedReplay replay, ReplayHifiEvent replayEvent)
+    private void QueueReplayUtilityGrant(int slot, ReplayUtilityGrant grant)
     {
-        var kind = replayEvent.Kind.Trim().ToLowerInvariant();
-        switch (kind)
-        {
-            case "item_drop":
-                // Live replay ticks must not mutate inventory/entities. Keep item events
-                // as metadata until replay-safe transfer machinery exists.
-                break;
-
-            case "bomb_drop":
-                // C4 is a unique objective entity. Mid-replay DropActiveWeapon on C4 can
-                // leave CS2 in an invalid bomb state, so runtime C4 transfer stays record-only.
-                break;
-
-            case "item_pickup":
-            case "item_transfer":
-                if (ShouldQueueReplayUtilityGrant(replayEvent, replay))
-                    QueueReplayUtilityGrant(slot, replayEvent);
-                break;
-
-            case "bomb_pickup":
-                // Safe C4 ownership is aligned before replay start. Do not clone or move C4
-                // during live replay ticks.
-                break;
-
-            case "bomb_planted":
-                // Actual server bomb_planted drives C4 handoff. Demo metadata stays
-                // record-only so a failed or delayed live plant cannot hand off early.
-                break;
-        }
-    }
-
-    private bool ShouldQueueReplayUtilityGrant(
-        ReplayHifiEvent replayEvent,
-        LoadedReplay replay)
-        => replay.InventorySnapshots.Length == 0 && ReplayUtilityGrantPolicy.ShouldQueue(
-            replayEvent,
-            replay.SteamId,
-            replay.PlayStartTickIndex,
-            _replayEquipment);
-
-    private void QueueReplayUtilityGrant(int slot, ReplayHifiEvent replayEvent)
-    {
-        var weaponDefIndex = ReplayEventWeaponDefIndex(replayEvent);
-        if (!IsUtilityWeaponDefIndex(weaponDefIndex) ||
-            !TryGetWeaponClassByDefIndex(weaponDefIndex, out var className))
-            return;
-
         var player = Utilities.GetPlayerFromSlot(slot);
         if (player is not { IsValid: true } ||
             player.UserId is not int userId)
@@ -214,15 +167,13 @@ public sealed partial class DemoTracerPlugin
         }
         var writeEpoch = CurrentReplayWriteEpoch(slot);
 
-        var targetCount = Math.Max(1, replayEvent.TargetCountAfter ?? 1);
-        var sourceTick = replayEvent.Tick;
         Server.NextFrame(() => EnsureReplayUtilityGrant(
             slot,
             userId,
             writeEpoch,
-            className,
-            targetCount,
-            sourceTick));
+            grant.ClassName,
+            grant.TargetCount,
+            grant.SourceTick));
     }
 
     private void EnsureReplayUtilityGrant(
@@ -260,30 +211,6 @@ public sealed partial class DemoTracerPlugin
 
         _session.LastEnsuredWeaponDef.Remove(slot);
         _session.LastReplayWeaponDef.Remove(slot);
-    }
-
-    private int ReplayEventWeaponDefIndex(ReplayHifiEvent replayEvent)
-    {
-        if (replayEvent.WeaponDefIndex.HasValue)
-            return NormalizeWeaponDefIndex(replayEvent.WeaponDefIndex.Value);
-        if (string.IsNullOrWhiteSpace(replayEvent.ItemName))
-            return -1;
-
-        var itemName = NormalizeReplayEventItemName(replayEvent.ItemName);
-        return NormalizeWeaponDefIndex(WeaponDefIndex(itemName));
-    }
-
-    private static string NormalizeReplayEventItemName(string itemName)
-    {
-        var normalized = itemName.Trim().ToLowerInvariant() switch
-        {
-            "decoy_grenade" or "weapon_decoy_grenade" => "weapon_decoy",
-            "c4" or "weapon_c4_explosive" => "weapon_c4",
-            var value => value
-        };
-        return normalized.StartsWith("weapon_", StringComparison.OrdinalIgnoreCase)
-            ? normalized
-            : $"weapon_{normalized}";
     }
 
     private IEnumerable<CBasePlayerWeapon> GetReplayWeaponsByClass(CCSPlayerPawn pawn, string className)

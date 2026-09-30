@@ -59,6 +59,8 @@ function Read-CargoPackageVersion([string]$RelativePath, [string]$PackageName) {
 }
 
 $contract = (Read-Text "shared\contracts\playback-contract.v1.json") | ConvertFrom-Json
+Assert-Equal "inventory plan writer" (Read-RegexValue "desktop/converter/src/model/mod.rs" 'HIGH_FIDELITY_SCHEMA_VERSION:\s*u32\s*=\s*(\d+)' "metadata schema") ([string]$contract.inventory_plan_schema)
+Assert-Equal "inventory plan reader" (Read-RegexValue "server/plugins/DemoTracer/src/DemoTracer/Native/BotControllerNativeTypes.cs" 'CurrentSchemaVersion\s*=\s*(\d+)' "metadata schema") ([string]$contract.inventory_plan_schema)
 foreach ($component in @(
     @{ Id = "dtr-controller"; Api = "DtrControllerApi"; Project = "DtrController"; Contract = $contract.bot_controller },
     @{ Id = "dtr-hider"; Api = "DtrHiderApi"; Project = "DtrHider"; Contract = $contract.bot_hider }

@@ -1320,38 +1320,42 @@ fn inventory_snapshots_for_player(
     player_rows: &[&ParsedPlayerTick],
 ) -> Vec<ReplayInventorySnapshot> {
     let mut snapshots = Vec::new();
-    let mut previous_counts: Option<Vec<ReplayInventoryItemCount>> = None;
+    let mut previous_counts = BTreeMap::new();
     let mut previous_gear = None;
-    for (row_index, row) in player_rows.iter().enumerate() {
-        let counts = inventory_counts(row)
-            .into_iter()
-            .map(|(weapon_def_index, count)| ReplayInventoryItemCount {
-                weapon_def_index,
-                count,
-            })
-            .collect::<Vec<_>>();
+    // The final row is only the movement post-state; it has no executable tick.
+    for (row_index, row) in player_rows
+        .iter()
+        .take(player_rows.len().saturating_sub(1))
+        .enumerate()
+    {
+        let counts = inventory_counts(row);
         let gear = (row.armor_value, row.has_helmet, row.has_defuser);
-        if previous_counts.as_ref() == Some(&counts)
-            && previous_gear == Some(gear)
-            && row_index != 0
-        {
+        if previous_counts == counts && previous_gear == Some(gear) && row_index != 0 {
             continue;
         }
-        previous_counts = Some(counts.clone());
-        previous_gear = Some(gear);
-        let Some(tick_index) = tick_index_for_event(player_rows, row.tick) else {
-            continue;
-        };
+        let (armor, helmet, defuser) = previous_gear.unwrap_or((0, false, false));
         snapshots.push(ReplayInventorySnapshot {
-            tick_index,
+            tick_index: row_index as u32,
             tick: row.tick,
             steam_id: row.steam_id,
-            weapon_def_counts: counts,
+            weapon_def_counts: counts
+                .iter()
+                .map(|(&weapon_def_index, &count)| ReplayInventoryItemCount {
+                    weapon_def_index,
+                    count,
+                    acquired: count > previous_counts.get(&weapon_def_index).copied().unwrap_or(0),
+                })
+                .collect(),
             active_weapon_def_index: normalize_weapon_def_index(row.item_def_idx),
             armor_value: row.armor_value,
             has_helmet: row.has_helmet,
             has_defuser: row.has_defuser,
+            gear_acquired: u8::from(row.armor_value > armor)
+                | (u8::from(row.has_helmet && !helmet) << 1)
+                | (u8::from(row.has_defuser && !defuser) << 2),
         });
+        previous_counts = counts;
+        previous_gear = Some(gear);
     }
     snapshots
 }
@@ -3891,7 +3895,10 @@ mod tests {
         assert_eq!(rec.ticks[0].pre.origin[0], 20.0);
         assert_eq!(rec.ticks[80].pre.origin[0], 100.0);
         assert_eq!(rec.projectiles[0].tick_index, 143);
-        assert_eq!(rec.high_fidelity.schema_version, 4);
+        assert_eq!(
+            rec.high_fidelity.schema_version,
+            crate::model::HIGH_FIDELITY_SCHEMA_VERSION
+        );
         assert_eq!(rec.high_fidelity.projectiles.len(), 1);
         assert_eq!(rec.high_fidelity.projectiles[0].tick_index, 143);
         assert_eq!(
@@ -4247,6 +4254,8 @@ mod tests {
             row_with_inventory(100, steam_id, "alpha", vec![7]),
             row_with_inventory(110, steam_id, "alpha", vec![7]),
             row_with_inventory(120, steam_id, "alpha", vec![7, 45]),
+            // A post-state-only acquisition must not be moved into the preceding tick.
+            row_with_inventory(121, steam_id, "alpha", vec![7, 45, 44]),
         ];
 
         let rec = rec_for_steam(&export_memory(parsed), steam_id);
@@ -4260,10 +4269,12 @@ mod tests {
                 ReplayInventoryItemCount {
                     weapon_def_index: 7,
                     count: 1,
+                    acquired: false,
                 },
                 ReplayInventoryItemCount {
                     weapon_def_index: 45,
                     count: 1,
+                    acquired: true,
                 },
             ]
         );
@@ -4297,6 +4308,9 @@ mod tests {
                 ..row_with_inventory(130, steam_id, "alpha", vec![7])
             },
         ];
+        let mut end = parsed.rows.last().unwrap().clone();
+        end.tick += 1;
+        parsed.rows.push(end);
         let rec = rec_for_steam(&export_memory(parsed), steam_id);
         let snapshots = &rec.high_fidelity.inventory_snapshots;
         assert_eq!(snapshots.len(), 4);
@@ -4304,6 +4318,17 @@ mod tests {
         assert!(snapshots[1].has_helmet);
         assert!(snapshots[2].has_defuser);
         assert_eq!(snapshots[3].armor_value, 60);
+        assert_eq!(
+            snapshots
+                .iter()
+                .map(|s| s.gear_acquired)
+                .collect::<Vec<_>>(),
+            vec![0, 3, 4, 0]
+        );
+        assert!(snapshots[0].weapon_def_counts[0].acquired);
+        assert!(snapshots[1..]
+            .iter()
+            .all(|s| !s.weapon_def_counts[0].acquired));
     }
 
     #[test]
@@ -4323,7 +4348,10 @@ mod tests {
 
         let rec = rec_for_steam(&export_memory(parsed), steam_id);
 
-        assert_eq!(rec.high_fidelity.schema_version, 4);
+        assert_eq!(
+            rec.high_fidelity.schema_version,
+            crate::model::HIGH_FIDELITY_SCHEMA_VERSION
+        );
         assert_eq!(rec.high_fidelity.round_start_balance, Some(5_250));
     }
 

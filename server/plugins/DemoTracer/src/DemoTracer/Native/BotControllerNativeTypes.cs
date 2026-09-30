@@ -266,6 +266,7 @@ internal readonly record struct ReplayProjectileEvent(
 
 internal sealed class ReplayHighFidelityMetadata
 {
+    public const int CurrentSchemaVersion = 5;
     public static ReplayHighFidelityMetadata Empty { get; } = new();
 
     [JsonPropertyName("schema_version")]
@@ -378,6 +379,9 @@ internal sealed class ReplayInventorySnapshot
 
     [JsonPropertyName("has_defuser")]
     public bool HasDefuser { get; set; }
+
+    [JsonPropertyName("gear_acquired")]
+    public byte GearAcquired { get; set; }
 }
 
 internal sealed class ReplayInventoryItemCount
@@ -387,6 +391,9 @@ internal sealed class ReplayInventoryItemCount
 
     [JsonPropertyName("count")]
     public int Count { get; set; }
+
+    [JsonPropertyName("acquired")]
+    public bool Acquired { get; set; }
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

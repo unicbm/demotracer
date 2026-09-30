@@ -6,9 +6,21 @@
 
 namespace DemoTracer;
 
+internal readonly record struct ReplayUtilityGrant(uint TickIndex, string ClassName, int TargetCount, int SourceTick);
+
 internal static class ReplayUtilityGrantPolicy
 {
-    public static bool ShouldQueue(
+    public static ReplayUtilityGrant[] Compile(ReplayHifiEvent[] events, ulong steamId, uint baseline,
+        ReplayEquipmentCatalog equipment) => events
+        .Where(item => ShouldQueue(item, steamId, baseline, equipment))
+        .Select(item =>
+        {
+            TryResolveWeaponDefIndex(item, equipment, out var def);
+            return new ReplayUtilityGrant(item.TickIndex, equipment.ByDefIndex[def].ClassName,
+                Math.Clamp(item.TargetCountAfter ?? 1, 1, 64), item.Tick);
+        }).ToArray();
+
+    private static bool ShouldQueue(
         ReplayHifiEvent replayEvent,
         ulong replaySteamId,
         uint inventoryBaselineTickIndex,

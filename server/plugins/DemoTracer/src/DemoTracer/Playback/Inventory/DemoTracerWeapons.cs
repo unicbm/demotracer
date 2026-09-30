@@ -163,13 +163,6 @@ public sealed partial class DemoTracerPlugin
             and not ReplayWeaponSlot.C4;
     }
 
-    private bool IsUtilityWeaponDefIndex(int weaponDefIndex)
-    {
-        if (!TryGetWeaponClassByDefIndex(weaponDefIndex, out var className))
-            return false;
-        return GetReplayWeaponSlot(className) == ReplayWeaponSlot.Utility;
-    }
-
 
     private int WeaponDefIndex(string className)
     {

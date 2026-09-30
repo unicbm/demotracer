@@ -11,7 +11,6 @@ namespace DemoTracer;
 internal sealed class ReplayInventoryTimeline(ReplayInventorySnapshot[] snapshots)
 {
     private int _next;
-    private ReplayInventorySnapshot? _previous;
     public Dictionary<int, int> PendingWeapons { get; } = [];
     public int? Armor { get; private set; }
     public bool? Helmet { get; private set; }
@@ -20,12 +19,12 @@ internal sealed class ReplayInventoryTimeline(ReplayInventorySnapshot[] snapshot
     public void Start(uint cursor)
     {
         _next = 0;
-        _previous = null;
+        ReplayInventorySnapshot? initial = null;
         PendingWeapons.Clear();
         ClearGear();
         while (_next < snapshots.Length && snapshots[_next].TickIndex <= cursor)
-            _previous = snapshots[_next++];
-        if (_previous is not { } initial)
+            initial = snapshots[_next++];
+        if (initial == null)
             return;
         foreach (var item in initial.WeaponDefCounts)
             if (item.Count > 0) PendingWeapons[item.WeaponDefIndex] = item.Count;
@@ -41,7 +40,6 @@ internal sealed class ReplayInventoryTimeline(ReplayInventorySnapshot[] snapshot
         {
             var snapshot = snapshots[_next++];
             var counts = snapshot.WeaponDefCounts.ToDictionary(item => item.WeaponDefIndex, item => item.Count);
-            var previousCounts = _previous?.WeaponDefCounts.ToDictionary(item => item.WeaponDefIndex, item => item.Count);
             // Invalidate a deferred grant if the demo no longer holds that item.
             foreach (var def in PendingWeapons.Keys.ToArray())
             {
@@ -49,17 +47,15 @@ internal sealed class ReplayInventoryTimeline(ReplayInventorySnapshot[] snapshot
                 if (remaining <= 0) PendingWeapons.Remove(def);
                 else PendingWeapons[def] = Math.Min(PendingWeapons[def], remaining);
             }
-            foreach (var (def, count) in counts)
-                if (count > (previousCounts?.GetValueOrDefault(def) ?? 0))
-                    PendingWeapons[def] = count;
+            foreach (var item in snapshot.WeaponDefCounts)
+                if (item.Acquired) PendingWeapons[item.WeaponDefIndex] = item.Count;
 
-            if (_previous == null || snapshot.ArmorValue > _previous.ArmorValue) Armor = snapshot.ArmorValue;
+            if ((snapshot.GearAcquired & 1) != 0) Armor = snapshot.ArmorValue;
             else if (Armor.HasValue) Armor = Math.Min(Armor.Value, snapshot.ArmorValue);
-            if (_previous == null || (!_previous.HasHelmet && snapshot.HasHelmet)) Helmet = snapshot.HasHelmet;
+            if ((snapshot.GearAcquired & 2) != 0) Helmet = snapshot.HasHelmet;
             else if (!snapshot.HasHelmet) Helmet = null;
-            if (_previous == null || (!_previous.HasDefuser && snapshot.HasDefuser)) Defuser = snapshot.HasDefuser;
+            if ((snapshot.GearAcquired & 4) != 0) Defuser = snapshot.HasDefuser;
             else if (!snapshot.HasDefuser) Defuser = null;
-            _previous = snapshot;
             changed = true;
         }
         return changed;

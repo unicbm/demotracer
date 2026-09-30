@@ -386,10 +386,12 @@ pub struct HighFidelityMetadata {
     pub projectiles: Vec<ReplayProjectileMetadata>,
 }
 
+pub const HIGH_FIDELITY_SCHEMA_VERSION: u32 = 5;
+
 impl Default for HighFidelityMetadata {
     fn default() -> Self {
         Self {
-            schema_version: 4,
+            schema_version: HIGH_FIDELITY_SCHEMA_VERSION,
             round_start_balance: None,
             events: Vec::new(),
             inventory_snapshots: Vec::new(),
@@ -404,7 +406,7 @@ impl HighFidelityMetadata {
         inventory_snapshots: Vec<ReplayInventorySnapshot>,
     ) -> Self {
         Self {
-            schema_version: 4,
+            schema_version: HIGH_FIDELITY_SCHEMA_VERSION,
             round_start_balance: None,
             events,
             inventory_snapshots,
@@ -419,7 +421,7 @@ impl HighFidelityMetadata {
         projectiles: Vec<ReplayProjectileMetadata>,
     ) -> Self {
         Self {
-            schema_version: 4,
+            schema_version: HIGH_FIDELITY_SCHEMA_VERSION,
             round_start_balance,
             events,
             inventory_snapshots,
@@ -488,12 +490,17 @@ pub struct ReplayInventorySnapshot {
     pub armor_value: u32,
     pub has_helmet: bool,
     pub has_defuser: bool,
+    /// Acquisition bits: armor=1, helmet=2, defuser=4. Losses never grant gear.
+    #[serde(default)]
+    pub gear_acquired: u8,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ReplayInventoryItemCount {
     pub weapon_def_index: i32,
     pub count: u32,
+    #[serde(default)]
+    pub acquired: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]

@@ -4,97 +4,35 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+
 namespace DemoTracer.Tests;
 
 public sealed class ReplayUtilityGrantPolicyTests
 {
-    private const ulong ReplaySteamId = 76561198000000001UL;
     private static readonly ReplayEquipmentCatalog Catalog = ReplayEquipmentCatalog.Load(
         Path.Combine(AppContext.BaseDirectory, "cs2-lib-econ-index.v1.json"));
 
     [Theory]
-    [InlineData("item_pickup", 45)]
-    [InlineData("item_transfer", 43)]
-    public void MatchingUtilityAcquisitionsAreGranted(string kind, int weaponDefIndex)
+    [InlineData("item_pickup", 45, 961u, 1ul, null, "weapon_smokegrenade")]
+    [InlineData("item_transfer", 43, 961u, 1ul, null, "weapon_flashbang")]
+    [InlineData("ITEM_PICKUP", null, 961u, 1ul, "decoy_grenade", "weapon_decoy")]
+    [InlineData("item_pickup", 45, 959u, 1ul, null, null)]
+    [InlineData("item_pickup", 45, 960u, 1ul, null, null)]
+    [InlineData("item_pickup", 36, 961u, 1ul, null, null)]
+    [InlineData("item_drop", 45, 961u, 1ul, null, null)]
+    [InlineData("item_pickup", 45, 961u, 2ul, null, null)]
+    [InlineData("bomb_pickup", 49, 961u, 1ul, null, null)]
+    public void LegacyEventsCompileToResolvedUtilityOnly(string kind, int? def, uint tick,
+        ulong target, string? itemName, string? expected)
     {
-        var replayEvent = new ReplayHifiEvent
-        {
-            TickIndex = 961,
-            Kind = kind,
-            TargetSteamId = ReplaySteamId,
-            WeaponDefIndex = weaponDefIndex,
-            TargetCountAfter = 1
-        };
-
-        Assert.True(ReplayUtilityGrantPolicy.ShouldQueue(
-            replayEvent,
-            ReplaySteamId,
-            inventoryBaselineTickIndex: 960,
-            Catalog));
-    }
-
-    [Theory]
-    [InlineData(959)]
-    [InlineData(960)]
-    public void AcquisitionsAlreadyRepresentedByTheLiveStartLoadoutAreRejected(uint tickIndex)
-    {
-        var replayEvent = new ReplayHifiEvent
-        {
-            TickIndex = tickIndex,
-            Kind = "item_pickup",
-            TargetSteamId = ReplaySteamId,
-            WeaponDefIndex = 46,
-            TargetCountAfter = 1
-        };
-
-        Assert.False(ReplayUtilityGrantPolicy.ShouldQueue(
-            replayEvent,
-            ReplaySteamId,
-            inventoryBaselineTickIndex: 960,
-            Catalog));
-    }
-
-    [Fact]
-    public void LiveWeaponPurchaseIsNotHandledByUtilityGrantPath()
-    {
-        var replayEvent = new ReplayHifiEvent
-        {
-            TickIndex = 961,
-            Kind = "item_pickup",
-            TargetSteamId = ReplaySteamId,
-            WeaponDefIndex = 36,
-            TargetCountAfter = 1
-        };
-
-        Assert.False(ReplayUtilityGrantPolicy.ShouldQueue(
-            replayEvent,
-            ReplaySteamId,
-            inventoryBaselineTickIndex: 960,
-            Catalog));
-    }
-
-    [Theory]
-    [InlineData("item_drop", 45, 76561198000000001UL)]
-    [InlineData("item_pickup", 45, 76561198000000002UL)]
-    public void NonAcquisitionsAndOtherPlayersAreRejected(
-        string kind,
-        int weaponDefIndex,
-        ulong targetSteamId)
-    {
-        var replayEvent = new ReplayHifiEvent
-        {
-            TickIndex = 961,
-            Kind = kind,
-            TargetSteamId = targetSteamId,
-            WeaponDefIndex = weaponDefIndex,
-            TargetCountAfter = 1
-        };
-
-        Assert.False(ReplayUtilityGrantPolicy.ShouldQueue(
-            replayEvent,
-            ReplaySteamId,
-            inventoryBaselineTickIndex: 960,
-            Catalog));
+        var source = new ReplayHifiEvent { TickIndex = tick, Tick = 2000, Kind = kind,
+            TargetSteamId = target, WeaponDefIndex = def, ItemName = itemName, TargetCountAfter = 2 };
+        var plan = ReplayUtilityGrantPolicy.Compile([source], 1, 960, Catalog);
+        if (expected == null) Assert.Empty(plan);
+        else Assert.Equal(new ReplayUtilityGrant(tick, expected, 2, 2000), Assert.Single(plan));
+        source.ItemName = "weapon_c4"; // The execution plan no longer depends on mutable evidence.
+        source.TargetCountAfter = 64;
+        if (expected != null) Assert.Equal(2, plan[0].TargetCount);
     }
 
     [Theory]
@@ -103,13 +41,6 @@ public sealed class ReplayUtilityGrantPolicyTests
     [InlineData(2, 1, 2)]
     [InlineData(1, -1, 1)]
     [InlineData(0, 2, 0)]
-    public void UtilityCountUsesAmmoForStackedFlashbangs(
-        int entityCount,
-        int ammoCount,
-        int expected)
-    {
-        Assert.Equal(
-            expected,
-            ReplayUtilityGrantPolicy.ObservedUtilityCount(entityCount, ammoCount));
-    }
+    public void UtilityCountUsesAmmoForStackedFlashbangs(int entities, int ammo, int expected)
+        => Assert.Equal(expected, ReplayUtilityGrantPolicy.ObservedUtilityCount(entities, ammo));
 }

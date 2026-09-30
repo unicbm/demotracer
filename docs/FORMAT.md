@@ -406,7 +406,7 @@ section ID `4`.
 
 The top-level object contains:
 
-- `schema_version`: current metadata schema is `4`.
+- `schema_version`: current metadata schema is `5`.
 - `round_start_balance`: optional demo-backed `m_iAccount` value from the first
   player row at or after the source round's live-start tick. Absence means no
   balance evidence and must never be interpreted as zero.
@@ -429,6 +429,16 @@ Event `kind` values include `bomb_initial_owner`, `item_drop`, `item_pickup`,
 
 Combat events are record-only for now: the CSS plugin loads them for diagnostics
 and future behavior, but does not force damage or death.
+
+Schema 5 compiles inventory acquisitions during export. Each `weapon_def_counts`
+entry includes `acquired`, true only when its count increased since the previous
+snapshot. `gear_acquired` is a bit mask: armor increase `1`, helmet acquisition
+`2`, defuser acquisition `4`. Full counts and gear remain checkpoints for starting
+or seeking; normal playback consumes acquisition flags and cancels pending grants
+when later counts fall. It never repairs damage or refills unchanged utility.
+Schemas 1–4 are compiled once by the reader. Legacy pickup/transfer events without
+inventory snapshots are resolved once at load, not interpreted during playback.
+The binary DTR layout and native ABI are unchanged.
 
 Projectile metadata entries contain:
 

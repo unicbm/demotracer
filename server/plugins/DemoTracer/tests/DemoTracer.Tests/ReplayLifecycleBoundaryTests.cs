@@ -156,7 +156,7 @@ public sealed class ReplayLifecycleBoundaryTests
         var identity = new ReplayPawnEquipmentIdentity(4, 0x8004, 1, 76561198000000004);
         equipment.MarkSynced(4, identity);
         GetProperty<HashSet<int>>(session, "FreezePrerollSlots").Add(4);
-        GetProperty<Dictionary<int, int>>(session, "ReplayHifiEventNextBySlot")[4] = 27;
+        GetProperty<Dictionary<int, int>>(session, "ReplayUtilityGrantNextBySlot")[4] = 27;
 
         Invoke<object?>(plugin, "ClearLoadedReplaySession");
         Invoke<object?>(plugin, "ClearLoadedReplaySession");
@@ -165,7 +165,7 @@ public sealed class ReplayLifecycleBoundaryTests
         Assert.False(slots.IsCurrentEpoch(4, oldEpoch));
         Assert.Empty(inventories);
         Assert.Empty(GetProperty<HashSet<int>>(session, "FreezePrerollSlots"));
-        Assert.Empty(GetProperty<Dictionary<int, int>>(session, "ReplayHifiEventNextBySlot"));
+        Assert.Empty(GetProperty<Dictionary<int, int>>(session, "ReplayUtilityGrantNextBySlot"));
         Assert.False(equipment.IsSynced(4, identity));
         Assert.Contains(4, warm);
         Assert.True(plan.SequenceActive);

@@ -8,6 +8,12 @@ namespace DemoTracer.Tests;
 
 public sealed class ReplayInventoryTimelineTests
 {
+    private static ReplayInventoryTimeline LegacyTimeline(ReplayInventorySnapshot[] snapshots)
+    {
+        DtrReplayReader.CompileLegacyInventory(snapshots);
+        return new(snapshots);
+    }
+
     private static ReplayInventorySnapshot At(uint tick, int armor = 0, bool helmet = false, bool kit = false,
         params int[] weapons) => new()
         {
@@ -23,7 +29,7 @@ public sealed class ReplayInventoryTimelineTests
     [InlineData(200, true)]
     public void StartUsesOnlyEquipmentAlreadyAcquired(uint cursor, bool bought)
     {
-        var timeline = new ReplayInventoryTimeline([At(0, weapons: [4]), At(100, 100, true, true, 4, 7)]);
+        var timeline = LegacyTimeline([At(0, weapons: [4]), At(100, 100, true, true, 4, 7)]);
         timeline.Start(cursor);
         Assert.Equal(bought, timeline.PendingWeapons.ContainsKey(7));
         Assert.Equal(bought ? 100 : 0, timeline.Armor);
@@ -35,7 +41,7 @@ public sealed class ReplayInventoryTimelineTests
     [Fact]
     public void PurchaseDoesNotRefillOtherConsumedItemsOrRepairCombatDamage()
     {
-        var timeline = new ReplayInventoryTimeline([
+        var timeline = LegacyTimeline([
             At(0, 100, true, false, 7, 43, 43),
             At(10, 60, true, false, 7, 43, 43, 45),
             At(20, 60, true, true, 7, 43, 43, 45),
@@ -57,7 +63,7 @@ public sealed class ReplayInventoryTimelineTests
     [Fact]
     public void DroppedItemsCancelUnfinishedGrantsAndCanBeAcquiredAgain()
     {
-        var timeline = new ReplayInventoryTimeline([
+        var timeline = LegacyTimeline([
             At(0, weapons: [7, 43, 43]), At(10, weapons: [43]), At(20, weapons: [7, 43]),
         ]);
         timeline.Start(0);
@@ -73,7 +79,7 @@ public sealed class ReplayInventoryTimelineTests
     [Fact]
     public void MissingInitialEvidenceNeverUsesAFutureSnapshotAndRestartResetsProgress()
     {
-        var timeline = new ReplayInventoryTimeline([At(50, 100, true, true, 7)]);
+        var timeline = LegacyTimeline([At(50, 100, true, true, 7)]);
         timeline.Start(0);
         Assert.Empty(timeline.PendingWeapons);
         Assert.Null(timeline.Armor);

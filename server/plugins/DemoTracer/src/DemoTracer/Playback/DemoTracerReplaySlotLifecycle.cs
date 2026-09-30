@@ -81,7 +81,7 @@ public sealed partial class DemoTracerPlugin
                 ? perception.UpdateSerial
                 : 0u;
         _session.ProjectileAlignNextBySlot[slot] = 0;
-        _session.ReplayHifiEventNextBySlot[slot] = 0;
+        _session.ReplayUtilityGrantNextBySlot[slot] = 0;
     }
 
     private bool CanWriteReplaySlot(int slot)

@@ -697,6 +697,7 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
 
     [Theory]
     [InlineData("null")]
+    [InlineData("{\"tick_index\":0,\"steam_id\":1,\"gear_acquired\":8}")]
     [InlineData("{\"tick_index\":0,\"steam_id\":1,\"weapon_def_counts\":null}")]
     [InlineData("{\"tick_index\":1,\"steam_id\":1,\"weapon_def_counts\":[]}")]
     [InlineData("{\"tick_index\":0,\"steam_id\":1,\"weapon_def_counts\":[{\"weapon_def_index\":7,\"count\":2147483647}]}")]
@@ -716,6 +717,36 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
             WriteSection(writer, 5, CodecNone, 0, []);
         });
         Assert.Contains("inventory", Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path)).Message);
+    }
+
+    [Theory]
+    [InlineData(4, true)]
+    [InlineData(5, false)]
+    public void ReaderCompilesLegacyAcquisitionsButPreservesCompiledPlan(int schema, bool acquired)
+    {
+        var metadata = Encoding.UTF8.GetBytes($$"""
+            {"schema_version":{{schema}},"inventory_snapshots":[{"tick_index":0,"steam_id":1,
+            "weapon_def_counts":[{"weapon_def_index":43,"count":2,"acquired":false}],
+            "armor_value":100,"has_helmet":true,"gear_acquired":0}]}
+            """);
+        var snapshots = BuildV2SnapshotPayload([new NativeMovementSnapshot(), new NativeMovementSnapshot()]);
+        var path = WriteFile(writer =>
+        {
+            WriteCompleteHeader(writer, version: 8, tickCount: 1, subtickCount: 0,
+                metadataJsonLength: (uint)metadata.Length);
+            writer.Write(4U);
+            WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
+            WriteSection(writer, 2, CodecNone, 1, new byte[8]);
+            WriteSection(writer, 4, CodecNone, 1, metadata);
+            WriteSection(writer, 5, CodecNone, 0, []);
+        });
+        var snapshot = Assert.Single(DtrReplayReader.Read(path).HighFidelity.InventorySnapshots);
+        Assert.Equal(acquired, Assert.Single(snapshot.WeaponDefCounts).Acquired);
+        Assert.Equal(acquired ? 3 : 0, snapshot.GearAcquired);
+        var timeline = new ReplayInventoryTimeline([snapshot]);
+        Assert.True(timeline.Advance(0));
+        Assert.Equal(acquired, timeline.PendingWeapons.ContainsKey(43));
+        Assert.Equal(acquired, timeline.Armor.HasValue);
     }
 
     [Fact]
