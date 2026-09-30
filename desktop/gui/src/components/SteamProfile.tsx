@@ -5,7 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { SteamProfile } from "../types";
 import "./steam-profile.css";
 
@@ -13,6 +13,7 @@ export type SteamProfileMap = ReadonlyMap<string, SteamProfile>;
 
 const memoryProfileCache = new Map<string, SteamProfile>();
 const pendingProfileRequests = new Map<string, Promise<SteamProfile | null>>();
+const failedProfileRequests = new Map<string, number>();
 const PROFILE_REQUEST_BATCH_SIZE = 32;
 const demoPlayerColors: Readonly<Record<string, string>> = {
   blue: "#62a8f5",
@@ -35,7 +36,8 @@ function cachedProfileMap(steamIds: string[]): Map<string, SteamProfile> {
 
 function requestProfiles(steamIds: string[]): Promise<SteamProfile[]> {
   const missing = steamIds.filter((steamId) =>
-    !memoryProfileCache.has(steamId) && !pendingProfileRequests.has(steamId));
+    !memoryProfileCache.has(steamId) && !pendingProfileRequests.has(steamId)
+    && Date.now() >= (failedProfileRequests.get(steamId) ?? 0));
   for (let offset = 0; offset < missing.length; offset += PROFILE_REQUEST_BATCH_SIZE) {
     const batchSteamIds = missing.slice(offset, offset + PROFILE_REQUEST_BATCH_SIZE);
     const batch = invoke<SteamProfile[]>("load_steam_profiles", { steamIds: batchSteamIds })
@@ -46,7 +48,12 @@ function requestProfiles(steamIds: string[]): Promise<SteamProfile[]> {
       .catch(() => new Map<string, SteamProfile>());
     batchSteamIds.forEach((steamId) => {
       const request = batch
-        .then((profiles) => profiles.get(steamId) ?? null)
+        .then((profiles) => {
+          const profile = profiles.get(steamId) ?? null;
+          if (profile) failedProfileRequests.delete(steamId);
+          else failedProfileRequests.set(steamId, Date.now() + 5 * 60_000);
+          return profile;
+        })
         .finally(() => pendingProfileRequests.delete(steamId));
       pendingProfileRequests.set(steamId, request);
     });
@@ -105,38 +112,11 @@ export function teamRepresentative<T extends { name: string; steamId: string }>(
     ?? [...players].sort((left, right) => left.name.localeCompare(right.name))[0];
 }
 
-function useRetryingImage(url: string | null | undefined) {
-  const [failed, setFailed] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  const retryTimer = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
-    retryTimer.current = null;
-    setAttempt(0);
-    setFailed(false);
-    return () => {
-      if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
-    };
-  }, [url]);
-
-  const retry = () => {
-    if (retryTimer.current !== null) return;
-    if (attempt >= 2) {
-      setFailed(true);
-      return;
-    }
-    retryTimer.current = window.setTimeout(() => {
-      retryTimer.current = null;
-      setAttempt((current) => current + 1);
-    }, 750 * (attempt + 1));
-  };
-
-  if (!url || failed) return { src: null, retry };
-  const separator = url.includes("?") ? "&" : "?";
+function useProfileImage(url: string | null | undefined) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   return {
-    src: attempt === 0 ? url : `${url}${separator}demotracer-retry=${attempt}`,
-    retry,
+    src: url && url !== failedUrl ? url : null,
+    onError: () => setFailedUrl(url ?? null),
   };
 }
 
@@ -158,8 +138,8 @@ export function SteamAvatar({
   const avatarStyle = accent
     ? ({ "--steam-avatar-accent": accent } as CSSProperties)
     : undefined;
-  const avatarImage = useRetryingImage(overrideUrl || profile?.avatarUrl);
-  const frameImage = useRetryingImage(overrideUrl ? null : profile?.avatarFrameUrl);
+  const avatarImage = useProfileImage(overrideUrl || profile?.avatarUrl);
+  const frameImage = useProfileImage(overrideUrl ? null : profile?.avatarFrameUrl);
   const loading = size === "compact" || size === "hero" || size === "profile" ? "eager" : "lazy";
 
   return (
@@ -173,7 +153,7 @@ export function SteamAvatar({
           loading={loading}
           draggable={false}
           referrerPolicy="no-referrer"
-          onError={avatarImage.retry}
+          onError={avatarImage.onError}
         />
       ) : null}
       {frameImage.src ? (
@@ -184,7 +164,7 @@ export function SteamAvatar({
           loading={loading}
           draggable={false}
           referrerPolicy="no-referrer"
-          onError={frameImage.retry}
+          onError={frameImage.onError}
         />
       ) : null}
     </span>

@@ -27,7 +27,7 @@ import { displayMap, MapArtwork, mapArtworkStyle } from "./MapArtwork";
 import { useArchiveTeamAvatar } from "./archiveTeamAvatar";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { DialogPrimitive } from "./Dialog";
-import { SteamAvatar, teamRepresentative, useSteamProfiles, type SteamProfileMap } from "./SteamProfile";
+import { SteamAvatar, teamRepresentative, useSteamProfiles } from "./SteamProfile";
 import "./library-workspace.css";
 
 export type LibrarySort = "recent" | "map" | "platform";
@@ -211,16 +211,6 @@ function libraryTeamContext(entry: DemoLibraryEntry, firstFallback: string, seco
   };
 }
 
-function representativeWithLoadedAvatar(
-  teamName: string,
-  players: LibraryPlayerSummary[],
-  profiles: SteamProfileMap,
-): LibraryPlayerSummary | undefined {
-  const preferred = teamRepresentative(teamName, players);
-  if (preferred && profiles.has(preferred.steamId)) return preferred;
-  return players.find((player) => profiles.has(player.steamId)) ?? preferred;
-}
-
 function LibraryRow({
   entry,
   seriesOrder,
@@ -253,15 +243,15 @@ function LibraryRow({
     secondName,
     firstPlayers,
     secondPlayers,
+    firstRepresentative,
+    secondRepresentative,
   } = libraryTeamContext(entry, words.teamA, words.teamB);
   const profileSteamIds = loadAvatars
-    ? [...firstPlayers, ...secondPlayers].map((player) => player.steamId)
+    ? [firstRepresentative, secondRepresentative].flatMap((player) => player ? [player.steamId] : [])
     : [];
   const profiles = useSteamProfiles(profileSteamIds);
   const firstArchiveAvatar = useArchiveTeamAvatar(entry, firstPlayers, loadAvatars);
   const secondArchiveAvatar = useArchiveTeamAvatar(entry, secondPlayers, loadAvatars);
-  const firstRepresentative = representativeWithLoadedAvatar(firstName, firstPlayers, profiles);
-  const secondRepresentative = representativeWithLoadedAvatar(secondName, secondPlayers, profiles);
   const firstPlayerNames = firstPlayers.map((player) => player.name);
   const secondPlayerNames = secondPlayers.map((player) => player.name);
   const duration = entry.durationSeconds ? formatDuration(entry.durationSeconds) : null;
@@ -292,7 +282,7 @@ function LibraryRow({
       if (!entries.some((candidate) => candidate.isIntersecting)) return;
       setLoadAvatars(true);
       observer.disconnect();
-    }, { rootMargin: "240px 0px" });
+    });
     observer.observe(row);
     return () => observer.disconnect();
   }, [loadAvatars]);
@@ -548,13 +538,12 @@ function LibrarySeriesGroup({
   const context = libraryTeamContext(ordered[0], words.teamA, words.teamB);
   const groupRef = useRef<HTMLElement | null>(null);
   const [loadAvatars, setLoadAvatars] = useState(false);
+  const { firstRepresentative, secondRepresentative } = context;
   const profiles = useSteamProfiles(loadAvatars
-    ? [...context.firstPlayers, ...context.secondPlayers].map((player) => player.steamId)
+    ? [firstRepresentative, secondRepresentative].flatMap((player) => player ? [player.steamId] : [])
     : []);
   const firstArchiveAvatar = useArchiveTeamAvatar(primaryEntry, context.firstPlayers, loadAvatars);
   const secondArchiveAvatar = useArchiveTeamAvatar(primaryEntry, context.secondPlayers, loadAvatars);
-  const firstRepresentative = representativeWithLoadedAvatar(context.firstName, context.firstPlayers, profiles);
-  const secondRepresentative = representativeWithLoadedAvatar(context.secondName, context.secondPlayers, profiles);
   const firstPlayerNames = context.firstPlayers.map((player) => player.name);
   const secondPlayerNames = context.secondPlayers.map((player) => player.name);
   useEffect(() => {
@@ -568,7 +557,7 @@ function LibrarySeriesGroup({
       if (!candidates.some((candidate) => candidate.isIntersecting)) return;
       setLoadAvatars(true);
       observer.disconnect();
-    }, { rootMargin: "240px 0px" });
+    });
     observer.observe(group);
     return () => observer.disconnect();
   }, [loadAvatars]);

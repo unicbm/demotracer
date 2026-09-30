@@ -12,6 +12,11 @@ use std::io::Read;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(any(windows, test))]
+use std::{
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 use tauri::http::{header, Method, Request, Response, StatusCode};
 
 const CACHE_DIRECTORY: &str = "steam-profiles";
@@ -25,7 +30,6 @@ const CACHE_SCHEMA_VERSION: u32 = 1;
 const CACHE_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
 const MISSING_ASSET_RETRY_MS: u64 = 5 * 60 * 1_000;
 const MAX_PROFILES: usize = 32;
-const MAX_PARALLEL_REQUESTS: usize = 4;
 const MAX_PROFILE_XML_BYTES: usize = 512 * 1024;
 const MAX_PROFILE_HTML_BYTES: usize = 1024 * 1024;
 const MAX_PROFILE_IMAGE_BYTES: usize = 4 * 1024 * 1024;
@@ -122,22 +126,10 @@ pub(crate) fn resolve_profiles(
         .collect::<Vec<_>>();
     let cache_layout = local_data_root.clone().and_then(ProfileCacheLayout::new);
 
-    let mut profiles = Vec::with_capacity(steam_ids.len());
-    for chunk in steam_ids.chunks(MAX_PARALLEL_REQUESTS) {
-        let chunk_profiles = std::thread::scope(|scope| {
-            chunk
-                .iter()
-                .map(|steam_id| {
-                    let cache_layout = cache_layout.as_ref();
-                    scope.spawn(move || resolve_profile(cache_layout, steam_id, false))
-                })
-                .collect::<Vec<_>>()
-                .into_iter()
-                .filter_map(|worker| worker.join().ok().flatten())
-                .collect::<Vec<_>>()
-        });
-        profiles.extend(chunk_profiles);
-    }
+    let profiles: Vec<_> = steam_ids
+        .iter()
+        .filter_map(|steam_id| resolve_profile(cache_layout.as_ref(), steam_id, false))
+        .collect();
     if let Some(local_data_root) = local_data_root {
         let hydration_ids = profiles
             .iter()
@@ -185,15 +177,8 @@ fn hydrate_profile_assets(local_data_root: PathBuf, steam_ids: Vec<String>) {
     let Some(cache_layout) = ProfileCacheLayout::new(local_data_root) else {
         return;
     };
-    for chunk in steam_ids.chunks(MAX_PARALLEL_REQUESTS) {
-        std::thread::scope(|scope| {
-            for steam_id in chunk {
-                let cache_layout = &cache_layout;
-                scope.spawn(move || {
-                    let _ = resolve_profile(Some(cache_layout), steam_id, true);
-                });
-            }
-        });
+    for steam_id in steam_ids {
+        let _ = resolve_profile(Some(&cache_layout), &steam_id, true);
     }
 }
 
@@ -765,20 +750,63 @@ fn now_ms() -> u64 {
         .unwrap_or_default()
 }
 
+#[cfg(any(windows, test))]
+struct SteamRequestSchedule {
+    next_request: Option<Instant>,
+    cooling_down: bool,
+}
+
+#[cfg(any(windows, test))]
+impl SteamRequestSchedule {
+    fn delay(&self, now: Instant) -> Option<Duration> {
+        let remaining = self
+            .next_request
+            .unwrap_or(now)
+            .saturating_duration_since(now);
+        (!self.cooling_down || remaining.is_zero()).then_some(remaining)
+    }
+
+    fn finished(&mut self, now: Instant, succeeded: bool) {
+        self.cooling_down = !succeeded;
+        self.next_request = Some(now + Duration::from_secs(if succeeded { 1 } else { 5 * 60 }));
+    }
+}
+
+#[cfg(any(windows, test))]
+fn scheduled_steam_request(
+    schedule: &Mutex<SteamRequestSchedule>,
+    request: impl FnOnce() -> Result<Vec<u8>, String>,
+) -> Option<Vec<u8>> {
+    // Hold the shared slot through the request: separate GUI batches and background
+    // asset hydration must share the same network budget.
+    let mut schedule = schedule.lock().ok()?;
+    std::thread::sleep(schedule.delay(Instant::now())?);
+    let result = request();
+    schedule.finished(Instant::now(), result.is_ok());
+    result.ok()
+}
+
+#[cfg(windows)]
+fn fetch_steam_bytes(url: &str, max_bytes: usize) -> Option<Vec<u8>> {
+    static SCHEDULE: Mutex<SteamRequestSchedule> = Mutex::new(SteamRequestSchedule {
+        next_request: None,
+        cooling_down: false,
+    });
+    scheduled_steam_request(&SCHEDULE, || {
+        crate::http_client::get_https(url, max_bytes, 5_000)
+    })
+}
+
 #[cfg(windows)]
 fn fetch_profile(steam_id: &str) -> Option<FetchedSteamProfile> {
-    let bytes = crate::http_client::get_https(
+    let bytes = fetch_steam_bytes(
         &format!("https://steamcommunity.com/profiles/{steam_id}?xml=1"),
         MAX_PROFILE_XML_BYTES,
-        5_000,
-    )
-    .ok()?;
+    )?;
     let xml = String::from_utf8(bytes).ok()?;
     let mut profile = parse_profile_xml(steam_id, &xml)?;
     let mut enhanced_assets_complete = false;
-    if let Ok(bytes) =
-        crate::http_client::get_https(&profile.profile_url, MAX_PROFILE_HTML_BYTES, 5_000)
-    {
+    if let Some(bytes) = fetch_steam_bytes(&profile.profile_url, MAX_PROFILE_HTML_BYTES) {
         if let Ok(html) = String::from_utf8(bytes) {
             enhanced_assets_complete = true;
             let assets = parse_profile_avatar_assets(&html);
@@ -805,7 +833,7 @@ fn fetch_profile_asset(url: &str) -> Option<Vec<u8>> {
     if !trusted {
         return None;
     }
-    crate::http_client::get_https(url, MAX_PROFILE_IMAGE_BYTES, 5_000).ok()
+    fetch_steam_bytes(url, MAX_PROFILE_IMAGE_BYTES)
 }
 
 #[cfg(not(windows))]
@@ -1001,6 +1029,45 @@ mod tests {
         assert!(valid_steam_id(STEAM_ID));
         assert!(!valid_steam_id("0"));
         assert!(!valid_steam_id("7656119814775028x"));
+    }
+
+    #[test]
+    fn steam_requests_are_spaced_and_failures_cool_down_without_queueing_retries() {
+        let now = Instant::now();
+        let mut schedule = SteamRequestSchedule {
+            next_request: None,
+            cooling_down: false,
+        };
+        assert_eq!(schedule.delay(now), Some(Duration::ZERO));
+        schedule.finished(now, true);
+        assert_eq!(schedule.delay(now), Some(Duration::from_secs(1)));
+        schedule.finished(now, false);
+        assert_eq!(schedule.delay(now + Duration::from_secs(299)), None);
+        assert_eq!(
+            schedule.delay(now + Duration::from_secs(300)),
+            Some(Duration::ZERO)
+        );
+    }
+
+    #[test]
+    fn concurrent_batches_stop_network_requests_after_the_first_failure() {
+        let schedule = Mutex::new(SteamRequestSchedule {
+            next_request: None,
+            cooling_down: false,
+        });
+        let calls = AtomicU64::new(0);
+        std::thread::scope(|scope| {
+            for _ in 0..16 {
+                scope.spawn(|| {
+                    assert!(scheduled_steam_request(&schedule, || {
+                        calls.fetch_add(1, Ordering::Relaxed);
+                        Err("HTTPS server returned status 429".into())
+                    })
+                    .is_none());
+                });
+            }
+        });
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
     }
 
     #[test]
