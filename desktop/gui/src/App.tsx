@@ -72,7 +72,6 @@ import {
   type BatchImportCandidate,
 } from "./components/BatchWorkspace";
 import { ExportInspector } from "./components/ExportInspector";
-import { FaqWorkspace } from "./components/FaqWorkspace";
 import { LibraryWorkspace, type LibrarySort } from "./components/LibraryWorkspace";
 import { LogsWorkspace } from "./components/LogsWorkspace";
 import { InventorySimulatorPanel } from "./components/InventorySimulatorPanel";
@@ -155,7 +154,6 @@ import type {
   DemoLibraryEntry,
   DemoLibraryScan,
   DemoSourcePreflight,
-  EnvironmentDiagnosticReport,
   ImportArchivesResult,
   Language,
   LocalEnvironmentSettings,
@@ -254,9 +252,7 @@ function App() {
   );
   const [installCandidates, setInstallCandidates] = useState<Cs2InstallCandidate[]>([]);
   const [installDetectionCompleted, setInstallDetectionCompleted] = useState(false);
-  const [environmentReport, setEnvironmentReport] = useState<EnvironmentDiagnosticReport | null>(null);
   const [detectingInstallations, setDetectingInstallations] = useState(false);
-  const [inspectingEnvironment, setInspectingEnvironment] = useState(false);
   const [serverConfigDocument, setServerConfigDocument] = useState<ServerConfigDocument | null>(null);
   const [serverConfigDraft, setServerConfigDraft] = useState("");
   const [serverConfigValidation, setServerConfigValidation] = useState<ServerConfigValidation | null>(null);
@@ -312,7 +308,6 @@ function App() {
   const isBusyRef = useRef(false);
   const conversionStartLockRef = useRef(false);
   const analyzedMaxRoundSecondsRef = useRef(DEFAULT_SETTINGS.maxRoundSeconds);
-  const environmentInspectionTokenRef = useRef(0);
   const serverConfigRequestRef = useRef(0);
   const selectedCs2PathRef = useRef(localEnvironment.cs2Path);
   const batchIdRef = useRef("");
@@ -371,7 +366,6 @@ function App() {
   } = useUpdateController({
     language,
     cs2Path: localEnvironment.cs2Path,
-    onInspectEnvironment: runEnvironmentInspection,
   });
 
   useGuiPreferencesPersistence({
@@ -478,7 +472,7 @@ function App() {
       ? [analysis.map || "—", `${analysis.rounds.length} ${words.rounds}`].join(" · ")
       : "";
   // The title bar is contextual chrome, not a second page heading. Pages with
-  // their own visible heading (library, import, and FAQ) deliberately leave it
+  // their own visible heading (library and import) deliberately leave it
   // empty; analysis keeps match context and the heading-less utility pages keep
   // a compact label.
   const sessionTitle = activeSection === "analysis"
@@ -2107,51 +2101,27 @@ function App() {
     const previousPath = selectedCs2PathRef.current;
     selectedCs2PathRef.current = cs2Path;
     if (normalizedDiagnosticPath(cs2Path) === normalizedDiagnosticPath(previousPath)) return;
-    environmentInspectionTokenRef.current += 1;
     serverConfigRequestRef.current += 1;
-    setInspectingEnvironment(false);
-    setEnvironmentReport(null);
     setServerConfigDocument(null);
     setServerConfigDraft("");
     setServerConfigValidation(null);
   }
 
-  async function runEnvironmentInspection(path = localEnvironment.cs2Path) {
-    const candidate = path.trim();
-    if (!candidate || inspectingEnvironment) return;
-    const token = ++environmentInspectionTokenRef.current;
-    setGlobalError(null);
-    setInspectingEnvironment(true);
-    setEnvironmentReport(null);
-    try {
-      const report = await invoke<EnvironmentDiagnosticReport>("inspect_cs2_install", { path: candidate });
-      if (token !== environmentInspectionTokenRef.current) return;
-      changeCs2Path(report.cs2Root || candidate);
-      setEnvironmentReport(report);
-    } catch (reason) {
-      if (token !== environmentInspectionTokenRef.current) return;
-      setGlobalError(parseCommandError(reason));
-    } finally {
-      if (token === environmentInspectionTokenRef.current) setInspectingEnvironment(false);
-    }
-  }
-
   async function chooseCs2Directory() {
-    if (detectingInstallations || inspectingEnvironment) return;
+    if (detectingInstallations) return;
     try {
       const path = await invoke<string | null>("choose_cs2_dir", {
         initialPath: localEnvironment.cs2Path.trim() || null,
       });
       if (!path) return;
       changeCs2Path(path);
-      await runEnvironmentInspection(path);
     } catch (reason) {
       setGlobalError(parseCommandError(reason));
     }
   }
 
   async function detectCs2Installations() {
-    if (detectingInstallations || inspectingEnvironment) return;
+    if (detectingInstallations) return;
     setGlobalError(null);
     setInstallCandidates([]);
     setInstallDetectionCompleted(false);
@@ -2163,7 +2133,6 @@ function App() {
       if (candidates.length === 1) {
         const [candidate] = candidates;
         changeCs2Path(candidate.path);
-        await runEnvironmentInspection(candidate.path);
       }
     } catch (reason) {
       setGlobalError(parseCommandError(reason));
@@ -2174,7 +2143,6 @@ function App() {
 
   function useCs2Candidate(candidate: Cs2InstallCandidate) {
     changeCs2Path(candidate.path);
-    void runEnvironmentInspection(candidate.path);
   }
 
   async function addDemoRoot() {
@@ -2660,8 +2628,7 @@ function App() {
         words={words}
         sessionTitle={sessionTitle}
         sessionMeta={sessionMeta}
-        faqActive={activeSection === "faq"}
-        onOpenFaq={() => dispatchLibraryWorkspace({ type: "navigate", section: "faq" })}
+        onOpenDocs={() => void openExternal("https://github.com/unicbm/demotracer/blob/main/docs/README.md")}
         onOpenGithub={() => void openExternal("https://github.com/unicbm/demotracer")}
         onRequestClose={() => void requestWindowClose()}
       />
@@ -2752,9 +2719,7 @@ function App() {
           </button>
         ) : null}
 
-        {activeSection === "faq" ? (
-          <FaqWorkspace language={language} />
-        ) : activeSection === "logs" ? (
+        {activeSection === "logs" ? (
           <LogsWorkspace
             words={words}
             entries={activityLogs}
@@ -2786,7 +2751,6 @@ function App() {
             cosmeticConsentAccepted={cosmeticConsentAccepted}
             playback={playbackPreset}
             candidates={installCandidates}
-            report={environmentReport}
             serverConfigDocument={serverConfigDocument}
             serverConfigDraft={serverConfigDraft}
             serverConfigValidation={serverConfigValidation}
@@ -2794,7 +2758,6 @@ function App() {
             savingServerConfig={savingServerConfig}
             detecting={detectingInstallations}
             detectionCompleted={installDetectionCompleted}
-            inspecting={inspectingEnvironment}
             appVersion={appVersion}
             guiUpdate={guiUpdate}
             playbackRelease={playbackRelease}
@@ -2828,7 +2791,6 @@ function App() {
             onBrowseCs2={() => void chooseCs2Directory()}
             onDetectCs2={() => void detectCs2Installations()}
             onUseCandidate={useCs2Candidate}
-            onInspectEnvironment={() => void runEnvironmentInspection()}
             onCheckGuiUpdate={() => void checkGuiApplicationUpdate()}
             onInstallGuiUpdate={reviewGuiUpdate}
             onCheckPlaybackUpdate={() => void checkPlaybackUpdate()}

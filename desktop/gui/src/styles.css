@@ -958,44 +958,6 @@ input[type="radio"] {
   color: var(--text-secondary);
 }
 
-.result-next-step {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  min-height: 94px;
-  margin-top: 18px;
-  padding: var(--space-4) 17px;
-  gap: 18px;
-  background: color-mix(in srgb, var(--accent-soft) 42%, var(--surface-subtle));
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--divider));
-  border-radius: var(--radius-lg);
-}
-
-.result-next-step > div {
-  display: grid;
-}
-
-.result-next-step > div > span {
-  color: var(--accent);
-  font-size: var(--type-caption);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.07em;
-}
-
-.result-next-step h2 {
-  margin-top: 1px;
-  font-size: var(--type-section-large);
-  font-weight: var(--weight-semibold);
-  line-height: 23px;
-}
-
-.result-next-step p {
-  margin-top: 2px;
-  color: var(--text-secondary);
-  font-size: var(--type-micro);
-  line-height: 18px;
-}
-
 .result-capabilities {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

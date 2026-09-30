@@ -5,7 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 use super::*;
-use crate::diagnostics::{embedded_playback_contract, ReceiptFileWire};
+use crate::playback_installation::{embedded_playback_contract, ReceiptFileWire};
 use std::io::Write;
 
 const CONTROLLER: &str = "addons/counterstrikesharp/plugins/DtrController/DtrController.dll";
@@ -359,7 +359,7 @@ fn install_rejects_changed_event_semantics_even_when_tick_size_and_abi_match() {
 }
 
 #[test]
-fn inspection_and_installation_agree_on_matching_and_newer_package_contracts() {
+fn package_receipts_require_matching_playback_contracts() {
     let fixture = InstallFixture::new();
     let package =
         extract_and_validate_package(&package_bytes("1.2.2"), &fixture.0.join("payload"), "1.2.2")

@@ -5,9 +5,9 @@
  *--------------------------------------------------------------------------------------------*/
 
 use crate::activity_log::{ActivityLogLevel, ActivityLogState};
-use crate::diagnostics::{
-    checked_receipt_relative_path, fresh_runtime_plugin_version, normalized_receipt_path,
-    receipt_component, receipt_contract_errors, resolve_install_paths, InstallReceiptWire,
+use crate::playback_installation::{
+    checked_receipt_relative_path, normalized_receipt_path, receipt_component,
+    receipt_contract_errors, resolve_install_paths, InstallReceiptWire,
     INSTALL_RECEIPT_RELATIVE_PATH, MAX_RECEIPT_FILES, MAX_RECEIPT_FILE_BYTES,
     REQUIRED_RECEIPT_PATHS,
 };
@@ -50,8 +50,6 @@ pub(crate) struct PlaybackReleaseStatusDto {
     pub app_version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_version: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub loaded_plugin_version: Option<String>,
     pub can_rollback: bool,
 }
 
@@ -381,7 +379,6 @@ fn local_playback_status(
     app_version: String,
 ) -> CommandResult<PlaybackReleaseStatusDto> {
     let mut current_version = None;
-    let mut loaded_plugin_version = None;
     let mut can_rollback = false;
     if let Some(cs2_path) = cs2_path.map(str::trim).filter(|path| !path.is_empty()) {
         let paths = resolve_install_paths(Path::new(cs2_path))?;
@@ -389,13 +386,11 @@ fn local_playback_status(
             .ok()
             .flatten()
             .map(|receipt| receipt.bundle_version);
-        loaded_plugin_version = fresh_runtime_plugin_version(&paths.game_csgo);
         can_rollback = install_state_path(local_data, &paths.game_csgo).is_file();
     }
     Ok(PlaybackReleaseStatusDto {
         app_version,
         current_version,
-        loaded_plugin_version,
         can_rollback,
     })
 }
@@ -408,8 +403,7 @@ fn local_playback_version(cs2_path: Option<&str>) -> CommandResult<Option<String
     Ok(read_installed_receipt(&paths.game_csgo)
         .ok()
         .flatten()
-        .map(|receipt| receipt.bundle_version)
-        .or_else(|| fresh_runtime_plugin_version(&paths.game_csgo)))
+        .map(|receipt| receipt.bundle_version))
 }
 
 fn playback_update_available(current: Option<&str>, latest: &str) -> bool {
@@ -808,7 +802,7 @@ fn legacy_runtime_group(path: &str) -> Option<&'static str> {
 
 fn apply_validated_package(
     local_data: &Path,
-    paths: &crate::diagnostics::InstallPaths,
+    paths: &crate::playback_installation::InstallPaths,
     package: ValidatedPackage,
     package_bytes: &[u8],
     source: &str,

@@ -4,7 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-use crate::diagnostics::resolve_install_paths;
+use crate::playback_installation::resolve_install_paths;
 use crate::{CommandErrorDto, CommandResult};
 use cs2_demotracer::demo_id::sha256_hex;
 use serde::{Deserialize, Serialize};

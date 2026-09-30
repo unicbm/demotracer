@@ -8,11 +8,11 @@ mod activity_log;
 mod archive_info;
 mod batch;
 mod catalog;
-mod diagnostics;
 mod gsi;
 mod gui_preferences;
 mod http_client;
 mod inventory_simulator;
+mod playback_installation;
 mod playback_manager;
 mod server_config;
 mod steam_profile;
@@ -53,10 +53,10 @@ use cs2_demotracer::model::{
 use cs2_demotracer::quality::AnalysisOptions;
 use cs2_demotracer::validate::validate_dtr_path;
 use cs2_demotracer::voice_export::export_round_voice_sidecars;
-use diagnostics::{choose_cs2_dir, detect_cs2_installations, inspect_cs2_install};
 use gsi::{configure_gsi, gsi_status, GsiState};
 use gui_preferences::{load_gui_preferences, save_gui_preferences};
 use inventory_simulator::{set_inventory_simulator_panel, start_inventory_simulator_batch};
+use playback_installation::{choose_cs2_dir, detect_cs2_installations};
 use playback_manager::{
     choose_playback_bundle, install_latest_playback_bundle, install_playback_bundle,
     playback_release_status, playback_update_status, rollback_playback_install,
@@ -4171,7 +4171,12 @@ fn resolve_output_paths(
 
 fn canonical_normal_library_root(path: &Path) -> CommandResult<PathBuf> {
     let metadata = fs::symlink_metadata(path).map_err(|error| {
-        CommandErrorDto::at_path("library_root_inspect_failed", error.to_string(), path)
+        let code = if error.kind() == std::io::ErrorKind::NotFound {
+            "library_root_not_found"
+        } else {
+            "library_root_inspect_failed"
+        };
+        CommandErrorDto::at_path(code, error.to_string(), path)
     })?;
     if !metadata.is_dir() || catalog::is_symlink_or_reparse(&metadata) {
         return Err(CommandErrorDto::at_path(
@@ -5730,7 +5735,6 @@ pub fn run() {
             choose_demo_source_dir,
             choose_cs2_dir,
             detect_cs2_installations,
-            inspect_cs2_install,
             playback_release_status,
             playback_update_status,
             choose_playback_bundle,

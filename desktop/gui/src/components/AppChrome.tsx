@@ -27,8 +27,7 @@ interface AppChromeProps {
   words: TextDictionary;
   sessionTitle: string;
   sessionMeta: string;
-  faqActive: boolean;
-  onOpenFaq: () => void;
+  onOpenDocs: () => void;
   onOpenGithub: () => void;
   onRequestClose: () => void;
 }
@@ -57,8 +56,7 @@ export function AppChrome({
   words,
   sessionTitle,
   sessionMeta,
-  faqActive,
-  onOpenFaq,
+  onOpenDocs,
   onOpenGithub,
   onRequestClose,
 }: AppChromeProps) {
@@ -117,7 +115,7 @@ export function AppChrome({
         ) : null}
         <div className="titlebar-drag-surface" data-tauri-drag-region />
         <div className="titlebar-utilities" role="group" aria-label={words.mainNavigation}>
-          <button className={`titlebar-utility${faqActive ? " is-active" : ""}`} type="button" onClick={onOpenFaq} aria-label={words.navFaq} title={words.navFaq}>
+          <button className="titlebar-utility" type="button" onClick={onOpenDocs} aria-label={words.documentation} title={words.documentation}>
             <HelpIcon size={18} />
           </button>
           <button className="titlebar-utility" type="button" onClick={onOpenGithub} aria-label="GitHub" title="GitHub">

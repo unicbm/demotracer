@@ -324,6 +324,7 @@ export function parseCommandError(error: unknown): CommandErrorDto {
 export function userFacingErrorMessage(error: { code: string; message: string; path?: string | null }, language: Language): string {
   const code = error.code.toLocaleLowerCase();
   const words = TEXT[language];
+  if (code === "invalid_output_dir" || code.startsWith("library_root_")) return words.errorFolderUnavailable;
   if (code.includes("cancel") || code.includes("stopping")) {
     return words.errorTaskStopped;
   }

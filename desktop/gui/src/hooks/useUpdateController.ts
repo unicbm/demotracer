@@ -37,13 +37,11 @@ import type {
 interface UpdateControllerOptions {
   language: Language;
   cs2Path: string;
-  onInspectEnvironment: (path: string) => Promise<void>;
 }
 
 export function useUpdateController({
   language,
   cs2Path,
-  onInspectEnvironment,
 }: UpdateControllerOptions) {
   const words = TEXT[language];
   const [appVersion, setAppVersion] = useState(packageMetadata.version);
@@ -146,7 +144,6 @@ export function useUpdateController({
         .replace("{installed}", String(result.installedFiles))
         .replace("{removed}", String(result.removedLegacyFiles))
       : words.playbackRollbackNotice);
-    await onInspectEnvironment(cs2Path);
     const status = await invoke<PlaybackReleaseStatus>("playback_release_status", { cs2Path: cs2Path.trim() });
     setPlaybackRelease(status);
     await checkPlaybackUpdate(true);

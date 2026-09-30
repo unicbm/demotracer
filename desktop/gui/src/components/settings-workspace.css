@@ -572,7 +572,7 @@
   line-height: 16px;
 }
 
-.diagnostic-empty {
+.settings-empty {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
@@ -581,7 +581,7 @@
   gap: 13px;
 }
 
-.diagnostic-empty > span {
+.settings-empty > span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -593,150 +593,16 @@
   border-radius: var(--radius-circle);
 }
 
-.diagnostic-empty h3 {
+.settings-empty h3 {
   font-size: var(--type-support);
   font-weight: var(--weight-semibold);
 }
 
-.diagnostic-empty p {
+.settings-empty p {
   margin-top: 2px;
   color: var(--text-secondary);
   font-size: var(--type-tiny);
 }
-
-.diagnostic-detail-bundle {
-  margin-top: 10px;
-  background: var(--surface-raised);
-  border: 1px solid var(--divider);
-  border-radius: var(--radius-md);
-}
-
-.diagnostic-detail-bundle > summary {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto auto;
-  align-items: center;
-  min-height: 50px;
-  padding: var(--space-2) 13px;
-  gap: 9px;
-  cursor: pointer;
-  list-style: none;
-}
-
-.diagnostic-detail-bundle > summary::-webkit-details-marker { display: none; }
-.diagnostic-detail-mark { display: inline-flex; align-items: center; color: var(--text-tertiary); }
-.diagnostic-detail-bundle.is-pass .diagnostic-detail-mark { color: var(--success); }
-.diagnostic-detail-bundle.is-warning .diagnostic-detail-mark { color: var(--warning); }
-.diagnostic-detail-bundle.is-error .diagnostic-detail-mark { color: var(--danger); }
-.diagnostic-detail-title { display: grid; min-width: 0; gap: var(--space-1); }
-.diagnostic-detail-bundle > summary strong { overflow: hidden; font-size: var(--type-micro); font-weight: var(--weight-semibold); text-overflow: ellipsis; white-space: nowrap; }
-.diagnostic-detail-bundle > summary small { color: var(--text-tertiary); font-size: var(--type-caption); }
-.diagnostic-detail-bundle > summary b { color: var(--text-secondary); font-size: var(--type-caption); font-weight: var(--weight-semibold); }
-.diagnostic-detail-bundle > summary svg { color: var(--text-tertiary); transition: transform 150ms ease-out; }
-.diagnostic-detail-bundle[open] > summary svg { transform: rotate(180deg); }
-.diagnostic-detail-content { padding: 0 10px 10px; border-top: 1px solid var(--divider); }
-
-.settings-environment-scope {
-  margin: var(--space-2) 0;
-  color: var(--text-secondary);
-  font-size: var(--type-caption);
-}
-
-.receipt-contract-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.receipt-contract-grid > div {
-  display: grid;
-  min-width: 0;
-  min-height: 53px;
-  padding: 9px var(--space-3);
-  border-right: 1px solid var(--divider);
-}
-
-.receipt-contract-grid > div:last-child { border-right: 0; }
-.receipt-contract-grid span { color: var(--text-tertiary); font-size: var(--type-caption); }
-.receipt-contract-grid strong { margin-top: 2px; overflow: hidden; color: var(--text-secondary); font-size: var(--type-tiny); font-weight: var(--weight-semibold); text-overflow: ellipsis; white-space: nowrap; }
-
-.receipt-path {
-  display: block;
-  padding: 7px var(--space-3);
-  overflow: hidden;
-  color: var(--text-tertiary);
-  background: var(--surface-subtle);
-  border-top: 1px solid var(--divider);
-  font-size: var(--type-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.diagnostic-check-list {
-  display: grid;
-}
-
-.diagnostic-check {
-  border-bottom: 1px solid var(--divider);
-}
-
-.diagnostic-check:last-child { border-bottom: 0; }
-
-.diagnostic-check summary {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto minmax(70px, auto);
-  align-items: center;
-  min-height: 51px;
-  padding: 7px var(--space-3);
-  gap: 9px;
-  list-style: none;
-}
-
-.diagnostic-check summary::-webkit-details-marker { display: none; }
-.diagnostic-check summary:hover { background: var(--surface-subtle); }
-
-.diagnostic-check-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  color: var(--text-tertiary);
-  background: var(--surface-subtle);
-  border-radius: var(--radius-circle);
-}
-
-.diagnostic-check.is-pass .diagnostic-check-mark { color: var(--success); background: var(--success-soft); }
-.diagnostic-check.is-warning .diagnostic-check-mark { color: var(--warning); background: var(--warning-soft); }
-.diagnostic-check.is-error .diagnostic-check-mark { color: var(--danger); background: var(--danger-soft); }
-
-.diagnostic-check summary > span:nth-child(2) {
-  display: grid;
-  min-width: 0;
-}
-
-.diagnostic-check summary strong { font-size: var(--type-tiny); font-weight: var(--weight-semibold); }
-.diagnostic-check summary small { overflow: hidden; color: var(--text-secondary); font-size: var(--type-caption); text-overflow: ellipsis; white-space: nowrap; }
-.diagnostic-check summary b { color: var(--text-tertiary); font-size: var(--type-caption); font-weight: var(--weight-semibold); }
-.diagnostic-check summary em { color: var(--text-secondary); font-size: var(--type-caption); font-style: normal; font-weight: var(--weight-semibold); text-align: right; }
-.diagnostic-check.is-pass summary em { color: var(--success); }
-.diagnostic-check.is-warning summary em { color: var(--warning); }
-.diagnostic-check.is-error summary em { color: var(--danger); }
-
-.diagnostic-check-detail {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin: 0 var(--space-3) 10px 45px;
-  padding: 9px 10px;
-  gap: 7px 14px;
-  background: var(--surface-subtle);
-  border: 1px solid var(--divider);
-  border-radius: var(--radius-sm);
-}
-
-.diagnostic-check-detail > div { display: grid; min-width: 0; }
-.diagnostic-check-detail span { color: var(--text-tertiary); font-size: var(--type-caption); }
-.diagnostic-check-detail code { overflow-wrap: anywhere; color: var(--text-secondary); font-size: var(--type-caption); }
-.diagnostic-check-detail p { grid-column: 1 / -1; color: var(--text-secondary); font-size: var(--type-caption); }
-.diagnostic-check-detail p strong { margin-right: 6px; color: var(--text-primary); }
 
 .settings-empty-list {
   padding: var(--space-4) 14px;
@@ -957,9 +823,6 @@
 @media (max-width: 860px) {
   .settings-pane { width: calc(100% - 22px); }
   .settings-header-actions { flex-direction: row; }
-  .receipt-contract-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .receipt-contract-grid > div:nth-child(2) { border-right: 0; }
-  .receipt-contract-grid > div:nth-child(-n + 2) { border-bottom: 1px solid var(--divider); }
   .settings-choice-row { align-items: start; }
   .settings-choice-row .segmented-control { max-width: 360px; }
   .credits-contributor-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -1005,48 +868,12 @@
 
 .server-config-workbench {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  grid-template-columns: minmax(0, 1fr);
   min-height: 470px;
   gap: 10px;
 }
 
 .server-config-workbench .server-config-editor { min-height: 470px; height: 100%; }
-
-.server-config-guide {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-width: 0;
-  max-height: 620px;
-  overflow: hidden;
-  background: var(--workspace);
-  border: 1px solid var(--divider-strong);
-  border-radius: var(--radius-md);
-}
-
-.server-config-guide > header { display: grid; padding: 11px; gap: 9px; border-bottom: 1px solid var(--divider); }
-.server-config-guide > header > div { display: grid; gap: 2px; }
-.server-config-guide > header strong { font-size: var(--type-micro); }
-.server-config-guide > header small { color: var(--text-tertiary); font-size: var(--type-tiny); line-height: 14px; }
-.server-config-guide > header label { display: flex; align-items: center; height: 30px; padding: 0 var(--space-2); gap: 6px; color: var(--text-tertiary); background: var(--surface-raised); border: 1px solid var(--divider); border-radius: var(--radius-sm); }
-.server-config-guide > header input { width: 100%; min-width: 0; padding: 0; background: transparent; border: 0; outline: 0; font-size: var(--type-tiny); }
-.server-config-guide-groups { min-height: 0; overflow: auto; }
-.server-config-guide-groups > details { border-bottom: 1px solid var(--divider); }
-.server-config-guide-groups > details > summary { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; min-height: 38px; padding: 6px 10px; gap: var(--space-2); cursor: pointer; list-style: none; }
-.server-config-guide-groups > details > summary::-webkit-details-marker { display: none; }
-.server-config-guide-groups > details > summary strong { font-size: var(--type-tiny); }
-.server-config-guide-groups > details > summary span { color: var(--text-tertiary); font: var(--type-tiny) var(--mono); }
-.server-config-guide-groups > details > summary svg { color: var(--text-tertiary); transition: transform 150ms ease-out; }
-.server-config-guide-groups > details[open] > summary svg { transform: rotate(180deg); }
-.server-config-guide-groups ul { margin: 0; padding: 0; list-style: none; }
-.server-config-guide-groups li { padding: 9px 10px; border-top: 1px solid var(--divider); }
-.server-config-guide-groups li > div { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
-.server-config-guide-groups li > div code { color: var(--trace); font-size: var(--type-tiny); font-weight: var(--weight-semibold); }
-.server-config-guide-groups li > div span { color: var(--text-tertiary); font-size: var(--type-tiny); text-transform: uppercase; }
-.server-config-guide-groups li p { margin-top: var(--space-1); color: var(--text-secondary); font-size: var(--type-tiny); line-height: 15px; }
-.server-config-guide-groups li > small { display: grid; margin-top: 5px; gap: 2px; color: var(--text-tertiary); font-size: var(--type-tiny); }
-.server-config-guide-groups li > small span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.server-config-guide-groups li > small code { color: var(--text-secondary); font-size: var(--type-tiny); }
-.server-config-guide-groups > p { padding: 18px var(--space-3); color: var(--text-tertiary); font-size: var(--type-tiny); text-align: center; }
 
 .server-config-editor:focus {
   outline: 2px solid color-mix(in srgb, var(--trace) 44%, transparent);

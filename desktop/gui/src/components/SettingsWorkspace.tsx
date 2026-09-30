@@ -4,7 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertIcon,
   CheckIcon,
@@ -37,9 +37,6 @@ import { LANGUAGE_OPTIONS, type TextDictionary } from "../i18n";
 import type {
   Cs2InstallCandidate,
   ConverterSettings,
-  EnvironmentCheckStatus,
-  EnvironmentDiagnosticReport,
-  EnvironmentOverallStatus,
   GuiUpdateStatus,
   Language,
   LocalEnvironmentSettings,
@@ -52,7 +49,6 @@ import type {
   WorkspaceBackground,
 } from "../types";
 import { releaseNotesForLanguage } from "../releaseNotes";
-import { SERVER_CONFIG_GUIDE, type ServerConfigGuideGroup } from "../serverConfigGuide";
 import type { PlaybackHandoffMode, PlaybackPresetOptions } from "../playbackCommand";
 import { DialogPrimitive } from "./Dialog";
 import { SelectControl, type SelectControlOption } from "./SelectControl";
@@ -114,7 +110,6 @@ interface SettingsWorkspaceProps {
   cosmeticConsentAccepted: boolean;
   playback: PlaybackPresetOptions;
   candidates: Cs2InstallCandidate[];
-  report: EnvironmentDiagnosticReport | null;
   serverConfigDocument: ServerConfigDocument | null;
   serverConfigDraft: string;
   serverConfigValidation: ServerConfigValidation | null;
@@ -122,7 +117,6 @@ interface SettingsWorkspaceProps {
   savingServerConfig: boolean;
   detecting: boolean;
   detectionCompleted: boolean;
-  inspecting: boolean;
   appVersion: string;
   guiUpdate: GuiUpdateStatus;
   playbackRelease: PlaybackReleaseStatus | null;
@@ -144,7 +138,6 @@ interface SettingsWorkspaceProps {
   onBrowseCs2: () => void;
   onDetectCs2: () => void;
   onUseCandidate: (candidate: Cs2InstallCandidate) => void;
-  onInspectEnvironment: () => void;
   onCheckGuiUpdate: () => void;
   onInstallGuiUpdate: () => void;
   onCheckPlaybackUpdate: () => void;
@@ -168,33 +161,6 @@ interface SettingsWorkspaceProps {
   onConverterChange: (patch: Partial<ConverterSettings>) => void;
   onRequestCosmetics: () => void;
   onPlaybackChange: (patch: Partial<PlaybackPresetOptions>) => void;
-}
-
-function StatusMark({ status }: { status: EnvironmentCheckStatus }) {
-  if (status === "pass") return <CheckIcon size={14} />;
-  if (status === "warning" || status === "error") return <AlertIcon size={14} />;
-  return <span aria-hidden="true">—</span>;
-}
-
-function statusLabel(words: TextDictionary, status: EnvironmentCheckStatus): string {
-  if (status === "pass") return words.diagnosticStatusPass;
-  if (status === "warning") return words.diagnosticStatusWarning;
-  if (status === "error") return words.diagnosticStatusError;
-  return words.diagnosticStatusUnverified;
-}
-
-function overallCopy(words: TextDictionary, status: EnvironmentOverallStatus) {
-  if (status === "pass") return [words.environmentReadyTitle, words.environmentReadyBody] as const;
-  if (status === "warning") return [words.environmentWarningTitle, words.environmentWarningBody] as const;
-  if (status === "error") return [words.environmentErrorTitle, words.environmentErrorBody] as const;
-  return [words.environmentUnverifiedTitle, words.environmentUnverifiedBody] as const;
-}
-
-function diagnosticGroupLabel(words: TextDictionary, group: string): string {
-  if (group === "dependencies") return words.diagnosticGroupDependencies;
-  if (group === "demotracer") return "DemoTracer";
-  if (group === "runtime") return words.diagnosticGroupRuntime;
-  return group;
 }
 
 function SettingLine({
@@ -350,7 +316,6 @@ export function SettingsWorkspace({
   cosmeticConsentAccepted,
   playback,
   candidates,
-  report,
   serverConfigDocument,
   serverConfigDraft,
   serverConfigValidation,
@@ -358,7 +323,6 @@ export function SettingsWorkspace({
   savingServerConfig,
   detecting,
   detectionCompleted,
-  inspecting,
   appVersion,
   guiUpdate,
   playbackRelease,
@@ -380,7 +344,6 @@ export function SettingsWorkspace({
   onBrowseCs2,
   onDetectCs2,
   onUseCandidate,
-  onInspectEnvironment,
   onCheckGuiUpdate,
   onInstallGuiUpdate,
   onCheckPlaybackUpdate,
@@ -411,26 +374,11 @@ export function SettingsWorkspace({
   const [customCssDraft, setCustomCssDraft] = useState("");
   const [customCssNameDraft, setCustomCssNameDraft] = useState("");
   const [editingCustomCssProfileId, setEditingCustomCssProfileId] = useState<string | null>(null);
-  const [serverGuideQuery, setServerGuideQuery] = useState("");
   const [validatingServerConfig, setValidatingServerConfig] = useState(false);
   const [serverConfigFeedback, setServerConfigFeedback] = useState<{ tone: "progress" | "success" | "error"; message: string } | null>(null);
   const autoLoadedConfigPath = useRef("");
-  const reportCopy = report ? overallCopy(words, report.overall) : null;
   const defaultRootKey = exportRoot.replace(/\\/g, "/").toLocaleLowerCase();
   const additionalArchiveRoots = archiveRoots.filter((root) => root.replace(/\\/g, "/").toLocaleLowerCase() !== defaultRootKey);
-  const normalizedGuideQuery = serverGuideQuery.trim().toLocaleLowerCase();
-  const serverGuideGroups = useMemo(() => {
-    const groups = new Map<ServerConfigGuideGroup, Array<(typeof SERVER_CONFIG_GUIDE)[number]>>();
-    for (const field of SERVER_CONFIG_GUIDE) {
-      const searchText = `${field.path} ${field.description[language]} ${field.accepted?.join(" ") ?? ""}`.toLocaleLowerCase();
-      if (normalizedGuideQuery && !searchText.includes(normalizedGuideQuery)) continue;
-      const fields = groups.get(field.group) ?? [];
-      fields.push(field);
-      groups.set(field.group, fields);
-    }
-    return groups;
-  }, [language, normalizedGuideQuery]);
-
   const handleLoadServerConfig = async () => {
     setServerConfigFeedback({ tone: "progress", message: words.loadingServerConfig });
     const succeeded = await onLoadServerConfig();
@@ -463,14 +411,6 @@ export function SettingsWorkspace({
     autoLoadedConfigPath.current = path;
     void handleLoadServerConfig();
   }, [environment.cs2Path, loadingServerConfig, onLoadServerConfig, serverConfigDocument, activeSection]);
-
-  const serverGuideGroupLabel = (group: ServerConfigGuideGroup): string => {
-    if (group === "general") return words.serverConfigGroupGeneral;
-    if (group === "handoff") return words.serverConfigGroupHandoff;
-    if (group === "fidelity") return words.serverConfigGroupFidelity;
-    if (group === "match") return words.serverConfigGroupMatch;
-    return words.serverConfigGroupCosmetics;
-  };
 
   const themeColorFields: ReadonlyArray<{ key: ThemeColorKey; label: string }> = [
     { key: "primary", label: words.themePrimaryColor },
@@ -731,12 +671,6 @@ export function SettingsWorkspace({
               <span>{words.releaseInstalledBundle}</span>
               <strong>{playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy}</strong>
             </div>
-            <div className="playback-settings-row">
-              <div>
-                <span>{words.releaseLoadedPlugin}</span>
-              </div>
-              <strong>{playbackRelease?.loadedPluginVersion ? `v${playbackRelease.loadedPluginVersion}` : words.releaseNotRunning}</strong>
-            </div>
             {playbackReleaseError ? (
               <div className="playback-settings-row has-error" role="alert">
                 <div><span>{words.errorPlaybackTitle}</span><small>{playbackReleaseError}</small></div>
@@ -771,13 +705,13 @@ export function SettingsWorkspace({
           <div className="settings-path-input">
             <input
               value={environment.cs2Path}
-              disabled={detecting || inspecting}
+              disabled={detecting}
               spellCheck={false}
               placeholder={words.cs2PathPlaceholder}
               aria-label={words.cs2Location}
               onChange={(event) => onCs2PathChange(event.target.value)}
             />
-            <button className="secondary-button" type="button" disabled={detecting || inspecting} onClick={onBrowseCs2}>
+            <button className="secondary-button" type="button" disabled={detecting} onClick={onBrowseCs2}>
               <FolderIcon size={15} />{words.browseFolder}
             </button>
           </div>
@@ -793,7 +727,7 @@ export function SettingsWorkspace({
                 className="detected-install-option"
                 key={`${candidate.source}:${candidate.gameCsgoPath}`}
                 type="button"
-                disabled={detecting || inspecting}
+                disabled={detecting}
                 onClick={() => onUseCandidate(candidate)}
               >
                 <span><FolderIcon size={16} /></span>
@@ -813,115 +747,13 @@ export function SettingsWorkspace({
           </div>
         ) : null}
         <div className="settings-card-actions">
-          <button className="secondary-button" type="button" disabled={detecting || inspecting} onClick={onDetectCs2}>
+          <button className="secondary-button" type="button" disabled={detecting} onClick={onDetectCs2}>
             <SearchIcon size={16} />{detecting ? words.detectingCs2 : words.autoDetectCs2}
-          </button>
-          <button className="primary-button" type="button" disabled={!environment.cs2Path.trim() || detecting || inspecting} onClick={onInspectEnvironment}>
-            <RefreshIcon size={16} />{inspecting ? words.inspectingEnvironment : words.inspectEnvironment}
           </button>
         </div>
       </section>
 
       {playbackInstallView}
-
-      <p className="settings-environment-scope">
-        {words.environmentInspectionScope}{" "}
-        <button className="text-button" type="button" onClick={() => onOpenExternal("https://github.com/unicbm/demotracer/blob/main/server/README.md#shared-hook-runtime")}>{words.environmentRequirementsLink}</button>
-      </p>
-
-      {report ? (
-        <>
-          <details className={`diagnostic-detail-bundle is-${report.overall}`}>
-            <summary>
-              <span className="diagnostic-detail-mark"><StatusMark status={report.overall} /></span>
-              <span className="diagnostic-detail-title">
-                <strong>{reportCopy?.[0]}</strong>
-                <small>{words.diagnosticCheckedAt.replace("{time}", new Date(report.checkedAtMs).toLocaleString(language === "zh" ? "zh-CN" : "en-US"))}</small>
-              </span>
-              <b>{words.environmentDetailCount
-                .replace("{checks}", String(report.checks.length))}</b>
-              <ChevronIcon size={15} />
-            </summary>
-            <div className="diagnostic-detail-content">
-              <p className="settings-environment-scope">{reportCopy?.[1]}</p>
-          <section className="settings-card install-receipt" aria-labelledby="install-receipt-title">
-            <div className="settings-card-heading">
-              <div>
-                <h3 id="install-receipt-title">{words.installReceiptTitle}</h3>
-                <p>{words.installReceiptHelp}</p>
-              </div>
-              <span className={`count-badge${report.receipt.found && report.receipt.verified ? "" : " is-warning"}`}>
-                {!report.receipt.found
-                  ? words.installReceiptMissing
-                  : report.receipt.verified
-                    ? words.installReceiptVerified
-                    : words.installReceiptUnverified}
-              </span>
-            </div>
-            <div className="receipt-contract-grid">
-              <div>
-                <span>{words.bundleVersionLabel}</span>
-                <strong>{report.receipt.bundleVersion ?? "—"}</strong>
-              </div>
-              <div>
-                <span>{words.nativeContractLabel}</span>
-                <strong>{report.receipt.botControllerAbi == null
-                  ? "—"
-                  : `ABI ${report.receipt.botControllerAbi}.${report.receipt.botControllerMinor ?? "?"}`}</strong>
-              </div>
-              <div>
-                <span>{words.apiContractLabel}</span>
-                <strong>{report.receipt.botHiderApi == null && report.receipt.demoTracerApi == null
-                  ? "—"
-                  : `BotHider ${report.receipt.botHiderApi ?? "?"} · DemoTracer ${report.receipt.demoTracerApi ?? "?"}`}</strong>
-              </div>
-              <div>
-                <span>{words.receiptFilesLabel}</span>
-                <strong>{words.receiptFilesValue
-                  .replace("{checked}", String(report.receipt.filesChecked))
-                  .replace("{mismatched}", String(report.receipt.filesMismatched))}</strong>
-              </div>
-            </div>
-            {report.receipt.path ? <code className="receipt-path">{report.receipt.path}</code> : null}
-          </section>
-
-          <section className="settings-card diagnostic-checks" aria-labelledby="diagnostic-checks-title">
-            <div className="settings-card-heading">
-              <div>
-                <h3 id="diagnostic-checks-title">{words.diagnosticChecks}</h3>
-                <p>{words.diagnosticChecksHelp}</p>
-              </div>
-              <span className="count-badge">{report.checks.length}</span>
-            </div>
-            <div className="diagnostic-check-list">
-              {report.checks.map((check) => (
-                <details className={`diagnostic-check is-${check.status}`} key={check.id}>
-                  <summary>
-                    <span className="diagnostic-check-mark"><StatusMark status={check.status} /></span>
-                    <span>
-                      <strong>{check.title}</strong>
-                      <small>{check.summary}</small>
-                    </span>
-                    <b>{diagnosticGroupLabel(words, check.group)}</b>
-                    <em>{statusLabel(words, check.status)}</em>
-                  </summary>
-                  {(check.expected || check.actual || check.evidencePath || check.action) ? (
-                    <div className="diagnostic-check-detail">
-                      {check.expected ? <div><span>{words.expectedValue}</span><code>{check.expected}</code></div> : null}
-                      {check.actual ? <div><span>{words.actualValue}</span><code>{check.actual}</code></div> : null}
-                      {check.evidencePath ? <div><span>{words.evidencePath}</span><code>{check.evidencePath}</code></div> : null}
-                      {check.action ? <p><strong>{words.suggestedAction}</strong>{check.action}</p> : null}
-                    </div>
-                  ) : null}
-                </details>
-              ))}
-            </div>
-          </section>
-
-            </div>
-          </details>
-        </>
-      ) : null}
     </div>
   );
 
@@ -1126,7 +958,7 @@ export function SettingsWorkspace({
       {serverConfigFeedback ? <div className={`server-config-action-feedback is-${serverConfigFeedback.tone}`} role="status" aria-live="polite">{serverConfigFeedback.message}</div> : null}
 
       {!environment.cs2Path.trim() ? (
-        <section className="settings-card diagnostic-empty">
+        <section className="settings-card settings-empty">
           <span><FolderIcon size={22} /></span>
           <div>
             <h3>{words.serverConfigNeedsPath}</h3>
@@ -1136,7 +968,7 @@ export function SettingsWorkspace({
           </div>
         </section>
       ) : !serverConfigDocument ? (
-        <section className="settings-card diagnostic-empty">
+        <section className="settings-card settings-empty">
           <span><SlidersIcon size={22} /></span>
           <div><h3>{words.serverConfigNotLoaded}</h3></div>
         </section>
@@ -1146,7 +978,7 @@ export function SettingsWorkspace({
             <div className="settings-card-heading">
               <div>
                 <h3>{words.serverConfigEditor}</h3>
-                <p>{words.serverConfigEditorHelp}</p>
+                <button className="text-button" type="button" onClick={() => onOpenExternal("https://github.com/unicbm/demotracer/blob/main/docs/COMMANDS.md")}>{words.documentation}</button>
               </div>
               <span className={`count-badge${serverConfigDocument.source === "installed" ? "" : " is-warning"}`}>
                 {serverConfigDocument.source === "installed"
@@ -1169,35 +1001,6 @@ export function SettingsWorkspace({
                   onServerConfigDraftChange(event.target.value);
                 }}
               />
-              <aside className="server-config-guide" aria-label={words.serverConfigFieldReference}>
-                <header>
-                  <div><strong>{words.serverConfigFieldReference}</strong><small>{words.serverConfigFieldReferenceHelp}</small></div>
-                  <label>
-                    <SearchIcon size={14} />
-                    <input value={serverGuideQuery} onChange={(event) => setServerGuideQuery(event.target.value)} placeholder={words.serverConfigSearchFields} />
-                  </label>
-                </header>
-                <div className="server-config-guide-groups">
-                  {[...serverGuideGroups.entries()].map(([group, fields]) => (
-                    <details key={group} open={Boolean(normalizedGuideQuery) || group === "general"}>
-                      <summary><strong>{serverGuideGroupLabel(group)}</strong><span>{fields.length}</span><ChevronIcon size={13} /></summary>
-                      <ul>
-                        {fields.map((field) => (
-                          <li key={field.path}>
-                            <div><code>{field.path}</code><span>{field.type === "boolean" ? words.serverConfigTypeBoolean : field.type === "number" ? words.serverConfigTypeNumber : words.serverConfigTypeEnum}</span></div>
-                            <p>{field.description[language]}</p>
-                            <small>
-                              {field.accepted?.length ? <span>{words.serverConfigAllowed}: <code>{field.accepted.join(" · ")}</code></span> : <span>{words.serverConfigAllowed}: <code>true · false · null</code></span>}
-                              {field.defaultValue !== undefined ? <span>{words.serverConfigDefault}: <code>{field.defaultValue}</code></span> : null}
-                            </small>
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  ))}
-                  {serverGuideGroups.size === 0 ? <p>{words.serverConfigNoMatchingFields}</p> : null}
-                </div>
-              </aside>
             </div>
           </section>
 

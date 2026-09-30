@@ -304,10 +304,6 @@ textarea {
   --library-display: var(--font-ui);
 }
 
-.faq-workspace {
-  --faq-display: var(--font-ui);
-}
-
 .archive-roster-stat,
 .player-analysis-heading h1,
 .player-analysis-kda-metric strong,
@@ -1190,99 +1186,9 @@ textarea {
 .safe-defaults-note,
 .release-notes-panel,
 .server-config-path,
-.server-config-guide,
 .server-config-editor,
 .server-config-issues li {
   border-radius: var(--radius-md);
-}
-
-/* FAQ */
-.faq-workspace {
-  padding: 18px var(--space-5) 22px;
-  background: var(--workspace);
-}
-
-.faq-hero {
-  width: 100%;
-  max-width: none;
-  min-height: 46px;
-  margin-bottom: var(--space-3);
-}
-
-.faq-hero-mark {
-  width: 40px;
-  height: 40px;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: color-mix(in srgb, var(--accent) 26%, var(--divider));
-  border-radius: var(--radius-md);
-}
-
-.faq-hero h1 {
-  font-family: inherit;
-  font-size: var(--type-title);
-  font-weight: var(--weight-bold);
-}
-
-.faq-controls,
-.faq-content {
-  width: 100%;
-  max-width: none;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--surface-shadow);
-}
-
-.faq-controls {
-  min-height: 58px;
-  margin-bottom: 10px;
-  padding: 9px;
-  background: var(--surface-raised);
-}
-
-.faq-search {
-  height: 38px;
-  background: var(--surface-subtle);
-  border-color: var(--divider);
-  border-radius: var(--radius-sm);
-}
-
-.faq-category-list button {
-  min-height: 36px;
-  border-radius: var(--radius-sm);
-  font-size: var(--type-micro);
-}
-
-.faq-category-list button.is-active {
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.faq-question-pane {
-  background: var(--surface-subtle);
-}
-
-.faq-question-list button {
-  min-height: 58px;
-  border-radius: var(--radius-md);
-}
-
-.faq-question-list button.is-active {
-  background: var(--selected-row);
-  border-color: color-mix(in srgb, var(--accent) 25%, var(--divider));
-}
-
-.faq-question-list button > span {
-  font-size: var(--type-support);
-}
-
-.faq-answer-pane h2 {
-  font-family: inherit;
-  font-size: clamp(var(--type-panel-title), 2.6vw, var(--type-title-wide));
-}
-
-.faq-answer-summary,
-.faq-answer-body {
-  font-size: var(--type-support);
 }
 
 /* About and credits */
@@ -1374,7 +1280,6 @@ textarea {
   border-color: var(--divider);
 }
 
-.result-next-step,
 .result-capabilities > div {
   background: var(--surface-raised);
   border: 1px solid var(--divider);
@@ -1551,8 +1456,7 @@ textarea {
 }
 
 @media (max-width: 700px) {
-  .library-workspace,
-  .faq-workspace {
+  .library-workspace {
     padding: 14px var(--space-3) 18px;
   }
 
@@ -2060,7 +1964,6 @@ textarea {
 .app-body[data-has-workspace-background="true"] .app-workspace > :is(
   .archive-workspace,
   .batch-workspace,
-  .faq-workspace,
   .library-workspace,
   .logs-workspace,
   .player-analysis-workspace,

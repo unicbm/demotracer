@@ -7,7 +7,6 @@
 import { type RefObject } from "react";
 import {
   AlertIcon,
-  ArrowIcon,
   CheckIcon,
   ChevronIcon,
   CopyIcon,
@@ -157,17 +156,6 @@ export function ResultView({
         </div>
       ) : null}
 
-      <section className="result-next-step" aria-labelledby="result-next-title">
-        <div>
-          <span>{words.nextStep}</span>
-          <h2 id="result-next-title">{words.resultReadyTitle}</h2>
-          <p>{words.resultReadyBody}</p>
-        </div>
-        <button className="primary-button" type="button" onClick={onBrowseManifest}>
-          <ReplayIcon size={15} />{words.preparePlayback}<ArrowIcon size={15} />
-        </button>
-      </section>
-
       <div className="result-capabilities" aria-label={words.archiveContents}>
         <div>
           <span>{words.voiceCapability}</span>
@@ -201,6 +189,9 @@ export function ResultView({
       </details>
 
       <footer className="result-footer">
+        <button className="primary-button" type="button" onClick={onBrowseManifest}>
+          <ReplayIcon size={15} />{words.preparePlayback}
+        </button>
         <button className="quiet-button" type="button" onClick={onNewDemo}>{words.processAnother}</button>
         <button className="secondary-button" type="button" onClick={onBack}><ReplayIcon size={15} />{words.backToRounds}</button>
       </footer>

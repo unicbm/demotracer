@@ -42,9 +42,8 @@
 5. Open a converted match and copy its playback command to the server console.
 
 Analysis and conversion run locally and do not require a CS2 server or developer
-tools. Playback controls bots only. Installation inspection checks bundle files
-and runtime ABI/API heartbeats; it does not verify the host's KHook backend or
-compatibility with other plugins.
+tools. Playback controls bots only. The desktop app validates playback packages
+when installing them; server setup is covered in the linked documentation.
 
 ## Desktop Workflow
 

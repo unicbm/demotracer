@@ -7,7 +7,7 @@
 export type Language = "zh" | "en";
 export type Theme = "system" | "light" | "dark";
 export type SideChoice = "both" | "t" | "ct";
-export type WorkspaceSection = "library" | "analysis" | "batch" | "logs" | "settings" | "faq";
+export type WorkspaceSection = "library" | "analysis" | "batch" | "logs" | "settings";
 
 export type ActivityLogLevel = "debug" | "info" | "warn" | "error";
 
@@ -521,7 +521,6 @@ export interface Cs2InstallCandidate {
 export interface PlaybackReleaseStatus {
   appVersion: string;
   currentVersion?: string | null;
-  loadedPluginVersion?: string | null;
   canRollback: boolean;
 }
 
@@ -572,42 +571,6 @@ export interface GuiUpdateStatus {
   notes?: string;
   downloadedBytes?: number;
   totalBytes?: number;
-}
-
-export type EnvironmentOverallStatus = "pass" | "warning" | "error" | "unverified";
-export type EnvironmentCheckStatus = EnvironmentOverallStatus;
-
-export interface EnvironmentDiagnosticCheck {
-  id: string;
-  group: string;
-  status: EnvironmentCheckStatus;
-  title: string;
-  summary: string;
-  expected?: string | null;
-  actual?: string | null;
-  evidencePath?: string | null;
-  action?: string | null;
-}
-
-export interface EnvironmentInstallReceipt {
-  found: boolean;
-  path?: string | null;
-  bundleVersion?: string | null;
-  botControllerAbi?: number | null;
-  botControllerMinor?: number | null;
-  botHiderApi?: number | null;
-  demoTracerApi?: number | null;
-  verified?: boolean | null;
-  filesChecked: number;
-  filesMismatched: number;
-}
-
-export interface EnvironmentDiagnosticReport {
-  checkedAtMs: number;
-  cs2Root: string;
-  overall: EnvironmentOverallStatus;
-  checks: EnvironmentDiagnosticCheck[];
-  receipt: EnvironmentInstallReceipt;
 }
 
 export interface ServerConfigIssue {
