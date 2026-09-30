@@ -105,29 +105,14 @@ public sealed partial class DemoTracerPlugin
         }
         CancelSafeC4MutationWithoutTarget();
         ClearPendingWeaponSlotReplacementsForSlot(slot);
-        _cosmeticAlignmentTracker.CancelPending(slot);
-        _session.FreezePrerollSlots.Remove(slot);
-        _session.ResumedFreezePrerollSlots.Remove(slot);
+        _session.ClearSlotExecution(slot);
         var retainedViewmodel = (releaseKind is ReplayReleaseKind.Handoff or ReplayReleaseKind.Finished) &&
                                 RetainReplayBotViewmodelForRound(slot);
         if (!retainedViewmodel)
             RestoreReplayBotViewmodel(slot);
-        _session.ReplayPerceptionBaselineSerial.Remove(slot);
-        _session.LastEnsuredWeaponDef.Remove(slot);
-        _session.LastReplayWeaponDef.Remove(slot);
-        _session.LastLockedWeaponTarget.Remove(slot);
-        _session.ProjectileAlignNextBySlot.Remove(slot);
-        _session.ReplayHifiEventNextBySlot.Remove(slot);
         if (releaseKind == ReplayReleaseKind.Immediate)
-        {
-            _session.RebuiltInventorySlots.Remove(slot);
-            _session.WeaponLoadoutSyncedSlots.Remove(slot);
-            _session.PawnEquipmentSync.Invalidate(slot);
-            _session.BalanceSyncedSlots.Remove(slot);
-        }
+            _session.InvalidateEquipment(slot);
         BotControllerNative.ClearReplayPawnEquipment(slot);
-        _session.PendingBulletHits.Remove(slot);
-        _session.PendingBulletDamages.Remove(slot);
         // Native projectile birth align is a global queue without per-slot
         // cancellation. Handoff prioritizes the ownership boundary over a
         // possible in-flight alignment on another surviving replay slot.

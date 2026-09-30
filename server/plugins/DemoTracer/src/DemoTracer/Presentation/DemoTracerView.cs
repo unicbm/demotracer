@@ -81,20 +81,6 @@ public sealed partial class DemoTracerPlugin
             viewmodel.OffsetY.HasValue ||
             viewmodel.OffsetZ.HasValue);
 
-    private void ResetCrosshairAlignState(bool resetCounters = false)
-    {
-        if (_session.LoadedSlots.Count == 0 &&
-            _retainedBotHiderPresentation.Count == 0)
-            ReleaseBotHiderPresentationLease("crosshair_reset");
-        else
-            _ = SyncBotHiderPresentationLease(announce: false);
-    }
-
-    private void ResetViewmodelAlignState(bool resetCounters = false)
-    {
-        RestoreAllReplayBotViewmodels();
-    }
-
     private string FormatCrosshairStatusCounts()
     {
         var provider = _botHiderBridge.GetProviderInfo();

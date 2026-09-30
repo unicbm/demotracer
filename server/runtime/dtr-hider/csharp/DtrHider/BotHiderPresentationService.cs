@@ -203,7 +203,6 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             _mapEpoch++;
             foreach (var token in _leases.Keys.ToArray())
                 RemoveLease(token, countRevocation: true);
-            RestoreCapturedClans();
             Array.Clear(_slots);
         }
     }
@@ -251,7 +250,6 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
         var session = _client.Session;
         if (session == _nativeSession) return;
         foreach (var token in _leases.Keys.ToArray()) RemoveLease(token, countRevocation: true);
-        RestoreCapturedClans();
         Array.Clear(_slots);
         _nativeSession = session;
     }
@@ -304,7 +302,6 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             state.Controller == controller && state.NativeIncarnation == nativeIncarnation)
             return;
         RemoveSlotPresentation(slot);
-        RestoreCapturedClan(slot);
         state = new SlotState
         {
             UserId = userId,
@@ -319,7 +316,8 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
         if (slot is < 0 or >= MaxSlots)
             return;
         RemoveSlotPresentation(slot);
-        RestoreCapturedClan(slot);
+        // Losing the native slot ends our ownership. Do not touch a controller
+        // during disconnect, even if CSS still reports its handle as valid.
         _slots[slot] = default;
     }
 
@@ -608,12 +606,6 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
     private static BotHiderClan ReadClan(CCSPlayerController player)
         => new(player.Clan, Schema.GetRef<uint>(player.Handle, "CCSPlayerController", "m_unClanId32bit"));
 
-    private void RestoreCapturedClans()
-    {
-        for (var slot = 0; slot < MaxSlots; slot++)
-            RestoreCapturedClan(slot);
-    }
-
     public void PublishManagedSlot(int slot)
     {
         lock (_sync)
@@ -621,21 +613,6 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             if (!_disposed && TryReadManagedNativeSlot(slot, out var native, out var player))
                 PublishSlot(slot, native, player);
         }
-    }
-
-    private void RestoreCapturedClan(int slot)
-    {
-        ref var state = ref _slots[slot];
-        if (state.Clan is not { HasOverride: true } clan)
-            return;
-        // Native release may precede the managed callback. Only restore the exact
-        // controller we previously owned; a replacement (including a human) is untouched.
-        var player = Utilities.GetPlayerFromSlot(slot);
-        if (player is not { IsValid: true } || player.UserId != state.UserId ||
-            player.EntityHandle.Raw != state.Controller)
-            return;
-        try { ApplyClan(clan, null, player); }
-        catch (Exception ex) { ReportPresentationFailure(slot, ex.Message); }
     }
 
     private static bool ApplyClan(ClanPresentationState state, BotHiderClan? requested, CCSPlayerController player)
@@ -969,7 +946,6 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
         PublishManagedSlots();
         lock (_sync)
         {
-            RestoreCapturedClans();
             Array.Clear(_slots);
             _disposed = true;
         }

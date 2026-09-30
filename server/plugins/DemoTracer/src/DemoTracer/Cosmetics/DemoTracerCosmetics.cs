@@ -11,7 +11,6 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin
 {
     private readonly HashSet<(int WeaponDefIndex, uint PaintKit)> _legacyCosmeticPaints = new();
-    private readonly ReplayCosmeticAlignmentTracker _cosmeticAlignmentTracker = new();
 
     private ReplayCosmetics NormalizeReplayCosmetics(ReplayCosmetics? cosmetics)
     {
@@ -284,40 +283,14 @@ public sealed partial class DemoTracerPlugin
         => paintKit > 0 &&
            _legacyCosmeticPaints.Contains((NormalizeWeaponDefIndex(weaponDefIndex), (uint)paintKit));
 
-    private void ResetCosmeticAlignState(bool resetCounters = false)
-    {
-        _session.CosmeticSyncedSlots.Clear();
-        _cosmeticAlignmentTracker.Clear();
-        if (resetCounters)
-        {
-            _cosmeticAppliedCount = 0;
-            _cosmeticSkippedCount = 0;
-        }
-    }
-
-    private void ResetStickerAlignState(bool resetCounters = false)
-    {
-        if (resetCounters)
-        {
-            _stickerAppliedCount = 0;
-            _stickerSkippedCount = 0;
-        }
-    }
-
-    private void ResetCharmAlignState(bool resetCounters = false)
-    {
-        if (resetCounters)
-        {
-            _charmAppliedCount = 0;
-            _charmSkippedCount = 0;
-        }
-    }
+    private void ResetCosmeticAlignState()
+        => _session.CosmeticSyncedSlots.Clear();
 
     private string FormatCosmeticStatusCounts()
     {
         var counts = CountLoadedCosmeticEvidence();
         return
-            $"cosmetics_evidence={counts.Files} cosmetic_weapons={counts.Weapons} cosmetic_knives={counts.Knives} cosmetic_gloves={counts.Gloves} cosmetic_agents={counts.Agents} sticker_evidence={counts.Stickers} charm_evidence={counts.Charms} applied={_cosmeticAppliedCount} skipped={_cosmeticSkippedCount} sticker_applied={_stickerAppliedCount} sticker_skipped={_stickerSkippedCount} charm_applied={_charmAppliedCount} charm_skipped={_charmSkippedCount} {FormatBotRandomizerLeaseStatus()}";
+            $"cosmetics_evidence={counts.Files} cosmetic_weapons={counts.Weapons} cosmetic_knives={counts.Knives} cosmetic_gloves={counts.Gloves} cosmetic_agents={counts.Agents} sticker_evidence={counts.Stickers} charm_evidence={counts.Charms} {FormatBotRandomizerLeaseStatus()}";
     }
 
     private (int Files, int Weapons, int Knives, int Gloves, int Agents, int Stickers, int Charms) CountLoadedCosmeticEvidence()

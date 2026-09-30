@@ -425,7 +425,18 @@ namespace cs2bh
         if (!gameServer)
             return false;
 
+#if defined(_WIN32)
+        // The SDK slot can lag the engine and call FillServerInfo with a slot
+        // number as its message pointer. Use the packaged engine layout.
+        if (targets::kVTSlot_UserInfoChanged < 0 || !ResolveClientBySlot(slot))
+            return false;
+        using UserInfoChangedFn = void (*)(void *, CPlayerSlot);
+        auto **vtable = *reinterpret_cast<void ***>(gameServer);
+        reinterpret_cast<UserInfoChangedFn>(vtable[targets::kVTSlot_UserInfoChanged])(
+            gameServer, CPlayerSlot(slot));
+#else
         gameServer->UserInfoChanged(CPlayerSlot(slot));
+#endif
         return true;
     }
 
@@ -529,6 +540,8 @@ namespace cs2bh
 #if defined(_WIN32)
         targets::kVTSlot_ClientSetName = FindPlatformOffset(
             gamedata, "CServerSideClient::SetName", targets::kVTSlot_ClientSetName);
+        targets::kVTSlot_UserInfoChanged = FindPlatformOffset(
+            gamedata, "CNetworkGameServerBase::UserInfoChanged", targets::kVTSlot_UserInfoChanged);
 #endif
         targets::kEntSys_OffsetInGameResSvc = FindPlatformOffset(
             gamedata, "GameResourceServiceServer::m_pEntitySystem",
@@ -574,6 +587,8 @@ namespace cs2bh
 #if defined(_WIN32)
         if (targets::kVTSlot_ClientSetName < 0)
             return "CServerSideClient::SetName";
+        if (targets::kVTSlot_UserInfoChanged < 0)
+            return "CNetworkGameServerBase::UserInfoChanged";
 #endif
         return nullptr;
     }
@@ -1860,7 +1875,8 @@ namespace cs2bh
             uint64_t sid = ReadPublishedSteamId(idx);
             if (sid != 0)
                 ssc::WriteSteamId(pClient, sid);
-            RefreshClientUserInfo(idx);
+            // PRE only changed server-side identity temporarily. The published
+            // userinfo is already correct; kick completion needs no broadcast.
             ++redisguised;
         }
 

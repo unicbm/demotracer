@@ -67,6 +67,8 @@ public sealed class ReplayLifecycleBoundaryTests
         slots.MarkPlaying(4);
         Assert.True(slots.Release(4)); // Execution already handed to another provider.
         var releasedEpoch = slots.CurrentEpoch(4);
+        var prepared = GetProperty<HashSet<int>>(session, "WeaponLoadoutSyncedSlots");
+        prepared.Add(4);
 
         // The actual release entry point must be safe without an engine: it
         // must neither unlock this slot nor clear a later owner's native input,
@@ -77,6 +79,7 @@ public sealed class ReplayLifecycleBoundaryTests
         Assert.True(slots.IsLoaded(4));
         Assert.False(slots.IsOwned(4));
         Assert.Equal(releasedEpoch, slots.CurrentEpoch(4));
+        Assert.Contains(4, prepared);
         Assert.True(slots.Unload(4));
         Invoke<object?>(plugin, "ReleaseReplaySlot", 4, "repeat_after_unload", kind);
     }
@@ -105,8 +108,10 @@ public sealed class ReplayLifecycleBoundaryTests
         Assert.False(Invoke<bool>(plugin, "TryAssignInitialRoundSpawns", arguments));
     }
 
-    [Fact]
-    public void StopCancelsQueuedStartsAndSpawnRetriesBeforeAnotherStartCanBeQueued()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StopCancelsQueuedStartsAndSpawnRetriesBeforeAnotherStartCanBeQueued(bool unload)
     {
         var plugin = CreatePlugin();
         var session = GetField<object>(plugin, "_session");
@@ -119,7 +124,10 @@ public sealed class ReplayLifecycleBoundaryTests
         // Exercise the actual stop entry point with no live pawns. Its pending
         // work exists before the first native replay starts, as on freeze end
         // or the deferred respawn path.
-        Invoke<object?>(plugin, "StopLoadedReplaySlots", "test_stop");
+        if (unload)
+            typeof(DemoTracerPlugin).GetMethod("StopAndUnloadLoaded", PrivateInstance, Type.EmptyTypes)!.Invoke(plugin, null);
+        else
+            Invoke<object?>(plugin, "StopLoadedReplaySlots", "test_stop");
 
         var nextEpoch = GetField<long>(plugin, "_replayRoundWorkEpoch");
         Assert.True(nextEpoch > previousEpoch);
@@ -128,6 +136,40 @@ public sealed class ReplayLifecycleBoundaryTests
         Assert.True(roundWork.TrySchedule(ReplayRoundWorkKind.Start, nextEpoch));
         Assert.False(roundWork.TryConsume(ReplayRoundWorkKind.Start, previousEpoch));
         Assert.True(roundWork.TryConsume(ReplayRoundWorkKind.Start, nextEpoch));
+    }
+
+    [Fact]
+    public void UnloadingSessionDiscardsOldExecutionButKeepsWarmBuffersAndNextPlan()
+    {
+        var plugin = CreatePlugin();
+        var session = GetField<object>(plugin, "_session");
+        var slots = GetProperty<ReplaySlotRegistry>(session, "ReplaySlots");
+        var oldEpoch = slots.LoadAndClaim(4).Epoch;
+        slots.Release(4);
+        var plan = GetProperty<ReplayPlanState>(session, "Plan");
+        plan.SequenceActive = true;
+        var warm = GetProperty<HashSet<int>>(session, "WarmReplayBufferSlots");
+        warm.Add(4);
+        var inventories = GetProperty<Dictionary<int, ReplayInventoryTimeline>>(session, "ReplayInventoryBySlot");
+        inventories[4] = new ReplayInventoryTimeline([]);
+        var equipment = GetProperty<ReplayPawnEquipmentSyncTracker>(session, "PawnEquipmentSync");
+        var identity = new ReplayPawnEquipmentIdentity(4, 0x8004, 1, 76561198000000004);
+        equipment.MarkSynced(4, identity);
+        GetProperty<HashSet<int>>(session, "FreezePrerollSlots").Add(4);
+        GetProperty<Dictionary<int, int>>(session, "ReplayHifiEventNextBySlot")[4] = 27;
+
+        Invoke<object?>(plugin, "ClearLoadedReplaySession");
+        Invoke<object?>(plugin, "ClearLoadedReplaySession");
+
+        Assert.False(slots.HasAnyState);
+        Assert.False(slots.IsCurrentEpoch(4, oldEpoch));
+        Assert.Empty(inventories);
+        Assert.Empty(GetProperty<HashSet<int>>(session, "FreezePrerollSlots"));
+        Assert.Empty(GetProperty<Dictionary<int, int>>(session, "ReplayHifiEventNextBySlot"));
+        Assert.False(equipment.IsSynced(4, identity));
+        Assert.Contains(4, warm);
+        Assert.True(plan.SequenceActive);
+        Assert.True(slots.LoadAndClaim(4).Epoch > oldEpoch);
     }
 
     [Fact]
@@ -230,7 +272,8 @@ public sealed class ReplayLifecycleBoundaryTests
         var plugin = (DemoTracerPlugin)RuntimeHelpers.GetUninitializedObject(typeof(DemoTracerPlugin));
         foreach (var name in new[]
                  {
-                     "_session", "_replaySlotWork", "_replayRoundWork", "_pendingSafeC4DropHandles",
+                     "_session", "_replaySlotWork", "_replayRoundWork", "_pendingSafeC4DropHandles", "_botRandomizerLease",
+                     "_voiceClipPreloadGate",
                      "_retainedBotHiderPresentation", "_activeBotHiderReplaySteamIds",
                      "_retainedReplayViewmodelSlots", "_replayLeftHandDesiredLatches"
                  })

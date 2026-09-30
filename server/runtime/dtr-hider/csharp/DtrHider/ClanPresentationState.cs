@@ -23,8 +23,10 @@ internal sealed class ClanPresentationState
         if (requested == null && _base == null)
             return false;
         var current = read();
+        // CSS returns null for an unset native string, but its setter calls
+        // strdup unconditionally. Capture an empty tag, never a null pointer.
         if (requested != null)
-            _base ??= current;
+            _base ??= current with { Tag = current.Tag ?? string.Empty };
         var target = requested ?? _base!;
         var changed = current != target;
         if (changed || _pending)

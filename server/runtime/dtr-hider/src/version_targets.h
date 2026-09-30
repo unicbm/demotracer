@@ -13,6 +13,7 @@ namespace cs2bh::targets
 #if defined(_WIN32)
     // CServerSideClient::SetName vtable slot, loaded from gamedata.
     inline int kVTSlot_ClientSetName = -1;
+    inline int kVTSlot_UserInfoChanged = -1;
 #else
     // Preserve the upstream Linux CreateFakeClient hook path
     inline constexpr int kVTSlot_CreateFakeClient = 52;

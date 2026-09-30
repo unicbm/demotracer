@@ -25,10 +25,7 @@ public sealed partial class DemoTracerPlugin
     }
 
     private void InvalidateLoadedReplayCosmeticAlignmentForSlot(int slot)
-    {
-        _cosmeticAlignmentTracker.Invalidate(slot);
-        _session.CosmeticSyncedSlots.Remove(slot);
-    }
+        => _session.CosmeticSyncedSlots.Remove(slot);
 
     private bool HasCurrentLoadedReplayCosmeticAlignment(int slot, LoadedReplay replay)
         => _session.CosmeticSyncedSlots.Contains(slot) &&

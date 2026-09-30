@@ -30,6 +30,12 @@ inputs live in `config/`; the project links them into its normal build output.
 Tests stay in `tests/DemoTracer.Tests/`. License and source provenance stay at the
 repository root.
 
+`ReplaySessionState` owns the reset rules for managed execution and loaded
+replay state. Native control release and presentation restoration remain at
+the plugin lifecycle boundary. Warm buffers and pending round plans have
+separate lifetimes and do not grant bot write ownership. Cosmetic application
+belongs to BotRandomizer; DemoTracer tracks accepted plans, not entity writes.
+
 ## Dependencies
 
 Build from the DemoTracer working tree. Builds use .NET 10 and

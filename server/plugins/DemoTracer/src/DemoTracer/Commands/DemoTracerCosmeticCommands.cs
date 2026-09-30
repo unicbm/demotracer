@@ -177,8 +177,6 @@ public sealed partial class DemoTracerPlugin
         if (!_cosmeticAlignEnabled)
         {
             ResetCosmeticAlignState();
-            ResetStickerAlignState();
-            ResetCharmAlignState();
         }
     }
 
@@ -285,24 +283,18 @@ public sealed partial class DemoTracerPlugin
 
         ApplyCosmeticPreset(CosmeticPreset.Off);
         ResetCosmeticAlignState();
-        ResetStickerAlignState();
-        ResetCharmAlignState();
     }
 
     private void SetStickerAlignEnabled(bool enabled)
     {
         _stickerAlignEnabled = enabled;
         RefreshCosmeticAlignEnabled();
-        if (!_stickerAlignEnabled)
-            ResetStickerAlignState();
     }
 
     private void SetCharmAlignEnabled(bool enabled)
     {
         _charmAlignEnabled = enabled;
         RefreshCosmeticAlignEnabled();
-        if (!_charmAlignEnabled)
-            ResetCharmAlignState();
     }
 
     private void SetCrosshairAlignEnabled(bool enabled)
@@ -310,7 +302,7 @@ public sealed partial class DemoTracerPlugin
         if (!enabled)
         {
             _crosshairAlignEnabled = false;
-            ResetCrosshairAlignState();
+            ClearReplayCrosshairPresentation();
             return;
         }
 

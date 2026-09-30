@@ -33,6 +33,7 @@ public sealed partial class DemoTracerPlugin
     private void StopAndUnloadLoaded(bool clearArmedPlan, bool releaseBuffers)
     {
         CancelAllReplayDeferredWork();
+        InvalidateFreezePreroll();
         CancelDtrRoundBanner(resetRound: false);
         InvalidateInitialSpawnAssignment();
         ClearLoadedTeamAvatarOverrides("unload_all");
@@ -56,20 +57,7 @@ public sealed partial class DemoTracerPlugin
         }
         if (releaseBuffers)
             ReleaseUnusedWarmReplayBuffers();
-        _session.ReplaySlots.Clear();
-        _session.LoadedReplays.Clear();
-        _session.ReplayIdentityGenerationBySlot.Clear();
-        ClearStoppedReplayExecutionState();
-        _session.WeaponLoadoutSyncedSlots.Clear();
-        _session.PawnEquipmentSync.Clear();
-        _session.BalanceSyncedSlots.Clear();
-        ResetCosmeticAlignState(resetCounters: true);
-        ResetStickerAlignState(resetCounters: true);
-        ResetCharmAlignState(resetCounters: true);
-        ResetCrosshairAlignState(resetCounters: true);
-        ResetViewmodelAlignState(resetCounters: true);
-        ResetScoreboardAlignState(resetCounters: true);
-        _session.LoadedRoundScoreboard = null;
+        ClearLoadedReplaySession();
         if (clearArmedPlan)
         {
             _session.Plan.ClearArmed();
@@ -120,25 +108,10 @@ public sealed partial class DemoTracerPlugin
             ClearVoiceClipCache();
             ClearLoadedAutoChat();
 
-            _session.ReplaySlots.Clear();
             _session.WarmReplayBufferSlots.Clear();
-            _session.LoadedReplays.Clear();
             ClearReplayRetentionPriority(clearPending: true);
             ClearRetainedBotHiderPresentation();
-            _session.ReplayHifiEventNextBySlot.Clear();
-            _session.ReplayInventoryBySlot.Clear();
-            _session.ReplayIdentityGenerationBySlot.Clear();
-            ClearStoppedReplayExecutionState();
-            _session.WeaponLoadoutSyncedSlots.Clear();
-            _session.PawnEquipmentSync.Clear();
-            _session.BalanceSyncedSlots.Clear();
-            ResetCosmeticAlignState(resetCounters: true);
-            ResetStickerAlignState(resetCounters: true);
-            ResetCharmAlignState(resetCounters: true);
-            ResetCrosshairAlignState(resetCounters: true);
-            ResetViewmodelAlignState(resetCounters: true);
-            ResetScoreboardAlignState(resetCounters: true);
-            _session.LoadedRoundScoreboard = null;
+            ClearLoadedReplaySession();
 
             _session.Plan.ClearArmed();
             StopSequenceState();
@@ -201,17 +174,19 @@ public sealed partial class DemoTracerPlugin
 
     private void ClearStoppedReplayExecutionState()
     {
-        _session.LastEnsuredWeaponDef.Clear();
-        _session.LastReplayWeaponDef.Clear();
-        _session.LastLockedWeaponTarget.Clear();
         ClearAllPendingWeaponSlotReplacements("replay_execution_stopped");
-        _session.ProjectileAlignNextBySlot.Clear();
         BotControllerNative.ClearProjectileBirthAlign();
-        _session.RebuiltInventorySlots.Clear();
-        _session.ReplayPerceptionBaselineSerial.Clear();
-        _session.PendingBulletHits.Clear();
-        _session.PendingBulletDamages.Clear();
-        _session.SafeC4Aligned = false;
+        _session.ClearExecution();
+    }
+
+    private void ClearLoadedReplaySession()
+    {
+        _session.ClearLoaded();
+        ClearAllPendingWeaponSlotReplacements("replay_execution_stopped");
+        BotControllerNative.ClearProjectileBirthAlign();
+        ClearReplayCrosshairPresentation();
+        RestoreAllReplayBotViewmodels();
+        ResetScoreboardAlignState(resetCounters: true);
     }
 
     private void ReleaseUnusedWarmReplayBuffers()

@@ -82,12 +82,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private bool _scoreboardAlignEnabled;
     private bool _leftHandDesiredEnabled = true;
     private bool _balanceAlignEnabled;
-    private int _cosmeticAppliedCount;
-    private int _cosmeticSkippedCount;
-    private int _stickerAppliedCount;
-    private int _stickerSkippedCount;
-    private int _charmAppliedCount;
-    private int _charmSkippedCount;
     private int _scoreboardAppliedCount;
     private int _scoreboardSkippedCount;
     private HandoffMode _handoffMode = HandoffMode.DeathContactC4;

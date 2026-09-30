@@ -39,6 +39,12 @@
     },
     "comment": "updates the client display name"
   },
+  "CNetworkGameServerBase::UserInfoChanged": {
+    "offsets": {
+      "windows": 76
+    },
+    "comment": "publishes client userinfo; the preceding slot is FillServerInfo"
+  },
   "GameResourceServiceServer::m_pEntitySystem": {
     "offsets": {
       "windows": 88,

@@ -11,6 +11,39 @@ namespace DemoTracer.Tests;
 
 public sealed class BotHiderSlotReleaseTests
 {
+    [Theory]
+    [InlineData("disconnect")]
+    [InlineData("native_slot_lost")]
+    [InlineData("map")]
+    [InlineData("replacement")]
+    [InlineData("dispose")]
+    public void ExpiredClanOwnershipDoesNotAccessTheEngine(string boundary)
+    {
+        using var client = new NativePresentationClient();
+        var service = new BotHiderPresentationService(client);
+        service.ObserveSlot(1, 7, 0x8005, 20);
+        var slots = (BotHiderPresentationService.SlotState[])typeof(BotHiderPresentationService)
+            .GetField("_slots", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(service)!;
+        var clan = slots[1].Clan = new ClanPresentationState();
+        var current = new BotHiderClan("base", 0);
+        clan.Apply(new("demo team", 42), () => current, value => current = value, () => { });
+
+        // No CSS engine is loaded here. Any attempt to resolve the expired
+        // controller (as the old restoration path did) makes this test fail.
+        switch (boundary)
+        {
+            case "disconnect": service.HandleClientDisconnect(1); break;
+            case "native_slot_lost": Assert.False(service.IsManagedBot(1)); break;
+            case "map": service.ResetForMapBoundary(); break;
+            case "replacement": service.ObserveSlot(1, 8, 0x10005, 21); break;
+            case "dispose": service.Dispose(); break;
+        }
+
+        Assert.Null(slots[1].Clan);
+        Assert.Equal(new BotHiderClan("demo team", 42), current);
+    }
+
     [Fact]
     public void OneBotLeavingPreservesOtherDemoIdentitiesUntilOwnerCancellation()
     {

@@ -72,8 +72,11 @@ Clan is the exception: native personas do not own a clan, so the managed
 provider captures its controller base as one tag/group-ID pair, per controller
 incarnation. The nullable API v3 pair restores that base on release; an empty
 pair explicitly clears it. Failed writes or notifications retain the saved
-base and pending status for rollback/retry. Teardown restores only the exact
-previous controller handle and user ID, never a replacement player.
+base and pending status for rollback/retry. Unset native tags are captured as
+empty strings because CSS cannot write a null string. Lease release and managed
+provider unload restore live owned controllers through the normal publisher.
+Disconnect, controller replacement, map and native-session changes discard
+captured state without accessing the expired controller.
 The publisher also compares effective lease values with live controller fields
 at actual lifecycle/change events and schedules reconciliation after spawn/death. This
 prevents engine lifecycle writes from exposing the persona base while a lease
@@ -83,6 +86,11 @@ Native loading after server startup is unsupported. Unload refuses while the
 active-slot set is nonempty, before removing hooks or clearing presentation
 state. Deploy native updates with a full server restart. The remaining empty
 runtime unload path drains callbacks and clears schema state.
+
+Kick commands temporarily change server-side identity without broadcasting it;
+survivors need no userinfo publication when that temporary change is reversed.
+Other Windows userinfo updates use the gamedata virtual slot, not the SDK's
+compiled position, which can drift into the adjacent `FillServerInfo` method.
 
 Entity packing gathers and deduplicates all managed pawn handles into one
 fixed 64-entry buffer before writing any flag. It then compacts the modified

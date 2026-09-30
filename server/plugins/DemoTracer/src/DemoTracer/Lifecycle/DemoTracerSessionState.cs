@@ -58,5 +58,68 @@ public sealed partial class DemoTracerPlugin
         public ReplayRoundScoreboard? LoadedRoundScoreboard { get; set; }
 
         public long NextReplayIdentityGeneration { get; set; }
+
+        public void ClearWeaponSelection(int slot)
+        {
+            LastEnsuredWeaponDef.Remove(slot);
+            LastReplayWeaponDef.Remove(slot);
+            LastLockedWeaponTarget.Remove(slot);
+        }
+
+        public void InvalidateEquipment(int slot)
+        {
+            RebuiltInventorySlots.Remove(slot);
+            WeaponLoadoutSyncedSlots.Remove(slot);
+            PawnEquipmentSync.Invalidate(slot);
+            BalanceSyncedSlots.Remove(slot);
+        }
+
+        // Execution ends independently of loaded buffers and presentation.
+        // Handoff keeps the prepared inventory; unload invalidates it.
+        public void ClearSlotExecution(int slot)
+        {
+            ClearWeaponSelection(slot);
+            FreezePrerollSlots.Remove(slot);
+            ResumedFreezePrerollSlots.Remove(slot);
+            ProjectileAlignNextBySlot.Remove(slot);
+            ReplayHifiEventNextBySlot.Remove(slot);
+            ReplayInventoryBySlot.Remove(slot);
+            ReplayPerceptionBaselineSerial.Remove(slot);
+            PendingBulletHits.Remove(slot);
+            PendingBulletDamages.Remove(slot);
+        }
+
+        public void ClearExecution()
+        {
+            LastEnsuredWeaponDef.Clear();
+            LastReplayWeaponDef.Clear();
+            LastLockedWeaponTarget.Clear();
+            FreezePrerollSlots.Clear();
+            ResumedFreezePrerollSlots.Clear();
+            ProjectileAlignNextBySlot.Clear();
+            ReplayHifiEventNextBySlot.Clear();
+            ReplayInventoryBySlot.Clear();
+            RebuiltInventorySlots.Clear();
+            ReplayPerceptionBaselineSerial.Clear();
+            PendingBulletHits.Clear();
+            PendingBulletDamages.Clear();
+            SafeC4Aligned = false;
+        }
+
+        // Native execution must be released first; presentation retains its
+        // own restoration state until the plugin restores live entities.
+        // Warm buffers and scheduling plans have longer, separate lifetimes.
+        public void ClearLoaded()
+        {
+            ReplaySlots.Clear();
+            LoadedReplays.Clear();
+            ReplayIdentityGenerationBySlot.Clear();
+            ClearExecution();
+            WeaponLoadoutSyncedSlots.Clear();
+            PawnEquipmentSync.Clear();
+            BalanceSyncedSlots.Clear();
+            CosmeticSyncedSlots.Clear();
+            LoadedRoundScoreboard = null;
+        }
     }
 }

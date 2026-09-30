@@ -308,11 +308,7 @@ public sealed partial class DemoTracerPlugin
 
         RefreshCosmeticAlignEnabled();
         if (!_cosmeticAlignEnabled)
-        {
             ResetCosmeticAlignState();
-            ResetStickerAlignState();
-            ResetCharmAlignState();
-        }
         _ = SyncBotRandomizerCosmeticLease(announce: false);
     }
 

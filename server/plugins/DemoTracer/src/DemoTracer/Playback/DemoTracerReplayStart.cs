@@ -73,9 +73,7 @@ public sealed partial class DemoTracerPlugin
             if (restartLoop &&
                 (!_session.ReplaySlots.TryGet(slot, out var owner) || !owner.IsPlaying || !owner.Loop))
                 continue;
-            _session.LastEnsuredWeaponDef.Remove(slot);
-            _session.LastReplayWeaponDef.Remove(slot);
-            _session.LastLockedWeaponTarget.Remove(slot);
+            _session.ClearWeaponSelection(slot);
 
             if (!IsReplaySlotStillSafe(slot))
             {
@@ -145,10 +143,7 @@ public sealed partial class DemoTracerPlugin
             _session.ReplaySlots.InvalidateWrites(slot);
             CancelReplaySlotDeferredWork(slot);
             ClearPendingWeaponSlotReplacementsForSlot(slot);
-            _session.WeaponLoadoutSyncedSlots.Remove(slot);
-            _session.PawnEquipmentSync.Invalidate(slot);
-            _session.RebuiltInventorySlots.Remove(slot);
-            _session.BalanceSyncedSlots.Remove(slot);
+            _session.InvalidateEquipment(slot);
             _session.PendingBulletHits.Remove(slot);
             _session.PendingBulletDamages.Remove(slot);
         }

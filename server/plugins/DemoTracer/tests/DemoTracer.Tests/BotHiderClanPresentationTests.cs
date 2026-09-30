@@ -67,6 +67,30 @@ public sealed class BotHiderClanPresentationTests
         Assert.Equal(original, current);
     }
 
+    [Theory]
+    [InlineData("demo team", 42u)]
+    [InlineData("", 0u)]
+    public void UnsetNativeTagRestoresAsEmptyInsteadOfPassingNullToCss(string tag, uint id)
+    {
+        // CSS's string reader returns null for an unset m_szClan despite its
+        // non-nullable signature. Its native setter would call strdup(NULL).
+        var current = new BotHiderClan(null!, 0);
+        var state = new ClanPresentationState();
+        void Write(BotHiderClan value)
+        {
+            Assert.NotNull(value.Tag);
+            current = value;
+        }
+
+        var requested = new BotHiderClan(tag, id);
+        state.Apply(requested, () => current, Write, () => { });
+        Assert.Equal(requested, current);
+        state.Apply(null, () => current, Write, () => { });
+
+        Assert.Equal(new BotHiderClan("", 0), current);
+        Assert.False(state.HasOverride);
+    }
+
     [Fact]
     public void FailedNotificationRetriesEvenWhenReadbackAlreadyMatches()
     {
