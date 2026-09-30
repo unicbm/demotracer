@@ -745,12 +745,7 @@ fn validate_handoff(
     collect_unknown_keys(
         "$.handoff",
         section,
-        &[
-            "mode",
-            "scope",
-            "threat_360",
-            "viewmodel_continuity",
-        ],
+        &["mode", "scope", "threat_360", "viewmodel_continuity"],
         unknown,
     );
     validate_string_enum_untrimmed(
@@ -1103,12 +1098,7 @@ fn canonicalize_known_field_names(value: &mut Value) {
     canonicalize_section(
         root,
         "handoff",
-        &[
-            "mode",
-            "scope",
-            "threat_360",
-            "viewmodel_continuity",
-        ],
+        &["mode", "scope", "threat_360", "viewmodel_continuity"],
     );
     canonicalize_section(
         root,
