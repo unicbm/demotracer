@@ -78,6 +78,24 @@ The optional field is additive: manifest ABI 19 and `.dtr` v12 stay unchanged.
 Playback requires the matched BotHider managed API v3 to apply clan evidence.
 Older archives remain playable; re-export the source demo to add this evidence.
 
+## Manifest Crosshair Evidence
+
+`files[].view.crosshair_code` preserves the demo's sharing code as an opaque
+string. Both legacy `CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx` codes and the newer
+46-character `CS`-prefixed codes are retained. Playback publishes the original
+code through the controller's networked crosshair field; the game client owns
+rendering, including its GPU crosshair path. No server-side HUD geometry or
+re-encoding is involved. The existing 63-byte publication limit accommodates
+both formats, so manifest and native API versions are unchanged.
+
+The GUI decodes legacy V1/V3/V4 and CS-format version 1. It retains signed gap,
+independent outline RGBA, split alpha precision, and scope-dot color/scale
+settings. Reference previews support Static Quadrant ring sectors and full/half
+outlines. They use a 1080p reference without live weapon spread or recoil;
+scope-dot settings remain in the original code and do not turn the ordinary
+crosshair thumbnail into a scoped view. Unsupported formats show unavailable
+instead of being interpreted as an older layout.
+
 ## Manifest Cosmetic Inspect Data
 
 Manifest ABI 17 cosmetics may include this additive, optional object on each
@@ -330,6 +348,14 @@ For raw planes `state1`, `state2`, and `state3`, semantic masks are decoded as
 available, the canonical loss-limited reconstruction is `state1 = current`,
 `state2 = current ^ previous`, and `state3 = 0`; a same-command press-release
 cannot be reconstructed from held snapshots alone.
+
+Silent reload uses the existing reload input bit (`1 << 13`): a sustained hold
+and its eventual release must survive as command planes and subtick edges,
+including a press and release within one command. The converter does not
+reduce reload input to a `weapon_reload` event or invent a fixed reload duration.
+The live engine decides reload speed and sound; archived ammo/reload flags do
+not overwrite that state. Starting playback in the middle of a reload cannot
+reconstruct the missing earlier input from a reload flag alone.
 
 ### `SubtickMoveV3`
 

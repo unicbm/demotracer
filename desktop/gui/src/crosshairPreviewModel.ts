@@ -4,18 +4,15 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { decodeCrosshairShareCode, type Crosshair } from "csgo-sharecode";
+import { decodeCrosshairCode, type Crosshair } from "./crosshairCode.ts";
 
-// V3/V4 store pixel dimensions at the author's screen height. Previews use a
+// V3/V4 and CS-prefixed codes store pixel dimensions at the author's screen height. Previews use a
 // fixed 1080p reference, with no weapon inaccuracy or recoil simulation.
 export const CROSSHAIR_REFERENCE_HEIGHT = 1080;
 
 export function decodePreviewCrosshair(code: string): Crosshair {
-  if (!/^CSGO(?:-[ABCDEFGHJKLMNOPQRSTUVWXYZabcdefhijkmnopqrstuvwxyz23456789]{5}){5}$/.test(code)) {
-    throw new Error("Invalid crosshair code");
-  }
-  const crosshair = decodeCrosshairShareCode(code);
-  const maxStyle = crosshair.version === 1 ? 5 : crosshair.version === 3 ? 7 : 8;
+  const crosshair = decodeCrosshairCode(code);
+  const maxStyle = crosshair.version === 1 ? 5 : crosshair.version === 3 ? 7 : crosshair.version === 4 ? 8 : 9;
   if (crosshair.style > maxStyle || (crosshair.version === 4 && crosshair.outlineMode > 2)) {
     throw new Error("Unsupported crosshair settings");
   }
@@ -49,7 +46,7 @@ export function resolveCrosshairOpacity(crosshair: Crosshair): number {
 }
 
 export function resolveCrosshairOutline(crosshair: Crosshair): number {
-  if (crosshair.version === 4) return crosshair.outlineMode === 0 ? 0 : 1;
+  if (crosshair.version === 4 || crosshair.version === "cs1") return crosshair.outlineMode === 0 ? 0 : 1;
   if (crosshair.version === 3) return crosshair.outlineEnabled ? 1 : 0;
   return crosshair.outlineEnabled ? Math.max(0, crosshair.outline) : 0;
 }
@@ -96,11 +93,14 @@ interface CrosshairCircle {
   y: number;
   radius: number;
   thickness: number;
+  arcRadians?: number;
 }
 
 function buildPixelCrosshair(crosshair: Exclude<Crosshair, { version: 1 }>, size: number) {
   const scale = crosshair.screenHeight > 0 ? CROSSHAIR_REFERENCE_HEIGHT / crosshair.screenHeight : 1;
   const pixels = (value: number) => value > 0 ? Math.max(1, Math.round(value * scale)) : 0;
+  // A negative classic-dynamic gap offsets live weapon spread. At the preview's
+  // zero-spread reference, the native shape builder clamps the result to zero.
   const gap = pixels(crosshair.gap);
   const length = pixels(crosshair.length);
   const thickness = pixels(crosshair.thickness);
@@ -113,9 +113,17 @@ function buildPixelCrosshair(crosshair: Exclude<Crosshair, { version: 1 }>, size
 
   if (crosshair.style === 1 || crosshair.style === 3) {
     circles.push({
-      x: center - (even ? 0 : 0.5), y: center - (even ? 0 : 0.5),
+      x: center - (even ? 0 : 0.5) - (crosshair.version === "cs1" ? 0.5 : 0),
+      y: center - (even ? 0 : 0.5) - (crosshair.version === "cs1" ? 0.5 : 0),
       radius: (crosshair.style === 3 ? Math.max(1, gap) : gap) + thickness,
       thickness: Math.max(1, thickness - 1),
+    });
+  } else if (crosshair.version === "cs1" && crosshair.style === 9) {
+    // Static Quadrant uses the split-size ratio as its arc angle (0..90 degrees).
+    circles.push({
+      x: center - (even ? 0.5 : 1), y: center - (even ? 0.5 : 1),
+      radius: Math.max(1, gap) + thickness, thickness,
+      arcRadians: crosshair.splitSizeRatio * Math.PI / 2,
     });
   } else if (crosshair.style === 8) {
     const low = center - gap - thickness - (crosshair.centerDotEnabled && !even ? 1 : 0);
@@ -160,7 +168,7 @@ export function rasterizeCrosshair(crosshair: Crosshair, size = 48) {
   const logicalOutline = resolveCrosshairOutline(crosshair);
   const outlineBefore = crosshair.version === 1 && logicalOutline > 0
     ? Math.max(1, Math.round(logicalOutline * size / 64)) : logicalOutline;
-  const outlineAfter = crosshair.version === 4 && crosshair.outlineMode === 2 ? 0 : outlineBefore;
+  const outlineAfter = (crosshair.version === 4 || crosshair.version === "cs1") && crosshair.outlineMode === 2 ? 0 : outlineBefore;
   const circleBounds = geometry.circles.map((circle) => ({
     x: circle.x - circle.radius, y: circle.y - circle.radius,
     width: circle.radius * 2 + 1, height: circle.radius * 2 + 1,
@@ -173,6 +181,9 @@ export function rasterizeCrosshair(crosshair: Crosshair, size = 48) {
     ? [1, 3, 5].map((offset) => parseInt(color.slice(offset, offset + 2), 16))
     : [crosshair.red, crosshair.green, crosshair.blue];
   const opacity = resolveCrosshairOpacity(crosshair);
+  const outlineRgb = crosshair.version === "cs1"
+    ? [crosshair.outlineRed, crosshair.outlineGreen, crosshair.outlineBlue] : [0, 0, 0];
+  const outlineOpacity = crosshair.version === "cs1" ? crosshair.outlineAlpha / 255 : opacity;
   for (let y = 0; y < width; y++) {
     for (let x = 0; x < width; x++) {
       const px = view.x + x * view.size / width;
@@ -192,17 +203,28 @@ export function rasterizeCrosshair(crosshair: Crosshair, size = 48) {
         const blend = Math.max(smoothstep(0, Math.PI / 2, angle), smoothstep(-Math.PI / 2, -Math.PI, angle));
         const outer = circle.radius + outlineBefore + (outlineAfter - outlineBefore) * blend;
         const inner = circle.radius - circle.thickness - outlineAfter - (outlineBefore - outlineAfter) * blend;
-        fill = Math.max(fill, smoothstep(circle.radius + 0.5, circle.radius - 0.5, distance) *
+        let fillArc = 1;
+        let borderArc = 1;
+        if (circle.arcRadians !== undefined) {
+          const quadrantAngle = Math.abs(angle - Math.floor(angle / (Math.PI / 2)) * (Math.PI / 2) - Math.PI / 4);
+          const halfArc = circle.arcRadians / 2;
+          const inverseRadius = 1 / Math.max(distance, 1);
+          const extent = outlineBefore + (outlineAfter - outlineBefore) * blend;
+          fillArc = smoothstep(halfArc + 0.5 * inverseRadius, halfArc - 0.5 * inverseRadius, quadrantAngle);
+          borderArc = smoothstep(halfArc + (extent + 0.5) * inverseRadius, halfArc + (extent - 0.5) * inverseRadius, quadrantAngle);
+        }
+        fill = Math.max(fill, fillArc * smoothstep(circle.radius + 0.5, circle.radius - 0.5, distance) *
           smoothstep(circle.radius - circle.thickness - 0.5, circle.radius - circle.thickness + 0.5, distance));
-        if (outlineBefore > 0) border = Math.max(border, smoothstep(outer + 0.5, outer - 0.5, distance) *
+        if (outlineBefore > 0) border = Math.max(border, borderArc * smoothstep(outer + 0.5, outer - 0.5, distance) *
           smoothstep(inner - 0.5, inner + 0.5, distance));
       }
       const fillAlpha = fill * opacity;
       // The native shader attenuates the outline by the fill alpha before
       // mixing it under the fill, so this factor occurs twice.
-      const alpha = fillAlpha + (1 - fillAlpha) ** 2 * border * opacity;
+      const borderAlpha = (1 - fillAlpha) ** 2 * border * outlineOpacity;
+      const alpha = fillAlpha + borderAlpha;
       const index = (y * width + x) * 4;
-      for (let c = 0; c < 3; c++) data[index + c] = alpha > 0 ? rgb[c] * fillAlpha / alpha : 0;
+      for (let c = 0; c < 3; c++) data[index + c] = alpha > 0 ? (rgb[c] * fillAlpha + outlineRgb[c] * borderAlpha) / alpha : 0;
       data[index + 3] = alpha * 255;
     }
   }

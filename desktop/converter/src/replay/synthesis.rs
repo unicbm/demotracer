@@ -624,6 +624,51 @@ mod tests {
     }
 
     #[test]
+    fn silent_reload_hold_release_and_tap_survive_archive_roundtrip() {
+        const RELOAD: u64 = 1 << 13;
+        // Press, hold for four commands, release, then tap within one command.
+        let planes = [
+            (RELOAD, RELOAD, 0),
+            (RELOAD, 0, 0),
+            (RELOAD, 0, 0),
+            (RELOAD, 0, 0),
+            (0, RELOAD, 0),
+            (0, 0, RELOAD),
+        ];
+        let mut rows = vec![row(100, 7)];
+        for (index, &(held, changed, scroll)) in planes.iter().enumerate() {
+            let mut sample = row(101 + index as i32, 7);
+            sample.buttonstates_present = true;
+            sample.buttonstate1 = held;
+            sample.buttonstate2 = changed;
+            sample.buttonstate3 = scroll;
+            if index == 0 || index == 5 {
+                sample.subtick_moves.push(subtick(0.125, RELOAD as u32));
+            }
+            if index == 4 || index == 5 {
+                let mut release = subtick(0.75, RELOAD as u32);
+                release.pressed = 0.0;
+                sample.subtick_moves.push(release);
+            }
+            rows.push(sample);
+        }
+        let rec = synthesize_player_rec(&rows, "de_dust2", 64.0, 1).unwrap();
+        let mut bytes = Vec::new();
+        crate::rec_writer::write_rec(&mut bytes, &rec).unwrap();
+        let decoded = crate::rec_writer::read_rec(&mut bytes.as_slice()).unwrap();
+        for (command, &(held, changed, scroll)) in decoded.command_frames.iter().zip(&planes) {
+            assert_eq!(
+                (command.buttons, command.buttons1, command.buttons2),
+                (held, changed, scroll)
+            );
+            assert_ne!(command.fields & crate::model::COMMAND_FIELD_BUTTONS, 0);
+        }
+        assert_eq!(decoded.command_frames.len(), planes.len());
+        assert_eq!(decoded.subticks, rec.subticks);
+        assert_eq!(decoded.subticks.len(), 4);
+    }
+
+    #[test]
     fn synthesis_preserves_wire_order_and_bounds_subticks() {
         let r0 = row(10, 7);
         let mut r1 = row(11, 7);

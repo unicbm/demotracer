@@ -2764,6 +2764,34 @@ mod tests {
     }
 
     #[test]
+    fn manifest_preserves_cs_prefixed_crosshair_code() {
+        let mut parsed = sample_demo();
+        parsed.rows = vec![
+            ParsedPlayerTick {
+                crosshair_code: Some("CSG4pWURDBtO7JeYvrNjoewqFQ9rGdZuDRmzyy5QLDFNrh".to_string()),
+                ..sample_row(100)
+            },
+            ParsedPlayerTick {
+                crosshair_code: Some(
+                    " CSG4pWURDBtO7JeYvrNjoewqFQ9rGdZuDRmzyy5QLDFNrh ".to_string(),
+                ),
+                ..sample_row(164)
+            },
+        ];
+
+        let memory = export_memory_with_cosmetics(parsed);
+        let view = memory.manifest.files[0]
+            .view
+            .as_ref()
+            .expect("expected view metadata");
+
+        assert_eq!(
+            view.crosshair_code.as_deref(),
+            Some("CSG4pWURDBtO7JeYvrNjoewqFQ9rGdZuDRmzyy5QLDFNrh")
+        );
+    }
+
+    #[test]
     fn conflicting_crosshair_codes_are_skipped() {
         let mut parsed = sample_demo();
         parsed.rows = vec![

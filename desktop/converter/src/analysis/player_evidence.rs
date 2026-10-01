@@ -312,12 +312,14 @@ pub(super) fn summarize_player_details(
         if !row.is_alive {
             continue;
         }
-        if let Some(code) = row
-            .crosshair_code
-            .as_deref()
-            .map(str::trim)
-            .filter(|code| code.starts_with("CSGO-") && code.len() > 5)
-        {
+        if let Some(code) = row.crosshair_code.as_deref().map(str::trim).filter(|code| {
+            (code.starts_with("CSGO-") && code.len() > 5)
+                || (code.starts_with("CS")
+                    && code.len() == 46
+                    && code[2..].bytes().all(|byte| {
+                        b"ABCDEFGHJKLMNOPQRSTUVWXYZabcdefhijkmnopqrstuvwxyz23456789".contains(&byte)
+                    }))
+        }) {
             if !accumulator.crosshair_codes.contains(code) {
                 accumulator.crosshair_codes.insert(code.to_string());
             }
@@ -948,6 +950,8 @@ mod tests {
             crosshair_code: Some(
                 if tick == 100 {
                     "CSGO-AAAAA"
+                } else if tick == 300 {
+                    "CSG4pWURDBtO7JeYvrNjoewqFQ9rGdZuDRmzyy5QLDFNrh"
                 } else {
                     "CSGO-BBBBB"
                 }
@@ -997,7 +1001,14 @@ mod tests {
         assert_eq!(details.headshot_kills, Some(3));
         assert_eq!(details.total_damage, Some(1_250));
         assert_eq!(details.stats_rounds, Some(1));
-        assert_eq!(details.crosshair_codes, ["CSGO-AAAAA", "CSGO-BBBBB"]);
+        assert_eq!(
+            details.crosshair_codes,
+            [
+                "CSG4pWURDBtO7JeYvrNjoewqFQ9rGdZuDRmzyy5QLDFNrh",
+                "CSGO-AAAAA",
+                "CSGO-BBBBB",
+            ]
+        );
         assert_eq!(details.viewmodels.len(), 1);
         assert_eq!(details.music_kit_ids, [42]);
         assert_eq!(details.cosmetics.len(), 2);

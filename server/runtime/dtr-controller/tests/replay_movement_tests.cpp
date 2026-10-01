@@ -214,6 +214,37 @@ namespace
         mr::SetReplayPerfEnabled(false);
     }
 
+    void SilentReloadCommandHoldAndRelease()
+    {
+        Reset();
+        constexpr uint64_t reload = 1ull << 13;
+        const uint64_t planes[6][3] = {
+            {reload, reload, 0}, {reload, 0, 0}, {reload, 0, 0},
+            {reload, 0, 0}, {0, reload, 0}, {0, 0, reload}};
+        std::array<ReplayTick, 6> ticks;
+        ticks.fill(Ticks()[0]);
+        std::array<BotController::ReplayCommandFrameData, 6> commands{};
+        for (size_t i = 0; i < commands.size(); ++i) {
+            commands[i].fields = mr::kCommandFieldButtons;
+            commands[i].buttons = planes[i][0];
+            commands[i].buttons1 = planes[i][1];
+            commands[i].buttons2 = planes[i][2];
+        }
+        Check(mr::LoadReplayExtended(slot, ticks.data(), 6, nullptr, 0,
+            commands.data(), 6, nullptr, 0), "load silent reload commands");
+        Check(mr::StartReplay(slot, false), "start silent reload commands");
+        for (size_t i = 0; i < commands.size(); ++i) {
+            mr::ReplayCommandFrame frame{};
+            Check(mr::ReplayCommandFrameForSimulation(slot, frame), "read silent reload command");
+            Check(frame.buttons0 == planes[i][0] && frame.buttons1 == planes[i][1] &&
+                frame.buttons2 == planes[i][2], "reload hold/release became an event pulse");
+            Prepare();
+            mr::OnReplayCommit(slot, services.data());
+        }
+        Check(!mr::IsReplaying(slot), "reload replay did not finish");
+        Check(inputReleases > 0, "reload input ownership leaked after finish");
+    }
+
     void StartSeekLoopAndHeldResume()
     {
         Reset();
@@ -597,6 +628,7 @@ int main()
     FinishAndHumanTakeover();
     InitializationFailureDoesNotConsumeBoundary();
     CommandAxisPresence();
+    SilentReloadCommandHoldAndRelease();
     StopPreservesNativeMovementState();
     StartAndStopRespectPawnOwnership();
     SourceStateRestoresAtBoundariesOnly();

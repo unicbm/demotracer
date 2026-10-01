@@ -4,7 +4,8 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import type { Crosshair, CrosshairV1 } from "csgo-sharecode";
+import type { CrosshairV1 } from "csgo-sharecode";
+import type { Crosshair } from "../crosshairCode";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import ancientSceneUrl from "../assets/crosshair-scenes/ancient.webp";
 import anubisSceneUrl from "../assets/crosshair-scenes/anubis.webp";

@@ -21,6 +21,23 @@ public sealed class BotHiderCrosshairPresentationTests
     }
 
     [Fact]
+    public void CsPrefixedCodeIsPublishedWithoutReencodingOrTruncation()
+    {
+        const string code = "CSG4pWURDBtO7JeYvrNjoewqFQ9rGdZuDRmzyy5QLDFNrh";
+        Assert.True(DtrHiderContract.TryNormalizeCrosshairCode("  " + code + "  ", out var normalized));
+        Assert.Equal(code, normalized);
+        var actual = "CSGO-previous";
+        var notifications = 0;
+        Assert.True(BotHiderPresentationService.TryWriteNetworkedCrosshair(
+            normalized!, false, () => actual, value => actual = value,
+            () => { notifications++; return true; }, out var changed, out var published));
+        Assert.True(changed);
+        Assert.True(published);
+        Assert.Equal(1, notifications);
+        Assert.Equal(code, actual);
+    }
+
+    [Fact]
     public void ContractRejectsCrosshairPastUtf8Limit()
     {
         var source = new string('x', DtrHiderContract.MaxCrosshairCodeUtf8Bytes + 1);
