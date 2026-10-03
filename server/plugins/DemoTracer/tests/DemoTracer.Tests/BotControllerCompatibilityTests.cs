@@ -12,6 +12,14 @@ namespace DemoTracer.Tests;
 public sealed class BotControllerCompatibilityTests
 {
     [Fact]
+    public void AbsentDemoTracerDoesNotClaimStandaloneControllerSlots()
+    {
+        var check = typeof(DtrController.BotControllerPlugin).GetMethod(
+            "IsDemoTracerBusy", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        Assert.False((bool)check.Invoke(null, [4])!);
+    }
+
+    [Fact]
     public void PublicApiLayoutsMatchImprover144AndNativeReplayLayouts()
     {
         Assert.Equal(92, Marshal.SizeOf<MovementSnapshot>());

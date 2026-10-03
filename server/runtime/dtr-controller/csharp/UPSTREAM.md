@@ -25,8 +25,7 @@ commands share one provider instance and one resource ledger. Disconnect, map
 changes, and unload release only this provider's recordings, replay buffers,
 input, locks, and buy plans; DemoTracer takeover drops control ownership while
 preserving the recorder's separate cleanup. Stopped foreign replay buffers cannot
-be overwritten through the public replay API. Shared projectile queues are not
-globally cleared by this managed provider.
+be overwritten through the public replay API.
 
 DTR file layouts are independent of this native ABI. DTR already stores movement
 and commands using lossless columnar deltas and stores gameplay events separately.

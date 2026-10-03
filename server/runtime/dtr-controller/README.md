@@ -192,6 +192,8 @@ ABI 21 keeps the upstream 228-byte replay tick layout. Its 36-byte event tail is
 reserved: every field must be zero, and loads reject unsupported native drop
 payloads. Public motion recording and JSON replay remain available, but do not
 capture or replay weapon drops. DTR gameplay events use their managed executor.
+Projectile events in motion JSON are recording metadata; standalone replay uses
+engine throws without a separate projectile correction loop.
 
 ```csharp
 using DtrControllerApi;

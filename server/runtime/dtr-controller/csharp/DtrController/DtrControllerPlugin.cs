@@ -37,16 +37,6 @@ public partial class BotControllerPlugin : BasePlugin
         try
         {
             var api = DemoTracerCapability.Get();
-            return api == null || (api.IsDemoTracerBot(slot) && api.IsSlotBusy(slot));
-        }
-        catch (KeyNotFoundException) { return true; }
-    }
-
-    private static bool IsDemoTracerOwner(int slot)
-    {
-        try
-        {
-            var api = DemoTracerCapability.Get();
             return api != null && api.IsDemoTracerBot(slot) && api.IsSlotBusy(slot);
         }
         catch (KeyNotFoundException) { return false; }
@@ -80,7 +70,7 @@ public partial class BotControllerPlugin : BasePlugin
         _providerReady = true;
         Server.PrintToConsole("[dtr-controller] managed provider ready; runtime ABI 21, public API 20");
         Directory.CreateDirectory(RecordingsDir);
-        RegisterListener<Listeners.OnTick>(() => _api.ObserveDemoTracerOwnership(IsDemoTracerOwner, ClearProjectileReplay));
+        RegisterListener<Listeners.OnTick>(() => _api.ObserveDemoTracerOwnership(IsDemoTracerBusy, DiscardProjectileCandidates));
         RegisterListener<Listeners.OnTick>(ProcessPendingProjectileCandidates);
         RegisterListener<Listeners.OnEntitySpawned>(OnProjectileEntitySpawned);
         RegisterListener<Listeners.OnClientDisconnect>(ReleaseOwnedSlot);
@@ -88,7 +78,6 @@ public partial class BotControllerPlugin : BasePlugin
         RegisterListener<Listeners.OnMapStart>(_ => ReleaseAllOwnedState());
     }
 
-    // Clears projectile alignment state during managed plugin unload
     public override void Unload(bool hotReload)
     {
         if (_providerReady) ReleaseAllOwnedState();
@@ -96,16 +85,16 @@ public partial class BotControllerPlugin : BasePlugin
 
     private void ReleaseOwnedSlot(int slot)
     {
-        try { _api.ReleaseOwnedSlot(slot, IsDemoTracerOwner(slot)); }
+        try { _api.ReleaseOwnedSlot(slot, IsDemoTracerBusy(slot)); }
         catch (Exception ex) { Server.PrintToConsole($"[dtr-controller] Slot {slot} cleanup failed: {ex.Message}"); }
         _recordingFiles.Remove(slot);
         _recordedProjectiles.Remove(slot);
-        ClearProjectileReplay(slot);
+        DiscardProjectileCandidates(slot);
     }
 
     private void ReleaseAllOwnedState()
     {
-        try { _api.ReleaseAllOwnedSlots(IsDemoTracerOwner); }
+        try { _api.ReleaseAllOwnedSlots(IsDemoTracerBusy); }
         catch (Exception ex) { Server.PrintToConsole($"[dtr-controller] Cleanup failed: {ex.Message}"); }
         _recordingFiles.Clear();
         ClearAllProjectileState();
@@ -250,7 +239,6 @@ public partial class BotControllerPlugin : BasePlugin
                 rec.Ticks,
                 rec.Subticks,
                 rec.Commands ?? Array.Empty<ReplayCommandFrame>());
-        if (replayLoaded) PrepareProjectileReplay(botSlot, rec);
         if (replayLoaded &&
             RegisterReplayPawnForSlot(botSlot) &&
             _api.StartReplay(botSlot))
@@ -261,8 +249,7 @@ public partial class BotControllerPlugin : BasePlugin
         {
             if (replayLoaded)
             {
-                _api.ReleaseOwnedReplay(botSlot, IsDemoTracerOwner(botSlot));
-                ClearProjectileReplay(botSlot);
+                _api.ReleaseOwnedReplay(botSlot, IsDemoTracerBusy(botSlot));
             }
             cmd.ReplyToCommand("[dtr-controller] Failed to start replay.");
         }
@@ -277,7 +264,6 @@ public partial class BotControllerPlugin : BasePlugin
         if (!int.TryParse(cmd.GetArg(1), out int botSlot)) return;
         if (IsDemoTracerBusy(botSlot) || ControllerForSlot(botSlot) is not { IsBot: true, ControllingBot: false }) return;
         _api.StopReplay(botSlot);
-        ClearProjectileReplay(botSlot);
         cmd.ReplyToCommand($"[dtr-controller] Stopped replay on bot slot {botSlot}.");
     }
 }

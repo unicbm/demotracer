@@ -22,56 +22,41 @@ public partial class BotControllerPlugin
     }
 
     private readonly Dictionary<int, List<ReplayProjectileEvent>> _recordedProjectiles = new();
-    private readonly Dictionary<int, ReplayProjectileEvent[]> _replayProjectiles = new();
-    private readonly Dictionary<int, int> _nextReplayProjectile = new();
     private readonly List<PendingProjectileCandidate> _pendingProjectileCandidates = new();
 
     // Starts a fresh projectile-event buffer for one recording slot
     private void BeginProjectileRecording(int slot)
     {
         _recordedProjectiles[slot] = new List<ReplayProjectileEvent>();
-        _pendingProjectileCandidates.RemoveAll(candidate => TryCandidateSlot(candidate, out int owner) && owner == slot);
+        DiscardProjectileCandidates(slot);
     }
 
     // Finishes pending captures and returns the slot's ordered projectile events
     private ReplayProjectileEvent[] FinishProjectileRecording(int slot)
     {
         ProcessPendingProjectileCandidates();
-        _pendingProjectileCandidates.RemoveAll(candidate => TryCandidateSlot(candidate, out int owner) && owner == slot);
+        DiscardProjectileCandidates(slot);
         if (!_recordedProjectiles.Remove(slot, out List<ReplayProjectileEvent>? events))
             return Array.Empty<ReplayProjectileEvent>();
         return events.OrderBy(projectile => projectile.TickIndex).ToArray();
     }
 
-    // Installs one loaded recording's projectile sequence for a replay slot
-    private void PrepareProjectileReplay(int slot, MotionRecording recording)
+    private void DiscardProjectileCandidates(int slot)
     {
-        _replayProjectiles[slot] = recording.Projectiles ?? Array.Empty<ReplayProjectileEvent>();
-        _nextReplayProjectile[slot] = 0;
-    }
-
-    // Releases one replay slot's projectile matching state
-    private void ClearProjectileReplay(int slot)
-    {
-        _replayProjectiles.Remove(slot);
-        _nextReplayProjectile.Remove(slot);
         _pendingProjectileCandidates.RemoveAll(candidate => TryCandidateSlot(candidate, out int owner) && owner == slot);
     }
 
-    // Clears every managed and native projectile alignment buffer
+    // Clears captured events and pending recording candidates.
     private void ClearAllProjectileState()
     {
         _recordedProjectiles.Clear();
-        _replayProjectiles.Clear();
-        _nextReplayProjectile.Clear();
         _pendingProjectileCandidates.Clear();
-        // The native queue is shared with DemoTracer. Its owner clears it on unload/map end.
     }
 
     // Tracks grenade projectiles when the engine finishes spawning them
     private void OnProjectileEntitySpawned(CEntityInstance entity)
     {
-        if (_recordedProjectiles.Count == 0 && _replayProjectiles.Count == 0)
+        if (_recordedProjectiles.Count == 0)
             return;
         if (!ReplayProjectileMatcher.TryGetKind(entity.DesignerName, out ReplayProjectileKind kind, out int weaponDefIndex))
             return;
@@ -101,12 +86,9 @@ public partial class BotControllerPlugin
             --candidate.AttemptsRemaining;
             if (candidate.AttemptsRemaining <= 0) _pendingProjectileCandidates.RemoveAt(i);
         }
-
-        foreach (int slot in _replayProjectiles.Keys.Where(slot => !BotController.IsReplaying(slot)).ToArray())
-            ClearProjectileReplay(slot);
     }
 
-    // Captures or aligns one projectile once its thrower and engine fields are available
+    // Captures one projectile once its thrower and engine fields are available.
     private bool TryProcessProjectileCandidate(PendingProjectileCandidate candidate)
     {
         var projectile = ResolveCandidate(candidate);
@@ -121,13 +103,6 @@ public partial class BotControllerPlugin
             }
             return TryCaptureProjectile(slot, projectile, candidate);
         }
-        if (IsDemoTracerOwner(slot))
-        {
-            // Ownership observation clears the slot's replay state. Do not
-            // clear this candidate list from inside its processing loop.
-            return true;
-        }
-        if (BotController.IsReplaying(slot)) return TryAlignProjectile(slot, projectile, candidate);
         return true;
     }
 
@@ -168,42 +143,6 @@ public partial class BotControllerPlugin
             InitialPosition = initialPosition,
             InitialVelocity = initialVelocity,
         });
-        return true;
-    }
-
-    // Matches a spawned replay projectile and queues its native birth correction
-    private bool TryAlignProjectile(
-        int slot,
-        CBaseCSGrenadeProjectile projectile,
-        PendingProjectileCandidate candidate)
-    {
-        if (!_replayProjectiles.TryGetValue(slot, out ReplayProjectileEvent[]? events) || events.Length == 0)
-            return true;
-
-        int start = _nextReplayProjectile.TryGetValue(slot, out int next) ? next : 0;
-        int eventIndex = ReplayProjectileMatcher.FindNext(
-            events,
-            start,
-            BotController.ReplayCursor(slot),
-            candidate.Kind,
-            candidate.WeaponDefIndex);
-        if (eventIndex < 0) return false;
-
-        ReplayProjectileEvent expected = events[eventIndex];
-        if (!ReplayProjectileMatcher.IsFinite(expected.InitialPosition) ||
-            !ReplayProjectileMatcher.IsMeaningful(expected.InitialVelocity))
-        {
-            _nextReplayProjectile[slot] = eventIndex + 1;
-            return true;
-        }
-
-        if (!BotController.QueueProjectileBirthAlign(
-                projectile.Handle,
-                expected.InitialPosition,
-                expected.InitialVelocity))
-            return false;
-
-        _nextReplayProjectile[slot] = eventIndex + 1;
         return true;
     }
 
