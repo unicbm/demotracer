@@ -15,13 +15,13 @@ public sealed class ProjectileAlignmentMatchingTests
     [Fact]
     public void SharedNativeClassDoesNotAllowTheOtherFireWeaponToConsumeAnEvent()
     {
-        ReplayProjectileEvent[] events = [Fire(100, 46), Fire(105, 48)];
+        ReplayProjectileEvent[] events = [Fire(100, 46), Fire(101, 48)];
         Assert.Equal(1, DemoTracerPlugin.FindProjectileAlignEvent(
-            events, 0, 100, ReplayProjectileKind.Molotov, 48));
+            events, 0, 101, ReplayProjectileKind.Molotov, 48));
         Assert.Equal(0, DemoTracerPlugin.FindProjectileAlignEvent(
-            events, 0, 105, ReplayProjectileKind.Molotov, 46));
+            events, 0, 101, ReplayProjectileKind.Molotov, 46));
         Assert.Equal(-1, DemoTracerPlugin.FindProjectileAlignEvent(
-            events, 1, 105, ReplayProjectileKind.Molotov, 46));
+            events, 1, 101, ReplayProjectileKind.Molotov, 46));
     }
 
     [Fact]
@@ -41,5 +41,45 @@ public sealed class ProjectileAlignmentMatchingTests
             events, 1, 100, ReplayProjectileKind.Molotov, 48));
         Assert.Equal(1, DemoTracerPlugin.FindProjectileAlignEvent(
             events, 1, 500, ReplayProjectileKind.Molotov, 48));
+    }
+
+    [Theory]
+    [InlineData(98)]
+    [InlineData(101)]
+    [InlineData(102)]
+    [InlineData(196)]
+    public void NearbyDifferentThrowCannotSupplyBirthState(uint recordedTick)
+        => Assert.Equal(-1, DemoTracerPlugin.FindProjectileAlignEvent(
+            [Fire(recordedTick, 46)], 0, 100, ReplayProjectileKind.Molotov, 46));
+
+    [Fact]
+    public void AmbiguousBirthsAreNeverResolvedByListOrderOrNearestTick()
+    {
+        Assert.Equal(-1, DemoTracerPlugin.FindProjectileAlignEvent(
+            [Fire(99, 46), Fire(100, 46)], 0, 100, ReplayProjectileKind.Molotov, 46));
+        Assert.Equal(-1, DemoTracerPlugin.FindProjectileAlignEvent(
+            [Fire(100, 46), Fire(100, 46)], 0, 100, ReplayProjectileKind.Molotov, 46));
+        Assert.Equal(1, DemoTracerPlugin.FindProjectileAlignEvent(
+            [Fire(99, 46), Fire(100, 46)], 1, 100, ReplayProjectileKind.Molotov, 46));
+    }
+
+    [Fact]
+    public void UnsignedRecordedTickCannotWrapIntoTheCurrentCommand()
+        => Assert.Equal(-1, DemoTracerPlugin.FindProjectileAlignEvent(
+            [Fire(uint.MaxValue, 46)], 0, 0, ReplayProjectileKind.Molotov, 46));
+
+    [Fact]
+    public void MovementWithoutACollisionAlreadyClosesTheBirthWriteBoundary()
+    {
+        var position = new ReplayVector3(10, 20, 30);
+        var velocity = new ReplayVector3(100, 200, 300);
+        Assert.True(DemoTracerPlugin.IsUnsimulatedProjectile(position, velocity, position, velocity));
+        Assert.False(DemoTracerPlugin.IsUnsimulatedProjectile(
+            new(10, 20, 30.01f), velocity, position, velocity));
+        Assert.False(DemoTracerPlugin.IsUnsimulatedProjectile(
+            position, new(100, 200, 299), position, velocity));
+        Assert.False(DemoTracerPlugin.IsUnsimulatedProjectile(null, velocity, position, velocity));
+        var invalid = new ReplayVector3(float.PositiveInfinity, 0, 0);
+        Assert.False(DemoTracerPlugin.IsUnsimulatedProjectile(invalid, velocity, invalid, velocity));
     }
 }

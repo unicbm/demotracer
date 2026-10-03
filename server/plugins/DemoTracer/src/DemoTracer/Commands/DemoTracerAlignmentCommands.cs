@@ -494,7 +494,7 @@ public sealed partial class DemoTracerPlugin
             return;
 
         _session.ProjectileAlignNextBySlot.Clear();
-        _session.ProjectileBirths.Clear();
+        _session.ProjectileBirths.CancelAll();
         BotControllerNative.ClearProjectileBirthAlign();
     }
 

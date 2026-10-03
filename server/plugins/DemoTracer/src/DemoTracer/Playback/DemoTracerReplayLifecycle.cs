@@ -79,6 +79,7 @@ public sealed partial class DemoTracerPlugin
         {
             _session.RoundSpawnsPending = false;
             CancelAllReplayDeferredWork();
+            _session.ProjectileBirths.Clear();
             CancelReplayPrefetch();
             InvalidateInitialSpawnAssignment();
             ClearLoadedTeamAvatarOverrides(reason);

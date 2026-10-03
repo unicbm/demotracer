@@ -144,7 +144,7 @@ public sealed partial class DemoTracerPlugin
         if (!_mapActive || _lifecycleResetInProgress ||
             (!_projectileAlignEnabled && !_session.ProjectileTraceEnabled))
         {
-            _session.ProjectileBirths.Remove(projectileHandle);
+            _session.ProjectileBirths.Discard(projectileHandle);
             return;
         }
 
@@ -159,7 +159,7 @@ public sealed partial class DemoTracerPlugin
                 !TryGetProjectileKind(projectile, out var kind, out var weaponDefIndex) ||
                 kind != birth.Kind)
             {
-                _session.ProjectileBirths.Remove(projectileHandle);
+                _session.ProjectileBirths.Discard(projectileHandle);
                 RememberProjectileAlignEvent(
                     "projectile_align_skipped",
                     $"projectile={birth.EntityIndex} kind={birth.Kind} reason=entity_invalid_first_physics");
@@ -180,7 +180,7 @@ public sealed partial class DemoTracerPlugin
         }
         catch (Exception ex)
         {
-            _session.ProjectileBirths.Remove(projectileHandle);
+            _session.ProjectileBirths.Discard(projectileHandle);
             RememberProjectileAlignEvent(
                 "projectile_align_failed",
                 $"projectile={birth.EntityIndex} kind={birth.Kind} error=\"{EscapeConsoleString(ex.Message)}\"");
@@ -324,6 +324,15 @@ public sealed partial class DemoTracerPlugin
             skipReason = "native_fire_already_detonated";
             return ProjectileAlignDecision.Skip;
         }
+        if (!IsUnsimulatedProjectile(
+                CopyProjectileVector(projectile.AbsOrigin),
+                CopyProjectileVector(projectile.AbsVelocity),
+                CopyProjectileVector(projectile.InitialPosition),
+                CopyProjectileVector(projectile.InitialVelocity)))
+        {
+            skipReason = "native_birth_state_already_advanced";
+            return ProjectileAlignDecision.Skip;
+        }
         if (!ReplayVectorIsMeaningful(align.InitialPosition) ||
             !ReplayVectorIsMeaningful(align.InitialVelocity))
         {
@@ -357,30 +366,44 @@ public sealed partial class DemoTracerPlugin
         ReplayProjectileKind kind,
         int weaponDefIndex)
     {
-        const int MaxCursorDistance = 96;
+        // The cursor can advance once between the throwing command and the
+        // projectile's first physics call. Never borrow a nearby later throw.
+        if (cursor < 0)
+            return -1;
         var best = -1;
-        var bestDistance = int.MaxValue;
         for (var i = Math.Max(start, 0); i < events.Count; i++)
         {
             var candidate = events[i];
+            var distance = (long)candidate.TickIndex - cursor;
+            if (distance < -1)
+                continue;
+            if (distance > 0)
+                break;
             if (candidate.Kind != kind)
                 continue;
             if (weaponDefIndex > 0 && candidate.WeaponDefIndex > 0 &&
                 weaponDefIndex != candidate.WeaponDefIndex)
                 continue;
 
-            var diff = Math.Abs((int)candidate.TickIndex - cursor);
-            if (diff < bestDistance)
-            {
-                best = i;
-                bestDistance = diff;
-            }
-            if ((int)candidate.TickIndex > cursor + MaxCursorDistance)
-                break;
+            if (best >= 0)
+                return -1;
+            best = i;
         }
 
-        return bestDistance <= MaxCursorDistance ? best : -1;
+        return best;
     }
+
+    internal static bool IsUnsimulatedProjectile(
+        ReplayVector3? position, ReplayVector3? velocity,
+        ReplayVector3? initialPosition, ReplayVector3? initialVelocity)
+        => position is { } p && velocity is { } v &&
+           initialPosition is { } p0 && initialVelocity is { } v0 &&
+           p == p0 && v == v0 &&
+           float.IsFinite(p.X) && float.IsFinite(p.Y) && float.IsFinite(p.Z) &&
+           float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
+
+    private static ReplayVector3? CopyProjectileVector(Vector? vector)
+        => vector == null ? null : new(vector.X, vector.Y, vector.Z);
 
     private static bool TryGetProjectileThrowerSlot(
         CBaseCSGrenadeProjectile projectile,

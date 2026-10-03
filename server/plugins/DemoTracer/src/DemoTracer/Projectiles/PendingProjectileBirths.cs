@@ -18,9 +18,16 @@ internal readonly record struct PendingProjectileBirth(
 internal sealed class PendingProjectileBirths
 {
     private readonly Dictionary<nint, PendingProjectileBirth> _pending = [];
+    private readonly Dictionary<nint, uint> _observed = [];
     public int Count => _pending.Count;
 
-    public void Track(nint pointer, PendingProjectileBirth birth) => _pending[pointer] = birth;
+    public void Track(nint pointer, PendingProjectileBirth birth)
+    {
+        if (_observed.TryGetValue(pointer, out var handle) && handle == birth.EntityHandle)
+            return;
+        _observed[pointer] = birth.EntityHandle;
+        _pending[pointer] = birth;
+    }
     public bool TryPeek(nint pointer, out PendingProjectileBirth birth) => _pending.TryGetValue(pointer, out birth);
 
     // A first-physics attempt is single-use, including invalidated/reused
@@ -28,8 +35,19 @@ internal sealed class PendingProjectileBirths
     public bool TryConsume(nint pointer, uint entityHandle, out PendingProjectileBirth birth)
         => _pending.Remove(pointer, out birth) && birth.EntityHandle == entityHandle;
 
-    public void Remove(nint pointer) => _pending.Remove(pointer);
-    public void Clear() => _pending.Clear();
+    public void Discard(nint pointer) => _pending.Remove(pointer);
+    public void CancelAll() => _pending.Clear();
+
+    public void Remove(nint pointer)
+    {
+        _pending.Remove(pointer);
+        _observed.Remove(pointer);
+    }
+    public void Clear()
+    {
+        _pending.Clear();
+        _observed.Clear();
+    }
 
     public void CancelSlot(int slot)
     {

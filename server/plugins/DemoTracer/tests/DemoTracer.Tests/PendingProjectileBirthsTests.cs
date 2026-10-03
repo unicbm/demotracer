@@ -23,6 +23,50 @@ public sealed class PendingProjectileBirthsTests
     }
 
     [Fact]
+    public void DuplicateSpawnCannotRearmAConsumedOrDiscardedBirth()
+    {
+        var pending = new PendingProjectileBirths();
+        pending.Track(123, Birth());
+        Assert.True(pending.TryConsume(123, 0x8001, out _));
+        pending.Track(123, Birth());
+        Assert.False(pending.TryConsume(123, 0x8001, out _));
+        pending.Track(456, Birth());
+        pending.Discard(456);
+        pending.Track(456, Birth());
+        Assert.False(pending.TryConsume(456, 0x8001, out _));
+        pending.Remove(123);
+        pending.Track(123, Birth(0x10001));
+        Assert.True(pending.TryConsume(123, 0x10001, out _));
+    }
+
+    [Fact]
+    public void DuplicateSpawnCannotReplaceTheOriginalPlaybackBoundary()
+    {
+        var pending = new PendingProjectileBirths();
+        pending.Track(123, Birth() with { AlignAtSpawn = false });
+        pending.Track(123, Birth());
+        Assert.True(pending.TryConsume(123, 0x8001, out var birth));
+        Assert.False(birth.AlignAtSpawn);
+    }
+
+    [Fact]
+    public void StopOrDisableCannotRearmTheSameLiveEntity()
+    {
+        var pending = new PendingProjectileBirths();
+        pending.Track(123, Birth());
+        pending.Track(456, Birth());
+        Assert.True(pending.TryConsume(123, 0x8001, out _));
+        pending.CancelAll();
+        pending.Track(123, Birth());
+        pending.Track(456, Birth());
+        Assert.False(pending.TryConsume(123, 0x8001, out _));
+        Assert.False(pending.TryConsume(456, 0x8001, out _));
+        pending.Clear();
+        pending.Track(123, Birth());
+        Assert.True(pending.TryConsume(123, 0x8001, out _));
+    }
+
+    [Fact]
     public void ReusedPointerAndIndexCannotConsumeAnotherSerialsBirth()
     {
         var pending = new PendingProjectileBirths();
@@ -78,6 +122,8 @@ public sealed class PendingProjectileBirthsTests
         Assert.True(slots.IsCurrentPlaybackFromBoundary(2, birth.PlaybackBoundary));
         pending.CancelSlot(2);
         Assert.Equal(0, pending.Count);
+        pending.Track(123, Birth() with { PlaybackBoundary = slots.CapturePlaybackBoundary() });
+        Assert.False(pending.TryConsume(123, 0x8001, out _));
     }
 
     [Fact]

@@ -147,7 +147,7 @@ public sealed partial class DemoTracerPlugin
 
     private void CancelAllReplayDeferredWork()
     {
-        _session.ProjectileBirths.Clear();
+        _session.ProjectileBirths.CancelAll();
         _replaySlotWork.Clear();
         BeginReplayRoundWorkEpoch();
     }

@@ -32,9 +32,11 @@ public sealed partial class DemoTracerPlugin
                 : null;
             var fireState = fire == null ? string.Empty :
                 $" inc={fire.IsIncGrenade} detonated={fire.Detonated} still_since={fire.StillTimer.Timestamp:F6}";
+            var cursor = TryGetProjectileThrowerSlot(projectile, out var slot, out _)
+                ? BotControllerNative.GetReplayState(slot).Cursor : -1;
             RememberProjectileAlignEvent(
                 "projectile_trace",
-                $"phase={phase} projectile={projectile.Index} entity_handle={projectile.EntityHandle.Raw} kind={kind} server_tick={Server.TickCount} observed_spawn_tick={spawnTick} delay={(Server.CurrentTime - observedSpawnTime):F6} spawn_time={projectile.SpawnTime:F6} age={(Server.CurrentTime - projectile.SpawnTime):F6} deadline={projectile.DetonateTime:F6} next_think={projectile.NextThinkTick} bounces={projectile.Bounces} zero_ticks={projectile.TicksAtZeroVelocity} pos={FormatProjectileVector(projectile.AbsOrigin)} vel={FormatProjectileVector(projectile.AbsVelocity)} init_pos={FormatProjectileVector(projectile.InitialPosition)} init_vel={FormatProjectileVector(projectile.InitialVelocity)} base_vel={FormatProjectileVector(projectile.BaseVelocity)} spin={FormatProjectileVector(projectile.GrenadeSpin)} last_normal={FormatProjectileVector(projectile.LastHitSurfaceNormal)}{fireState}");
+                $"phase={phase} projectile={projectile.Index} entity_handle={projectile.EntityHandle.Raw} kind={kind} slot={slot} cursor={cursor} server_tick={Server.TickCount} observed_spawn_tick={spawnTick} delay={(Server.CurrentTime - observedSpawnTime):F6} spawn_time={projectile.SpawnTime:F6} age={(Server.CurrentTime - projectile.SpawnTime):F6} deadline={projectile.DetonateTime:F6} next_think={projectile.NextThinkTick} bounces={projectile.Bounces} zero_ticks={projectile.TicksAtZeroVelocity} pos={FormatProjectileVector(projectile.AbsOrigin)} vel={FormatProjectileVector(projectile.AbsVelocity)} init_pos={FormatProjectileVector(projectile.InitialPosition)} init_vel={FormatProjectileVector(projectile.InitialVelocity)} base_vel={FormatProjectileVector(projectile.BaseVelocity)} spin={FormatProjectileVector(projectile.GrenadeSpin)} last_normal={FormatProjectileVector(projectile.LastHitSurfaceNormal)}{fireState}");
         }
         catch (Exception ex)
         {
