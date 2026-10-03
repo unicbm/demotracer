@@ -640,11 +640,7 @@ fn parse_image_url(html: &str, trusted_url: fn(&str) -> bool) -> Option<String> 
 
         for expected_name in ["srcset", "data-srcset", "src", "data-src"] {
             for attribute in image.attributes().flatten() {
-                if attribute
-                    .key
-                    .as_ref()
-                    .eq_ignore_ascii_case(expected_name)
-                {
+                if attribute.key.as_ref().eq_ignore_ascii_case(expected_name) {
                     let Ok(value) = attribute.unescape_value() else {
                         continue;
                     };
