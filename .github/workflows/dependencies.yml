@@ -47,7 +47,6 @@ jobs:
           RENOVATE_USERNAME: github-actions[bot]
           RENOVATE_GIT_AUTHOR: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           RENOVATE_ALLOWED_COMMANDS: >-
-            ["^npm ci --ignore-scripts --prefix server/runtime/common/tools/cs2-lib-data$",
-            "^npm run generate --prefix server/runtime/common/tools/cs2-lib-data$",
+            ["^node server/runtime/common/tools/cs2-lib-data/update\\.mjs --version [0-9]+\\.[0-9]+\\.[0-9]+$",
             "^cargo update --workspace --manifest-path desktop/converter/Cargo\\.toml$",
             "^cargo update --workspace --manifest-path desktop/gui/src-tauri/Cargo\\.toml$"]

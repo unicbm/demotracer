@@ -1,10 +1,10 @@
 {
   "source": {
     "repository": "ianlucas/cs2-lib",
-    "commit": "94a5fce488f5976255d74b643bd58f993c04a86f",
+    "commit": "7c65efa81d7fd305e0435ce4b61e25cfa26375af",
     "package": "@ianlucas/cs2-lib",
-    "version": "9.2.0",
-    "integrity": "sha512-KeQ5DPaKr1sj7aVSZOGDRfWEAOe5JFATHmfkzfn8PpSNBJGqTgZvCXU15N0DEaU175cews80sADQpNFM4vHOrA==",
+    "version": "9.3.0",
+    "integrity": "sha512-Y/5EbYAPYj/DIakivLIscOlpoaNBowU/5p4Y6uFiZloEn6eoXHZSjFhQwXVmAinYDAzq27XahIEUXObbY+gyCw==",
     "proDemo": {
       "logicalMaps": 269,
       "knifeObservations": 741,
@@ -70584,6 +70584,7 @@
     100,
     101,
     102,
-    103
+    103,
+    104
   ]
 }

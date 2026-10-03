@@ -13,7 +13,8 @@
   "cloneSubmodules": true,
   "git-submodules": { "enabled": true },
   "logLevelRemap": [
-    { "matchMessage": "Repository has changed during renovation - aborting", "newLogLevel": "error" }
+    { "matchMessage": "Repository has changed during renovation - aborting", "newLogLevel": "error" },
+    { "matchMessage": "artifactErrors", "newLogLevel": "error" }
   ],
   "packageRules": [
     {
@@ -58,10 +59,9 @@
       "matchPackageNames": ["@ianlucas/cs2-lib"],
       "postUpgradeTasks": {
         "commands": [
-          "npm ci --ignore-scripts --prefix server/runtime/common/tools/cs2-lib-data",
-          "npm run generate --prefix server/runtime/common/tools/cs2-lib-data"
+          "node server/runtime/common/tools/cs2-lib-data/update.mjs --version {{{newVersion}}}"
         ],
-        "fileFilters": ["server/runtime/common/econ/*.json"],
+        "fileFilters": ["server/runtime/common/econ/*.json", "server/runtime/common/tools/cs2-lib-data/source.json"],
         "executionMode": "branch",
         "installTools": { "node": {}, "npm": {} }
       }

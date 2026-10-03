@@ -262,10 +262,11 @@ directory. `localStorage` is a startup cache, imported once if the file is
 missing. The workspace background is stored separately at
 `appearance/workspace-background.png`.
 
-To refresh econ data, update the exact `@ianlucas/cs2-lib` dependency and lockfile
-in `server/runtime/common/tools/cs2-lib-data`, then run `npm.cmd run generate`
-there. Commit the shared output and affected consumers together; do not patch
-generated item IDs or copy the catalog into consumers.
+To refresh econ data, run `node update.mjs --version <version>` from
+`server/runtime/common/tools/cs2-lib-data`. This pins the package and source
+commit, regenerates both catalogs and checks them. Commit the shared output and
+affected consumers together; do not patch generated item IDs or copy the catalog
+into consumers.
 
 Build the supported desktop target:
 
