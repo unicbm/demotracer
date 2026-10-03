@@ -113,11 +113,6 @@ public sealed partial class DemoTracerPlugin
         if (releaseKind == ReplayReleaseKind.Immediate)
             _session.InvalidateEquipment(slot);
         BotControllerNative.ClearReplayPawnEquipment(slot);
-        // Native projectile birth align is a global queue without per-slot
-        // cancellation. Handoff prioritizes the ownership boundary over a
-        // possible in-flight alignment on another surviving replay slot.
-        if (releaseKind == ReplayReleaseKind.Handoff || !HasActiveReplaySlots())
-            BotControllerNative.ClearProjectileBirthAlign();
         BotControllerNative.ClearBuyPlan(slot);
         BotControllerNative.UnlockReplayControl(slot);
         BotControllerNative.UnlockWeaponSlot(slot);

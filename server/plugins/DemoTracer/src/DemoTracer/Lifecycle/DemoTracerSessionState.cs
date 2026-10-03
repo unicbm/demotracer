@@ -33,7 +33,6 @@ public sealed partial class DemoTracerPlugin
         public Dictionary<int, ReplayInventoryTimeline> ReplayInventoryBySlot { get; } = [];
         public Dictionary<int, long> ReplayIdentityGenerationBySlot { get; } = [];
         public Queue<string> ProjectileAlignLog { get; } = [];
-        public bool ProjectileTraceEnabled { get; set; }
         public PendingProjectileBirths ProjectileBirths { get; } = new();
         public HashSet<int> RebuiltInventorySlots { get; } = [];
         public HashSet<int> WeaponLoadoutSyncedSlots { get; } = [];

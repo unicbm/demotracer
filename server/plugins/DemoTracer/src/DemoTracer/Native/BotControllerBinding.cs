@@ -50,29 +50,6 @@ internal static partial class BotControllerNative
     private static extern int DtrController_GetVoiceStatus();
 
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_SetProjectileBirthAlignOffsets(
-        int initialPositionOffset,
-        int initialVelocityOffset);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_QueueProjectileBirthAlign(
-        ulong entityPtr,
-        float posX,
-        float posY,
-        float posZ,
-        float velX,
-        float velY,
-        float velZ);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_ClearProjectileBirthAlign();
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_GetProjectileBirthAlignStatus(
-        out NativeProjectileBirthAlignStatus status,
-        int size);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_SendVoiceFrame(
         int recipientSlot,
         int senderClient,

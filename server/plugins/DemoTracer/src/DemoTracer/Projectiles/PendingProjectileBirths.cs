@@ -10,61 +10,59 @@ internal readonly record struct PendingProjectileBirth(
     uint EntityIndex,
     uint EntityHandle,
     ReplayProjectileKind Kind,
-    float ObservedSpawnTime,
-    int ObservedSpawnTick,
-    bool AlignAtSpawn,
     ReplayPlaybackBoundary PlaybackBoundary);
 
 internal sealed class PendingProjectileBirths
 {
-    private readonly Dictionary<nint, PendingProjectileBirth> _pending = [];
-    private readonly Dictionary<nint, uint> _observed = [];
-    public int Count => _pending.Count;
+    private readonly Dictionary<nint, PendingProjectileBirth> _births = [];
+    public int Count => _births.Values.Count(birth => birth.PlaybackBoundary.PlayingSlots != 0);
 
     public void Track(nint pointer, PendingProjectileBirth birth)
     {
-        if (_observed.TryGetValue(pointer, out var handle) && handle == birth.EntityHandle)
+        if (_births.TryGetValue(pointer, out var previous) && previous.EntityHandle == birth.EntityHandle)
             return;
-        _observed[pointer] = birth.EntityHandle;
-        _pending[pointer] = birth;
+        _births[pointer] = birth;
     }
-    public bool TryPeek(nint pointer, out PendingProjectileBirth birth) => _pending.TryGetValue(pointer, out birth);
+    public bool TryPeek(nint pointer, out PendingProjectileBirth birth)
+        => _births.TryGetValue(pointer, out birth) && birth.PlaybackBoundary.PlayingSlots != 0;
 
     // A first-physics attempt is single-use, including invalidated/reused
     // entities. Never retry on a later simulation after the engine has moved it.
     public bool TryConsume(nint pointer, uint entityHandle, out PendingProjectileBirth birth)
-        => _pending.Remove(pointer, out birth) && birth.EntityHandle == entityHandle;
-
-    public void Discard(nint pointer) => _pending.Remove(pointer);
-    public void CancelAll() => _pending.Clear();
-
-    public void Remove(nint pointer)
     {
-        _pending.Remove(pointer);
-        _observed.Remove(pointer);
+        if (!TryPeek(pointer, out birth))
+            return false;
+        Discard(pointer);
+        return birth.EntityHandle == entityHandle;
     }
-    public void Clear()
+
+    // Revoke writes, retaining the serial until entity deletion.
+    public void Discard(nint pointer)
     {
-        _pending.Clear();
-        _observed.Clear();
+        if (_births.TryGetValue(pointer, out var birth))
+            _births[pointer] = birth with { PlaybackBoundary = default };
     }
+    public void CancelAll()
+    {
+        foreach (var pointer in _births.Keys.ToArray())
+            Discard(pointer);
+    }
+    public void Remove(nint pointer) => _births.Remove(pointer);
+    public void Clear() => _births.Clear();
 
     public void CancelSlot(int slot)
     {
         if ((uint)slot >= 64)
             return;
         var bit = 1UL << slot;
-        foreach (var pointer in _pending.Keys.ToArray())
+        foreach (var pointer in _births.Keys.ToArray())
         {
-            var birth = _pending[pointer];
+            var birth = _births[pointer];
             var boundary = birth.PlaybackBoundary;
-            if (!birth.AlignAtSpawn || (boundary.PlayingSlots & bit) == 0)
+            if ((boundary.PlayingSlots & bit) == 0)
                 continue;
             boundary = boundary with { PlayingSlots = boundary.PlayingSlots & ~bit };
-            if (boundary.PlayingSlots == 0)
-                _pending.Remove(pointer);
-            else
-                _pending[pointer] = birth with { PlaybackBoundary = boundary };
+            _births[pointer] = birth with { PlaybackBoundary = boundary };
         }
     }
 }

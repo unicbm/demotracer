@@ -176,7 +176,6 @@ public sealed partial class DemoTracerPlugin
     private void ClearStoppedReplayExecutionState()
     {
         ClearAllPendingWeaponSlotReplacements("replay_execution_stopped");
-        BotControllerNative.ClearProjectileBirthAlign();
         _session.ClearExecution();
     }
 
@@ -184,7 +183,6 @@ public sealed partial class DemoTracerPlugin
     {
         _session.ClearLoaded();
         ClearAllPendingWeaponSlotReplacements("replay_execution_stopped");
-        BotControllerNative.ClearProjectileBirthAlign();
         ClearReplayCrosshairPresentation();
         RestoreAllReplayBotViewmodels();
         ResetScoreboardAlignState(resetCounters: true);

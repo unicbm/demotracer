@@ -26,7 +26,7 @@ public sealed partial class DemoTracerPlugin
 {
     private void OnEntitySpawned(CEntityInstance entity)
     {
-        if (!_mapActive || _lifecycleResetInProgress)
+        if (!_mapActive || _lifecycleResetInProgress || !_projectileAlignEnabled)
             return;
 
         if (!TryGetProjectileKind(entity, out var kind, out var weaponDefIndex))
@@ -108,7 +108,8 @@ public sealed partial class DemoTracerPlugin
         ReplayProjectileKind kind,
         int weaponDefIndex)
     {
-        if (!_projectileAlignEnabled && !_session.ProjectileTraceEnabled)
+        var boundary = _session.ReplaySlots.CapturePlaybackBoundary();
+        if (boundary.PlayingSlots == 0)
             return;
         if (_projectilePhysicsHook is not { Ready: true })
         {
@@ -124,25 +125,18 @@ public sealed partial class DemoTracerPlugin
         var projectileIndex = projectile.Index;
         var projectileHandle = projectile.Handle;
         var projectileEntityHandle = projectile.EntityHandle.Raw;
-        var spawnedAt = Server.CurrentTime;
-        var spawnTick = Server.TickCount;
-        TraceProjectileState(projectile, kind, "spawn_listener", spawnTick, spawnedAt);
         _session.ProjectileBirths.Track(projectileHandle, new PendingProjectileBirth(
             projectileIndex,
             projectileEntityHandle,
             kind,
-            spawnedAt,
-            spawnTick,
-            _projectileAlignEnabled,
-            _session.ReplaySlots.CapturePlaybackBoundary()));
+            boundary));
     }
 
     private void ProcessProjectileFirstPhysics(nint projectileHandle)
     {
         if (!_session.ProjectileBirths.TryPeek(projectileHandle, out var birth))
             return;
-        if (!_mapActive || _lifecycleResetInProgress ||
-            (!_projectileAlignEnabled && !_session.ProjectileTraceEnabled))
+        if (!_mapActive || _lifecycleResetInProgress || !_projectileAlignEnabled)
         {
             _session.ProjectileBirths.Discard(projectileHandle);
             return;
@@ -169,14 +163,7 @@ public sealed partial class DemoTracerPlugin
             if (kind == ReplayProjectileKind.Molotov)
                 weaponDefIndex = new CMolotovProjectile(projectile.Handle).IsIncGrenade ? 48 : 46;
 
-            TraceProjectileState(projectile, kind, "first_physics_pre", birth.ObservedSpawnTick, birth.ObservedSpawnTime);
-            // Observation also supports natural throws with alignment disabled.
-            // Enabling alignment later must not adopt an already live projectile.
-            if (birth.AlignAtSpawn && _projectileAlignEnabled)
-            {
-                TryResolveAndApplyProjectileAlign(projectile, kind, weaponDefIndex, birth.PlaybackBoundary);
-                TraceProjectileState(projectile, kind, "first_physics_ready", birth.ObservedSpawnTick, birth.ObservedSpawnTime);
-            }
+            TryResolveAndApplyProjectileAlign(projectile, kind, weaponDefIndex, birth.PlaybackBoundary);
         }
         catch (Exception ex)
         {

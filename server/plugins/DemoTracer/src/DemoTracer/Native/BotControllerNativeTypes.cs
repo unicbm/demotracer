@@ -21,7 +21,6 @@ internal static partial class BotControllerNative
     public const int ReplayMovementExtraByteSize = 48;
     public const int ReplayInputHistoryTickByteSize = 16;
     public const int ReplayInputHistoryEntryByteSize = 128;
-    public const int ProjectileBirthAlignStatusByteSize = 36;
     public const int ReplayPawnEquipmentStateByteSize = 48;
     internal const uint CommandFieldLeftHand = 1U << 7;
     public const int ReplaySlotStateByteSize = 24;
@@ -111,10 +110,6 @@ internal static partial class BotControllerNative
         if (inputHistoryEntrySize != ReplayInputHistoryEntryByteSize)
             throw new InvalidOperationException($"ReplayInputHistoryEntry layout is {inputHistoryEntrySize}, expected {ReplayInputHistoryEntryByteSize}");
 
-        var projectileBirthAlignStatusSize = Marshal.SizeOf<NativeProjectileBirthAlignStatus>();
-        if (projectileBirthAlignStatusSize != ProjectileBirthAlignStatusByteSize)
-            throw new InvalidOperationException($"ProjectileBirthAlignStatus layout is {projectileBirthAlignStatusSize}, expected {ProjectileBirthAlignStatusByteSize}");
-
         var replayPawnEquipmentStateSize = Marshal.SizeOf<NativeReplayPawnEquipmentState>();
         if (replayPawnEquipmentStateSize != ReplayPawnEquipmentStateByteSize)
             throw new InvalidOperationException($"ReplayPawnEquipmentState layout is {replayPawnEquipmentStateSize}, expected {ReplayPawnEquipmentStateByteSize}");
@@ -148,20 +143,6 @@ internal struct BotControllerAbiInfo
         MaxSlots = BotControllerNative.MaxSlots,
         Capabilities = 0
     };
-}
-
-[StructLayout(LayoutKind.Sequential, Pack = 4)]
-internal struct NativeProjectileBirthAlignStatus
-{
-    public int Size;
-    public int Configured;
-    public int Pending;
-    public int Queued;
-    public int Applied;
-    public int Expired;
-    public int Failed;
-    public int InitialPositionOffset;
-    public int InitialVelocityOffset;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

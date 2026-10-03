@@ -46,15 +46,6 @@ public sealed partial class DemoTracerPlugin
         command.ReplyToCommand($"dtr: projectile_align={_projectileAlignEnabled} mode=first_physics_pre hook={ProjectilePhysicsHookStatus}");
     }
 
-    [ConsoleCommand("dtr_projectile_trace", "dtr_projectile_trace <0|1>")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void ProjectileTraceCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        if (command.ArgCount >= 2)
-            _session.ProjectileTraceEnabled = ParseOnOff(command.GetArg(1), _session.ProjectileTraceEnabled);
-        command.ReplyToCommand($"dtr: projectile_trace={_session.ProjectileTraceEnabled} read_only=true hook={ProjectilePhysicsHookStatus} log=dtr_projectile_align_log");
-    }
-
     [ConsoleCommand("dtr_projectile_align_log", "dtr_projectile_align_log [clear|all|molotov|fire]")]
     [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
     public void ProjectileAlignLogCommand(CCSPlayerController? player, CommandInfo command)
@@ -495,7 +486,6 @@ public sealed partial class DemoTracerPlugin
 
         _session.ProjectileAlignNextBySlot.Clear();
         _session.ProjectileBirths.CancelAll();
-        BotControllerNative.ClearProjectileBirthAlign();
     }
 
 }

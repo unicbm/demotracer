@@ -9,15 +9,14 @@ namespace DemoTracer.Tests;
 public sealed class PendingProjectileBirthsTests
 {
     private static PendingProjectileBirth Birth(uint handle = 0x8001)
-        => new(1, handle, ReplayProjectileKind.Molotov, 100, 6400, true, default);
+        => new(1, handle, ReplayProjectileKind.Molotov, new(1, 1));
 
     [Fact]
     public void FirstPhysicsConsumesBirthOnceWithoutWaitingForAnotherTick()
     {
         var pending = new PendingProjectileBirths();
         pending.Track(123, Birth());
-        Assert.True(pending.TryConsume(123, 0x8001, out var birth));
-        Assert.Equal(6400, birth.ObservedSpawnTick);
+        Assert.True(pending.TryConsume(123, 0x8001, out _));
         Assert.False(pending.TryConsume(123, 0x8001, out _));
         Assert.Equal(0, pending.Count);
     }
@@ -43,10 +42,11 @@ public sealed class PendingProjectileBirthsTests
     public void DuplicateSpawnCannotReplaceTheOriginalPlaybackBoundary()
     {
         var pending = new PendingProjectileBirths();
-        pending.Track(123, Birth() with { AlignAtSpawn = false });
+        var original = new ReplayPlaybackBoundary(42, 1);
+        pending.Track(123, Birth() with { PlaybackBoundary = original });
         pending.Track(123, Birth());
         Assert.True(pending.TryConsume(123, 0x8001, out var birth));
-        Assert.False(birth.AlignAtSpawn);
+        Assert.Equal(original, birth.PlaybackBoundary);
     }
 
     [Fact]

@@ -181,8 +181,6 @@ internal static partial class BotControllerNative
 
     public static bool HasLeftHandDesiredLatchExports => ProbeLeftHandDesiredLatchExports();
 
-    public static bool HasProjectileBirthAlignExports => ProbeProjectileBirthAlignExports();
-
     public static string UsercmdMovementIntentStatus
     {
         get
@@ -211,7 +209,6 @@ internal static partial class BotControllerNative
                    $"left_hand_alias={HasLeftHandIntentAliasExports} left_hand_latch={HasLeftHandDesiredLatchExports} " +
                    $"release_replay_buffer={HasReleaseReplayBufferCapability} " +
                    $"replay_pawn_equipment={HasReplayPawnEquipmentCapability} " +
-                   $"projectile_birth_align={HasProjectileBirthAlignExports} " +
                    $"dtr_reader={MinRecFormatVersion}..{RecFormatVersion} " +
                    $"platform={RuntimePlatformName} api={DemoTracerApiVersion}";
         }
@@ -233,84 +230,6 @@ internal static partial class BotControllerNative
         catch
         {
             return -8;
-        }
-    }
-
-    public static int SetProjectileBirthAlignOffsets(int initialPositionOffset, int initialVelocityOffset)
-    {
-        try
-        {
-            return DtrController_SetProjectileBirthAlignOffsets(
-                initialPositionOffset,
-                initialVelocityOffset);
-        }
-        catch (EntryPointNotFoundException)
-        {
-            return -7;
-        }
-        catch
-        {
-            return -8;
-        }
-    }
-
-    public static int QueueProjectileBirthAlign(ulong entityPtr, ReplayVector3 position, ReplayVector3 velocity)
-    {
-        if (entityPtr == 0)
-            return -2;
-        try
-        {
-            return DtrController_QueueProjectileBirthAlign(
-                entityPtr,
-                position.X,
-                position.Y,
-                position.Z,
-                velocity.X,
-                velocity.Y,
-                velocity.Z);
-        }
-        catch (EntryPointNotFoundException)
-        {
-            return -7;
-        }
-        catch
-        {
-            return -8;
-        }
-    }
-
-    public static int ClearProjectileBirthAlign()
-    {
-        try
-        {
-            return DtrController_ClearProjectileBirthAlign();
-        }
-        catch (EntryPointNotFoundException)
-        {
-            return -7;
-        }
-        catch
-        {
-            return -8;
-        }
-    }
-
-    public static NativeProjectileBirthAlignStatus ProjectileBirthAlignStatus
-    {
-        get
-        {
-            try
-            {
-                return DtrController_GetProjectileBirthAlignStatus(
-                    out var status,
-                    ProjectileBirthAlignStatusByteSize) == 0
-                    ? status
-                    : new NativeProjectileBirthAlignStatus { Size = ProjectileBirthAlignStatusByteSize };
-            }
-            catch
-            {
-                return new NativeProjectileBirthAlignStatus { Size = ProjectileBirthAlignStatusByteSize };
-            }
         }
     }
 
@@ -545,24 +464,6 @@ internal static partial class BotControllerNative
         {
             _ = DtrController_SetLeftHandDesiredLatch(-1, 0, 0);
             return true;
-        }
-        catch (EntryPointNotFoundException)
-        {
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static bool ProbeProjectileBirthAlignExports()
-    {
-        try
-        {
-            return DtrController_GetProjectileBirthAlignStatus(
-                out _,
-                ProjectileBirthAlignStatusByteSize) == 0;
         }
         catch (EntryPointNotFoundException)
         {

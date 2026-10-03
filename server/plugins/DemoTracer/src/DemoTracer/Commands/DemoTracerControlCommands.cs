@@ -278,11 +278,8 @@ public sealed partial class DemoTracerPlugin
     public void RuntimeCommand(CCSPlayerController? player, CommandInfo command)
     {
         command.ReplyToCommand($"dtr: projectile_birth_hook={ProjectilePhysicsHookStatus} pending={_session.ProjectileBirths.Count} timers=native");
-        var birth = BotControllerNative.ProjectileBirthAlignStatus;
         command.ReplyToCommand(
             $"[DTR OK] DemoTracer {BotControllerNative.RuntimeSummary}");
-        command.ReplyToCommand(
-            $"[DTR OK] projectile_birth_align configured={birth.Configured} pending={birth.Pending} queued={birth.Queued} applied={birth.Applied} expired={birth.Expired} failed={birth.Failed} initial_position=0x{birth.InitialPositionOffset:X} initial_velocity=0x{birth.InitialVelocityOffset:X}");
     }
 
     [ConsoleCommand("dtr_doctor", "dtr_doctor [manifest.json]")]
