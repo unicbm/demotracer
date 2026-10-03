@@ -467,7 +467,7 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Fact]
-    public void ClearsImpossibleSharedSpawnTransitionVelocity()
+    public void PreservesStoredVelocitiesWithoutReconstructingFromPositions()
     {
         var before = new NativeMovementSnapshot
         {
@@ -507,14 +507,15 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
 
         var replay = DtrReplayReader.Read(path);
 
-        Assert.Equal(0.0f, replay.Ticks[0].Pre.VelX);
-        Assert.Equal(0.0f, replay.Ticks[0].Post.VelX);
-        Assert.Equal(0.0f, replay.Ticks[0].Post.VelY);
-        Assert.Equal(0.0f, replay.Ticks[0].Post.VelZ);
-        Assert.Equal(0.0f, replay.Ticks[1].Pre.VelX);
-        Assert.Equal(0.0f, replay.Ticks[1].Pre.VelY);
-        Assert.Equal(0.0f, replay.Ticks[1].Pre.VelZ);
-        Assert.Equal(128.0f, replay.Ticks[1].Post.VelX);
+        NativeMovementSnapshot[] expected = [before, artifact, artifact, after];
+        NativeMovementSnapshot[] actual = [replay.Ticks[0].Pre, replay.Ticks[0].Post,
+            replay.Ticks[1].Pre, replay.Ticks[1].Post];
+        for (var i = 0; i < expected.Length; i++)
+        {
+            Assert.Equal(BitConverter.SingleToUInt32Bits(expected[i].VelX), BitConverter.SingleToUInt32Bits(actual[i].VelX));
+            Assert.Equal(BitConverter.SingleToUInt32Bits(expected[i].VelY), BitConverter.SingleToUInt32Bits(actual[i].VelY));
+            Assert.Equal(BitConverter.SingleToUInt32Bits(expected[i].VelZ), BitConverter.SingleToUInt32Bits(actual[i].VelZ));
+        }
     }
 
     [Fact]

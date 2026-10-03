@@ -12,11 +12,6 @@ namespace DemoTracer;
 
 internal static partial class DtrReplayReader
 {
-    // CS2's normal sv_maxvelocity ceiling is lower than this. Values beyond
-    // the conservative limit are parser artifacts seen on the first shared
-    // freeze-time snapshot after a spawn transition, not usable player motion.
-    private const float MaxPlayerVelocityComponent = 4096.0f;
-
     private static void ValidateReplaySemantics(DtrReplayFile replay)
     {
         if (!float.IsFinite(replay.TickRate) || replay.TickRate <= 0.0f)
@@ -160,68 +155,6 @@ internal static partial class DtrReplayReader
             throw new InvalidDataException($"tick {index}{phase} padding must be zero");
         if (snapshot.Ducked > 1 || snapshot.Ducking > 1 || snapshot.DesiresDuck > 1)
             throw new InvalidDataException($"tick {index}{phase} duck state bytes must be 0 or 1");
-    }
-
-    private static void RepairLaggedPlayerVelocities(
-        NativeMovementSnapshot[] snapshots,
-        float tickRate)
-    {
-        var hasImpossibleVelocity = false;
-        for (var i = 0; i < snapshots.Length; i++)
-        {
-            var snapshot = snapshots[i];
-            if (!float.IsFinite(snapshot.VelX) ||
-                !float.IsFinite(snapshot.VelY) ||
-                !float.IsFinite(snapshot.VelZ))
-            {
-                // Preserve malformed values for the strict semantic validator.
-                return;
-            }
-            if (MathF.Abs(snapshot.VelX) > MaxPlayerVelocityComponent ||
-                MathF.Abs(snapshot.VelY) > MaxPlayerVelocityComponent ||
-                MathF.Abs(snapshot.VelZ) > MaxPlayerVelocityComponent)
-            {
-                hasImpossibleVelocity = true;
-                break;
-            }
-        }
-        if (!hasImpossibleVelocity)
-            return;
-
-        // The converter's historical derived-velocity lane was exactly one
-        // sample late. An impossible spawn-transition value is an unambiguous
-        // marker for that lane, so rebuild its entire point-state derivative
-        // from the canonical origin chain instead of only clipping one sample.
-        for (var i = 0; i < snapshots.Length; i++)
-        {
-            ref var snapshot = ref snapshots[i];
-            if (i == 0 || !float.IsFinite(tickRate) || tickRate <= 0.0f)
-            {
-                snapshot.VelX = 0.0f;
-                snapshot.VelY = 0.0f;
-                snapshot.VelZ = 0.0f;
-                continue;
-            }
-
-            var previous = snapshots[i - 1];
-            var velX = (snapshot.OriginX - previous.OriginX) * tickRate;
-            var velY = (snapshot.OriginY - previous.OriginY) * tickRate;
-            var velZ = (snapshot.OriginZ - previous.OriginZ) * tickRate;
-            if (!float.IsFinite(velX) ||
-                !float.IsFinite(velY) ||
-                !float.IsFinite(velZ) ||
-                MathF.Abs(velX) > MaxPlayerVelocityComponent ||
-                MathF.Abs(velY) > MaxPlayerVelocityComponent ||
-                MathF.Abs(velZ) > MaxPlayerVelocityComponent)
-            {
-                velX = 0.0f;
-                velY = 0.0f;
-                velZ = 0.0f;
-            }
-            snapshot.VelX = velX;
-            snapshot.VelY = velY;
-            snapshot.VelZ = velZ;
-        }
     }
 
     private static void RequireFinite(ReadOnlySpan<float> values, string kind, int index, string suffix = "")

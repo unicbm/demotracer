@@ -6,7 +6,8 @@ loader and BotController runtime.
 All values are little-endian. The format is lossless for stored replay evidence:
 movement snapshots, projectile events, high-fidelity metadata, subtick records,
 command-frame data, and shooting input-history data retain their original
-`f32`, integer, or UTF-8 JSON values.
+`f32`, integer, or UTF-8 JSON values. Readers do not reconstruct snapshot
+velocities from positions.
 
 ## Version Gates
 
@@ -27,8 +28,8 @@ Compatibility notes:
 - v8 keeps the v7 section container and changes only the snapshot and command
   frame section payloads to bit-exact columnar delta-varint layouts.
 - v9 adds per-command `CSGOUserCmdPB.input_history` and attack start indexes.
-  Playback rebases stored absolute history ticks to the live command tick;
-  demo entity indexes are retained as evidence but are not injected.
+  These remain stored evidence; the Windows runtime does not advertise native
+  input-history injection. Command, movement, and subtick playback remain available.
 - v11 adds presence-aware source-state changes for native boundary restoration.
 - v12 stores source state in compact clock runs and field-local XOR byte planes;
   it writes Zstandard sections and requires BotController ABI 21.40 to retain
@@ -37,8 +38,7 @@ Compatibility notes:
 ## Reader Safety Limits
 
 The maintained Rust/Desktop and C# readers apply the same default resource
-policy before attacker-controlled allocation or decompression. These are
-reader safety limits, not a change to the binary layout or ABI:
+policy before allocating or decompressing file data:
 
 | Resource | Default ceiling |
 | --- | ---: |
