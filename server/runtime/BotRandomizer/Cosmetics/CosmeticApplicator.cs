@@ -61,7 +61,6 @@ internal sealed class CosmeticApplicator
             if (weapons is null)
                 return;
 
-            var fingerprint = KnifeCosmeticFingerprint.From(selection);
             foreach (var handle in weapons)
             {
                 var weapon = handle.Value;
@@ -76,7 +75,7 @@ internal sealed class CosmeticApplicator
                 var isAppliedEntity = _appliedKnives.TryGetValue(player.Slot, out var applied)
                     && applied.PawnHandle == pawn.EntityHandle.Raw
                     && applied.WeaponHandle == weapon.EntityHandle.Raw
-                    && applied.Fingerprint == fingerprint;
+                    && applied.Selection == selection;
                 var isPreparedEntity = item.ItemDefinitionIndex == selection.DefIndex && item.Initialized;
                 if (!isDefaultKnife && !isAppliedEntity && !isPreparedEntity)
                     continue;
@@ -113,7 +112,7 @@ internal sealed class CosmeticApplicator
                 _appliedKnives[player.Slot] = new AppliedKnifeCosmetic(
                     pawn.EntityHandle.Raw,
                     weapon.EntityHandle.Raw,
-                    fingerprint,
+                    selection,
                     item.ItemID);
                 return;
             }
@@ -149,10 +148,9 @@ internal sealed class CosmeticApplicator
         try
         {
             var item = pawn.EconGloves;
-            var fingerprint = GloveCosmeticFingerprint.From(selection);
             if (_appliedGloves.TryGetValue(player.Slot, out var applied)
                 && applied.PawnHandle == pawn.EntityHandle.Raw
-                && applied.Fingerprint == fingerprint
+                && applied.Selection == selection
                 && item.Initialized
                 && item.ItemID == applied.ItemId
                 && item.ItemDefinitionIndex == applied.ItemDefinitionIndex
@@ -176,7 +174,7 @@ internal sealed class CosmeticApplicator
             pawn.AcceptInput("SetBodygroup", value: "first_or_third_person,0");
             _appliedGloves[player.Slot] = new AppliedGloveCosmetic(
                 pawn.EntityHandle.Raw,
-                fingerprint,
+                selection,
                 item.ItemID,
                 item.ItemDefinitionIndex,
                 item.AccountID);
@@ -274,43 +272,15 @@ internal sealed class CosmeticApplicator
             _setAttributeByName.Invoke(attributes.Handle, name, value);
     }
 
-    private readonly record struct KnifeCosmeticFingerprint(
-        ushort DefIndex,
-        int PaintKit,
-        int Seed,
-        int WearBits)
-    {
-        internal static KnifeCosmeticFingerprint From(KnifeSelection selection)
-            => new(
-                selection.DefIndex,
-                selection.PaintKit,
-                selection.Seed,
-                BitConverter.SingleToInt32Bits(selection.Wear));
-    }
-
-    private readonly record struct GloveCosmeticFingerprint(
-        ushort DefIndex,
-        int PaintKit,
-        int Seed,
-        int WearBits)
-    {
-        internal static GloveCosmeticFingerprint From(GloveSelection selection)
-            => new(
-                selection.DefIndex,
-                selection.PaintKit,
-                selection.Seed,
-                BitConverter.SingleToInt32Bits(selection.Wear));
-    }
-
     private readonly record struct AppliedKnifeCosmetic(
         uint PawnHandle,
         uint WeaponHandle,
-        KnifeCosmeticFingerprint Fingerprint,
+        KnifeSelection Selection,
         ulong ItemId);
 
     private readonly record struct AppliedGloveCosmetic(
         uint PawnHandle,
-        GloveCosmeticFingerprint Fingerprint,
+        GloveSelection Selection,
         ulong ItemId,
         ushort ItemDefinitionIndex,
         uint AccountId);
