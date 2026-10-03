@@ -174,45 +174,14 @@ public sealed partial class DemoTracerPlugin
 
         if (!string.IsNullOrWhiteSpace(fidelity.Preset))
         {
-            switch (fidelity.Preset.Trim().ToLowerInvariant())
+            if (ParseReplayFidelityPreset(fidelity.Preset) is { } preset)
             {
-                case "default":
-                    SetWeaponAlignEnabled(true);
-                    SetProjectileAlignEnabled(true);
-                    SetCrosshairAlignEnabled(true);
-                    _leftHandDesiredEnabled = true;
-                    _balanceAlignEnabled = false;
-                    break;
-                case "full":
-                    SetWeaponAlignEnabled(true);
-                    SetProjectileAlignEnabled(true);
-                    SetCrosshairAlignEnabled(true);
-                    _leftHandDesiredEnabled = true;
-                    _balanceAlignEnabled = true;
-                    break;
-                case "handoff_safe":
-                case "handoff-safe":
-                case "handoff":
-                    SetWeaponAlignEnabled(true);
-                    SetProjectileAlignEnabled(true);
-                    SetCrosshairAlignEnabled(true);
-                    _leftHandDesiredEnabled = false;
-                    _balanceAlignEnabled = false;
+                ApplyReplayFidelityPreset(preset);
+                if (!preset.LeftHandDesired)
                     reply(LeftHandDesiredFidelityNotice);
-                    break;
-                case "off":
-                case "none":
-                    SetWeaponAlignEnabled(false);
-                    SetProjectileAlignEnabled(false);
-                    SetCrosshairAlignEnabled(false);
-                    _leftHandDesiredEnabled = false;
-                    _balanceAlignEnabled = false;
-                    reply(LeftHandDesiredFidelityNotice);
-                    break;
-                default:
-                    reply($"[DTR WARN] ignored config fidelity.preset=\"{fidelity.Preset}\"");
-                    break;
             }
+            else
+                reply($"[DTR WARN] ignored config fidelity.preset=\"{fidelity.Preset}\"");
         }
 
         if (fidelity.Weapons.HasValue)

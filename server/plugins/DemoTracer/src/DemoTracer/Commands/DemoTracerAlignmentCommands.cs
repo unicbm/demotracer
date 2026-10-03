@@ -148,65 +148,19 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        var mode = command.GetArg(1).ToLowerInvariant();
-        switch (mode)
+        if (ParseReplayFidelityPreset(command.GetArg(1)) is { } preset)
         {
-            case "default":
-                ApplyReplayFidelityPreset(
-                    weapons: true,
-                    projectiles: true,
-                    leftHandDesired: true,
-                    crosshair: true,
-                    balance: false,
-                    command.ReplyToCommand);
-                return;
-            case "full":
-                ApplyReplayFidelityPreset(
-                    weapons: true,
-                    projectiles: true,
-                    leftHandDesired: true,
-                    crosshair: true,
-                    balance: true,
-                    command.ReplyToCommand);
-                return;
-            case "handoff_safe":
-            case "handoff-safe":
-            case "handoff":
-                ApplyReplayFidelityPreset(
-                    weapons: true,
-                    projectiles: true,
-                    leftHandDesired: false,
-                    crosshair: true,
-                    balance: false,
-                    command.ReplyToCommand);
-                return;
-            case "off":
-            case "none":
-            case "movement":
-            case "movement_only":
-            case "movement-only":
-                ApplyReplayFidelityPreset(
-                    weapons: false,
-                    projectiles: false,
-                    leftHandDesired: false,
-                    crosshair: false,
-                    balance: false,
-                    command.ReplyToCommand);
-                return;
-            default:
-                if (command.ArgCount < 3)
-                {
-                    ReplyUnknownAlignTarget(command.GetArg(1), command.ReplyToCommand);
-                    return;
-                }
-                if (SetAlignComponent(command.GetArg(1), ParseOnOff(command.GetArg(2), false), command.ReplyToCommand))
-                {
-                    ReplyAlignStatus(command.ReplyToCommand);
-                    return;
-                }
-                ReplyUnknownAlignTarget(command.GetArg(1), command.ReplyToCommand);
-                return;
+            ApplyReplayFidelityPreset(preset);
+            ApplyLeftHandDesiredMode(preset.LeftHandDesired, command.ReplyToCommand);
+            ReplyAlignStatus(command.ReplyToCommand);
+            return;
         }
+
+        if (command.ArgCount >= 3 &&
+            SetAlignComponent(command.GetArg(1), ParseOnOff(command.GetArg(2), false), command.ReplyToCommand))
+            ReplyAlignStatus(command.ReplyToCommand);
+        else
+            ReplyUnknownAlignTarget(command.GetArg(1), command.ReplyToCommand);
     }
 
     [ConsoleCommand("dtr_match", "dtr_match [status|off|scoreboard|scoreboard <on|off>|full]")]
@@ -379,20 +333,23 @@ public sealed partial class DemoTracerPlugin
         return "custom";
     }
 
-    private void ApplyReplayFidelityPreset(
-        bool weapons,
-        bool projectiles,
-        bool leftHandDesired,
-        bool crosshair,
-        bool balance,
-        Action<string> reply)
+    private static (bool Gameplay, bool LeftHandDesired, bool Balance)? ParseReplayFidelityPreset(string value)
+        => value.Trim().ToLowerInvariant() switch
+        {
+            "default" => (true, true, false),
+            "full" => (true, true, true),
+            "handoff_safe" or "handoff-safe" or "handoff" => (true, false, false),
+            "off" or "none" or "movement" or "movement_only" or "movement-only" => (false, false, false),
+            _ => null,
+        };
+
+    private void ApplyReplayFidelityPreset((bool Gameplay, bool LeftHandDesired, bool Balance) preset)
     {
-        SetWeaponAlignEnabled(weapons);
-        SetProjectileAlignEnabled(projectiles);
-        ApplyLeftHandDesiredMode(leftHandDesired, reply);
-        SetCrosshairAlignEnabled(crosshair);
-        _balanceAlignEnabled = balance;
-        ReplyAlignStatus(reply);
+        SetWeaponAlignEnabled(preset.Gameplay);
+        SetProjectileAlignEnabled(preset.Gameplay);
+        SetCrosshairAlignEnabled(preset.Gameplay);
+        _leftHandDesiredEnabled = preset.LeftHandDesired;
+        _balanceAlignEnabled = preset.Balance;
     }
 
     private bool SetAlignComponent(string component, bool enabled, Action<string> reply)
