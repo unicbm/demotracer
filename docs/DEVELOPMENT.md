@@ -127,6 +127,31 @@ checks; shared/build changes, missing diff information and releases run the full
 suite. Packaging reuses tested artifacts. GUI, Playback and API/ABI versions are
 independent. BotRandomizer also produces a standalone package.
 
+### Automated updates
+
+`Update dependencies` runs weekly and can be dispatched manually, including a
+dry run. Renovate opens reviewable PRs for npm/pnpm, Cargo, NuGet and the parser
+gitlink; Dependabot handles Actions. Minor/patch updates are grouped by module,
+with Tauri's Rust and JavaScript packages together. Major updates stay separate.
+The bot refreshes consumer lockfiles for parser updates and regenerates shared
+econ catalogs for `@ianlucas/cs2-lib` updates. Parser source changes stay in its
+own repository.
+
+CounterStrikeSharp, the packaged Zstd decoder, native SDK/KHook pins, engine
+profiles and API/ABI contracts require coordinated manual updates. Bot PRs are
+never auto-merged. Actions uses its repository token, so GitHub requires a
+maintainer to **Approve workflows to run** on its PRs before CI starts.
+
+`Prepare version PR` accepts independent GUI, Playback and converter versions;
+empty inputs keep current versions. A GUI bump requires Chinese and English
+release notes, which are copied verbatim into the release files. Re-running it
+replaces the pending `codex/prepare-version` PR. It checks all version mirrors
+and leaves publishing to the existing manual packaging flow. It creates no
+tags, GitHub Releases or R2 uploads.
+
+CI keeps intermediate artifacts for 3 days, playback/standalone packages for
+7 days, and manually built NSIS installers for 14 days.
+
 ### Component history
 
 The six former product repositories were consolidated on 2026-09-27. Their

@@ -9,7 +9,15 @@ test('docs changes do not compile products', () => {
   assert.ok(Object.values(scopeFor(['README.md', 'docs/FORMAT.md', 'server/runtime/dtr-controller/README.md', 'desktop/converter/PROVENANCE.md'])).every(v => !v));
 });
 test('frontend avoids native and Rust work', () => {
-  assert.deepEqual(scopeFor(['desktop/gui/src/App.tsx']), { parser:false, converter:false, desktop:false, frontend:true, playback:false, nativeCommon:false, fuzz:false });
+  assert.deepEqual(scopeFor(['desktop/gui/src/App.tsx']), { parser:false, converter:false, desktop:false, frontend:true, playback:false, nativeCommon:false, fuzz:false, telemetry:false });
+});
+
+test('telemetry source and dependency changes run Worker validation only', () => {
+  for (const file of ['cloudflare/telemetry/src/index.mjs', 'cloudflare/telemetry/pnpm-lock.yaml']) {
+    const { telemetry, ...products } = scopeFor([file]);
+    assert.equal(telemetry, true);
+    assert.ok(Object.values(products).every(v => !v));
+  }
 });
 test('parser changes validate converter and GUI consumers', () => {
   const s = scopeFor(['third_party/demoparser']);

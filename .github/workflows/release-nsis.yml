@@ -60,7 +60,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v6
         with:
-          version: 11.9.0
+          package_json_file: desktop/gui/package.json
           run_install: false
 
       - name: Install Node.js
@@ -99,3 +99,4 @@ jobs:
             desktop/gui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/component-sources.json
           if-no-files-found: error
           compression-level: 0
+          retention-days: 14

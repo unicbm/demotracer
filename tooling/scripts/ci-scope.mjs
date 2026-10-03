@@ -17,7 +17,8 @@ export function scopeFor(files, full = false) {
   const frontend = all || any(/^desktop\/gui\/(?!src-tauri\/)/);
   const playback = all || any(/^server\/(plugins\/DemoTracer|runtime\/(dtr-controller|dtr-hider|BotRandomizer))\//);
   const fuzz = all || any(/^server\/runtime\/dtr-controller\//);
-  return { parser, converter, desktop, frontend, playback, nativeCommon: all, fuzz };
+  const telemetry = all || any(/^cloudflare\/telemetry\//);
+  return { parser, converter, desktop, frontend, playback, nativeCommon: all, fuzz, telemetry };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

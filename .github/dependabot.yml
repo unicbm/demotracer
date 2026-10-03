@@ -4,7 +4,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
     groups:
       github-actions:
         patterns: ['*']
-# The parser fork is updated deliberately after reviewing its source changes.
+        update-types: [minor, patch]

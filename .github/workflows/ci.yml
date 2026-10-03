@@ -36,6 +36,7 @@ jobs:
       playback: ${{ steps.scope.outputs.playback }}
       nativeCommon: ${{ steps.scope.outputs.nativeCommon }}
       fuzz: ${{ steps.scope.outputs.fuzz }}
+      telemetry: ${{ steps.scope.outputs.telemetry }}
 
     steps:
       - name: Checkout
@@ -48,8 +49,8 @@ jobs:
         id: scope
         run: node tooling/scripts/ci-scope.mjs
 
-      - name: Test CI impact selection
-        run: node --test tooling/scripts/ci-scope.test.mjs
+      - name: Test CI and version tooling
+        run: node --test tooling/scripts/ci-scope.test.mjs tooling/scripts/prepare-version.test.mjs
 
       - name: Install Rust formatter
         uses: dtolnay/rust-toolchain@stable
@@ -167,7 +168,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v6
         with:
-          version: 11.9.0
+          package_json_file: desktop/gui/package.json
           run_install: false
 
       - name: Install Node.js
@@ -206,6 +207,29 @@ jobs:
       - name: Build desktop frontend
         working-directory: desktop/gui
         run: pnpm run build:vite
+
+  telemetry:
+    needs: gate
+    if: ${{ needs.gate.outputs.telemetry == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: cloudflare/telemetry/package.json
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: cloudflare/telemetry/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: cloudflare/telemetry
+      - run: pnpm test
+        working-directory: cloudflare/telemetry
+      - run: pnpm exec wrangler deploy --dry-run --outdir ../../tmp/telemetry-build
+        working-directory: cloudflare/telemetry
 
   desktop-rust:
     needs: gate
@@ -266,6 +290,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: managed-playback
+          retention-days: 3
           path: tmp/ci-managed/
           if-no-files-found: error
 
@@ -292,6 +317,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: randomizer-package
+          retention-days: 7
           path: |
             server/runtime/BotRandomizer/dist/BotRandomizer-v*.zip
             server/runtime/BotRandomizer/dist/BotRandomizer-v*.zip.sha256
@@ -430,6 +456,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.component }}
+          retention-days: 3
           path: server/runtime/${{ matrix.component }}/.build/native/package/
           if-no-files-found: error
 
@@ -475,6 +502,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: demotracer-playback-windows-x64
+          retention-days: 7
           path: dist/demotracer-css-v*.zip
           if-no-files-found: error
 
@@ -493,6 +521,7 @@ jobs:
       - randomizer-standalone
       - native-windows
       - native-fuzz-smoke
+      - telemetry
     runs-on: ubuntu-latest
     timeout-minutes: 2
 

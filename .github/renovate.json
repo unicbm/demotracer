@@ -1,0 +1,75 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "enabledManagers": ["npm", "cargo", "nuget", "git-submodules"],
+  "branchPrefix": "codex/deps/",
+  "automerge": false,
+  "dependencyDashboard": false,
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "minimumReleaseAge": "7 days",
+  "rangeStrategy": "bump",
+  "ignorePaths": ["third_party/**"],
+  "ignoreDeps": ["CounterStrikeSharp.API", "ZstdSharp.Port"],
+  "cloneSubmodules": true,
+  "git-submodules": { "enabled": true },
+  "packageRules": [
+    {
+      "matchManagers": ["npm"],
+      "matchFileNames": ["desktop/gui/**"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "GUI frontend dependencies"
+    },
+    {
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "desktop Rust dependencies"
+    },
+    {
+      "matchPackageNames": ["/^(@tauri-apps\\/|tauri($|-))/"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "Tauri dependencies"
+    },
+    {
+      "matchManagers": ["nuget"],
+      "matchFileNames": ["server/plugins/DemoTracer/**"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "playback test dependencies"
+    },
+    {
+      "matchManagers": ["nuget"],
+      "matchFileNames": ["server/runtime/dtr-hider/**"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "hider dependencies"
+    },
+    {
+      "matchFileNames": ["cloudflare/telemetry/**"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "telemetry dependencies"
+    },
+    {
+      "matchPackageNames": ["@ianlucas/cs2-lib"],
+      "postUpgradeTasks": {
+        "commands": [
+          "npm ci --ignore-scripts --prefix server/runtime/common/tools/cs2-lib-data",
+          "npm run generate --prefix server/runtime/common/tools/cs2-lib-data"
+        ],
+        "fileFilters": ["server/runtime/common/econ/*.json"],
+        "executionMode": "branch",
+        "installTools": { "node": {}, "npm": {} }
+      }
+    },
+    {
+      "matchManagers": ["git-submodules"],
+      "minimumReleaseAge": null,
+      "postUpgradeTasks": {
+        "commands": [
+          "cargo update --workspace --manifest-path desktop/converter/Cargo.toml",
+          "cargo update --workspace --manifest-path desktop/gui/src-tauri/Cargo.toml"
+        ],
+        "fileFilters": ["desktop/converter/Cargo.lock", "desktop/gui/src-tauri/Cargo.lock"],
+        "executionMode": "branch",
+        "installTools": { "rust": {} }
+      }
+    }
+  ]
+}
