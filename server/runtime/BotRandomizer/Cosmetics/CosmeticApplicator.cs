@@ -96,7 +96,7 @@ internal sealed class CosmeticApplicator
                     {
                         item.AttributeList.Attributes.RemoveAll();
                         item.NetworkedDynamicAttributes.Attributes.RemoveAll();
-                        AssignReplayIdentity(item, selection.Identity, player.SteamID, defaultQuality: 3);
+                        EconItemIdentity.Apply(item, selection.Identity, player.SteamID, defaultQuality: 3);
                         SetTextureAttributes(
                             item.NetworkedDynamicAttributes,
                             item.AttributeList,
@@ -163,7 +163,7 @@ internal sealed class CosmeticApplicator
 
             item.ItemDefinitionIndex = selection.DefIndex;
             item.Initialized = true;
-            AssignReplayIdentity(item, selection.Identity, player.SteamID, defaultQuality: 4);
+            EconItemIdentity.Apply(item, selection.Identity, player.SteamID, defaultQuality: 4);
             item.NetworkedDynamicAttributes.Attributes.RemoveAll();
             item.AttributeList.Attributes.RemoveAll();
             SetTextureAttributes(
@@ -272,51 +272,6 @@ internal sealed class CosmeticApplicator
     {
         if (_setAttributeByName is not null && attributes.Handle != IntPtr.Zero)
             _setAttributeByName.Invoke(attributes.Handle, name, value);
-    }
-
-    private static void AssignItemId(CEconItemView item)
-    {
-        var itemId = EconItemIdAllocator.Next();
-        item.ItemID = itemId;
-        item.ItemIDLow = (uint)(itemId & uint.MaxValue);
-        item.ItemIDHigh = (uint)(itemId >> 32);
-    }
-
-    private static void AssignReplayIdentity(
-        CEconItemView item,
-        ReplayEconIdentity? identity,
-        ulong fallbackSteamId,
-        int defaultQuality)
-    {
-        if (identity is null)
-        {
-            item.AccountID = AccountIdFromSteamId(fallbackSteamId);
-            AssignItemId(item);
-            return;
-        }
-
-        var owner = identity.OriginalOwnerSteamId.GetValueOrDefault(fallbackSteamId);
-        item.AccountID = identity.ItemAccountId ?? AccountIdFromSteamId(owner);
-        item.EntityQuality = identity.ResolveQuality(defaultQuality);
-        var itemId = identity.ItemId.GetValueOrDefault();
-        if (itemId == 0)
-            itemId = EconItemIdAllocator.Next();
-        item.ItemID = itemId;
-        item.ItemIDLow = (uint)(itemId & uint.MaxValue);
-        item.ItemIDHigh = (uint)(itemId >> 32);
-        if (!string.IsNullOrWhiteSpace(identity.CustomName))
-            item.CustomName = identity.CustomName;
-    }
-
-    private static uint AccountIdFromSteamId(ulong steamId)
-    {
-        const ulong steamId64AccountBase = 76_561_197_960_265_728;
-        if (steamId >= steamId64AccountBase)
-        {
-            var accountId = steamId - steamId64AccountBase;
-            return accountId <= uint.MaxValue ? (uint)accountId : 0;
-        }
-        return steamId <= uint.MaxValue ? (uint)steamId : 0;
     }
 
     private readonly record struct KnifeCosmeticFingerprint(

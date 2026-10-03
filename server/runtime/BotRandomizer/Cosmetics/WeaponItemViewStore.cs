@@ -8,8 +8,6 @@ namespace BotRandomizer;
 
 internal sealed class WeaponItemViewStore : IDisposable
 {
-    private const ulong SteamId64AccountBase = 76_561_197_960_265_728;
-
     private readonly MemoryFunctionWithReturn<nint, nint>? _constructor;
     private readonly MemoryFunctionWithReturn<nint, string, float, int>? _setAttributeByName;
     private readonly ILogger _logger;
@@ -106,10 +104,7 @@ internal sealed class WeaponItemViewStore : IDisposable
 
             item.Initialized = true;
             item.ItemDefinitionIndex = weapon.DefIndex;
-            AssignItemId(item);
-            item.AccountID = AccountIdFromSteamId(steamId);
-            item.EntityQuality = 4;
-            item.CustomName = string.Empty;
+            EconItemIdentity.Apply(item, null, steamId, defaultQuality: 4);
 
             // A cached view may previously have carried a DTR plan. Clear both
             // lists so switching back to randomized defaults cannot retain it.
@@ -168,17 +163,7 @@ internal sealed class WeaponItemViewStore : IDisposable
 
             item.Initialized = true;
             item.ItemDefinitionIndex = defIndex;
-            if (identity is null)
-            {
-                AssignItemId(item);
-                item.AccountID = AccountIdFromSteamId(steamId);
-                item.EntityQuality = defaultQuality;
-                item.CustomName = string.Empty;
-            }
-            else
-            {
-                AssignReplayIdentity(item, identity, steamId, defaultQuality);
-            }
+            EconItemIdentity.Apply(item, identity, steamId, defaultQuality);
             networked.Attributes.RemoveAll();
             attributes.Attributes.RemoveAll();
             SetTextureAttributes(networked, paintKit, seed, wear);
@@ -311,41 +296,5 @@ internal sealed class WeaponItemViewStore : IDisposable
 
         _errorLogged = true;
         _logger.LogError(exception, "[BotRandomizer] Failed to prepare an item view");
-    }
-
-    private static void AssignItemId(CEconItemView item)
-    {
-        var itemId = EconItemIdAllocator.Next();
-        item.ItemID = itemId;
-        item.ItemIDLow = (uint)(itemId & uint.MaxValue);
-        item.ItemIDHigh = (uint)(itemId >> 32);
-    }
-
-    private static void AssignReplayIdentity(
-        CEconItemView item,
-        ReplayEconIdentity identity,
-        ulong fallbackSteamId,
-        int defaultQuality)
-    {
-        var owner = identity.OriginalOwnerSteamId.GetValueOrDefault(fallbackSteamId);
-        item.AccountID = identity.ItemAccountId ?? AccountIdFromSteamId(owner);
-        item.EntityQuality = identity.ResolveQuality(defaultQuality);
-        var itemId = identity.ItemId.GetValueOrDefault();
-        if (itemId == 0)
-            itemId = EconItemIdAllocator.Next();
-        item.ItemID = itemId;
-        item.ItemIDLow = (uint)(itemId & uint.MaxValue);
-        item.ItemIDHigh = (uint)(itemId >> 32);
-        item.CustomName = identity.CustomName ?? string.Empty;
-    }
-
-    private static uint AccountIdFromSteamId(ulong steamId)
-    {
-        if (steamId >= SteamId64AccountBase)
-        {
-            var accountId = steamId - SteamId64AccountBase;
-            return accountId <= uint.MaxValue ? (uint)accountId : 0;
-        }
-        return steamId <= uint.MaxValue ? (uint)steamId : 0;
     }
 }
