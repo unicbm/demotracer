@@ -807,6 +807,8 @@ fn apply_validated_package(
     package_bytes: &[u8],
     source: &str,
 ) -> CommandResult<PlaybackInstallResultDto> {
+    let previous = read_installed_receipt(&paths.game_csgo)
+        .map_err(|error| CommandErrorDto::new("playback_receipt_invalid", error))?;
     let backup_root = local_data.join(BACKUP_DIRECTORY).join(format!(
         "{}-{}",
         uuid::Uuid::new_v4(),
@@ -835,7 +837,6 @@ fn apply_validated_package(
         )),
     );
 
-    let previous = read_installed_receipt(&paths.game_csgo).ok().flatten();
     let mut external_groups = BTreeSet::new();
     if let Some(previous) = &previous {
         for file in &previous.files {

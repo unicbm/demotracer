@@ -150,6 +150,20 @@ fn seed_legacy_runtime(fixture: &InstallFixture) {
 }
 
 #[test]
+fn corrupt_installed_receipt_does_not_turn_an_upgrade_into_a_fresh_install() {
+    let fixture = InstallFixture::new();
+    seed_legacy_runtime(&fixture);
+    fixture.write(INSTALL_RECEIPT_RELATIVE_PATH, b"{broken receipt");
+    let original = fixture.snapshot();
+
+    let error = fixture.install("1.5.0").unwrap_err();
+
+    assert_eq!(error.code, "playback_receipt_invalid");
+    assert_eq!(fixture.snapshot(), original);
+    assert!(!fixture.state_path().exists());
+}
+
+#[test]
 fn renamed_runtime_preserves_upstream_without_a_dtr_receipt() {
     let fixture = InstallFixture::new();
     for path in LEGACY_RUNTIME_FILES {
