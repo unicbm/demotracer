@@ -1,5 +1,3 @@
-// MinHook for CCSBot EquipBestWeapon/EquipPistol + WeaponServices::SelectItem.
-
 #pragma once
 
 #include <cstdint>

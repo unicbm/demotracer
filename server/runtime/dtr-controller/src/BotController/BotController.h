@@ -1,5 +1,3 @@
-// MinHook install/remove for CCSBot Update/Upkeep and replay view/perception hooks.
-
 #pragma once
 
 #include <cstdint>

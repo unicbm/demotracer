@@ -12,7 +12,6 @@
 
 namespace BotController::targets
 {
-    // Only genuinely private/non-schema layout remains in gamedata.
     void LoadFromGamedata(const nlohmann::json &gd)
     {
         PublicBotProfile::Configure(gd);

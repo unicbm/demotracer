@@ -21,11 +21,9 @@ push, open pull requests, or publish releases. A failed generation can leave
 partial candidate files; inspect the diff before committing.
 
 Review `source.json`, `package.json`, `package-lock.json`, and both `econ/`
-outputs together. Run this repository's `tools/check.ps1`, then release the
-common source revision through its reviewed version PR. Consumers adopt that
-release by updating their common gitlink and running their own integration
-checks. The common source version does not automatically change any provider
-version, ABI, or DemoTracer playback contract.
+outputs together. Consumers use these files directly from
+`server/runtime/common`; run the affected converter and playback checks before
+committing generated data changes.
 
 `randomizer-policy.json` retains aggregate knife preferences, historical demo
 provenance, and default music-kit exclusions. Updating item availability does

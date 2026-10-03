@@ -2,8 +2,7 @@
 
 The CounterStrikeSharp playback plugin maintained for CS2 DemoTracer. This
 repository owns the managed playback source and its regression tests. The
-repository name does not change the runtime identity: the assembly and plugin
-directory remain `DemoTracer`, and the companion capability remains
+assembly and plugin directory are `DemoTracer`; the companion capability is
 `demotracer:api` (API 7).
 
 ## Source responsibilities
@@ -25,8 +24,7 @@ the responsibilities of the existing classes and partial plugin files:
 | `Voice` | Voice models, codec, loading, and playback |
 | `Data` | DTR section readers, validation, manifests, and shared plugin models |
 
-The partial classes keep their existing namespaces and names. Configuration
-inputs live in `config/`; the project links them into its normal build output.
+Configuration inputs live in `config/`; the project links them into its build output.
 Tests stay in `tests/DemoTracer.Tests/`. License and source provenance stay at the
 repository root.
 
