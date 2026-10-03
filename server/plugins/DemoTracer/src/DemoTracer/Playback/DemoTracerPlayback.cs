@@ -144,16 +144,14 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        var deferExistingReplayCleanup =
-            ReplayPlanOverridePolicy.DeferExistingReplayCleanupUntilRoundStart(restart);
         if (!CheckReplayStartGates(
                 message => command.ReplyToCommand(message),
                 stopCurrentForOverride: true,
-                deferStopUntilRoundStart: deferExistingReplayCleanup))
+                deferStopUntilRoundStart: restart))
             return;
 
         ActivatePendingReplayRetentionPriority();
-        if (!deferExistingReplayCleanup)
+        if (!restart)
             StopAndUnloadLoaded();
         CancelReplayPrefetch();
         ResetPlayoffProgress();
@@ -232,16 +230,14 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        var deferExistingReplayCleanup =
-            ReplayPlanOverridePolicy.DeferExistingReplayCleanupUntilRoundStart(restart);
         if (!CheckReplayStartGates(
                 reply,
                 stopCurrentForOverride: true,
-                deferStopUntilRoundStart: deferExistingReplayCleanup))
+                deferStopUntilRoundStart: restart))
             return;
 
         ActivatePendingReplayRetentionPriority();
-        if (!deferExistingReplayCleanup)
+        if (!restart)
             StopAndUnloadLoaded();
         CancelReplayPrefetch();
         _session.Plan.ClearSequence();
@@ -466,10 +462,7 @@ public sealed partial class DemoTracerPlugin
         }
         else
         {
-            // Decode the next source round while the current replay is live.
-            // Waiting until round_end leaves only the post-round/freeze window,
-            // which is too short for some long v8 replay sets and can let the
-            // next round enter freeze time without buy suppression or pre-roll.
+            // Prefetch during live playback; round_end can leave too little decode time.
             PrefetchRoundReplays(_session.Plan.SequenceManifestPath, _session.Plan.SequenceRounds[_session.Plan.SequenceIndex]);
         }
     }

@@ -6,12 +6,6 @@
 
 namespace DemoTracer;
 
-internal static class ReplayPlanOverridePolicy
-{
-    internal static bool DeferExistingReplayCleanupUntilRoundStart(bool restartRequested)
-        => restartRequested;
-}
-
 internal static class ReplaySequenceContinuityPolicy
 {
     internal static int? FindFirstMissingRound(
