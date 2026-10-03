@@ -27,7 +27,7 @@ namespace DtrControllerApi
         public bool Lock(int slot, LockTarget target) => _owned.Track(slot, SlotResource.WeaponLock, CanControl(slot) && BotController.Lock(slot, target));
         public bool Unlock(int slot, LockKind kind)
         {
-            if (!CanControl(slot) || !BotController.Unlock(slot, kind)) return false;
+            if (!_owned.Has(slot, LockResource(kind)) || !CanControl(slot) || !BotController.Unlock(slot, kind)) return false;
             _owned.Forget(slot, LockResource(kind));
             return true;
         }
@@ -43,7 +43,7 @@ namespace DtrControllerApi
 
         // ---- recording ----
         public bool StartRecord(int slot) => _owned.Track(slot, SlotResource.Recording, BotController.StartRecord(slot));
-        public bool StopRecord(int slot) => BotController.StopRecord(slot);
+        public bool StopRecord(int slot) => _owned.Has(slot, SlotResource.Recording) && BotController.StopRecord(slot);
         public int RecordedTickCount(int slot) => BotController.RecordedTickCount(slot);
         public (ReplayTick[] ticks, SubtickMove[] subs) GetRecordedMotion(int slot)
             => BotController.GetRecordedMotion(slot);
@@ -64,7 +64,8 @@ namespace DtrControllerApi
             => _owned.Track(slot, SlotResource.Replay, CanUseReplayBuffer(slot) && BotController.LoadReplayExtended(
                 slot, ticks, subs, commands, Array.Empty<ReplayMovementExtra>()));
         public bool TransferRecordingToReplay(int srcSlot, int dstSlot)
-            => _owned.Track(dstSlot, SlotResource.Replay, CanUseReplayBuffer(dstSlot) && BotController.TransferRecordingToReplay(srcSlot, dstSlot));
+            => _owned.Track(dstSlot, SlotResource.Replay, _owned.Has(srcSlot, SlotResource.Recording) &&
+                CanUseReplayBuffer(dstSlot) && BotController.TransferRecordingToReplay(srcSlot, dstSlot));
         // Registers the authoritative native pawn pointer for replay.
         public bool SetReplayPawn(int slot, nint pawn) => _owned.Track(slot, SlotResource.Replay, CanUseReplayBuffer(slot) && BotController.SetReplayPawn(slot, pawn));
         public bool StartReplay(int slot, bool loop = false) => CanControl(slot) && _owned.Has(slot, SlotResource.Replay) && BotController.StartReplay(slot, loop);
@@ -119,7 +120,7 @@ namespace DtrControllerApi
         public bool SetBuySkip(int slot) => _owned.Track(slot, SlotResource.BuyPlan, CanControl(slot) && BotController.SetBuySkip(slot));
         public bool ClearBuyPlan(int slot)
         {
-            if (!CanControl(slot) || !BotController.ClearBuyPlan(slot)) return false;
+            if (!_owned.Has(slot, SlotResource.BuyPlan) || !CanControl(slot) || !BotController.ClearBuyPlan(slot)) return false;
             _owned.Forget(slot, SlotResource.BuyPlan);
             return true;
         }
@@ -148,26 +149,24 @@ namespace DtrControllerApi
         internal void ReleaseOwnedReplay(int slot, bool takenByDemoTracer)
             => _owned.Release(slot, SlotResource.Replay, takenByDemoTracer, ReleaseResources);
 
-        private static void ReleaseResources(int slot, SlotResource held)
+        private static void ReleaseResources(int slot, SlotResource resource)
         {
-            List<Exception> errors = new();
-            void Release(SlotResource resource, Func<bool> action)
+            if (resource == SlotResource.Input)
             {
-                if ((held & resource) == 0) return;
-                try
-                {
-                    if (!action()) errors.Add(new InvalidOperationException($"Slot {slot}: failed to release {resource}"));
-                }
-                catch (Exception ex) { errors.Add(ex); }
+                BotController.DtrController_ClearUsercmdInjections(slot);
+                return;
             }
-            Release(SlotResource.Recording, () => BotController.ClearRecordedMotion(slot));
-            Release(SlotResource.Replay, () => BotController.ReleaseReplayBuffer(slot));
-            Release(SlotResource.Input, () => { BotController.DtrController_ClearUsercmdInjections(slot); return true; });
-            Release(SlotResource.AllLock, () => BotController.Unlock(slot, LockKind.All));
-            Release(SlotResource.AimLock, () => BotController.Unlock(slot, LockKind.Aim));
-            Release(SlotResource.WeaponLock, () => BotController.Unlock(slot, LockKind.Weapon));
-            Release(SlotResource.BuyPlan, () => BotController.ClearBuyPlan(slot));
-            if (errors.Count != 0) throw new AggregateException(errors);
+            var success = resource switch
+            {
+                SlotResource.Recording => BotController.ClearRecordedMotion(slot),
+                SlotResource.Replay => BotController.ReleaseReplayBuffer(slot),
+                SlotResource.AllLock => BotController.Unlock(slot, LockKind.All),
+                SlotResource.AimLock => BotController.Unlock(slot, LockKind.Aim),
+                SlotResource.WeaponLock => BotController.Unlock(slot, LockKind.Weapon),
+                SlotResource.BuyPlan => BotController.ClearBuyPlan(slot),
+                _ => throw new ArgumentOutOfRangeException(nameof(resource)),
+            };
+            if (!success) throw new InvalidOperationException($"Slot {slot}: failed to release {resource}");
         }
 
         internal void ReleaseAllOwnedSlots(Func<int, bool> ownsSlot)

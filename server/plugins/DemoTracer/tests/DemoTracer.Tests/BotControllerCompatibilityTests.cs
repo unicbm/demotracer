@@ -65,6 +65,18 @@ public sealed class BotControllerCompatibilityTests
     }
 
     [Fact]
+    public void UnownedResourcesCannotBeReleasedOrTransferredThroughPublicApi()
+    {
+        var api = new DtrControllerApiImpl(_ => throw new InvalidOperationException("unowned resource reached engine checks"));
+        Assert.False(api.Unlock(4, LockKind.All));
+        Assert.False(api.Unlock(4, LockKind.Aim));
+        Assert.False(api.Unlock(4, LockKind.Weapon));
+        Assert.False(api.ClearBuyPlan(4));
+        Assert.False(api.StopRecord(4));
+        Assert.False(api.TransferRecordingToReplay(4, 5));
+    }
+
+    [Fact]
     public void CleanupReleasesOnlySuccessfulOwnedResourcesAndIsIdempotent()
     {
         var owned = new OwnedSlotResources();
