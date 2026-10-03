@@ -29,6 +29,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      statuses: write
+      checks: read
     steps:
       - name: Enable dry run
         if: inputs.dry_run
