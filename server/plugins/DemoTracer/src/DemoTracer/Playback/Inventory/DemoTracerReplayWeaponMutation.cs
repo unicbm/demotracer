@@ -71,7 +71,7 @@ public sealed partial class DemoTracerPlugin
             // The exact old entity can no longer be cleaned safely, but the
             // inventory mutation already succeeded. Keep the replacement
             // transaction alive so an empty slot still receives either the
-            // target or the original weapon fallback.
+            // target or the original weapon.
             return true;
         }
 

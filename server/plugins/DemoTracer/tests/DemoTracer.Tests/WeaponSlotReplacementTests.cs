@@ -120,7 +120,7 @@ public sealed class WeaponSlotReplacementTests
     [InlineData(false, true, 4, 1, (int)WeaponGrantVerificationAction.Conflict)]
     [InlineData(false, false, 4, 1, (int)WeaponGrantVerificationAction.WaitForAttachment)]
     [InlineData(false, false, 0, 1, (int)WeaponGrantVerificationAction.RetryGrant)]
-    [InlineData(false, false, 0, 0, (int)WeaponGrantVerificationAction.UseFallback)]
+    [InlineData(false, false, 0, 0, (int)WeaponGrantVerificationAction.Failed)]
     public void GrantCompletionUsesObservedInventoryNotTheReturnedEntityPointer(
         bool targetPresent,
         bool anySlotWeapon,
@@ -135,18 +135,6 @@ public sealed class WeaponSlotReplacementTests
                 anySlotWeapon,
                 grantWaitFramesRemaining,
                 grantRetryAttemptsRemaining));
-    }
-
-    [Theory]
-    [InlineData(true, true)]
-    [InlineData(false, false)]
-    public void FailedSwitchIsCachedOnlyWhenTheTargetWeaponExists(
-        bool targetPresent,
-        bool expected)
-    {
-        Assert.Equal(
-            expected,
-            ReplayWeaponReplacementPolicy.ShouldCacheFailedSwitch(targetPresent));
     }
 
     [Theory]
@@ -212,12 +200,14 @@ public sealed class WeaponSlotReplacementTests
     }
 
     [Theory]
-    [InlineData(true, true, false, false, true)]
-    [InlineData(false, true, false, false, false)]
-    [InlineData(true, false, false, false, false)]
-    [InlineData(true, true, true, false, false)]
-    [InlineData(true, true, false, true, false)]
-    public void CancellationRestoresFallbackOnlyToTheSameEmptyPawn(
+    [InlineData("weapon_glock", true, true, false, false, true)]
+    [InlineData("weapon_glock", false, true, false, false, false)]
+    [InlineData("weapon_glock", true, false, false, false, false)]
+    [InlineData("weapon_glock", true, true, true, false, false)]
+    [InlineData("weapon_glock", true, true, false, true, false)]
+    [InlineData(null, true, true, false, false, false)]
+    public void CancellationRestoresOnlyAnOriginalWeaponToTheSameEmptyPawn(
+        string? originalItem,
         bool samePlayer,
         bool samePawn,
         bool targetPresent,
@@ -226,26 +216,11 @@ public sealed class WeaponSlotReplacementTests
     {
         Assert.Equal(
             expected,
-            ReplayWeaponReplacementPolicy.ShouldRestoreFallback(
+            ReplayWeaponReplacementPolicy.ShouldRestoreOriginal(
+                originalItem,
                 samePlayer,
                 samePawn,
                 targetPresent,
                 anySlotWeapon));
-    }
-
-    [Theory]
-    [InlineData(true, "weapon_usp_silencer")]
-    [InlineData(true, "weapon_hkp2000")]
-    [InlineData(false, "weapon_glock")]
-    public void EmptySidearmSlotRetriesTheRequestedModel(
-        bool counterTerrorist,
-        string targetItem)
-    {
-        Assert.Equal(
-            targetItem,
-            ReplayWeaponReplacementPolicy.EmptySlotFallbackItem(
-                ReplayWeaponSlot.Secondary,
-                counterTerrorist,
-                targetItem));
     }
 }

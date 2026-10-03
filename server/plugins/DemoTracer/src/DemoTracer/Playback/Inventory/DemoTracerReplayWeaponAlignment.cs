@@ -89,8 +89,7 @@ public sealed partial class DemoTracerPlugin
         }
         else if (TryGetWeaponClassByDefIndex(normalized, out var expectedClassName) &&
                  player.PlayerPawn.Value is { IsValid: true } pawn &&
-                 ReplayWeaponReplacementPolicy.ShouldCacheFailedSwitch(
-                     HasReplayWeapon(pawn, expectedClassName)))
+                 HasReplayWeapon(pawn, expectedClassName))
         {
             // A native switch can be rejected transiently, but only cache the
             // replay def when the weapon really exists. Caching a missing gun

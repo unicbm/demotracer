@@ -35,7 +35,7 @@ internal enum WeaponGrantVerificationAction
     Conflict,
     WaitForAttachment,
     RetryGrant,
-    UseFallback
+    Failed
 }
 
 internal enum DetachedWeaponCleanupAction
@@ -116,11 +116,8 @@ internal static class ReplayWeaponReplacementPolicy
             return WeaponGrantVerificationAction.WaitForAttachment;
         return grantRetryAttemptsRemaining > 0
             ? WeaponGrantVerificationAction.RetryGrant
-            : WeaponGrantVerificationAction.UseFallback;
+            : WeaponGrantVerificationAction.Failed;
     }
-
-    internal static bool ShouldCacheFailedSwitch(bool targetPresent)
-        => targetPresent;
 
     internal static DetachedWeaponCleanupAction DecideDetachedWeaponCleanup(
         bool identityMatches,
@@ -178,16 +175,12 @@ internal static class ReplayWeaponReplacementPolicy
         bool replayOwnsSlot)
         => isSafeReplayTargetBot && (!hasLoadedReplay || replayOwnsSlot);
 
-    internal static bool ShouldRestoreFallback(
+    internal static bool ShouldRestoreOriginal(
+        string? originalItem,
         bool samePlayer,
         bool samePawn,
         bool targetPresent,
         bool anySlotWeapon)
-        => samePlayer && samePawn && !targetPresent && !anySlotWeapon;
-
-    internal static string EmptySlotFallbackItem(
-        ReplayWeaponSlot slot,
-        bool counterTerrorist,
-        string targetItem)
-        => targetItem;
+        => !string.IsNullOrEmpty(originalItem) &&
+           samePlayer && samePawn && !targetPresent && !anySlotWeapon;
 }

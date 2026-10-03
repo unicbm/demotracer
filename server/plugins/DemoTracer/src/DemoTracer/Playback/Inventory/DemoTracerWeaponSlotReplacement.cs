@@ -5,7 +5,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 using CounterStrikeSharp.API.Core;
-using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API;
 
 namespace DemoTracer;
@@ -79,17 +78,13 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
-        var fallbackItem = ReplayWeaponReplacementPolicy.EmptySlotFallbackItem(
-            weaponSlot,
-            player.Team == CsTeam.CounterTerrorist,
-            targetItem);
         var pending = new PendingWeaponSlotReplacement(
             player.Slot,
             playerUserId,
             pawn.EntityHandle.Raw,
             replayWriteEpoch,
             targetItem,
-            fallbackItem,
+            null,
             weaponSlot);
         _session.PendingWeaponSlotReplacements[(player.Slot, weaponSlot)] = pending;
         _session.LastEnsuredWeaponDef.Remove(player.Slot);
@@ -128,10 +123,10 @@ public sealed partial class DemoTracerPlugin
                 return;
 
             case WeaponSlotReplacementAction.PreserveExisting:
-                Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
+                Server.NextFrame(() => VerifyOriginalWeaponRestoration(
                     pending,
-                    WeaponSlotReplacementFallbackWaitFrames,
-                    fallbackRetryAttemptsRemaining: 0,
+                    WeaponSlotReplacementGrantWaitFrames,
+                    retryAttemptsRemaining: 0,
                     failureReason: "occupied_slot_clear_timeout"));
                 return;
 
@@ -188,21 +183,26 @@ public sealed partial class DemoTracerPlugin
                     grantRetryAttemptsRemaining - 1));
                 return;
 
-            case WeaponGrantVerificationAction.UseFallback:
-                _ = TryGiveNamedItem(player, pending.FallbackItem);
-                Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
+            case WeaponGrantVerificationAction.Failed:
+                if (pending.OriginalItem == null)
+                {
+                    FinishWeaponSlotReplacement(pending, success: false, "target_grant_timeout");
+                    return;
+                }
+                _ = TryGiveNamedItem(player, pending.OriginalItem);
+                Server.NextFrame(() => VerifyOriginalWeaponRestoration(
                     pending,
-                    WeaponSlotReplacementFallbackWaitFrames,
-                    WeaponSlotReplacementFallbackRetryAttempts,
+                    WeaponSlotReplacementGrantWaitFrames,
+                    WeaponSlotReplacementGrantRetryAttempts,
                     "target_grant_timeout"));
                 return;
         }
     }
 
-    private void VerifyFallbackWeaponIfNeeded(
+    private void VerifyOriginalWeaponRestoration(
         PendingWeaponSlotReplacement pending,
-        int fallbackWaitFramesRemaining,
-        int fallbackRetryAttemptsRemaining,
+        int waitFramesRemaining,
+        int retryAttemptsRemaining,
         string failureReason)
     {
         if (!TryGetPendingWeaponSlotReplacementPawn(pending, out var player, out var pawn))
@@ -214,44 +214,34 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
+        if (waitFramesRemaining > 0)
+        {
+            Server.NextFrame(() => VerifyOriginalWeaponRestoration(
+                pending,
+                waitFramesRemaining - 1,
+                retryAttemptsRemaining,
+                failureReason));
+            return;
+        }
+
         if (GetWeaponsInReplaySlot(pawn, pending.WeaponSlot).Any())
         {
-            if (fallbackWaitFramesRemaining > 0)
-            {
-                Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
-                    pending,
-                    fallbackWaitFramesRemaining - 1,
-                    fallbackRetryAttemptsRemaining,
-                    failureReason));
-                return;
-            }
-
             FinishWeaponSlotReplacement(pending, success: false, $"{failureReason}_weapon_preserved");
             return;
         }
 
-        if (fallbackWaitFramesRemaining > 0)
+        if (retryAttemptsRemaining > 0)
         {
-            Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
+            _ = TryGiveNamedItem(player, pending.OriginalItem!);
+            Server.NextFrame(() => VerifyOriginalWeaponRestoration(
                 pending,
-                fallbackWaitFramesRemaining - 1,
-                fallbackRetryAttemptsRemaining,
+                WeaponSlotReplacementGrantWaitFrames,
+                retryAttemptsRemaining - 1,
                 failureReason));
             return;
         }
 
-        if (fallbackRetryAttemptsRemaining > 0)
-        {
-            _ = TryGiveNamedItem(player, pending.FallbackItem);
-            Server.NextFrame(() => VerifyFallbackWeaponIfNeeded(
-                pending,
-                WeaponSlotReplacementFallbackWaitFrames,
-                fallbackRetryAttemptsRemaining - 1,
-                failureReason));
-            return;
-        }
-
-        FinishWeaponSlotReplacement(pending, success: false, $"{failureReason}_fallback_failed");
+        FinishWeaponSlotReplacement(pending, success: false, $"{failureReason}_restore_failed");
     }
 
     private bool TryGetPendingWeaponSlotReplacementPawn(
@@ -312,7 +302,7 @@ public sealed partial class DemoTracerPlugin
         _session.WeaponLoadoutSyncedSlots.Remove(pending.PlayerSlot);
         Server.PrintToConsole(
             $"[DTR WARN] weapon slot replacement incomplete slot={pending.PlayerSlot} " +
-            $"target={pending.TargetItem} fallback={pending.FallbackItem} reason={reason}");
+            $"target={pending.TargetItem} original={pending.OriginalItem ?? "none"} reason={reason}");
     }
 
     private void FinalizeReplayLoadoutSyncIfCurrent(PendingWeaponSlotReplacement pending)
@@ -355,7 +345,8 @@ public sealed partial class DemoTracerPlugin
                        pawn.WeaponServices != null;
         var targetPresent = samePawn && HasReplayWeapon(pawn!, pending.TargetItem);
         var anySlotWeapon = samePawn && GetWeaponsInReplaySlot(pawn!, pending.WeaponSlot).Any();
-        if (!ReplayWeaponReplacementPolicy.ShouldRestoreFallback(
+        if (!ReplayWeaponReplacementPolicy.ShouldRestoreOriginal(
+                pending.OriginalItem,
                 samePlayer,
                 samePawn,
                 targetPresent,
@@ -364,11 +355,11 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        var restored = TryGiveNamedItem(player!, pending.FallbackItem);
+        var restored = TryGiveNamedItem(player!, pending.OriginalItem!);
         Server.PrintToConsole(
             restored
-                ? $"dtr: restored cancelled weapon replacement slot={pending.PlayerSlot} item={pending.FallbackItem} reason={reason}"
-                : $"[DTR WARN] failed to restore cancelled weapon replacement slot={pending.PlayerSlot} item={pending.FallbackItem} reason={reason}");
+                ? $"dtr: restored cancelled weapon replacement slot={pending.PlayerSlot} item={pending.OriginalItem} reason={reason}"
+                : $"[DTR WARN] failed to restore cancelled weapon replacement slot={pending.PlayerSlot} item={pending.OriginalItem} reason={reason}");
     }
 
     private void ClearPendingWeaponSlotReplacementsForSlot(

@@ -135,7 +135,7 @@ public sealed partial class DemoTracerPlugin
         uint PawnEntityHandle,
         long ReplayWriteEpoch,
         string TargetItem,
-        string FallbackItem,
+        string? OriginalItem,
         ReplayWeaponSlot WeaponSlot);
 
     private readonly record struct PendingBulletHit(int AttackerSlot, float Time);
