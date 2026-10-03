@@ -10,9 +10,11 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 pub fn validate_dtr_path(input: &Path) -> crate::Result<usize> {
-    validate_public_artifacts(input)?;
     let mut count = 0_usize;
-    for path in collect_dtr_files(input)? {
+    for path in validate_public_artifacts(input)?
+        .into_iter()
+        .filter(|path| has_dtr_extension(path))
+    {
         let rec = read_rec_file(&path)?;
         if rec.ticks.is_empty() {
             return Err(crate::Error::InvalidRec(format!(
@@ -31,34 +33,29 @@ pub fn validate_dtr_path(input: &Path) -> crate::Result<usize> {
     Ok(count)
 }
 
-fn collect_dtr_files(root: &Path) -> crate::Result<Vec<PathBuf>> {
-    let mut out = Vec::new();
-    collect_recursively(root, &mut out)?;
-    Ok(out)
-}
-
-fn validate_public_artifacts(input: &Path) -> crate::Result<()> {
+fn validate_public_artifacts(input: &Path) -> crate::Result<Vec<PathBuf>> {
     let pack_root = if input.is_file() {
         input.parent().unwrap_or_else(|| Path::new("."))
     } else {
         input
     };
-    for path in collect_files(input)? {
-        if let Some(reason) = forbidden_public_artifact_reason(&path) {
+    let files = collect_files(input)?;
+    for path in &files {
+        if let Some(reason) = forbidden_public_artifact_reason(path) {
             return Err(crate::Error::InvalidDemo(format!(
                 "{reason} must not be included in output packs: {}",
                 path.display()
             )));
         }
 
-        if is_manifest_json(&path) {
-            let text = read_manifest_text(&path)?;
-            let json = parse_manifest_json(&path, &text)?;
-            validate_manifest_demo_paths(&path, &json)?;
-            validate_manifest_artifact_paths(pack_root, &path, &json)?;
+        if is_manifest_json(path) {
+            let text = read_manifest_text(path)?;
+            let json = parse_manifest_json(path, &text)?;
+            validate_manifest_demo_paths(path, &json)?;
+            validate_manifest_artifact_paths(pack_root, path, &json)?;
         }
     }
-    Ok(())
+    Ok(files)
 }
 
 fn forbidden_public_artifact_reason(path: &Path) -> Option<&'static str> {
@@ -230,9 +227,9 @@ fn validate_manifest_artifact_path(
         )));
     }
     validate_manifest_artifact_extension(manifest_path, key, kind, value, &full)?;
-    if !full.exists() {
+    if !full.is_file() {
         return Err(crate::Error::InvalidDemo(format!(
-            "{} contains missing {key} target {:?}",
+            "{} contains missing or non-file {key} target {:?}",
             manifest_path.display(),
             value
         )));
@@ -357,21 +354,6 @@ fn is_local_demo_path(value: &str) -> bool {
     value.contains('\\') || value.contains('/') || value.contains(':')
 }
 
-fn collect_recursively(path: &Path, out: &mut Vec<PathBuf>) -> crate::Result<()> {
-    if path.is_file() {
-        if path.extension().and_then(|e| e.to_str()) == Some("dtr") {
-            out.push(path.to_path_buf());
-        }
-        return Ok(());
-    }
-    let entries = std::fs::read_dir(path).map_err(|e| crate::io_error(path, e))?;
-    for entry in entries {
-        let entry = entry.map_err(|e| crate::io_error(path, e))?;
-        collect_recursively(&entry.path(), out)?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -432,6 +414,16 @@ mod tests {
         let err = validate_dtr_path(temp.path()).unwrap_err();
 
         assert!(err.to_string().contains("no .dtr files"));
+    }
+
+    #[test]
+    fn validate_checks_uppercase_dtr_contents() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(temp.path().join("player.DTR"), b"not-a-dtr").unwrap();
+
+        let err = validate_dtr_path(temp.path()).unwrap_err();
+
+        assert!(matches!(err, crate::Error::InvalidRec(_)));
     }
 
     #[test]
@@ -575,7 +567,24 @@ mod tests {
 
         let err = validate_manifest_artifact_paths(pack, &manifest_path, &manifest).unwrap_err();
 
-        assert!(err.to_string().contains("missing path target"));
+        assert!(err.to_string().contains("missing or non-file path target"));
+    }
+
+    #[test]
+    fn manifest_hygiene_rejects_directories_as_artifacts() {
+        let temp = tempfile::tempdir().unwrap();
+        let pack = temp.path();
+        fs::create_dir(pack.join("player.dtr")).unwrap();
+        fs::create_dir(pack.join("avatar.png")).unwrap();
+        for manifest in [
+            json!({ "files": [{ "path": "player.dtr" }] }),
+            json!({ "avatar_overrides": [{ "path": "avatar.png" }] }),
+        ] {
+            let err =
+                validate_manifest_artifact_paths(pack, &pack.join("manifest.json"), &manifest)
+                    .unwrap_err();
+            assert!(err.to_string().contains("missing or non-file"));
+        }
     }
 
     #[test]
