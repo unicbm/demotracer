@@ -68,10 +68,7 @@ public sealed partial class DemoTracerPlugin
         {
             Server.PrintToConsole(
                 $"[DTR WARN] detached weapon identity changed slot={player.Slot}:{weaponSlot} item={weaponName}");
-            // The exact old entity can no longer be cleaned safely, but the
-            // inventory mutation already succeeded. Keep the replacement
-            // transaction alive so an empty slot still receives either the
-            // target or the original weapon.
+            // Detachment succeeded; continue replacement without touching a reused entity.
             return true;
         }
 

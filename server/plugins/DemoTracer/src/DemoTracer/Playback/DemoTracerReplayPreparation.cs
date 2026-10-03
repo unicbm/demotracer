@@ -388,10 +388,8 @@ public sealed partial class DemoTracerPlugin
                 pawnOwnsC4,
                 activeWeaponHandle == weaponEntityHandle))
         {
-            // CounterStrikeSharp's DropActivePlayerWeapon drops the pawn's active
-            // weapon even though it accepts a weapon argument. Never call it for
-            // an inactive C4: doing so drops whichever gun or knife replay just
-            // selected while leaving the C4 owned, which starts a retry loop.
+            // DropActivePlayerWeapon ignores its weapon argument and drops the active item.
+            // Only use it when C4 is active.
             Server.PrintToConsole(
                 $"[DTR WARN] preserving native C4 owner slot={player.Slot} " +
                 $"reason={reason} active_handle={activeWeaponHandle} c4_handle={weaponEntityHandle}");

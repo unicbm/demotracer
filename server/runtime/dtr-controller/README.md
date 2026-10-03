@@ -171,9 +171,7 @@ Record / replay is driven through the C-ABI below, not console commands.
 
 Replay provides simulation-local angles and the final post-angle getter. The
 engine updates and networks `m_angEyeAngles` at its normal command boundary.
-There is no spectator mask or per-tick absolute POV correction. The obsolete
-`dtr_controller_replay_view`, `dtr_controller_replay_cmd_view`, and POV publishing controls are removed;
-command angles use recorded command data, falling back to the tick pre view.
+Command angles use recorded command data, or the tick pre view when absent.
 
 ------------------------------------------------------------------------
 
@@ -203,10 +201,6 @@ BotController.TryGetAbiInfo(out var abiInfo);
 var capabilities = BotController.Capabilities();
 var buildId = BotController.BuildId();
 ```
-
-DemoTracer intentionally skips native ABI 17 because current upstream
-BotController uses that number for an incompatible export surface. Reusing it
-would let upstream managed bridges falsely accept the DemoTracer runtime.
 
 Low-level movement integrations can probe
 `BotController.CapabilityUsercmdMovementIntent` and then call
@@ -292,13 +286,6 @@ if ((BotController.Capabilities() & BotController.CapabilityReleaseReplayBuffer)
 `ReplayTick` / `SubtickMove` mirror the C++ struct layout byte-for-byte, so the
 buffers can be serialized and reloaded across rounds. Main thread only.
 
-Replay weapon selection caches the resolved inventory cell while its recorded
-definition, `WeaponServices` binding, and exact inventory entry remain
-unchanged, then compares the active handle directly. Load/start/stop, loop
-restart, explicit native weapon switch,
-give/drop/replacement detection, and global reset invalidate or refresh the
-cache; no missing-weapon result is cached.
-
 ------------------------------------------------------------------------
 
 ## Demo-backed avatar publication
@@ -310,11 +297,8 @@ publication, not display on a remote client. `DtrController_ClearAvatarOverride`
 and `DtrController_ClearAvatarOverrides` restore preceding data, preserving a
 later writer's replacement. Call these functions on the server game thread.
 
-Avatar publication accesses only the server's `ServerAvatarOverrides` table.
-The plugin does not hook client modules, access client string tables, or dispatch
-Panorama refresh events. Client caching remains under the game's control, so
-an already displayed avatar may remain stale after publication or restoration,
-including on a local listen server. Map shutdown discards publication ownership;
+Avatar publication updates the server's `ServerAvatarOverrides` table. Client
+caching can delay visible changes. Map shutdown discards publication ownership;
 plugin unload restores owned server entries while preserving later writers.
 
 `dtr_controller_avatar_status` reports server publication availability and active ownership.

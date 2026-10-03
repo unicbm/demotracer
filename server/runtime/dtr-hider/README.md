@@ -4,7 +4,7 @@
 runtime shipped with CS2 DemoTracer. It combines the `dtr-hider` Metamod plugin
 with its matched `DtrHider.dll` CounterStrikeSharp presentation provider and
 `DtrHiderApi` shared assembly. Native exports use `DtrHider_` and the capability
-is `dtr-hider:api:v3`; numeric API/ABI and layout versions are unchanged.
+is `dtr-hider:api:v3`.
 The bundle contains all three parts. No separately installed upstream BotHider
 is required. See [UPSTREAM.md](UPSTREAM.md) for attribution and maintained differences.
 
@@ -36,9 +36,7 @@ name, SteamID64, clan tag/group ID, ping, scoreboard flair, and server-replicate
 It never assigns teams or respawns bots. Ordinary bots follow the engine's
 round lifecycle; DemoTracer prepares and respawns only its own replay roster.
 
-DemoTracer consumes the versioned `dtr-hider:api:v3` capability. It does
-not read shared-memory offsets, invoke `dtr_hider_setname`/`dtr_hider_setsid`, or write these
-presentation fields directly.
+Consumers use `dtr-hider:api:v3` for presentation overrides.
 
 ## Presentation leases
 
@@ -47,31 +45,6 @@ requires native userinfo and the requested controller fields to be applied
 and read back before returning; it does not acknowledge delivery to every
 client or promise simultaneous rendering across slots. Failed requests
 restore the previous lease or current base presentation.
-
-The native API checks its own live session and slot incarnation at each
-identity write. There is no shared-memory queue or cross-process mapping.
-Provider reload revokes leases and an unloaded provider reports disconnected.
-Name and SteamID changes share one userinfo publication; unchanged identities
-do not force another publication. Native adoption/release and managed
-spawn/death/takeover events coalesce into one next-frame reconcile for affected
-controller slots. Takeover includes the original bot controller; round, map,
-and session events reconcile the full roster. Ping changes
-queue only the affected slots and publish only their ping through a guarded
-native field write; they never trigger identity or crosshair reconciliation.
-There is no periodic presentation sweep. Provider lifecycle notifications
-invalidate consumers' cached references without availability polling.
-Crosshair changes use the native controller field notification, guarded by
-session, slot incarnation, and the complete controller entity handle. Failed
-notifications remain pending for retry even when the string already matches;
-an explicit crosshair lease cannot succeed while its notification is pending.
-The managed provider and native ABI 3 runtime must be installed together.
-
-Managed API v3 adds an optional `BotHiderClan` pair. The provider captures the
-controller's original clan before its first override, writes `m_szClan` and
-`m_unClanId32bit`, and submits both network field notifications. Replacement
-keeps the original base; release restores it. Missing clan evidence makes no
-schema access, allowing older demos to keep their existing presentation.
-The native ABI and CS2 font assets are unchanged.
 
 Lease rules:
 
@@ -90,22 +63,7 @@ Lease rules:
 - exact SteamID conflicts fail the whole batch instead of selecting another
   persona.
 
-DemoTracer retains the most recent successfully loaded DTR presentation batch
-independently of native replay buffers. Playback handoff, replay finish,
-sequence completion, later server rounds, and match end release control only.
-A later successful DTR batch atomically replaces it; a failed partial load keeps
-the previous complete batch. Explicit slot unload/kick, disconnect, map change,
-slot reuse, plugin unload, or provider loss end the affected presentation.
-
-Crosshair publication writes and verifies
-`CCSPlayerController.m_szCrosshairCodes`, then submits its native controller
-network-state notification using the live field offset. This does not depend
-on the generic managed schema networked-field flag. A requested override
-requires both readback and successful notification submission. Publication
-occurs once for a new slot incarnation
-or presentation lease and again only when the engine actually changes the
-stored value. The path is server-only and requires no client-side injection or
-fragile `client.dll` signature hook.
+See [TECH.md](TECH.md) for native publication and restoration details.
 
 ## Runtime commands
 
@@ -130,9 +88,6 @@ identity agree and release does not undo that choice.
 `bot_quota_mode`, including a quota of zero; it does not infer a fill-mode quota
 from the number of humans and bots.
 
-Raw per-slot mutation commands are intentionally not exposed. DTR overrides
-must use the presentation lease API.
-
 ## Co-installation
 
 Install or update the native runtime with a full server restart. Native late
@@ -142,14 +97,13 @@ clearing the plugin's slot table cannot safely undo their engine state. Managed
 provider reload still releases its leases and can reconnect to the loaded
 native runtime.
 
-The maintained provider installs as `DtrHider/dtr-hider.dll` for Panel
-file detection; its capability is `dtr-hider:api:v3`. Replace the
+The managed provider installs as `DtrHider/DtrHider.dll`. Replace the
 previous `DemoTracerBotHider` directory during migration. Do not run an upstream
 provider beside this matched native/C# provider. Multiple publishers can
 overwrite the same controller presentation fields.
 
 The Panel Profiles toggle is not mapped to `dtr_hider_disguise`: this fork's native
-disguise switch may rebuild bots. Keep Profiles enabled during combined testing.
+disguise switch may rebuild bots. Keep Profiles enabled when using both components.
 
 ## Upstream and license
 

@@ -2375,12 +2375,8 @@ mod demoparser_impl {
     const MAX_REPAIRABLE_GLOBAL_GAP_TICKS: i32 = 8;
     const MAX_PLAYER_VELOCITY_COMPONENT: f32 = 4096.0;
 
-    /// Some GOTV demos omit a short run of complete entity snapshot ticks even
-    /// though the surrounding ticks and later game state are valid. Fill only
-    /// those unambiguous global holes, capped at 125 ms for a 64-tick demo.
-    /// Per-player holes, lifecycle changes, and longer gaps remain untouched so
-    /// replay synthesis can still fail closed instead of inventing an unsafe
-    /// trajectory.
+    /// Interpolate complete GOTV snapshot gaps up to 125 ms at 64 tick.
+    /// Leave per-player gaps, lifecycle changes, and longer gaps to validation.
     fn plan_short_global_tick_gaps(
         keys: &[(u32, i32, u64)],
         row_at: impl Fn(usize) -> ParsedPlayerTick,

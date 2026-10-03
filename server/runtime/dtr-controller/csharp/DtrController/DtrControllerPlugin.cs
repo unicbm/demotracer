@@ -1,9 +1,3 @@
-// CounterStrikeSharp plugin: record a player's per-tick input and replay it on
-// Chat commands:
-//   !dtr_controller_record [fileName] / !dtr_controller_stoprecord  capture your own input, save to disk
-//   !dtr_controller_replay <botSlot> [fileName]      play a recording back on a bot
-//   !dtr_controller_stopreplay <botSlot>        stop a bot's replay
-
 using System.IO;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
@@ -62,8 +56,6 @@ public partial class BotControllerPlugin : BasePlugin
             return;
         }
 
-        // Publish the cross-plugin API
-        // Consumers: BotControllerCapability.Cap.Get().
         Capabilities.RegisterPluginCapability(
             BotControllerCapability.Cap, () => _api);
 
@@ -128,7 +120,6 @@ public partial class BotControllerPlugin : BasePlugin
         return true;
     }
 
-    // Find a connected player/bot by its slot, or null.
     private static CCSPlayerController? ControllerForSlot(int slot)
     {
         foreach (var p in Utilities.GetPlayers())

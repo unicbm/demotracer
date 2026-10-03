@@ -188,12 +188,9 @@ default tests are self-contained synthetic regressions; no demo is bundled:
 pwsh -NoProfile -File third_party\demoparser\tools\check.ps1
 ```
 
-The script also compiles the original fixture golden tests, without executing
-them. They remain behind `external-demo-tests` and explicit ignored annotations.
-To run them, supply the original upstream `test_demo.dem` using the script's
-`-FixtureTests -DemoPath <path>` options. Missing data fails explicitly; a default
-green run does not claim the external fixture lane passed. See the parser's
-README for the fixture provenance boundary.
+The script compiles but does not run the upstream fixture tests. To run them,
+supply `test_demo.dem` with `-FixtureTests -DemoPath <path>`. See the parser's
+README for fixture provenance.
 
 Use release builds for performance measurements, with diagnostics disabled.
 
@@ -281,7 +278,7 @@ pnpm run tauri:build --target x86_64-pc-windows-msvc -- --locked
   stop, unload, finish, handoff, or failure.
 - Movement replay uses native movement/input hooks; teleport is not the primary
   playback path.
-- Ordinary weapon, attachment, and scoreboard alignment remain default-off and
+- Weapon skins, attachments, and scoreboard alignment remain default-off and
   demo-backed. DemoTracer may only submit complete cosmetic plans through the
   BotRandomizer v3 API. BotRandomizer is the only cosmetic entity writer and
   consumes plans during natural spawn/item construction; DemoTracer must not
@@ -289,9 +286,7 @@ pnpm run tauri:build --target x86_64-pc-windows-msvc -- --locked
 
 ### Replay slot lifecycle
 
-`ReplaySlotRegistry` is the managed truth source for whether a slot is loaded,
-claimed for DemoTracer writes, or actively playing. Its phases have these
-meanings:
+`ReplaySlotRegistry` owns loaded, claimed, and playing slot state:
 
 - `Loaded`: the native replay remains available, but DemoTracer no longer owns
   gameplay or inventory writes for the slot.
@@ -304,17 +299,10 @@ a new epoch, invalidating callbacks captured by the prior owner. Unload removes
 the slot entirely. Code outside the registry must not maintain parallel loaded,
 owned, or playing collections.
 
-Delayed entity or inventory writes capture the registry epoch and verify it at
-execution time. Replay identity generation remains separate because identity
-metadata can change independently from the write-ownership lifecycle.
-
-Round-boundary writes use two coalescing lanes. Slot work is keyed by slot,
-operation kind, write epoch, and replay-identity generation, so spawn and
-companion-lease callbacks cannot queue duplicate reconciliation for the same
-owner. Global presentation and C4 reconciliation is coalesced across each burst
-of player-spawn events. A stale callback may still be delivered by
-CounterStrikeSharp, but it cannot consume work from a newer epoch or write to
-the newer slot incarnation.
+Delayed writes verify the captured slot epoch and identity generation. Slot
+work coalesces by slot, operation, epoch, and identity generation; presentation
+and C4 work coalesce across spawn events. Stale callbacks cannot write to a
+new slot incarnation.
 
 Round loading establishes ownership and companion writer leases before spawn
 callbacks, but defers pawn inventory and entity reconstruction until the live

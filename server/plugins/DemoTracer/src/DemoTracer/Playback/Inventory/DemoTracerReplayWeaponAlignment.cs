@@ -91,9 +91,7 @@ public sealed partial class DemoTracerPlugin
                  player.PlayerPawn.Value is { IsValid: true } pawn &&
                  HasReplayWeapon(pawn, expectedClassName))
         {
-            // A native switch can be rejected transiently, but only cache the
-            // replay def when the weapon really exists. Caching a missing gun
-            // permanently suppresses recovery after an asynchronous grant.
+            // Cache only present weapons so pending grants can retry.
             _session.LastReplayWeaponDef[slot] = normalized;
         }
         else

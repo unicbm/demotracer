@@ -9,9 +9,7 @@ using System.Text.Json;
 namespace BotRandomizer;
 
 /// <summary>
-/// Canonical allow-list for demo-backed cosmetic evidence. This is deliberately
-/// separate from <see cref="CosmeticCatalog"/>, whose collections are curated
-/// random-roll pools and may omit valid engine items such as default music kits.
+/// Valid replay items, including those absent from CosmeticCatalog's random pools.
 /// </summary>
 internal sealed class ReplayEconIndex
 {

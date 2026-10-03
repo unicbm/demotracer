@@ -36,9 +36,7 @@ public sealed partial class DemoTracerPlugin
 
         if (stopped > 0)
         {
-            // Stopping native replay can republish the bots' base userinfo.
-            // The lease contents and signature are intentionally unchanged at
-            // handoff, so this lifecycle edge must republish the desired state.
+            // Native replay stop may restore base userinfo; republish the retained lease.
             _ = SyncBotHiderPresentationLease(announce: false, forceReplace: true);
             Server.PrintToConsole($"dtr: handoff stopped {stopped} replay slot(s), reason={reason}");
         }

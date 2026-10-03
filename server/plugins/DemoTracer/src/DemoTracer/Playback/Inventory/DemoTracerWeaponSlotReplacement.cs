@@ -172,10 +172,7 @@ public sealed partial class DemoTracerPlugin
                 return;
 
             case WeaponGrantVerificationAction.RetryGrant:
-                // GiveNamedItem can return a non-null entity before CS2 has
-                // actually attached it to the pawn's weapon slot. Observe a
-                // full window first, then issue one bounded retry instead of
-                // creating another pending entity every frame.
+                // GiveNamedItem may return before slot attachment; wait before retrying.
                 _ = TryGiveNamedItem(player, pending.TargetItem);
                 Server.NextFrame(() => VerifyTargetWeaponReplacement(
                     pending,

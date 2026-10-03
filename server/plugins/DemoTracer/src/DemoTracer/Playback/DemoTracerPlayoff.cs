@@ -403,9 +403,7 @@ public sealed partial class DemoTracerPlugin
         {
             if (_session.LoadedSlots.Count > 0)
             {
-                // The next source selection is still decoding. Replaying the
-                // last loaded DTR keeps every bot demo-controlled instead of
-                // silently falling back to its native AI for this server round.
+                // Reuse the loaded round while the next source is decoding.
                 _session.Plan.PlayoffPendingCanLoad = false;
                 PrepareLoadedReplayOwnership();
                 var fallback = StartLoaded(loop: false);

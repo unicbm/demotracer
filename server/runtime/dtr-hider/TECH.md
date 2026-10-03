@@ -1,4 +1,4 @@
-# DemoTracer BotHider technical notes
+# dtr-hider architecture
 
 ## Projects
 
@@ -25,8 +25,7 @@ explicitly requested zero SteamIDs.
 The provider registers `dtr-hider:api:v3` and exposes
 `DtrHiderApi.IDtrHiderApi`.
 
-The API intentionally separates native persona base state from temporary
-consumer overrides. Consumers first query `TryGetManagedSlot` to obtain the
+Consumers first query `TryGetManagedSlot` to obtain the
 current `Incarnation`, then acquire or replace an array of
 `BotHiderPresentationOverride` entries.
 
@@ -48,15 +47,15 @@ map, round, and native-session boundaries still reconcile all managed slots.
 Takeover events queue both controllers and retain their complete handles so a
 subsequent human death can still reconcile the original bot after the engine
 clears its relationship field. Map/round teardown clears those associations.
-Ping notifications carry the changed slot and coalesce separately. Their writer
-uses the same live session, incarnation, controller handle, and NetChannel
-checks as crosshair publication, then updates only non-networked `m_iPing`.
-They do not rebuild presentation objects, submit userinfo, or notify crosshair.
+Ping notifications coalesce separately and update only non-networked `m_iPing`,
+after checking the session, incarnation, controller handle, and NetChannel.
+Crosshair publication requires field readback and a successful native network
+notification; failed notifications remain pending even if the field already matches.
 
 Consumers supply a `CancellationToken` on acquisition and cancel it on the
 server thread when unloading. Replacement preserves that owner registration;
 explicit release, the last participant leaving, and map/provider teardown
-unregister it. Neither lease expiry scans nor keepalive calls are needed.
+unregister it.
 Consumers subscribe to `ProviderChanged` in the shared API assembly and
 unsubscribe on unload to handle provider replacement without periodic probes.
 
@@ -66,9 +65,7 @@ The effective presentation for each field is:
 active exact lease override ?? current native persona base
 ```
 
-Because release recomputes from current base state, a persona refresh that
-happens while DTR is active is not overwritten by stale saved values.
-Clan is the exception: native personas do not own a clan, so the managed
+Release uses the current persona base. Native personas do not own a clan, so the managed
 provider captures its controller base as one tag/group-ID pair, per controller
 incarnation. The nullable API v3 pair restores that base on release; an empty
 pair explicitly clears it. Failed writes or notifications retain the saved
@@ -77,10 +74,7 @@ empty strings because CSS cannot write a null string. Lease release and managed
 provider unload restore live owned controllers through the normal publisher.
 Disconnect, controller replacement, map and native-session changes discard
 captured state without accessing the expired controller.
-The publisher also compares effective lease values with live controller fields
-at actual lifecycle/change events and schedules reconciliation after spawn/death. This
-prevents engine lifecycle writes from exposing the persona base while a lease
-is active.
+Spawn, death, and presentation changes reconcile live fields with active leases.
 
 Native loading after server startup is unsupported. Unload refuses while the
 active-slot set is nonempty, before removing hooks or clearing presentation
@@ -106,11 +100,10 @@ CMake, and Visual Studio Build Tools. `CSGO_PROTO` is optional when
 ```powershell
 git submodule update --init --recursive
 cmake -S . -B build -G "Visual Studio 18 2026" -A x64
-cmake --build build --config Release --target BotHider
+cmake --build build --config Release --target dtr-hider
 dotnet build csharp/DtrHider/DtrHider.csproj -c Release
 ```
 
 The native package is staged under `build/package/addons`; managed assemblies
 are under `csharp/DtrHider/bin/Release/net10.0`. Install the matched native
-runtime and provider together. DemoTracer's consumer repository assembles its
-full playback bundle from these outputs.
+runtime and provider together. The product packager assembles the playback bundle.

@@ -54,11 +54,7 @@ const SECTION_VERSION_V2: u32 = 2;
 
 const MIB: u64 = 1024 * 1024;
 
-/// Resource limits applied while reading untrusted `.dtr` files.
-///
-/// The defaults are deliberately generous enough for unusually long individual
-/// rounds while still preventing corrupt headers or compression bombs from
-/// requesting excessive memory.
+/// Limits on encoded and decoded data when reading `.dtr` files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DtrReadLimits {
     pub max_file_bytes: u64,

@@ -167,9 +167,7 @@ export function persistLibraryPreferences(preferences: LibraryPreferences) {
 }
 
 export function mergeLibraryScan(scan: DemoLibraryScan): DemoLibraryScan {
-  // Portable demo-info.json is the only source of analyzed archive metadata.
-  // Browser-local score caches are deliberately never merged: they cannot be
-  // revisioned with the archive and previously preserved incorrect snapshots.
+  // Read analyzed metadata from demo-info.json so it shares the archive revision.
   return scan;
 }
 

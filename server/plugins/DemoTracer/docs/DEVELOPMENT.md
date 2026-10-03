@@ -20,7 +20,7 @@ the responsibilities of the existing classes and partial plugin files:
 | `Native` | BotController binding, ABI types, native mapping, module fingerprints, and health checks |
 | `Presentation` | BotHider bridge, avatars, scoreboard, view state, round banners, and chat |
 | `Cosmetics` | BotRandomizer bridge, cosmetic leases, evidence validation, and alignment |
-| `Projectiles` | Projectile births, physics hooks, trace, and alignment |
+| `Projectiles` | Projectile birth matching and initial state application before first physics |
 | `Voice` | Voice models, codec, loading, and playback |
 | `Data` | DTR section readers, validation, manifests, and shared plugin models |
 
@@ -59,7 +59,7 @@ pwsh -NoProfile -File tools/package.ps1
 ```
 
 Both scripts accept `-DotnetPath` when the .NET 10 executable is not the default
-on `PATH`. `tools/check.ps1` builds Release and runs the complete migrated
+on `PATH`. `tools/check.ps1` builds Release and runs the
 `tests/DemoTracer.Tests` suite, including the public/provider API tests; it
 does not require a live CS2 server. Actual engine hooks, playback, takeover,
 and live cosmetic publication still need matched-server smoke tests.

@@ -202,9 +202,7 @@ where
         .as_ref()
         .is_some_and(|entry| now.saturating_sub(entry.fetched_at_ms) <= CACHE_TTL_MS);
 
-    // A cached profile must remain immediately usable even when its metadata TTL has expired.
-    // Refresh stale metadata only from the hydration pass; otherwise an offline Steam request
-    // can make the GUI look as if the persistent cache disappeared until every timeout finishes.
+    // Return cached profiles immediately; hydration refreshes expired metadata.
     let should_fetch_metadata = cached.is_none() || (hydrate_assets && !metadata_fresh);
     if should_fetch_metadata {
         if let Some(mut fetched) = profile_fetcher(steam_id) {

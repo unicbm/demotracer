@@ -471,10 +471,7 @@ function App() {
     : activeSection === "analysis" && analysis
       ? [analysis.map || "—", `${analysis.rounds.length} ${words.rounds}`].join(" · ")
       : "";
-  // The title bar is contextual chrome, not a second page heading. Pages with
-  // their own visible heading (library and import) deliberately leave it
-  // empty; analysis keeps match context and the heading-less utility pages keep
-  // a compact label.
+  // Library and import pages already have headings; analysis uses match context.
   const sessionTitle = activeSection === "analysis"
     ? analysisSessionTitle || words.navAnalysis
     : activeSection === "logs"
@@ -614,13 +611,13 @@ function App() {
             oscillator.stop(start + 0.15);
           }
         } catch {
-          // Notification audio is deliberately best effort.
+          // Audio failure must not interrupt task completion.
         }
       };
       if (context.state === "suspended") void context.resume().then(schedule).catch(() => undefined);
       else schedule();
     } catch {
-      // Notification audio is deliberately best effort.
+      // Audio failure must not interrupt task completion.
     }
   }, []);
 

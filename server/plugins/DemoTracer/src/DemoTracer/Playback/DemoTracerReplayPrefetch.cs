@@ -262,9 +262,7 @@ internal sealed class DtrReplayPrefetch
             _pending.Remove(fullPath);
         }
 
-        // DecodeAsync converts every exception into a completed failed result.
-        // This GetResult therefore only unwraps an already-completed task and
-        // can never park the game thread behind disk I/O or Brotli decoding.
+        // Completion is checked above; decoding errors are stored in the result.
         var result = entry.Task.GetAwaiter().GetResult();
         try
         {
