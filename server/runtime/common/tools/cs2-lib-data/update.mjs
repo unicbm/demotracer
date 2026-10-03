@@ -16,10 +16,12 @@ if (!/^(latest|\d+\.\d+\.\d+)$/.test(values.version)) throw new Error('Expected 
 const directory = dirname(fileURLToPath(import.meta.url));
 const sourcePath = resolve(directory, 'source.json');
 const source = JSON.parse(readFileSync(sourcePath, 'utf8'));
-const npm = (args, capture = false) => execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', args, {
-  cwd: directory, encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit', shell: process.platform === 'win32',
+const npm = args => execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', args, {
+  cwd: directory, stdio: 'inherit', shell: process.platform === 'win32',
 });
-const metadata = JSON.parse(npm(['view', `@ianlucas/cs2-lib@${values.version}`, 'version', 'gitHead', '--json'], true));
+const response = await fetch(`https://registry.npmjs.org/@ianlucas%2fcs2-lib/${values.version}`);
+if (!response.ok) throw new Error(`npm metadata request failed: ${response.status}`);
+const metadata = await response.json();
 if (!/^\d+\.\d+\.\d+$/.test(metadata.version) || !/^[a-f0-9]{40}$/.test(metadata.gitHead) ||
     (values.version !== 'latest' && metadata.version !== values.version)) {
   throw new Error('Package metadata must contain the requested stable version and source commit');
