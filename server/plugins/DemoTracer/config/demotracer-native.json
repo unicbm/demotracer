@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "algorithm": "pe-image-v1",
-  "imageSha256": "5980E32E0DE2906B8AE5360FD6E707930E6A56F7DA9B3693838F25266D1565F9",
+  "imageSha256": "02BAA9A28F3B251DFEC8EA25427AF454727DD6619A2856958D3FD63DDD2A7FF6",
   "projectilePhysics": {
     "entryRva": 10245744,
     "bodyLength": 2765,
