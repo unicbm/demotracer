@@ -26,9 +26,9 @@ quick-xml = { version = "=0.42.0", features = ["serialize"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "=0.11.0"
-tauri = { version = "=2.11.5", features = ["unstable"] }
+tauri = { version = "=2.11.6", features = ["unstable"] }
 tauri-plugin-process = "=2.3.1"
-tauri-plugin-updater = "=2.10.1"
+tauri-plugin-updater = "=2.12.0"
 semver = "=1.0.28"
 url = "=2.5.8"
 uuid = { version = "=1.26.1", features = ["v4"] }
