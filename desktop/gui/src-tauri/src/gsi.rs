@@ -149,27 +149,9 @@ impl GsiState {
             "\"CS2 DemoTracer\"\n{{\n  \"uri\" \"{GSI_URI}\"\n  \"timeout\" \"5.0\"\n  \"buffer\" \"0.1\"\n  \"throttle\" \"0.5\"\n  \"heartbeat\" \"10.0\"\n  \"auth\"\n  {{\n    \"token\" \"{}\"\n  }}\n  \"data\"\n  {{\n    \"provider\" \"1\"\n    \"map\" \"1\"\n    \"round\" \"1\"\n    \"player_id\" \"1\"\n    \"player_state\" \"1\"\n    \"player_match_stats\" \"1\"\n  }}\n}}\n",
             self.token.as_str()
         );
-        let temporary = cfg_dir.join(format!("{GSI_CONFIG_NAME}.tmp"));
-        let backup = cfg_dir.join(format!("{GSI_CONFIG_NAME}.backup"));
-        fs::write(&temporary, contents.as_bytes()).map_err(|error| {
-            CommandErrorDto::at_path("gsi_config_write_failed", error.to_string(), &temporary)
+        crate::atomic_file::write(&target, contents.as_bytes()).map_err(|error| {
+            CommandErrorDto::at_path("gsi_config_write_failed", error.to_string(), &target)
         })?;
-        if target.exists() {
-            let _ = fs::remove_file(&backup);
-            fs::rename(&target, &backup).map_err(|error| {
-                CommandErrorDto::at_path("gsi_config_write_failed", error.to_string(), &target)
-            })?;
-        }
-        if let Err(error) = fs::rename(&temporary, &target) {
-            let _ = fs::rename(&backup, &target);
-            let _ = fs::remove_file(&temporary);
-            return Err(CommandErrorDto::at_path(
-                "gsi_config_write_failed",
-                error.to_string(),
-                &target,
-            ));
-        }
-        let _ = fs::remove_file(&backup);
         if let Ok(mut status) = self.status.lock() {
             status.config_path = Some(target.display().to_string());
         }

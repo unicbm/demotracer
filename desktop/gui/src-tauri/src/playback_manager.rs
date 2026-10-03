@@ -1254,17 +1254,7 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> CommandResult<()> {
     fs::create_dir_all(parent).map_err(|error| {
         CommandErrorDto::at_path("playback_state_failed", error.to_string(), parent)
     })?;
-    let temporary = parent.join(format!(
-        ".{}.tmp-{}",
-        path.file_name().unwrap_or_default().to_string_lossy(),
-        uuid::Uuid::new_v4()
-    ));
-    let result = fs::write(&temporary, bytes)
-        .and_then(|_| crate::server_config::atomic_replace(&temporary, path));
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
+    crate::atomic_file::write(path, bytes)
         .map_err(|error| CommandErrorDto::at_path("playback_state_failed", error.to_string(), path))
 }
 
@@ -1277,7 +1267,7 @@ fn replace_file(source: &Path, destination: &Path) -> CommandResult<()> {
     })?;
     let temporary = parent.join(format!(".demotracer-new-{}", uuid::Uuid::new_v4()));
     let result = fs::copy(source, &temporary)
-        .and_then(|_| crate::server_config::atomic_replace(&temporary, destination));
+        .and_then(|_| crate::atomic_file::replace(&temporary, destination));
     if result.is_err() {
         let _ = fs::remove_file(&temporary);
     }

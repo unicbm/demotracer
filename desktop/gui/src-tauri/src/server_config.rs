@@ -10,10 +10,9 @@ use cs2_demotracer::demo_id::sha256_hex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
-use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 const CONFIG_FILE_NAME: &str = "demotracer.config.json";
 const EXAMPLE_CONFIG_FILE_NAME: &str = "demotracer.config.example.json";
@@ -47,8 +46,6 @@ const BUILTIN_DEFAULT_CONFIG: &str = r#"{
   }
 }
 "#;
-
-static NEXT_CONFIG_WRITE_NONCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -395,82 +392,9 @@ fn atomic_write_config(root: &Path, target: &Path, bytes: &[u8]) -> CommandResul
         }
     }
 
-    let nonce = NEXT_CONFIG_WRITE_NONCE.fetch_add(1, Ordering::Relaxed);
-    let temp_path = directory.join(format!(
-        ".{CONFIG_FILE_NAME}.{}.{}.tmp",
-        std::process::id(),
-        nonce
-    ));
-    let write_result = (|| -> io::Result<()> {
-        let mut file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&temp_path)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
-        drop(file);
-        atomic_replace(&temp_path, target)
-    })();
-    if let Err(error) = write_result {
-        let _ = fs::remove_file(&temp_path);
-        return Err(CommandErrorDto::at_path(
-            "server_config_write_failed",
-            error.to_string(),
-            target,
-        ));
-    }
-    Ok(())
-}
-
-#[cfg(not(windows))]
-pub(crate) fn atomic_replace(source: &Path, target: &Path) -> io::Result<()> {
-    fs::rename(source, target)
-}
-
-#[cfg(windows)]
-pub(crate) fn atomic_replace(source: &Path, target: &Path) -> io::Result<()> {
-    if !target.exists() {
-        return fs::rename(source, target);
-    }
-
-    use std::os::windows::ffi::OsStrExt;
-
-    const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
-    const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
-
-    #[link(name = "Kernel32")]
-    extern "system" {
-        fn MoveFileExW(
-            existing_file_name: *const u16,
-            new_file_name: *const u16,
-            flags: u32,
-        ) -> i32;
-    }
-
-    let target_wide = target
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
-    let source_wide = source
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
-    // MoveFileExW replaces an existing destination on the same volume in one
-    // rename operation. The temporary file intentionally lives beside it.
-    let replaced = unsafe {
-        MoveFileExW(
-            source_wide.as_ptr(),
-            target_wide.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    };
-    if replaced == 0 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
+    crate::atomic_file::write(target, bytes).map_err(|error| {
+        CommandErrorDto::at_path("server_config_write_failed", error.to_string(), target)
+    })
 }
 
 fn parse_config_text(text: &str) -> Result<Value, String> {

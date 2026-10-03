@@ -7,9 +7,7 @@
 use crate::{CommandErrorDto, CommandResult};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 
@@ -18,7 +16,6 @@ const GUI_PREFERENCES_SCHEMA_VERSION: u32 = 1;
 const MAX_GUI_PREFERENCES_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_CUSTOM_CSS_PROFILES: usize = 24;
 const MAX_CUSTOM_CSS_CHARS: usize = 65_536;
-static NEXT_PREFERENCES_NONCE: AtomicU64 = AtomicU64::new(1);
 static PREFERENCES_IO_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -205,74 +202,15 @@ fn persist_preferences_atomic(path: &Path, preferences: &GuiPreferencesDto) -> C
     fs::create_dir_all(parent).map_err(|error| {
         CommandErrorDto::at_path("gui_preferences_write_failed", error.to_string(), parent)
     })?;
-    let sequence = NEXT_PREFERENCES_NONCE.fetch_add(1, Ordering::Relaxed);
-    let temporary = path.with_file_name(format!(
-        ".{GUI_PREFERENCES_FILE_NAME}.tmp.{}.{}",
-        std::process::id(),
-        sequence
-    ));
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)
-        .map_err(|error| {
-            CommandErrorDto::at_path(
-                "gui_preferences_write_failed",
-                error.to_string(),
-                &temporary,
-            )
-        })?;
-    if let Err(error) = file.write_all(&bytes).and_then(|_| file.sync_all()) {
-        let _ = fs::remove_file(&temporary);
-        return Err(CommandErrorDto::at_path(
-            "gui_preferences_write_failed",
-            error.to_string(),
-            &temporary,
-        ));
-    }
-    drop(file);
-
-    let backup = backup_path(path);
-    if backup.exists() {
-        fs::remove_file(&backup).map_err(|error| {
-            CommandErrorDto::at_path("gui_preferences_write_failed", error.to_string(), &backup)
-        })?;
-    }
-    let had_previous = path.exists();
-    if had_previous {
-        if let Err(error) = fs::rename(path, &backup) {
-            let _ = fs::remove_file(&temporary);
-            return Err(CommandErrorDto::at_path(
-                "gui_preferences_write_failed",
-                error.to_string(),
-                path,
-            ));
-        }
-    }
-    if let Err(error) = fs::rename(&temporary, path) {
-        if had_previous {
-            let _ = fs::rename(&backup, path);
-        }
-        let _ = fs::remove_file(&temporary);
-        return Err(CommandErrorDto::at_path(
-            "gui_preferences_write_failed",
-            format!("Could not promote GUI preferences: {error}"),
-            path,
-        ));
-    }
-    if had_previous {
-        let _ = fs::remove_file(&backup);
-    }
+    crate::atomic_file::write(path, &bytes).map_err(|error| {
+        CommandErrorDto::at_path("gui_preferences_write_failed", error.to_string(), path)
+    })?;
+    let _ = fs::remove_file(backup_path(path));
     Ok(())
 }
 
 fn restore_backup(path: &Path, backup: &Path) -> CommandResult<()> {
-    if path.exists() {
-        fs::remove_file(path).map_err(|error| {
-            CommandErrorDto::at_path("gui_preferences_recovery_failed", error.to_string(), path)
-        })?;
-    }
-    fs::rename(backup, path).map_err(|error| {
+    crate::atomic_file::replace(backup, path).map_err(|error| {
         CommandErrorDto::at_path("gui_preferences_recovery_failed", error.to_string(), backup)
     })
 }
@@ -389,6 +327,9 @@ fn is_theme_color(color: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_PREFERENCES_NONCE: AtomicU64 = AtomicU64::new(1);
 
     struct TestDirectory(PathBuf);
 

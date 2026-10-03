@@ -14,7 +14,6 @@ use cs2_demotracer::quality::AnalysisOptions;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -34,6 +33,7 @@ const ESTIMATED_PARALLEL_EFFICIENCY: f64 = 0.65;
 const ESTIMATED_ZSTD_EXPANSION: u64 = 4;
 
 static NEXT_BATCH_NONCE: AtomicU64 = AtomicU64::new(1);
+#[cfg(test)]
 static NEXT_LEDGER_NONCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Default)]
@@ -1509,41 +1509,9 @@ fn persist_ledger_atomic(path: &Path, ledger: &BatchLedgerDto) -> CommandResult<
     })?;
     let bytes = serde_json::to_vec_pretty(ledger)
         .map_err(|error| CommandErrorDto::new("batch_serialize_failed", error.to_string()))?;
-    let sequence = NEXT_LEDGER_NONCE.fetch_add(1, Ordering::Relaxed);
-    let temp_path = path.with_file_name(format!(
-        ".{}.tmp.{}.{}",
-        path.file_name()
-            .map(|name| name.to_string_lossy())
-            .unwrap_or_default(),
-        std::process::id(),
-        sequence
-    ));
-    let mut temp = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temp_path)
-        .map_err(|error| {
-            CommandErrorDto::at_path("batch_persist_failed", error.to_string(), &temp_path)
-        })?;
-    if let Err(error) = temp.write_all(&bytes).and_then(|_| temp.sync_all()) {
-        drop(temp);
-        let _ = fs::remove_file(&temp_path);
-        return Err(CommandErrorDto::at_path(
-            "batch_persist_failed",
-            error.to_string(),
-            &temp_path,
-        ));
-    }
-    drop(temp);
-
-    if let Err(error) = crate::server_config::atomic_replace(&temp_path, path) {
-        let _ = fs::remove_file(&temp_path);
-        return Err(CommandErrorDto::at_path(
-            "batch_persist_failed",
-            format!("Could not promote batch state: {error}"),
-            path,
-        ));
-    }
+    crate::atomic_file::write(path, &bytes).map_err(|error| {
+        CommandErrorDto::at_path("batch_persist_failed", error.to_string(), path)
+    })?;
     // Legacy journals may still have a recovery copy. Keep it until the new
     // primary is safely published; readers never rename or remove either file.
     let _ = fs::remove_file(backup_ledger_path(path));

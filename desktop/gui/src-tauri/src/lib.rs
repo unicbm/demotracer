@@ -6,6 +6,7 @@
 
 mod activity_log;
 mod archive_info;
+mod atomic_file;
 mod batch;
 mod catalog;
 mod gsi;
