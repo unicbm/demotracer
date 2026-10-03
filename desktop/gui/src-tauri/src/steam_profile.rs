@@ -643,7 +643,7 @@ fn parse_image_url(html: &str, trusted_url: fn(&str) -> bool) -> Option<String> 
                 if attribute
                     .key
                     .as_ref()
-                    .eq_ignore_ascii_case(expected_name.as_bytes())
+                    .eq_ignore_ascii_case(expected_name)
                 {
                     let Ok(value) = attribute.unescape_value() else {
                         continue;
