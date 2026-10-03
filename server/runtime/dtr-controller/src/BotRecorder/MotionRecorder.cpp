@@ -740,7 +740,6 @@ namespace BotController
             const ReplayInputHistoryTick *inputHistoryTicks, int inputHistoryTickCount,
             const ReplayInputHistoryEntry *inputHistoryEntries, int inputHistoryEntryCount) noexcept
         {
-            bool committed = false;
             try
             {
                 if (!ValidSlot(slot))
@@ -774,7 +773,6 @@ namespace BotController
                 p.subs.swap(staged.subs);
                 p.commands.swap(staged.commands);
                 p.subOffset.swap(staged.offsets);
-                committed = true;
                 p.cursor.store(0, std::memory_order_relaxed);
                 p.startCursor.store(0, std::memory_order_relaxed);
                 p.holdBeforeCursor.store(-1, std::memory_order_relaxed);
@@ -785,10 +783,7 @@ namespace BotController
             }
             catch (...)
             {
-                // All buffer swaps above are noexcept. If a future post-commit
-                // cleanup gains a throwing operation, do not report failure
-                // after the new replay has already become authoritative.
-                return committed;
+                return false;
             }
         }
 
