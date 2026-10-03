@@ -705,13 +705,13 @@ export function SettingsWorkspace({
           <div className="settings-path-input">
             <input
               value={environment.cs2Path}
-              disabled={detecting}
+              disabled={detecting || releaseBusy}
               spellCheck={false}
               placeholder={words.cs2PathPlaceholder}
               aria-label={words.cs2Location}
               onChange={(event) => onCs2PathChange(event.target.value)}
             />
-            <button className="secondary-button" type="button" disabled={detecting} onClick={onBrowseCs2}>
+            <button className="secondary-button" type="button" disabled={detecting || releaseBusy} onClick={onBrowseCs2}>
               <FolderIcon size={15} />{words.browseFolder}
             </button>
           </div>
@@ -727,7 +727,7 @@ export function SettingsWorkspace({
                 className="detected-install-option"
                 key={`${candidate.source}:${candidate.gameCsgoPath}`}
                 type="button"
-                disabled={detecting}
+                disabled={detecting || releaseBusy}
                 onClick={() => onUseCandidate(candidate)}
               >
                 <span><FolderIcon size={16} /></span>
@@ -747,7 +747,7 @@ export function SettingsWorkspace({
           </div>
         ) : null}
         <div className="settings-card-actions">
-          <button className="secondary-button" type="button" disabled={detecting} onClick={onDetectCs2}>
+          <button className="secondary-button" type="button" disabled={detecting || releaseBusy} onClick={onDetectCs2}>
             <SearchIcon size={16} />{detecting ? words.detectingCs2 : words.autoDetectCs2}
           </button>
         </div>

@@ -58,11 +58,19 @@ export function useUpdateController({
   const [playbackUpdate, setPlaybackUpdate] = useState<PlaybackUpdateStatus>({ phase: "idle" });
   const [playbackReleaseError, setPlaybackReleaseError] = useState("");
   const [playbackInstallBlockedByCs2, setPlaybackInstallBlockedByCs2] = useState(false);
-  const [releaseAction, setReleaseAction] = useState<"installingOnline" | "installingFile" | "rollingBack" | null>(null);
+  const [releaseAction, setReleaseActionState] = useState<"installingOnline" | "installingFile" | "rollingBack" | null>(null);
+  const releaseActionRef = useRef<typeof releaseAction>(null);
   const [playbackInstallProgress, setPlaybackInstallProgress] = useState<PlaybackInstallProgress | null>(null);
   const [releaseNotice, setReleaseNotice] = useState("");
   const pendingGuiUpdateRef = useRef<Update | null>(null);
   const playbackContinuationStartedRef = useRef(false);
+  const playbackCheckRef = useRef(0);
+  const playbackPathRef = useRef(cs2Path.trim());
+
+  function setReleaseAction(action: typeof releaseAction) {
+    releaseActionRef.current = action;
+    setReleaseActionState(action);
+  }
 
   async function checkGuiApplicationUpdate(manual = true, knownCurrentVersion?: string) {
     if (!("__TAURI_INTERNALS__" in window)) return;
@@ -122,17 +130,20 @@ export function useUpdateController({
 
   async function checkPlaybackUpdate(ignoreBusy = false) {
     const normalizedCs2Path = cs2Path.trim();
-    if (!normalizedCs2Path || (!ignoreBusy && releaseAction)) return;
+    if (!normalizedCs2Path || (!ignoreBusy && releaseActionRef.current)) return;
+    const request = ++playbackCheckRef.current;
     setPlaybackUpdate({ phase: "checking" });
     try {
       const status = await invoke<PlaybackUpdateRelease>("playback_update_status", { cs2Path: normalizedCs2Path });
+      if (request !== playbackCheckRef.current) return;
       setPlaybackUpdate({
         phase: status.updateAvailable ? "available" : "current",
         latestVersion: status.latestVersion,
         notes: status.notes,
       });
     } catch (reason) {
-      setPlaybackUpdate(playbackUpdateFailureStatus(reason, language));
+      if (request === playbackCheckRef.current)
+        setPlaybackUpdate(playbackUpdateFailureStatus(reason, language));
     }
   }
 
@@ -144,14 +155,16 @@ export function useUpdateController({
         .replace("{installed}", String(result.installedFiles))
         .replace("{removed}", String(result.removedLegacyFiles))
       : words.playbackRollbackNotice);
-    const status = await invoke<PlaybackReleaseStatus>("playback_release_status", { cs2Path: cs2Path.trim() });
+    const installedPath = cs2Path.trim();
+    const status = await invoke<PlaybackReleaseStatus>("playback_release_status", { cs2Path: installedPath });
+    if (playbackPathRef.current !== installedPath) return;
     setPlaybackRelease(status);
     await checkPlaybackUpdate(true);
   }
 
   async function installLatestPlaybackBundle() {
     const normalizedCs2Path = cs2Path.trim();
-    if (!normalizedCs2Path || releaseAction) return false;
+    if (!normalizedCs2Path || releaseActionRef.current) return false;
     // Settings must follow the same GUI-first sequence as the update dialog.
     if (guiUpdate.phase === "checking" || guiUpdate.phase === "downloading" || guiUpdate.phase === "installing") return false;
     if (guiUpdate.availableVersion && guiUpdate.availableVersion !== guiUpdate.currentVersion) {
@@ -188,13 +201,13 @@ export function useUpdateController({
 
   async function installPlaybackBundle() {
     const normalizedCs2Path = cs2Path.trim();
-    if (!normalizedCs2Path || releaseAction) return;
+    if (!normalizedCs2Path || releaseActionRef.current) return;
+    setReleaseAction("installingFile");
     setPlaybackReleaseError("");
     setReleaseNotice("");
     try {
       const packagePath = await invoke<string | null>("choose_playback_bundle", { initialPath: null });
       if (!packagePath) return;
-      setReleaseAction("installingFile");
       const result = await invoke<PlaybackInstallResult>("install_playback_bundle", {
         cs2Path: normalizedCs2Path,
         packagePath,
@@ -209,7 +222,7 @@ export function useUpdateController({
 
   async function rollbackPlaybackInstall() {
     const normalizedCs2Path = cs2Path.trim();
-    if (!normalizedCs2Path || releaseAction || !playbackRelease?.canRollback) return;
+    if (!normalizedCs2Path || releaseActionRef.current || !playbackRelease?.canRollback) return;
     setReleaseAction("rollingBack");
     setPlaybackReleaseError("");
     setReleaseNotice("");
@@ -244,6 +257,8 @@ export function useUpdateController({
     if (!("__TAURI_INTERNALS__" in window)) return;
     const normalizedCs2Path = cs2Path.trim();
     let disposed = false;
+    playbackPathRef.current = normalizedCs2Path;
+    setPlaybackRelease(null);
     setPlaybackReleaseError("");
     setPlaybackUpdate(normalizedCs2Path ? { phase: "checking" } : { phase: "idle" });
     void invoke<PlaybackReleaseStatus>("playback_release_status", {
@@ -253,19 +268,11 @@ export function useUpdateController({
     }).catch((reason) => {
       if (!disposed) setPlaybackReleaseError(userFacingErrorMessage(parseCommandError(reason), language));
     });
-    if (normalizedCs2Path) {
-      void invoke<PlaybackUpdateRelease>("playback_update_status", { cs2Path: normalizedCs2Path }).then((status) => {
-        if (disposed) return;
-        setPlaybackUpdate({
-          phase: status.updateAvailable ? "available" : "current",
-          latestVersion: status.latestVersion,
-          notes: status.notes,
-        });
-      }).catch((reason) => {
-        if (!disposed) setPlaybackUpdate(playbackUpdateFailureStatus(reason, language));
-      });
-    }
-    return () => { disposed = true; };
+    if (normalizedCs2Path) void checkPlaybackUpdate(true);
+    return () => {
+      disposed = true;
+      playbackCheckRef.current++;
+    };
   }, [cs2Path, language]);
 
   useEffect(() => {
