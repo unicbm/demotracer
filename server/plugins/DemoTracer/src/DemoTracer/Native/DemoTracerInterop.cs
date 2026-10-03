@@ -153,7 +153,7 @@ internal static partial class BotControllerNative
             }
             catch (EntryPointNotFoundException)
             {
-                return CanSendVoice ? 0 : -9;
+                return -9;
             }
             catch
             {
@@ -170,7 +170,7 @@ internal static partial class BotControllerNative
             -2 => "no_network_messages",
             -3 => "no_voice_message",
             -8 => "status_error",
-            -9 => CanSendVoice ? "available_legacy" : "missing_legacy",
+            -9 => "missing_status_export",
             -10 => "missing_capability",
             _ => $"status_{VoiceStatus}",
         };

@@ -699,6 +699,29 @@ public sealed partial class DemoTracerPlugin
         _session.ResumedFreezePrerollSlots.Clear();
     }
 
+    private float LoadedReplayPrerollSeconds(float fallbackTickRate = 0.0f)
+    {
+        var maxSeconds = 0.0f;
+        foreach (var replay in _session.LoadedReplays.Values)
+        {
+            var tickRate = replay.TickRate > 0.0f ? replay.TickRate : fallbackTickRate;
+            if (replay.PlayStartTickIndex > 0 && tickRate > 0.0f)
+                maxSeconds = Math.Max(maxSeconds, replay.PlayStartTickIndex / tickRate);
+        }
+        return maxSeconds;
+    }
+
+    private float LoadedReplayMediaPrerollSeconds(
+        float? freezeTimeSeconds, float tickRate, int recordingStartTick, int liveStartTick)
+    {
+        var maxSeconds = LoadedReplayPrerollSeconds(tickRate);
+        if (freezeTimeSeconds.HasValue && freezeTimeSeconds.Value > 0.0f)
+            return Math.Min(freezeTimeSeconds.Value, maxSeconds);
+        if (recordingStartTick > 0 && liveStartTick > recordingStartTick && tickRate > 0.0f)
+            return (liveStartTick - recordingStartTick) / tickRate;
+        return maxSeconds;
+    }
+
     private bool TryGetFreezePrerollSchedule(
         out float freezeTimeSeconds,
         out float delaySeconds,
@@ -716,15 +739,7 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
-        var maxRecordedPrerollSeconds = 0.0f;
-        foreach (var replay in _session.LoadedReplays.Values)
-        {
-            if (replay.PlayStartTickIndex == 0 || replay.TickRate <= 0.0f)
-                continue;
-            maxRecordedPrerollSeconds = Math.Max(
-                maxRecordedPrerollSeconds,
-                replay.PlayStartTickIndex / replay.TickRate);
-        }
+        var maxRecordedPrerollSeconds = LoadedReplayPrerollSeconds();
 
         if (maxRecordedPrerollSeconds <= 0.0f)
         {

@@ -155,39 +155,13 @@ public sealed partial class DemoTracerPlugin
             _loadedChatLiveStartTick > 0 &&
             _loadedChatRecordingStartTick > 0)
         {
-            var prerollSeconds = LoadedReplayChatPrerollSeconds(freezeTimeSeconds, tickRate);
+            var prerollSeconds = LoadedReplayMediaPrerollSeconds(
+                freezeTimeSeconds, tickRate, _loadedChatRecordingStartTick, _loadedChatLiveStartTick);
             var prerollTicks = (int)MathF.Round(prerollSeconds * tickRate);
             anchorTick = Math.Max(_loadedChatRecordingStartTick, _loadedChatLiveStartTick - prerollTicks);
         }
 
         return anchorTick;
-    }
-
-    private float LoadedReplayChatPrerollSeconds(float? freezeTimeSeconds, float fallbackTickRate)
-    {
-        var maxRecordedPrerollSeconds = 0.0f;
-        foreach (var replay in _session.LoadedReplays.Values)
-        {
-            var tickRate = replay.TickRate > 0.0f ? replay.TickRate : fallbackTickRate;
-            if (replay.PlayStartTickIndex == 0 || tickRate <= 0.0f)
-                continue;
-            maxRecordedPrerollSeconds = Math.Max(
-                maxRecordedPrerollSeconds,
-                replay.PlayStartTickIndex / tickRate);
-        }
-
-        if (freezeTimeSeconds.HasValue && freezeTimeSeconds.Value > 0.0f)
-            return Math.Min(freezeTimeSeconds.Value, maxRecordedPrerollSeconds);
-
-        if (_loadedChatLiveStartTick > 0 &&
-            _loadedChatRecordingStartTick > 0 &&
-            _loadedChatLiveStartTick > _loadedChatRecordingStartTick &&
-            fallbackTickRate > 0.0f)
-        {
-            return (_loadedChatLiveStartTick - _loadedChatRecordingStartTick) / fallbackTickRate;
-        }
-
-        return maxRecordedPrerollSeconds;
     }
 
     private static List<ChatPlaybackFrame> BuildChatPlaybackFrames(

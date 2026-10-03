@@ -248,7 +248,8 @@ public sealed partial class DemoTracerPlugin
         var anchorDemoTick = _loadedVoiceLiveStartTick;
         if (anchor == ReplayStartAnchor.FreezePreroll && _loadedVoiceLiveStartTick > 0)
         {
-            var prerollSeconds = LoadedReplayVoicePrerollSeconds(freezeTimeSeconds, tickRate);
+            var prerollSeconds = LoadedReplayMediaPrerollSeconds(
+                freezeTimeSeconds, tickRate, _loadedVoiceRecordingStartTick, _loadedVoiceLiveStartTick);
             var prerollTicks = (int)MathF.Round(prerollSeconds * tickRate);
             anchorDemoTick = Math.Max(_loadedVoiceRecordingStartTick, _loadedVoiceLiveStartTick - prerollTicks);
         }
@@ -261,33 +262,6 @@ public sealed partial class DemoTracerPlugin
             ? FirstVoiceFrameAtOrAfter(frames, offsetSeconds)
             : 0;
         return (Server.CurrentTime - offsetSeconds, initialFrameIndex, offsetSeconds);
-    }
-
-    private float LoadedReplayVoicePrerollSeconds(float? freezeTimeSeconds, float fallbackTickRate)
-    {
-        var maxRecordedPrerollSeconds = 0.0f;
-        foreach (var replay in _session.LoadedReplays.Values)
-        {
-            var tickRate = replay.TickRate > 0.0f ? replay.TickRate : fallbackTickRate;
-            if (replay.PlayStartTickIndex == 0 || tickRate <= 0.0f)
-                continue;
-            maxRecordedPrerollSeconds = Math.Max(
-                maxRecordedPrerollSeconds,
-                replay.PlayStartTickIndex / tickRate);
-        }
-
-        if (freezeTimeSeconds.HasValue && freezeTimeSeconds.Value > 0.0f)
-            return Math.Min(freezeTimeSeconds.Value, maxRecordedPrerollSeconds);
-
-        if (_loadedVoiceLiveStartTick > 0 &&
-            _loadedVoiceRecordingStartTick > 0 &&
-            _loadedVoiceLiveStartTick > _loadedVoiceRecordingStartTick &&
-            fallbackTickRate > 0.0f)
-        {
-            return (_loadedVoiceLiveStartTick - _loadedVoiceRecordingStartTick) / fallbackTickRate;
-        }
-
-        return maxRecordedPrerollSeconds;
     }
 
     private static int FirstVoiceFrameAtOrAfter(IReadOnlyList<VoiceClipRuntimeFrame> frames, float offsetSeconds)
