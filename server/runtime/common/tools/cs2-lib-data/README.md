@@ -12,9 +12,9 @@ npm.cmd run check
 npm.cmd test
 ```
 
-Run `pwsh -NoProfile -File update.ps1 -CheckOnly` to inspect the latest stable
-package without modifying files. To prepare a candidate, omit `-CheckOnly`, or
-pass `-Version 9.2.0` to reproduce a specific published version. The script pins
+Run `node update.mjs --check-only` to inspect the latest stable
+package without modifying files. To prepare a candidate, omit `--check-only`, or
+pass `--version 9.2.0` to reproduce a specific published version. The script pins
 the npm version and source commit, disables package lifecycle scripts, and
 generates and checks both outputs. It does not update provider source, commit,
 push, open pull requests, or publish releases. A failed generation can leave

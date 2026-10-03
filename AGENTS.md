@@ -31,9 +31,9 @@ a pinned Git submodule. Keep product contracts and packaging aligned.
   Source movement does not itself require an API/ABI or DLL identity change.
 - Keep CI impact selection conservative. Shared/build changes and releases
   require full validation; reuse tested artifacts when packaging.
-- Do not automatically request another AI review for unchanged source already
-  reviewed internally or mechanical release metadata. Review new source,
-  contracts, Action major versions and permission changes as appropriate.
+- Do not request Codex automatic reviews on PRs or in workflows, including
+  dependency and version PRs. Do not post `@codex review`. Use builds, tests
+  and contract checks; maintainer review remains manual.
 - Make the smallest evidence-backed change and run the narrowest relevant
   validation first.
 - Use release builds for performance and Windows installer checks.
