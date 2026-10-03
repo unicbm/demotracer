@@ -7,10 +7,32 @@
 #include "bot_info.h"
 #include "fake_client_manager.h"
 #include "presentation_state.h"
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <thread>
 
 int main()
 {
+    const auto rosterPath = std::filesystem::temp_directory_path() /
+        ("dtr-hider-roster-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+    {
+        std::ofstream file(rosterPath);
+        file << R"({"A":{"steamid":1},"B":{"steamid":2}})";
+    }
+    cs2bh::BotInfoStore roster;
+    const bool loaded = roster.Load(rosterPath.string().c_str());
+    std::filesystem::remove(rosterPath);
+    if (!loaded) return 18;
+    const auto *a = roster.PickForBot("A");
+    const auto *b = roster.PickForBot("A");
+    if (!a || !b || a == b || a->Name != "A" || b->Name != "B") return 19;
+    if (roster.PickForBot(nullptr)) return 20;
+    roster.ReleaseAssignment(a);
+    if (roster.PickForBot("unknown") != a || roster.PickForBot("B")) return 21;
+    roster.ResetAssignments();
+    if (roster.PickForBot("B") != b || roster.PickForBot("A") != a) return 22;
+
     // Exercise the production base resolver and manager without an engine or
     // server-local bot_info.json. A missing roster must preserve the bot SID.
     cs2bh::BotInfoStore emptyRoster;

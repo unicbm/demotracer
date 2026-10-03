@@ -114,6 +114,9 @@ fragile `client.dll` signature hook.
 - `dtr_hider_namesource <0|1>`: choose engine bot names or `bot_info.json` names for
   newly adopted personas.
 
+Each configured persona can be assigned to one bot at a time. When the roster is
+exhausted, additional bots keep their engine name and unconfigured identity.
+
 The bundle ships `bot_info.example.json` and never overwrites a server-local
 `bot_info.json`. Copy and customize the example only when explicit persona base
 data is wanted. Without it, the base keeps the engine bot name and SteamID 0;

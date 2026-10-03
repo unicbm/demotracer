@@ -94,7 +94,7 @@ namespace cs2bh
         if (engineName)
         {
             auto it = m_ByName.find(engineName);
-            if (it != m_ByName.end())
+            if (it != m_ByName.end() && !m_Assigned[it->second])
             {
                 m_Assigned[it->second] = true;
                 return &m_Entries[it->second];
@@ -108,12 +108,8 @@ namespace cs2bh
             if (!m_Assigned[i])
                 free.push_back(i);
 
-        // fallback
         if (free.empty())
-        {
-            size_t idx = NextRand(m_RngState) % m_Entries.size();
-            return &m_Entries[idx];
-        }
+            return nullptr;
         size_t pick = free[NextRand(m_RngState) % free.size()];
         m_Assigned[pick] = true;
         return &m_Entries[pick];
