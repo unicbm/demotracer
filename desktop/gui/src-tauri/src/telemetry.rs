@@ -202,7 +202,7 @@ fn build_presence_payload(
     hash.update(b"demotracer-telemetry-v1\0");
     hash.update(seed.as_bytes());
     hash.update(day_number.to_le_bytes());
-    let daily_id = format!("{:x}", hash.finalize());
+    let daily_id = cs2_demotracer::demo_id::hex_encode(&hash.finalize());
 
     Some(PresenceTelemetryPayload {
         schema_version: 1,
