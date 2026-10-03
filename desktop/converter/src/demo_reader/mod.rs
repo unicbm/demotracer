@@ -88,7 +88,7 @@ pub fn demo_content_sha256(path: &Path) -> Result<String> {
         hasher.update(&buffer[..read]);
     }
 
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(crate::demo_id::hex_encode(&hasher.finalize()))
 }
 
 fn read_demo_input_bytes_with_limit(path: &Path, limit: u64) -> Result<(Vec<u8>, bool)> {

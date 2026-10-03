@@ -301,7 +301,7 @@ fn compound_demo_sha256(hashes: &[String]) -> Result<String> {
         hasher.update(((index + 1) as u32).to_le_bytes());
         hasher.update(hash.as_bytes());
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(crate::demo_id::hex_encode(&hasher.finalize()))
 }
 
 fn merge_parsed_demo_parts(

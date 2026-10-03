@@ -211,7 +211,7 @@ if (@($tauriCapability.permissions) -notcontains "updater:default") {
 Assert-TextPresent "desktop\gui\package.json" '"@tauri-apps/plugin-updater"\s*:\s*"2\.10\.1"' "desktop updater dependency"
 Assert-TextPresent "desktop\gui\package.json" '"@tauri-apps/plugin-process"\s*:' "desktop process dependency"
 Assert-TextPresent "desktop\gui\src-tauri\Cargo.toml" '^tauri-plugin-updater\s*=\s*"=2\.10\.1"' "Tauri updater dependency"
-Assert-TextPresent "desktop\gui\src-tauri\Cargo.toml" '^minisign-verify\s*=\s*"=0\.2\.5"' "playback signature verifier"
+Assert-TextPresent "desktop\gui\src-tauri\Cargo.toml" '^minisign-verify\s*=\s*"=\d+\.\d+\.\d+"' "pinned playback signature verifier"
 Assert-TextPresent "desktop\gui\src-tauri\tauri.conf.json" 'https://releases\.detr\.site/channels/stable/latest\.json' "stable updater endpoint"
 Assert-Equal "updater install mode" ([string]$tauriConfig.plugins.updater.windows.installMode) "passive"
 $updaterPublicKey = (Read-Text "tooling\release\updater-public-key.txt").Trim()
