@@ -5,14 +5,22 @@
   "automerge": false,
   "dependencyDashboard": false,
   "prConcurrentLimit": 5,
-  "prHourlyLimit": 2,
+  "prHourlyLimit": 0,
   "minimumReleaseAge": "7 days",
   "rangeStrategy": "bump",
   "ignorePaths": ["third_party/**"],
   "ignoreDeps": ["CounterStrikeSharp.API", "ZstdSharp.Port"],
   "cloneSubmodules": true,
   "git-submodules": { "enabled": true },
+  "logLevelRemap": [
+    { "matchMessage": "Repository has changed during renovation - aborting", "newLogLevel": "error" }
+  ],
   "packageRules": [
+    {
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["engines"],
+      "enabled": false
+    },
     {
       "matchManagers": ["npm"],
       "matchFileNames": ["desktop/gui/**"],
