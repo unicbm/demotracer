@@ -4,41 +4,42 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-.tools-workspace { width: 100%; height: 100%; overflow: auto; padding: var(--space-5) clamp(16px, 3vw, 40px); }
-.crosshair-tool-content { width: min(1200px, 100%); margin-inline: auto; }
-.tools-heading { margin-bottom: var(--space-4); }
-.tools-heading h1 { margin: 0; font-size: var(--type-section-large); font-weight: var(--weight-semibold); }
-.crosshair-editor-layout { display: grid; grid-template-columns: minmax(260px, 0.85fr) minmax(440px, 1.15fr); gap: var(--space-8); align-items: start; }
-.crosshair-editor-preview { position: sticky; top: 0; min-width: 0; }
-.crosshair-editor-preview .crosshair-preview-stage { height: auto; aspect-ratio: 4 / 3; min-height: 240px; border: 0; border-radius: var(--radius-sm); }
-.crosshair-preview-actions { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); margin-top: var(--space-4); }
-.crosshair-preview-actions button { min-height: 34px; font-size: var(--type-support); }
-.crosshair-preview-actions .secondary-button { padding-inline: var(--space-2); background: transparent; border-color: transparent; box-shadow: none; color: var(--text-secondary); font-weight: var(--weight-regular); }
-.crosshair-preview-actions .secondary-button:hover { background: var(--hover-row); color: var(--text-primary); }
-.crosshair-restore { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2); background: transparent; color: var(--text-secondary); border: 0; border-radius: var(--radius-sm); }
-.crosshair-restore:hover { color: var(--text-primary); background: var(--hover-row); }
+.tools-workspace { width: 100%; height: 100%; overflow: auto; padding: var(--space-6); }
+.crosshair-tool-content { width: 100%; }
+.crosshair-editor-layout { display: grid; gap: var(--space-5); }
+.crosshair-editor-preview { min-width: 0; }
+.crosshair-editor-preview .crosshair-preview-stage { height: clamp(200px, 27vh, 320px); min-height: 0; border: 0; border-radius: var(--radius-sm); }
+.crosshair-editor-preview .crosshair-preview-note { margin-top: var(--space-2); font-size: var(--type-tiny); line-height: 1.5; }
+.crosshair-preview-actions { position: absolute; z-index: 3; right: var(--space-3); bottom: var(--space-3); display: flex; align-items: center; gap: var(--space-1); }
+.crosshair-preview-actions button,
+.crosshair-editor-preview .crosshair-preview-animation { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 30px; padding: var(--space-1) var(--space-2); color: var(--media-foreground); background: color-mix(in srgb, var(--media-overlay-ink) 64%, transparent); border: 1px solid color-mix(in srgb, var(--media-foreground) 28%, transparent); border-radius: var(--radius-xs); font-size: var(--type-micro); font-weight: var(--weight-medium); }
+.crosshair-preview-actions button:hover,
+.crosshair-editor-preview .crosshair-preview-animation:hover { background: color-mix(in srgb, var(--media-overlay-ink) 85%, transparent); }
+.crosshair-editor-preview .crosshair-preview-animation { top: auto; right: auto; bottom: var(--space-3); left: var(--space-3); }
+.crosshair-editor-preview .crosshair-preview-map { top: var(--space-3); left: var(--space-3); font-size: var(--type-micro); }
 .crosshair-editor-controls { min-width: 0; }
-.crosshair-setting-row { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(180px, 1.25fr); align-items: center; min-height: 46px; padding: var(--space-2) 0; gap: var(--space-3); color: var(--text-secondary); font-size: var(--type-support); }
-.crosshair-setting-row > span { line-height: 1.5; }
+.crosshair-editor-controls > h2 { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--type-section-large); font-weight: var(--weight-semibold); }
+.crosshair-setting-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 34%); align-items: center; min-height: 46px; padding: 6px 0; gap: var(--space-5); border-bottom: 1px solid var(--divider); color: var(--text-secondary); font-size: var(--type-body); }
+.crosshair-setting-row > span { line-height: 1.4; }
 .crosshair-setting-row .app-select { width: 100%; min-width: 0; }
-.crosshair-setting-row .app-select input { height: 30px; min-height: 30px; font-size: var(--type-support); font-weight: var(--weight-regular); background: transparent; border-color: transparent; color: var(--text-primary); }
-.crosshair-numeric-control { display: grid; grid-template-columns: minmax(0, 1fr) 54px; gap: var(--space-3); align-items: center; }
-.crosshair-numeric-control .mantine-Slider-root { --slider-color: var(--trace); --slider-track-bg: var(--divider-strong); }
-.crosshair-setting-row .mantine-NumberInput-input { background: transparent; border-color: transparent; color: var(--text-primary); font-size: var(--type-support); }
+.crosshair-setting-row .app-select input { height: 32px; min-height: 32px; text-align: right; font-size: var(--type-body); font-weight: var(--weight-medium); background: transparent; border-color: transparent; color: var(--text-primary); border-radius: var(--radius-xs); }
+.crosshair-setting-row .mantine-NumberInput-input { height: 32px; min-height: 32px; font-size: var(--type-body); font-weight: var(--weight-medium); background: var(--surface-raised); border-color: var(--divider); color: var(--text-primary); border-radius: var(--radius-xs); }
+.crosshair-numeric-control { display: grid; grid-template-columns: minmax(0, 1fr) 60px; gap: var(--space-3); align-items: center; }
+.crosshair-numeric-control .mantine-Slider-root { --slider-color: var(--trace); --slider-track-bg: var(--divider); }
 .crosshair-setting-row .app-select input:hover, .crosshair-setting-row .mantine-NumberInput-input:hover { background: var(--hover-row); }
 .crosshair-setting-row .app-select input:focus-visible, .crosshair-setting-row .mantine-NumberInput-input:focus-visible { border-color: var(--trace); outline: 2px solid var(--trace-soft); }
 .crosshair-rgb-fields input { background: var(--surface-raised); border-color: var(--divider-strong); color: var(--text-primary); font-size: var(--type-support); }
 .crosshair-numeric-control .mantine-NumberInput-input { text-align: center; padding-inline: var(--space-1); }
-.crosshair-color-button { display: flex; align-items: center; gap: var(--space-2); width: fit-content; justify-self: start; padding: 4px 12px; color: var(--text-secondary); background: transparent; border: 0; border-radius: var(--radius-sm); }
+.crosshair-color-button { display: flex; align-items: center; justify-self: end; gap: var(--space-2); height: 32px; padding: 4px 10px; color: var(--text-primary); background: var(--surface-raised); border: 1px solid var(--divider); border-radius: var(--radius-xs); }
 .crosshair-color-button:hover { background: var(--hover-row); }
 .crosshair-color-button i { width: 28px; height: 18px; border: 1px solid var(--divider-strong); border-radius: var(--radius-xs); }
-.crosshair-color-button code { font-size: var(--type-caption); }
+.crosshair-color-button code { font-size: var(--type-micro); }
 .crosshair-color-popover { padding: var(--space-3); background: var(--surface-raised); border-color: var(--divider-strong); color: var(--text-primary); border-radius: var(--radius-lg); }
-.crosshair-color-popover .crosshair-setting-row { grid-template-columns: 76px minmax(0, 1fr); padding: var(--space-3) 0 0; }
+.crosshair-color-popover .crosshair-setting-row { grid-template-columns: 76px minmax(0, 1fr); padding: var(--space-3) 0 0; border: 0; }
 .crosshair-rgb-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin-top: var(--space-3); }
 .crosshair-rgb-fields label { color: var(--text-secondary); font-size: var(--type-caption); font-weight: var(--weight-regular); }
-.crosshair-extra { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--divider); color: var(--text-secondary); }
-.crosshair-extra summary { cursor: pointer; font-size: var(--type-support); }
+.crosshair-extra { padding-block: var(--space-3) var(--space-1); color: var(--text-secondary); }
+.crosshair-extra summary { cursor: pointer; font-size: var(--type-support); line-height: 1.5; }
 .crosshair-extra .crosshair-setting-row > .mantine-NumberInput-root { width: 100px; justify-self: end; }
 .crosshair-extra > button { margin-top: var(--space-3); }
 .crosshair-editor-note { margin: var(--space-3) 0 0; color: var(--text-tertiary); font-size: var(--type-caption); line-height: 1.6; }
@@ -49,13 +50,10 @@
 .crosshair-share-field > div { display: flex; gap: var(--space-2); }
 .crosshair-code-input { flex: 1; min-width: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--divider-strong); border-radius: var(--radius-sm); background: var(--surface-raised); color: var(--text-primary); font-family: var(--mono); font-size: var(--type-support); }
 .crosshair-import-error { color: var(--danger); font-size: var(--type-support); margin: var(--space-2) 0 0; }
-@media (max-width: 1050px) {
-  .crosshair-editor-layout { grid-template-columns: minmax(0, 1fr); }
-  .crosshair-editor-preview { position: static; }
-  .crosshair-editor-preview .crosshair-preview-stage { height: 240px; aspect-ratio: auto; }
-}
 @media (max-width: 650px) {
-  .crosshair-setting-row { grid-template-columns: minmax(100px, 1fr) minmax(140px, 1.25fr); gap: var(--space-2); }
+  .tools-workspace { padding: var(--space-4); }
+  .crosshair-setting-row { grid-template-columns: minmax(100px, 1fr) minmax(130px, 1.25fr); gap: var(--space-2); }
+  .crosshair-editor-preview .crosshair-scene-dots { top: var(--space-3); bottom: auto; }
   .crosshair-numeric-control { gap: var(--space-2); }
   .crosshair-share-field > div { flex-wrap: wrap; }
   .crosshair-code-input { flex-basis: 100%; }

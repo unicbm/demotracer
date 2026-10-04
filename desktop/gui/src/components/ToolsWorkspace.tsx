@@ -96,17 +96,18 @@ export function ToolsWorkspace({ words, session, onChange, copiedTarget, onCopy 
 
   return <section className="tools-workspace" aria-labelledby="crosshair-tool-title">
     <div className="crosshair-tool-content">
-      <header className="tools-heading"><h1 id="crosshair-tool-title">{words.crosshairEditor}</h1></header>
+      <h1 className="sr-only" id="crosshair-tool-title">{words.crosshairEditor}</h1>
       <div className="crosshair-editor-layout">
         <aside className="crosshair-editor-preview">
-          <CrosshairParameterPreview crosshair={c} words={words} label={words.crosshairPreview} unavailableLabel={words.crosshairPreviewUnavailable} />
-          <div className="crosshair-preview-actions">
-            <button ref={shareButton} className="secondary-button" type="button" onClick={() => { setInvalid(false); setSharing(true); }}><CopyIcon size={15} />{words.chShareImport}</button>
-            <button className="crosshair-restore" type="button" onClick={() => onChange({ ...session, draft: session.original })}><RefreshIcon size={14} />{words.chRestore}</button>
-          </div>
+          <CrosshairParameterPreview crosshair={c} words={words} label={words.crosshairPreview} unavailableLabel={words.crosshairPreviewUnavailable}
+            actions={<>
+              <button ref={shareButton} type="button" onClick={() => { setInvalid(false); setSharing(true); }}><CopyIcon size={15} />{words.chShareImport}</button>
+              <button type="button" onClick={() => onChange({ ...session, draft: session.original })}><RefreshIcon size={15} />{words.chRestore}</button>
+            </>} />
           {legacy ? <p className="crosshair-editor-note">{words.chLegacyNote}</p> : null}
         </aside>
         <section className="crosshair-editor-controls" aria-label={words.chShape}>
+          <h2>{words.chShape}</h2>
           <div className="crosshair-setting-row"><span>{words.chStyle}</span><SelectControl label={words.chStyle} value={String(c.style)}
             options={styleOrder.filter((value) => value <= maxStyle).map((value) => ({ label: styles[value], value: String(value) }))}
             onChange={(value) => patch({ style: Number(value) })} /></div>

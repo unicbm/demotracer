@@ -2625,7 +2625,6 @@ function App() {
         words={words}
         sessionTitle={sessionTitle}
         sessionMeta={sessionMeta}
-        onOpenDocs={() => void openExternal("https://github.com/unicbm/demotracer/blob/main/docs/README.md")}
         onOpenGithub={() => void openExternal("https://github.com/unicbm/demotracer")}
         onRequestClose={() => void requestWindowClose()}
       />

@@ -138,10 +138,3 @@ trajectories.
 First-party source is licensed under **AGPL-3.0-only**. Vendored components and
 datasets retain their recorded licenses and attribution. The code license does
 not grant rights to misrepresent modified builds as official releases.
-
-Selected information-layout and demo-presentation references draw from
-[CS2 Insight Agent](https://github.com/DrEAmSs59/CS2-insight-agent) under direct,
-paid, project-specific authorization from DrEAmSs59. The original reference
-material remains the property of that project and is not granted to third
-parties under DemoTracer's AGPL-3.0-only license. See the maintained
-[source and authorization notice](docs/CS2_INSIGHT_GUI_REFERENCE.md).

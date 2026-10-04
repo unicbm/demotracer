@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { AlertIcon, ArrowIcon, CloseIcon, CopyIcon, FolderIcon, NoteIcon, PlusIcon, RefreshIcon, ReplayIcon, SearchIcon, TraceMark, TrashIcon } from "../icons";
+import { AlertIcon, ArrowIcon, ChevronIcon, CloseIcon, CopyIcon, FolderIcon, NoteIcon, PlusIcon, RefreshIcon, ReplayIcon, SearchIcon, TraceMark, TrashIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
 import { formatBytes, formatDuration } from "../displayFormat";
 import {
@@ -951,6 +951,71 @@ export function LibraryWorkspace({
     <section className="library-workspace" aria-labelledby="library-title">
       <header className="library-heading">
         <h1 id="library-title">{words.libraryTitle}</h1>
+        {exportRoot ? (
+          <details className="library-roots-menu" ref={rootsMenuRef}>
+            <summary className="library-root-button" title={exportRoot}>
+              <FolderIcon size={16} />
+              <span>{(roots.length === 1 ? words.libraryFolderCountOne : words.libraryFolderCountMany).replace("{count}", String(roots.length))}</span>
+              <ChevronIcon size={14} />
+            </summary>
+            <div className="library-roots-popover">
+              <header>
+                <strong>{words.indexedFolders}</strong>
+                <button className="quiet-button" type="button" onClick={() => { closeRootsMenu(); onAddRoot(); }} disabled={maintenanceBusy}><PlusIcon size={14} />{words.addFolder}</button>
+              </header>
+              <ul>
+                {roots.map((root) => {
+                  const isExport = root.toLocaleLowerCase() === exportRoot.toLocaleLowerCase();
+                  return (
+                    <li key={root}>
+                      <span><code title={root}>{root}</code>{isExport ? <small>{words.defaultExport}</small> : null}</span>
+                      {!isExport ? (
+                        <button className="icon-button" type="button" onClick={() => onRemoveRoot(root)} disabled={maintenanceBusy} aria-label={formatMessage(words.removeFolderPath, { path: root })} title={words.removeFolder}>
+                          <CloseIcon size={14} />
+                        </button>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+              <button className="secondary-button" type="button" onClick={() => { closeRootsMenu(); onChooseExportRoot(); }} disabled={maintenanceBusy}>
+                <FolderIcon size={14} />{words.changeExportFolder}
+              </button>
+              <section
+                className="library-maintenance"
+                aria-label={words.libraryMaintenance}
+              >
+                <small>{words.libraryMaintenance}</small>
+                <button
+                  type="button"
+                  onClick={() => { closeRootsMenu(); onImportArchives(); }}
+                  disabled={maintenanceBusy}
+                  title={words.importArchivesHelp}
+                >
+                  <FolderIcon size={15} />
+                  <span>
+                    <strong>{importingArchives ? words.importingArchives : words.importLegacyArchives}</strong>
+                    <em>{words.importArchivesHelp}</em>
+                  </span>
+                </button>
+                {hasRepairableArchives ? (
+                  <button
+                    type="button"
+                    onClick={() => { closeRootsMenu(); onRepairLibrary(); }}
+                    disabled={maintenanceBusy}
+                    title={words.repairMetadataHelp}
+                  >
+                    <RefreshIcon size={15} />
+                    <span>
+                      <strong>{repairingLibrary ? words.repairingLibrary : words.repairLegacyLibrary}</strong>
+                      <em>{words.repairLibraryHelp}</em>
+                    </span>
+                  </button>
+                ) : null}
+              </section>
+            </div>
+          </details>
+        ) : null}
       </header>
 
       {!exportRoot ? (
@@ -966,70 +1031,6 @@ export function LibraryWorkspace({
       ) : (
         <>
           {(loading || !libraryIsEmpty) ? <div className="library-command-bar">
-            <details className="library-roots-menu" ref={rootsMenuRef}>
-              <summary className="library-root-button" title={exportRoot}>
-                <FolderIcon size={16} />
-                <span><small>{words.exportFolder}</small><code>{exportRoot}</code></span>
-                <b>{(roots.length === 1 ? words.libraryFolderCountOne : words.libraryFolderCountMany).replace("{count}", String(roots.length))}</b>
-              </summary>
-              <div className="library-roots-popover">
-                <header>
-                  <strong>{words.indexedFolders}</strong>
-                  <button className="quiet-button" type="button" onClick={() => { closeRootsMenu(); onAddRoot(); }} disabled={maintenanceBusy}><PlusIcon size={14} />{words.addFolder}</button>
-                </header>
-                <ul>
-                  {roots.map((root) => {
-                    const isExport = root.toLocaleLowerCase() === exportRoot.toLocaleLowerCase();
-                    return (
-                      <li key={root}>
-                        <span><code title={root}>{root}</code>{isExport ? <small>{words.defaultExport}</small> : null}</span>
-                        {!isExport ? (
-                          <button className="icon-button" type="button" onClick={() => onRemoveRoot(root)} disabled={maintenanceBusy} aria-label={formatMessage(words.removeFolderPath, { path: root })} title={words.removeFolder}>
-                            <CloseIcon size={14} />
-                          </button>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-                <button className="secondary-button" type="button" onClick={() => { closeRootsMenu(); onChooseExportRoot(); }} disabled={maintenanceBusy}>
-                  <FolderIcon size={14} />{words.changeExportFolder}
-                </button>
-                <section
-                  className="library-maintenance"
-                  aria-label={words.libraryMaintenance}
-                >
-                  <small>{words.libraryMaintenance}</small>
-                  <button
-                    type="button"
-                    onClick={() => { closeRootsMenu(); onImportArchives(); }}
-                    disabled={maintenanceBusy}
-                    title={words.importArchivesHelp}
-                  >
-                    <FolderIcon size={15} />
-                    <span>
-                      <strong>{importingArchives ? words.importingArchives : words.importLegacyArchives}</strong>
-                      <em>{words.importArchivesHelp}</em>
-                    </span>
-                  </button>
-                  {hasRepairableArchives ? (
-                    <button
-                      type="button"
-                      onClick={() => { closeRootsMenu(); onRepairLibrary(); }}
-                      disabled={maintenanceBusy}
-                      title={words.repairMetadataHelp}
-                    >
-                      <RefreshIcon size={15} />
-                      <span>
-                        <strong>{repairingLibrary ? words.repairingLibrary : words.repairLegacyLibrary}</strong>
-                        <em>{words.repairLibraryHelp}</em>
-                      </span>
-                    </button>
-                  ) : null}
-                </section>
-              </div>
-            </details>
-
             <label className="library-search">
               <SearchIcon size={17} />
               <span className="sr-only">{words.librarySearch}</span>
@@ -1064,7 +1065,6 @@ export function LibraryWorkspace({
               : repairingLibrary
               ? words.repairingLibrary
               : loading ? words.scanningLibrary : words.libraryCount.replace("{count}", String(entries.length))}</strong>
-            <span>{(roots.length === 1 ? words.indexedFolderSummaryOne : words.indexedFolderSummaryMany).replace("{count}", String(roots.length))}</span>
             {notice ? <em className="library-notice">{notice}</em>
               : scan && scan.skipped.length > 0 ? <em>{words.libraryScanNotes.replace("{count}", String(scan.skipped.length))}</em> : null}
           </div>

@@ -175,7 +175,10 @@
   color: var(--text-secondary);
   text-align: left;
   background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
+  font-size: var(--type-support);
+  white-space: nowrap;
 }
 
 .library-roots-menu {
@@ -202,7 +205,7 @@
   position: absolute;
   z-index: 20;
   top: calc(100% + 9px);
-  left: -8px;
+  right: 0;
   width: min(480px, calc(100vw - 72px));
   padding: var(--space-3);
   background: var(--surface-raised);
@@ -344,33 +347,7 @@
 }
 
 .library-root-button > span {
-  display: grid;
-  flex: 1;
-  min-width: 0;
-  line-height: 1.05;
-}
-
-.library-root-button small {
-  color: var(--text-tertiary);
-  font-size: var(--type-caption);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.library-root-button code {
-  margin-top: 3px;
-  overflow: hidden;
-  color: var(--text-primary);
-  font-size: var(--type-tiny);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.library-root-button b {
-  flex: none;
-  color: var(--accent);
-  font-size: var(--type-tiny);
+  line-height: 1.4;
 }
 
 .library-search {

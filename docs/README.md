@@ -9,5 +9,3 @@
 - [Signature maintenance](SIGNATURES.md): signature locations and game-update checks.
 - [Online behavior](ONLINE_SERVICES.md): network requests and local data policy.
 - [Telemetry operations](TELEMETRY.md): retention, deployment and reporting.
-- [CS2 Insight GUI reference](CS2_INSIGHT_GUI_REFERENCE.md): source provenance
-  and the scope of the project-specific paid UI authorization.

@@ -5,7 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import type { Crosshair, CrosshairLegacyV1 } from "csgo-sharecode";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ancientSceneUrl from "../assets/crosshair-scenes/ancient.webp";
 import anubisSceneUrl from "../assets/crosshair-scenes/anubis.webp";
 import cacheSceneUrl from "../assets/crosshair-scenes/cache.webp";
@@ -153,11 +153,12 @@ export function CrosshairPreview({ code, ...props }: {
   return <CrosshairParameterPreview crosshair={crosshair} {...props} />;
 }
 
-export function CrosshairParameterPreview({ crosshair, label, unavailableLabel, words }: {
+export function CrosshairParameterPreview({ crosshair, label, unavailableLabel, words, actions }: {
   crosshair: Crosshair | null;
   label: string;
   unavailableLabel: string;
   words: TextDictionary;
+  actions?: ReactNode;
 }) {
   const [sceneIndex, setSceneIndex] = useState(storedSceneIndex);
   const [animate, setAnimate] = useState(() => !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -195,6 +196,7 @@ export function CrosshairParameterPreview({ crosshair, label, unavailableLabel, 
             <button className={index === sceneIndex ? "is-active" : ""} type="button" onClick={() => selectScene(index)} aria-label={scene.map} aria-current={index === sceneIndex ? "true" : undefined} key={scene.map} />
           ))}
         </div>
+        {actions ? <div className="crosshair-preview-actions">{actions}</div> : null}
       </div>
       {crosshair ? <figcaption className="crosshair-preview-note">
         {crosshair.format === "legacy-v1" ? words.crosshairPreviewLegacyReference : words.crosshairPreviewPixelReference}

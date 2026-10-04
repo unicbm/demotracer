@@ -22,7 +22,7 @@ export const CUSTOM_CSS_PROFILES_STORAGE_KEY = "demotracer.custom-css-profiles.v
 export const ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY = "demotracer.active-custom-css-profile.v1";
 export const THEME_BACKGROUNDS: Record<ResolvedTheme, string> = {
   light: "#f5f6f8",
-  dark: "#20212b",
+  dark: "#1d2128",
 };
 
 export interface ThemePalette {
@@ -52,7 +52,7 @@ export interface CustomCssProfile {
 
 export const THEME_PALETTE_DEFAULTS: Record<ResolvedTheme, ThemePalette> = {
   light: {
-    primary: "#0A84FF",
+    primary: "#1769E0",
     secondary: "#B96E0C",
     textPrimary: "#20242A",
     textSecondary: "#5F6670",

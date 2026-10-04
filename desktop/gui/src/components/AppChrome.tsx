@@ -9,7 +9,6 @@ import { useEffect, useState } from "react";
 import {
   CloseIcon,
   GithubIcon,
-  HelpIcon,
   LibraryIcon,
   MaximizeIcon,
   MinimizeIcon,
@@ -28,7 +27,6 @@ interface AppChromeProps {
   words: TextDictionary;
   sessionTitle: string;
   sessionMeta: string;
-  onOpenDocs: () => void;
   onOpenGithub: () => void;
   onRequestClose: () => void;
 }
@@ -59,7 +57,6 @@ export function AppChrome({
   words,
   sessionTitle,
   sessionMeta,
-  onOpenDocs,
   onOpenGithub,
   onRequestClose,
 }: AppChromeProps) {
@@ -118,9 +115,6 @@ export function AppChrome({
         ) : null}
         <div className="titlebar-drag-surface" data-tauri-drag-region />
         <div className="titlebar-utilities" role="group" aria-label={words.mainNavigation}>
-          <button className="titlebar-utility" type="button" onClick={onOpenDocs} aria-label={words.documentation} title={words.documentation}>
-            <HelpIcon size={18} />
-          </button>
           <button className="titlebar-utility" type="button" onClick={onOpenGithub} aria-label="GitHub" title="GitHub">
             <GithubIcon size={18} />
           </button>
@@ -167,7 +161,7 @@ export function AppSidebar({
     <aside className={`app-sidebar${collapsed ? " is-collapsed" : ""}`} aria-label={words.mainNavigation}>
       <div className="sidebar-quick-actions">
         <button
-          className={itemClass(importActive)}
+          className={`${itemClass(importActive)} sidebar-import-button`}
           type="button"
           disabled={busy}
           onClick={onOpenImport}
