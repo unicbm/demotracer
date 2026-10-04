@@ -10,6 +10,9 @@ namespace DemoTracer;
 
 internal static partial class BotControllerNative
 {
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl, EntryPoint = "DtrController_FindMetamodPlugin")]
+    internal static extern int FindMetamodPlugin([MarshalAs(UnmanagedType.LPUTF8Str)] string library);
+
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_LoadReplaySourceState(int slot, [In] NativeReplaySourceStateChange[] changes, int count, float tickRate, float liveTickInterval);
 

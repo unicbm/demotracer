@@ -31,6 +31,11 @@ namespace cs2bh::ssc
         return *utl;
     }
 
+    inline bool IsFakePlayer(const void *client)
+    {
+        return static_cast<const unsigned char *>(client)[OFFSET_m_bFakePlayer] != 0;
+    }
+
     // sets m_bFakePlayer = 0
     inline void ClearFakePlayer(void *client)
     {

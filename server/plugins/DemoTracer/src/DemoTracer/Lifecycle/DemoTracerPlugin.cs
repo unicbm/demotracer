@@ -123,6 +123,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
 
     public override void Unload(bool hotReload)
     {
+        CancelHiderSwitch();
         try
         {
             _session.ProjectileBirths.Clear();
@@ -154,10 +155,12 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     {
         _mapActive = true;
         ClearReplayStateForLifecycle($"map_start:{mapName}");
+        RestoreHiderAfterMap();
     }
 
     private void OnMapEnd()
     {
+        CancelHiderSwitch();
         _mapActive = false;
         ClearReplayStateForLifecycle("map_end");
     }

@@ -2253,6 +2253,7 @@ namespace cs2bh
     void HiderPlugin::OnLevelInit(char const *pMapName, char const *, char const *,
                                   char const *, bool, bool)
     {
+        if (!Publisher().Session()) return;
         g_PendingControllerRemovals.clear();
         auto *gameServer = g_pNetworkServerService
                                ? g_pNetworkServerService->GetIGameServer()
@@ -2293,17 +2294,24 @@ namespace cs2bh
         Manager().ReleaseAll();
         BotInfo().ResetAssignments();
         META_CONPRINTF("[BOTHIDER] OnLevelShutdown — state drained\n");
+        // Retire hooks at the map boundary, outside their callbacks. The CSS
+        // control plugin can then unload us and restore the original Hider.
+        char error[256]{};
+        if (!Unload(error, sizeof(error)))
+            META_CONPRINTF("[BOTHIDER] map shutdown failed: %s\n", error);
     }
 
     bool HiderPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, bool late)
     {
         PLUGIN_SAVEVARS();
+#if !defined(_WIN32)
         if (late)
         {
             std::snprintf(error, maxlen,
                           "late loading is unsupported; fully restart the server to load BotHider");
             return false;
         }
+#endif
         if (!KHook::__exported__khook)
         {
             std::snprintf(error, maxlen, "Metamod did not provide the shared KHook interface");
@@ -2522,6 +2530,21 @@ namespace cs2bh
 
         META_CONPRINTF("[BOTHIDER] loaded — m_bFakePlayer offset=%d\n",
                        ssc::OFFSET_m_bFakePlayer);
+#if defined(_WIN32)
+        if (late)
+        {
+            OnLevelInit(nullptr, nullptr, nullptr, nullptr, false, false);
+            for (int slot = 0; slot < FakeClientManager::kMaxSlots; ++slot)
+            {
+                void *client = ResolveClientBySlot(slot);
+                if (!client || !ssc::IsFakePlayer(client) || ssc::IsHltv(client)) continue;
+                const char *engineName = ssc::ReadName(client);
+                const std::string name = engineName ? engineName : "";
+                Hook_OnClientConnected_Post(gameclients, CPlayerSlot(slot), name.c_str(), 0, "BOT", "", true);
+                Hook_ClientPutInServer_Post(gameclients, CPlayerSlot(slot), name.c_str(), 1, 0);
+            }
+        }
+#endif
         return true;
     }
 

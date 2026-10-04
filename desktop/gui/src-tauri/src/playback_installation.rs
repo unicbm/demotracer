@@ -21,7 +21,6 @@ pub(crate) const REQUIRED_RECEIPT_PATHS: &[&str] = &[
     "addons/metamod/dtr-controller.vdf",
     "addons/dtr-hider/bin/win64/dtr-hider.dll",
     "addons/dtr-hider/gamedata.json",
-    "addons/metamod/dtr-hider.vdf",
     "addons/counterstrikesharp/plugins/demotracer/demotracer.dll",
     "addons/counterstrikesharp/shared/demotracerapi/demotracerapi.dll",
     "addons/counterstrikesharp/plugins/demotracer/cs2-lib-econ-index.v1.json",

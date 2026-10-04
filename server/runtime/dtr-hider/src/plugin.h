@@ -39,7 +39,7 @@ namespace cs2bh
         const char *GetDescription() override { return "Bot persona/steamid/ping/crosshair hider"; }
         const char *GetURL() override { return ""; }
         const char *GetLicense() override { return "AGPL-3.0"; }
-        const char *GetVersion() override { return "0.3.2"; }
+        const char *GetVersion() override { return "0.3.3"; }
         const char *GetDate() override { return __DATE__; }
         const char *GetLogTag() override { return "BH"; }
 

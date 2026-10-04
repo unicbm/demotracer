@@ -8,10 +8,12 @@ Bot identity and presentation provider for CS2 DemoTracer:
 | `csharp/DtrHider/` → `DtrHider.dll` | CounterStrikeSharp presentation publisher |
 | `csharp/DtrHiderApi/` → `DtrHiderApi.dll` | Shared capability `dtr-hider:api:v3` |
 
-Install all three from the matched Playback bundle and restart the server.
-Do not run another BotHider provider alongside them. Native late loading is
-unsupported; native unload is refused while managed bots remain connected.
-Managed provider reload releases leases and can reconnect to the native runtime.
+Install all three from the matched Playback bundle. On Windows, the first replay
+command unloads official BotHider/BotHiderImpl when present, then loads native
+dtr-hider and adopts existing bots before continuing playback. DH owns the rest
+of that map; changing maps retires DH and restores the original providers.
+There is no native dtr-hider startup VDF. Managed provider reload releases leases
+and can reconnect to the native runtime.
 
 ## Build
 

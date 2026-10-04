@@ -3,6 +3,10 @@
 Windows x64 Metamod runtime for DemoTracer movement and input replay.
 The native library is `dtr-controller.dll`; exports use `DtrController_`.
 ABI requirements are in the [playback contract](../../../shared/contracts/playback-contract.v1.json).
+ABI 22.1 adds `DtrController_FindMetamodPlugin(library)`: on the game thread,
+query a library basename without its extension and receive its running/paused
+Metamod plugin ID, or zero if absent. Hider switching uses this registration
+state instead of DLL residency.
 
 ## Build and install
 

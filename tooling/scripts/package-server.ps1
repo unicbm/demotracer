@@ -256,8 +256,7 @@ if (-not (Test-SameFullPath $botHiderRuntimeRoot $defaultBotHiderRuntimeRoot)) {
             "addons\dtr-hider\bin\win64\dtr-hider.dll",
             "addons\dtr-hider\gamedata.json",
             "addons\dtr-hider\map_whitelist.json",
-            "addons\dtr-hider\bot_info.example.json",
-            "addons\metamod\dtr-hider.vdf"
+            "addons\dtr-hider\bot_info.example.json"
         ) `
         -Component "bot_hider_native" `
         -Label "BotHider" `
@@ -281,7 +280,6 @@ foreach ($export in @("DtrHider_GetNativeAbi", "DtrHider_GetSession", "DtrHider_
     Assert-BinaryContainsExport (Join-Path $botHiderRuntimeRoot "addons\dtr-hider\bin\win64\dtr-hider.dll") $export
 }
 Require-Path (Join-Path $botHiderRuntimeRoot "addons\dtr-hider\gamedata.json") "DemoTracer BotHider gamedata"
-Require-Path (Join-Path $botHiderRuntimeRoot "addons\metamod\dtr-hider.vdf") "DemoTracer BotHider Metamod VDF"
 Require-Path (Join-Path $cssOut "DemoTracer.dll") "DemoTracer CSS plugin"
 Require-Path (Join-Path $apiOut "DemoTracerApi.dll") "DemoTracer API assembly"
 Require-Path (Join-Path $botRandomizerApiOut "BotRandomizerApi.dll") "BotRandomizer API assembly"
@@ -316,8 +314,6 @@ Copy-RequiredFile (Join-Path $botHiderRuntimeRoot "addons\dtr-hider\map_whitelis
     (Join-Path $botHiderOut "map_whitelist.json")
 Copy-RequiredFile (Join-Path $botHiderRuntimeRoot "addons\dtr-hider\bot_info.example.json") `
     (Join-Path $botHiderOut "bot_info.example.json")
-Copy-RequiredFile (Join-Path $botHiderRuntimeRoot "addons\metamod\dtr-hider.vdf") `
-    (Join-Path $addonsOut "metamod\dtr-hider.vdf")
 
 $pluginOut = Join-Path $stageRoot "addons\counterstrikesharp\plugins\DemoTracer"
 Copy-RequiredFile (Join-Path $cssOut "DemoTracer.deps.json") (Join-Path $pluginOut "DemoTracer.deps.json")
@@ -481,7 +477,6 @@ through CS2's native `say` / `say_team` path when `dtr_chat_auto on` is enabled
 - `addons/dtr-hider/bin/win64/dtr-hider.dll`
 - `addons/dtr-hider/gamedata.json`
 - `addons/dtr-hider/bot_info.example.json` (does not overwrite local `bot_info.json`)
-- `addons/metamod/dtr-hider.vdf`
 - `addons/demotracer-install.v1.json` (component contract and file hashes for desktop diagnostics)
 - `addons/counterstrikesharp/plugins/DtrHider/`
 - `addons/counterstrikesharp/shared/DtrHiderApi/`
@@ -497,6 +492,10 @@ through CS2's native `say` / `say_team` path when `dtr_chat_auto on` is enabled
     health heartbeat; it is not prepackaged
 
 ## Compatibility
+
+Native dtr-hider loads on the first replay command, after unloading official
+BotHider and BotHiderImpl when present. It owns the rest of that map; changing
+maps restores the original providers. Do not add a dtr-hider startup VDF.
 
 - Required BotController native ABI: __BOTCONTROLLER_ABI__
 - Required BotController native ABI minor: __BOTCONTROLLER_ABI_MINOR__ or newer

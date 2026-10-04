@@ -4,6 +4,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <string>
 
 #include <eiface.h>
@@ -34,6 +35,8 @@
 #include "avatar_overrides.h"
 #include "live_entities.h"
 
+static PluginId g_LastMetamodPluginId = 0;
+
 class BotControllerPlugin : public ISmmPlugin, public IMetamodListener
 {
 public:
@@ -43,6 +46,7 @@ public:
     bool Pause(char * /*error*/, size_t /*maxlen*/) override { return true; }
     bool Unpause(char * /*error*/, size_t /*maxlen*/) override { return true; }
     void AllPluginsLoaded() override {}
+    void OnPluginLoad(PluginId id) override { if (id > g_LastMetamodPluginId) g_LastMetamodPluginId = id; }
     void OnLevelShutdown() override { BotController::Avatars::OnLevelShutdown(); }
 
     const char *GetAuthor() override { return "XBribo(๑•.•๑)"; }
@@ -50,13 +54,27 @@ public:
     const char *GetDescription() override { return "Replay CS2 demos through bots."; }
     const char *GetURL() override { return ""; }
     const char *GetLicense() override { return "AGPLv3"; }
-    const char *GetVersion() override { return "0.4.5"; }
+    const char *GetVersion() override { return "0.4.6"; }
     const char *GetDate() override { return __DATE__; }
     const char *GetLogTag() override { return "BL"; }
 };
 
 BotControllerPlugin g_BotControllerPlugin;
 PLUGIN_EXPOSE(BotControllerPlugin, g_BotControllerPlugin);
+
+// Metamod registration, rather than DLL residency, determines plugin lifetime.
+extern "C" __declspec(dllexport) int DtrController_FindMetamodPlugin(const char *library)
+{
+    auto *plugins = static_cast<ISmmPluginManager *>(g_SMAPI->MetaFactory(MMIFACE_PLMANAGER, nullptr, nullptr));
+    for (PluginId id = 1; id <= g_LastMetamodPluginId; ++id)
+    {
+        const char *file = nullptr;
+        Pl_Status status;
+        if (plugins->Query(id, &file, &status, nullptr) && status >= Pl_Paused &&
+            std::filesystem::path(file).stem() == library) return id;
+    }
+    return 0;
+}
 
 // addons/<name>/bin/<platform>/<lib> -> up 3 dirs -> addons/<name>/gamedata.json
 static std::string ComputeGamedataPath()
@@ -102,6 +120,7 @@ bool BotControllerPlugin::Load(PluginId id, ISmmAPI *ismm,
                                char *error, size_t maxlen, bool /*late*/)
 {
     PLUGIN_SAVEVARS();
+    g_LastMetamodPluginId = id;
     if (!KHook::__exported__khook)
     {
         std::snprintf(error, maxlen, "Metamod did not provide the shared KHook interface");

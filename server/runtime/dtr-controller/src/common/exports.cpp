@@ -23,7 +23,7 @@
 namespace
 {
     constexpr int kBotControllerAbiMajor = 22;
-    constexpr int kBotControllerAbiMinor = 0;
+    constexpr int kBotControllerAbiMinor = 1;
     constexpr uint64_t kCapabilityAvatarPublication = 1ULL << 18;
     constexpr uint64_t kCapabilityReplaySlotState = 1ULL << 0;
     constexpr uint64_t kCapabilityStartReplayAt = 1ULL << 1;

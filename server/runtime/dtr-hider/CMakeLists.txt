@@ -219,11 +219,8 @@ set_target_properties(dtr-hider PROPERTIES
 
 add_custom_command(TARGET dtr-hider POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
-        "${CMAKE_BINARY_DIR}/package/addons/metamod"
-    COMMAND ${CMAKE_COMMAND} -E make_directory
         "${CMAKE_BINARY_DIR}/package/addons/dtr-hider"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_BINARY_DIR}/dtr-hider.vdf"
+    COMMAND ${CMAKE_COMMAND} -E rm -f
         "${CMAKE_BINARY_DIR}/package/addons/metamod/dtr-hider.vdf"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_SOURCE_DIR}/configs/addons/dtr-hider/map_whitelist.json"

@@ -18,7 +18,7 @@
   "bot_controller": {
     "native_library": "dtr-controller",
     "abi_major": 22,
-    "min_abi_minor": 0,
+    "min_abi_minor": 1,
     "movement_intent_version": 1,
     "replay_tick_bytes": 228,
     "replay_tick_event_tail": "reserved_zero",
@@ -32,7 +32,7 @@
     "api": 3,
     "native_abi": 3,
     "native_slot_bytes": 172,
-    "native_provider_version": "0.3.2",
+    "native_provider_version": "0.3.3",
     "managed_provider_version": "0.1.9",
     "clan_tag_max_utf8_bytes": 127
   },

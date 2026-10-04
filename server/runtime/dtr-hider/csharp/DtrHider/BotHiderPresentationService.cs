@@ -514,7 +514,7 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             }
             if (player.SteamID != steamId)
             {
-                Schema.SetSchemaValue(player.Handle, "CBasePlayerController", "m_steamID", steamId);
+                player.SteamID = steamId;
                 Utilities.SetStateChanged(player, "CBasePlayerController", "m_steamID");
                 if (player.SteamID != steamId)
                     throw new InvalidOperationException("controller SteamID write was not retained");
