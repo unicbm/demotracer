@@ -5,7 +5,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 using System.Text.Json;
-using DtrHider;
 using DtrHiderApi;
 
 namespace DemoTracer.Tests;
@@ -33,22 +32,6 @@ public sealed class BotHiderClanPresentationTests
         Assert.False(DtrHiderContract.IsValidClan(new("x\0y", 1)));
         Assert.False(DtrHiderContract.IsValidClan(new(new string('组', 43), 1)));
         Assert.True(DtrHiderContract.IsValidClan(new(new string('x', 127), uint.MaxValue)));
-    }
-
-    [Fact]
-    public void FailedNotificationRetriesEvenWhenReadbackAlreadyMatches()
-    {
-        var current = new BotHiderClan("base", 42);
-        var wanted = new BotHiderClan("next", 22);
-        var state = new ClanPresentationState();
-        Assert.Throws<InvalidOperationException>(() => state.Apply(wanted, () => current,
-            value => current = value, () => throw new InvalidOperationException("notification failed")));
-        Assert.Equal(wanted, current);
-        var notified = false;
-        state.Apply(wanted, () => current, _ => throw new Exception("unchanged clan was rewritten"), () => notified = true);
-        Assert.True(notified);
-        state.Apply(wanted, () => current, _ => throw new Exception("unchanged clan was rewritten"),
-            () => throw new Exception("unchanged clan was republished"));
     }
 
 }

@@ -549,8 +549,7 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
                 }
             }
 
-            var clanState = _slots[slot].Clan ??= new ClanPresentationState();
-            if (ApplyClan(clanState, presentationOverride?.Clan, player))
+            if (ApplyClan(presentationOverride?.Clan, player))
             {
                 _publishedWrites++;
                 _controllerRepairs++;
@@ -584,18 +583,23 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             PublishManagedSlot(slot);
     }
 
-    private static bool ApplyClan(ClanPresentationState state, BotHiderClan? requested, CCSPlayerController player)
-        => state.Apply(requested, () => ReadClan(player), clan =>
-        {
-            if (player.Clan != clan.Tag)
-                player.Clan = clan.Tag;
-            if (Schema.GetRef<uint>(player.Handle, "CCSPlayerController", "m_unClanId32bit") != clan.Id)
-                Schema.SetSchemaValue(player.Handle, "CCSPlayerController", "m_unClanId32bit", clan.Id);
-        }, () =>
-        {
-            Utilities.SetStateChanged(player, "CCSPlayerController", "m_szClan");
-            Utilities.SetStateChanged(player, "CCSPlayerController", "m_unClanId32bit");
-        });
+    private static bool ApplyClan(BotHiderClan? requested, CCSPlayerController player)
+    {
+        if (requested == null)
+            return false;
+        var current = ReadClan(player);
+        if (current == requested)
+            return false;
+
+        // Clan fields are not networked; SetStateChanged only emits warnings.
+        if (current.Tag != requested.Tag)
+            player.Clan = requested.Tag;
+        if (current.Id != requested.Id)
+            Schema.SetSchemaValue(player.Handle, "CCSPlayerController", "m_unClanId32bit", requested.Id);
+        if (ReadClan(player) != requested)
+            throw new InvalidOperationException("controller clan write was not retained");
+        return true;
+    }
 
     private void ReportPresentationFailure(int slot, string reason)
     {
@@ -890,7 +894,6 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
         public ulong Incarnation, NativeIncarnation;
         public uint Controller, PublishedController;
         public bool CrosshairPending;
-        public ClanPresentationState? Clan;
         public DateTime NextFailureLogUtc;
         public int SuppressedFailures;
 
