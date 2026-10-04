@@ -1,0 +1,5 @@
+"Metamod Plugin"
+{
+    "alias" "dot-hider"
+    "file"  "addons/dot-hider/bin/linuxsteamrt64/dot-hider"
+}

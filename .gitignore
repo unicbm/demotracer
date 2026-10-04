@@ -8,6 +8,8 @@
 # Native runtime builds
 /server/runtime/BotController/
 /server/runtime/BotHider/
+/server/runtime/dtr-controller/
+/server/runtime/dtr-hider/
 /dist/
 /desktop/gui/node_modules/
 /cloudflare/telemetry/node_modules/

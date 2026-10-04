@@ -12,7 +12,7 @@
     "max": 12
   },
   "bot_controller": {
-    "native_library": "dtr-controller",
+    "native_library": "dot-controller",
     "managed_assembly": "DtrController",
     "managed_api": "DtrControllerApi",
     "capability": "dtr-controller:api",
@@ -26,7 +26,7 @@
     "required_capabilities_hex": "0x749df"
   },
   "bot_hider": {
-    "native_library": "dtr-hider",
+    "native_library": "dot-hider",
     "managed_assembly": "DtrHider",
     "managed_api": "DtrHiderApi",
     "capability": "dtr-hider:api:v3",
@@ -34,7 +34,7 @@
     "native_abi": 3,
     "native_slot_bytes": 172,
     "native_provider_version": "0.3.2",
-    "managed_provider_version": "0.1.8",
+    "managed_provider_version": "0.1.9",
     "clan_tag_max_utf8_bytes": 127
   },
   "bot_randomizer": {

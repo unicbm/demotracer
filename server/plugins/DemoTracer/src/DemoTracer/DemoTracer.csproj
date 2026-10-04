@@ -6,7 +6,7 @@
     <AssemblyName>DemoTracer</AssemblyName>
     <RootNamespace>DemoTracer</RootNamespace>
     <DtrCommonRoot Condition="'$(DtrCommonRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\runtime\common</DtrCommonRoot>
-    <DtrHiderRoot Condition="'$(DtrHiderRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\runtime\dtr-hider</DtrHiderRoot>
+    <DtrHiderRoot Condition="'$(DtrHiderRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\runtime\dot-hider</DtrHiderRoot>
     <DtrRandomizerRoot Condition="'$(DtrRandomizerRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\runtime\BotRandomizer</DtrRandomizerRoot>
   </PropertyGroup>
 

@@ -17,8 +17,8 @@ param(
     [string]$ReleaseNotesZh = "",
     [switch]$AllowUnsignedInstaller,
     [string]$DotnetPath = "",
-    [string]$RuntimePackage = "server\runtime\dtr-controller\build\package",
-    [string]$BotHiderRuntimePackage = "server\runtime\dtr-hider\build\package",
+    [string]$RuntimePackage = "server\runtime\dot-controller\build\package",
+    [string]$BotHiderRuntimePackage = "server\runtime\dot-hider\build\package",
     [switch]$SkipGuiBuild,
     [switch]$SkipCssBuild,
     [switch]$IncludeSymbols

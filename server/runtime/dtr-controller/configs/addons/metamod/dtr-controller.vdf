@@ -1,5 +1,0 @@
-"Metamod Plugin"
-{
-	"alias"	"dtr-controller"
-	"file"	"addons/dtr-controller/bin/win64/dtr-controller"
-}

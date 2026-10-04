@@ -16,14 +16,14 @@ const MAX_TEXT_FILE_BYTES: u64 = 4 * 1024 * 1024;
 pub(crate) const MAX_RECEIPT_FILES: usize = 256;
 pub(crate) const MAX_RECEIPT_FILE_BYTES: u64 = 128 * 1024 * 1024;
 pub(crate) const REQUIRED_RECEIPT_PATHS: &[&str] = &[
-    "addons/dtr-controller/bin/win64/dtr-controller.dll",
-    "addons/dtr-controller/gamedata.json",
-    "addons/metamod/dtr-controller.vdf",
+    "addons/dot-controller/bin/win64/dot-controller.dll",
+    "addons/dot-controller/gamedata.json",
+    "addons/metamod/dot-controller.vdf",
     "addons/counterstrikesharp/plugins/dtrcontroller/dtrcontroller.dll",
     "addons/counterstrikesharp/shared/dtrcontrollerapi/dtrcontrollerapi.dll",
-    "addons/dtr-hider/bin/win64/dtr-hider.dll",
-    "addons/dtr-hider/gamedata.json",
-    "addons/metamod/dtr-hider.vdf",
+    "addons/dot-hider/bin/win64/dot-hider.dll",
+    "addons/dot-hider/gamedata.json",
+    "addons/metamod/dot-hider.vdf",
     "addons/counterstrikesharp/plugins/demotracer/demotracer.dll",
     "addons/counterstrikesharp/shared/demotracerapi/demotracerapi.dll",
     "addons/counterstrikesharp/plugins/demotracer/cs2-lib-econ-index.v1.json",
@@ -369,14 +369,14 @@ pub(crate) fn normalized_receipt_path(value: &str) -> String {
 }
 
 pub(crate) fn receipt_component(normalized_path: &str) -> Option<&'static str> {
-    if normalized_path.starts_with("addons/dtr-controller/")
-        || normalized_path == "addons/metamod/dtr-controller.vdf"
+    if normalized_path.starts_with("addons/dot-controller/")
+        || normalized_path == "addons/metamod/dot-controller.vdf"
         || normalized_path.starts_with("addons/counterstrikesharp/plugins/dtrcontroller/")
         || normalized_path.starts_with("addons/counterstrikesharp/shared/dtrcontrollerapi/")
     {
         Some("bot_controller")
-    } else if normalized_path.starts_with("addons/dtr-hider/")
-        || normalized_path == "addons/metamod/dtr-hider.vdf"
+    } else if normalized_path.starts_with("addons/dot-hider/")
+        || normalized_path == "addons/metamod/dot-hider.vdf"
     {
         Some("bot_hider_native")
     } else if normalized_path.starts_with("addons/counterstrikesharp/plugins/dtrhider/")
@@ -615,7 +615,7 @@ mod tests {
 
     #[test]
     fn rejects_receipt_paths_outside_addons() {
-        assert!(checked_receipt_relative_path("addons/dtr-controller/a.dll").is_ok());
+        assert!(checked_receipt_relative_path("addons/dot-controller/a.dll").is_ok());
         assert!(checked_receipt_relative_path("addons/../outside.dll").is_err());
         assert!(checked_receipt_relative_path("C:/outside.dll").is_err());
     }
@@ -663,7 +663,7 @@ mod tests {
     #[test]
     fn receipt_components_are_derived_from_paths_not_labels() {
         assert_eq!(
-            receipt_component("addons/dtr-controller/bin/win64/dtr-controller.dll"),
+            receipt_component("addons/dot-controller/bin/win64/dot-controller.dll"),
             Some("bot_controller")
         );
         assert_eq!(

@@ -16,7 +16,7 @@ public sealed class BotHiderSlotReleaseTests
     {
         using var client = new NativePresentationClient();
         using var owner = new CancellationTokenSource();
-        var service = new BotHiderPresentationService(client, _ => { });
+        var service = new BotHiderPresentationService(client);
         service.ObserveSlot(1, 7, 0x8005, 20);
         var slots = (BotHiderPresentationService.SlotState[])typeof(BotHiderPresentationService)
             .GetField("_slots", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
@@ -34,46 +34,12 @@ public sealed class BotHiderSlotReleaseTests
         Assert.True(slots[1].NeedsCrosshairPublication(0x10005));
     }
 
-    [Theory]
-    [InlineData("disconnect")]
-    [InlineData("native_slot_lost")]
-    [InlineData("map")]
-    [InlineData("replacement")]
-    [InlineData("dispose")]
-    public void ExpiredClanOwnershipDoesNotAccessTheEngine(string boundary)
-    {
-        using var client = new NativePresentationClient();
-        var service = new BotHiderPresentationService(client);
-        service.ObserveSlot(1, 7, 0x8005, 20);
-        var slots = (BotHiderPresentationService.SlotState[])typeof(BotHiderPresentationService)
-            .GetField("_slots", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .GetValue(service)!;
-        var clan = slots[1].Clan = new ClanPresentationState();
-        var current = new BotHiderClan("base", 0);
-        clan.Apply(new("demo team", 42), () => current, value => current = value, () => { });
-
-        // No CSS engine is loaded here. Any attempt to resolve the expired
-        // controller (as the old restoration path did) makes this test fail.
-        switch (boundary)
-        {
-            case "disconnect": service.HandleClientDisconnect(1); break;
-            case "native_slot_lost": Assert.False(service.IsManagedBot(1)); break;
-            case "map": service.ResetForMapBoundary(); break;
-            case "replacement": service.ObserveSlot(1, 8, 0x10005, 21); break;
-            case "dispose": service.Dispose(); break;
-        }
-
-        Assert.Null(slots[1].Clan);
-        Assert.Equal(new BotHiderClan("demo team", 42), current);
-    }
-
     [Fact]
     public void OneBotLeavingPreservesOtherDemoIdentitiesUntilOwnerCancellation()
     {
         using var client = new NativePresentationClient();
         using var owner = new CancellationTokenSource();
-        var publications = new List<int>();
-        var service = new BotHiderPresentationService(client, publications.Add);
+        var service = new BotHiderPresentationService(client);
         var retained = new BotHiderPresentationOverride
         {
             Slot = 2, Incarnation = 22, PlayerName = "demo teammate", SteamId = 1234
@@ -100,9 +66,7 @@ public sealed class BotHiderSlotReleaseTests
         Assert.Same(retained, service.GetPresentationOverride(2, 22));
         owner.Cancel();
         Assert.Null(service.GetPresentationOverride(2, 22));
-        Assert.Equal(new[] { 2 }, publications);
         owner.Cancel();
-        Assert.Equal(new[] { 2 }, publications);
     }
 
     [Fact]
@@ -111,8 +75,7 @@ public sealed class BotHiderSlotReleaseTests
         using var client = new NativePresentationClient();
         using var owner = new CancellationTokenSource();
         using var nextOwner = new CancellationTokenSource();
-        var publications = 0;
-        var service = new BotHiderPresentationService(client, _ => publications++);
+        var service = new BotHiderPresentationService(client);
         service.AddLease(new("token", "demotracer", new()
         {
             [1] = new() { Slot = 1, Incarnation = 11, PlayerName = "first" },
@@ -128,10 +91,8 @@ public sealed class BotHiderSlotReleaseTests
             [2] = new() { Slot = 2, Incarnation = 33, PlayerName = "new map" }
         }, nextOwner.Token));
         owner.Cancel();
-        Assert.Equal(0, publications);
         Assert.NotNull(service.GetPresentationOverride(2, 33));
         nextOwner.Cancel();
-        Assert.Equal(1, publications);
         Assert.Null(service.GetPresentationOverride(2, 33));
     }
 
@@ -143,7 +104,7 @@ public sealed class BotHiderSlotReleaseTests
     {
         using var client = new NativePresentationClient();
         using var owner = new CancellationTokenSource();
-        var service = new BotHiderPresentationService(client, _ => { });
+        var service = new BotHiderPresentationService(client);
         service.ObserveSlot(1, 7, 0x8005, 20);
         service.AddLease(new("token", "demotracer", new()
         {

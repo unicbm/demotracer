@@ -1,0 +1,260 @@
+using System.IO;
+using CounterStrikeSharp.API;
+using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Core.Attributes.Registration;
+using CounterStrikeSharp.API.Core.Capabilities;
+using CounterStrikeSharp.API.Modules.Commands;
+using CounterStrikeSharp.API.Modules.Utils;
+
+using DtrControllerApi;
+using DemoTracerApi;
+
+namespace DtrController;
+
+public partial class BotControllerPlugin : BasePlugin
+{
+    public override string ModuleName => "dot-controller";
+    public override string ModuleVersion => "0.6.3-dtr.3";
+    public override string ModuleAuthor => "XBribo & unicbm";
+    public override string ModuleDescription =>
+        "Record & Replay and Control CS2 bots.";
+
+    // Record and replay must share a tickrate; adjust if your server differs.
+    private const int Tickrate = 64;
+
+    private readonly DtrControllerApiImpl _api = new(IsDemoTracerBusy);
+    private readonly Dictionary<int, string> _recordingFiles = new();
+    private static readonly PluginCapability<IDemoTracerApi> DemoTracerCapability = new("demotracer:api");
+
+    private static bool IsDemoTracerBusy(int slot)
+    {
+        try
+        {
+            var api = DemoTracerCapability.Get();
+            return api != null && api.IsDemoTracerBot(slot) && api.IsSlotBusy(slot);
+        }
+        catch (KeyNotFoundException) { return false; }
+    }
+
+    private bool _providerReady;
+
+    // CSS can load its managed plugins before Metamod has loaded BotController.
+    public override void Load(bool hotReload)
+    {
+        RegisterListener<Listeners.OnMetamodAllPluginsLoaded>(() => InitializeProvider(true));
+        if (hotReload) InitializeProvider(true);
+    }
+
+    public override void OnAllPluginsLoaded(bool hotReload) => InitializeProvider(hotReload);
+
+    private void InitializeProvider(bool reportFailure)
+    {
+        if (_providerReady) return;
+        if (!BotController.IsCompatible())
+        {
+            if (reportFailure) Server.PrintToConsole("[dot-controller] Native runtime unavailable or ABI mismatch; disabled.");
+            return;
+        }
+
+        Capabilities.RegisterPluginCapability(
+            BotControllerCapability.Cap, () => _api);
+
+        _providerReady = true;
+        Server.PrintToConsole("[dot-controller] managed provider ready; runtime ABI 21, public API 20");
+        Directory.CreateDirectory(RecordingsDir);
+        RegisterListener<Listeners.OnTick>(() => _api.ObserveDemoTracerOwnership(IsDemoTracerBusy, DiscardProjectileCandidates));
+        RegisterListener<Listeners.OnTick>(ProcessPendingProjectileCandidates);
+        RegisterListener<Listeners.OnEntitySpawned>(OnProjectileEntitySpawned);
+        RegisterListener<Listeners.OnClientDisconnect>(ReleaseOwnedSlot);
+        RegisterListener<Listeners.OnMapEnd>(ReleaseAllOwnedState);
+        RegisterListener<Listeners.OnMapStart>(_ => ReleaseAllOwnedState());
+    }
+
+    public override void Unload(bool hotReload)
+    {
+        if (_providerReady) ReleaseAllOwnedState();
+    }
+
+    private void ReleaseOwnedSlot(int slot)
+    {
+        try { _api.ReleaseOwnedSlot(slot, IsDemoTracerBusy(slot)); }
+        catch (Exception ex) { Server.PrintToConsole($"[dot-controller] Slot {slot} cleanup failed: {ex.Message}"); }
+        _recordingFiles.Remove(slot);
+        _recordedProjectiles.Remove(slot);
+        DiscardProjectileCandidates(slot);
+    }
+
+    private void ReleaseAllOwnedState()
+    {
+        try { _api.ReleaseAllOwnedSlots(IsDemoTracerBusy); }
+        catch (Exception ex) { Server.PrintToConsole($"[dot-controller] Cleanup failed: {ex.Message}"); }
+        _recordingFiles.Clear();
+        ClearAllProjectileState();
+    }
+
+    private string RecordingsDir => Path.Combine(ModuleDirectory, "recordings");
+    // Resolves an optional recording name to a safe plugin-local JSON path
+    private bool TryGetRecordingFile(string? fileName, ulong steamId, out string file)
+    {
+        string name = string.IsNullOrWhiteSpace(fileName)
+            ? steamId.ToString()
+            : fileName;
+
+        if (name != Path.GetFileName(name) ||
+            name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            file = string.Empty;
+            return false;
+        }
+
+        if (name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            name = name[..^5];
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            file = string.Empty;
+            return false;
+        }
+
+        file = Path.Combine(RecordingsDir, $"{name}.json");
+        return true;
+    }
+
+    private static CCSPlayerController? ControllerForSlot(int slot)
+    {
+        foreach (var p in Utilities.GetPlayers())
+            if (p.Slot == slot && p.IsValid) return p;
+        return null;
+    }
+
+    // Registers the live bot pawn pointer required by the current native replay path.
+    private bool RegisterReplayPawnForSlot(int slot)
+    {
+        var player = ControllerForSlot(slot);
+        if (IsDemoTracerBusy(slot) || player is not { IsValid: true, IsBot: true, IsHLTV: false, ControllingBot: false } ||
+            player.PlayerPawn is not { IsValid: true, Value.IsValid: true })
+            return false;
+
+        return _api.SetReplayPawn(slot, player.PlayerPawn.Value.Handle);
+    }
+
+    // Starts recording under the optional file name
+    [ConsoleCommand("css_dtr_controller_record", "Start recording: !dtr_controller_record [fileName]")]
+    [CommandHelper(whoCanExecute: CommandUsage.CLIENT_ONLY)]
+    public void OnRecord(CCSPlayerController? player, CommandInfo cmd)
+    {
+        if (player == null || !player.IsValid) return;
+        string? fileName = cmd.ArgCount >= 2 ? cmd.GetArg(1) : null;
+        if (cmd.ArgCount > 2 ||
+            !TryGetRecordingFile(fileName, player.SteamID, out string file))
+        {
+            cmd.ReplyToCommand("[dot-controller] Usage: !dtr_controller_record [fileName]");
+            return;
+        }
+        if (!_api.StartRecord(player.Slot))
+        {
+            cmd.ReplyToCommand("[dot-controller] Failed to start recording.");
+            return;
+        }
+        BeginProjectileRecording(player.Slot);
+        _recordingFiles[player.Slot] = file;
+        cmd.ReplyToCommand("[dot-controller] Recording. Use !dtr_controller_stoprecord to finish.");
+    }
+
+    // Stops recording and saves it under the selected file name
+    [ConsoleCommand("css_dtr_controller_stoprecord", "Stop recording and save to disk")]
+    [CommandHelper(whoCanExecute: CommandUsage.CLIENT_ONLY)]
+    public void OnStopRecord(CCSPlayerController? player, CommandInfo cmd)
+    {
+        if (player == null || !player.IsValid) return;
+        ReplayProjectileEvent[] projectiles = FinishProjectileRecording(player.Slot);
+        _api.StopRecord(player.Slot);
+
+        if (!_recordingFiles.Remove(player.Slot, out string? file) &&
+            !TryGetRecordingFile(null, player.SteamID, out file))
+            return;
+
+        int saved = MotionStore.SaveToFile(player.Slot, file, Tickrate, projectiles);
+        cmd.ReplyToCommand(saved > 0
+            ? $"[dot-controller] Saved {saved} ticks."
+            : "[dot-controller] Nothing recorded.");
+    }
+
+    // Loads the optional recording file and replays it on a bot
+    [ConsoleCommand("css_dtr_controller_replay", "Replay a recording: !dtr_controller_replay <botSlot> [fileName]")]
+    [CommandHelper(minArgs: 1, usage: "<botSlot> [fileName]", whoCanExecute: CommandUsage.CLIENT_ONLY)]
+    public void OnReplay(CCSPlayerController? player, CommandInfo cmd)
+    {
+        if (player == null || !player.IsValid) return;
+        string? fileName = cmd.ArgCount >= 3 ? cmd.GetArg(2) : null;
+        if (cmd.ArgCount > 3 ||
+            !int.TryParse(cmd.GetArg(1), out int botSlot) ||
+            !TryGetRecordingFile(fileName, player.SteamID, out string file))
+        {
+            cmd.ReplyToCommand("[dot-controller] Usage: !dtr_controller_replay <botSlot> [fileName]");
+            return;
+        }
+        if (!File.Exists(file))
+        {
+            cmd.ReplyToCommand("[dot-controller] No recording found. Use !dtr_controller_record first.");
+            return;
+        }
+
+        if (IsDemoTracerBusy(botSlot) || ControllerForSlot(botSlot) is not { IsBot: true, IsHLTV: false, ControllingBot: false })
+        {
+            cmd.ReplyToCommand("[dot-controller] Target must be a free bot outside DemoTracer playback.");
+            return;
+        }
+
+        MotionRecording rec;
+        try
+        {
+            rec = MotionStore.LoadFromFile(file);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or
+            System.Text.Json.JsonException or NotSupportedException)
+        {
+            cmd.ReplyToCommand($"[dot-controller] Cannot load recording: {ex.Message}");
+            return;
+        }
+        if (rec.Ticks.Length == 0)
+        {
+            cmd.ReplyToCommand("[dot-controller] Recording is empty.");
+            return;
+        }
+        if (rec.Tickrate != Tickrate)
+            cmd.ReplyToCommand($"[dot-controller] WARN tickrate mismatch: recorded {rec.Tickrate}, server {Tickrate}.");
+
+        var replayLoaded = _api.LoadReplayExtended(
+                botSlot,
+                rec.Ticks,
+                rec.Subticks,
+                rec.Commands ?? Array.Empty<ReplayCommandFrame>());
+        if (replayLoaded &&
+            RegisterReplayPawnForSlot(botSlot) &&
+            _api.StartReplay(botSlot))
+        {
+            cmd.ReplyToCommand($"[dot-controller] Replaying on bot slot {botSlot}.");
+        }
+        else
+        {
+            if (replayLoaded)
+            {
+                _api.ReleaseOwnedReplay(botSlot, IsDemoTracerBusy(botSlot));
+            }
+            cmd.ReplyToCommand("[dot-controller] Failed to start replay.");
+        }
+    }
+
+    // Stops replay on the selected bot slot
+    [ConsoleCommand("css_dtr_controller_stopreplay", "Stop a bot's replay: !dtr_controller_stopreplay <botSlot>")]
+    [CommandHelper(minArgs: 1, usage: "<botSlot>", whoCanExecute: CommandUsage.CLIENT_ONLY)]
+    public void OnStopReplay(CCSPlayerController? player, CommandInfo cmd)
+    {
+        if (player == null || !player.IsValid) return;
+        if (!int.TryParse(cmd.GetArg(1), out int botSlot)) return;
+        if (IsDemoTracerBusy(botSlot) || ControllerForSlot(botSlot) is not { IsBot: true, ControllingBot: false }) return;
+        _api.StopReplay(botSlot);
+        cmd.ReplyToCommand($"[dot-controller] Stopped replay on bot slot {botSlot}.");
+    }
+}

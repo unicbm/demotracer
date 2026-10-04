@@ -78,7 +78,7 @@ fn package_bytes(version: &str) -> Vec<u8> {
     let options = zip::write::SimpleFileOptions::default();
     let files = REQUIRED_RECEIPT_PATHS
         .iter()
-        .chain(["addons/dtr-hider/map_whitelist.json"].iter())
+        .chain(["addons/dot-hider/map_whitelist.json"].iter())
         .map(|path| {
             let content = format!("{version}:{path}").into_bytes();
             zip.start_file(*path, options).unwrap();
@@ -164,6 +164,41 @@ fn corrupt_installed_receipt_does_not_turn_an_upgrade_into_a_fresh_install() {
 }
 
 #[test]
+fn dot_rename_retires_dtr_entrypoints_and_preserves_config_with_rollback() {
+    for has_new_config in [false, true] {
+        let fixture = InstallFixture::new();
+        let old_files = [
+            "addons/metamod/dtr-controller.vdf",
+            "addons/metamod/dtr-hider.vdf",
+            "addons/dtr-controller/bin/win64/dtr-controller.dll",
+            "addons/dtr-hider/bin/win64/dtr-hider.dll",
+        ];
+        for path in old_files {
+            fixture.write(path, b"local DTR runtime");
+        }
+        for name in ["bot_info.json", "map_whitelist.json"] {
+            fixture.write(&format!("addons/dtr-hider/{name}"), b"old user config");
+            if has_new_config {
+                fixture.write(&format!("addons/dot-hider/{name}"), b"new user config");
+            }
+        }
+        let original = fixture.snapshot();
+        fixture.install("1.5.0").unwrap();
+        for path in old_files {
+            assert!(!fixture.game().join(path).exists(), "{path}");
+        }
+        for name in ["bot_info.json", "map_whitelist.json"] {
+            assert_eq!(fs::read(fixture.game().join(format!("addons/dot-hider/{name}"))).unwrap(),
+                if has_new_config { b"new user config" } else { b"old user config" });
+            assert_eq!(fs::read(fixture.game().join(format!("addons/dtr-hider/{name}"))).unwrap(),
+                b"old user config");
+        }
+        fixture.rollback().unwrap();
+        assert_eq!(fixture.snapshot(), original);
+    }
+}
+
+#[test]
 fn renamed_runtime_preserves_upstream_without_a_dtr_receipt() {
     let fixture = InstallFixture::new();
     for path in LEGACY_RUNTIME_FILES {
@@ -188,11 +223,11 @@ fn renamed_runtime_migrates_receipt_owned_code_and_user_data_with_rollback() {
     let data = [
         (
             "addons/BotHider/bot_info.json",
-            "addons/dtr-hider/bot_info.json",
+            "addons/dot-hider/bot_info.json",
         ),
         (
             "addons/BotHider/map_whitelist.json",
-            "addons/dtr-hider/map_whitelist.json",
+            "addons/dot-hider/map_whitelist.json",
         ),
         (
             "addons/counterstrikesharp/plugins/BotControllerImpl/recordings/user.json",
@@ -222,7 +257,7 @@ fn renamed_runtime_keeps_dependencies_of_an_externally_replaced_provider() {
     fixture.write(LEGACY_RUNTIME_FILES[4], b"new upstream native");
     fixture.write("addons/BotHider/bot_info.json", b"external config");
     fixture.write(
-        "addons/dtr-hider/map_whitelist.json",
+        "addons/dot-hider/map_whitelist.json",
         b"existing DTR config",
     );
     let original = fixture.snapshot();
@@ -232,10 +267,10 @@ fn renamed_runtime_keeps_dependencies_of_an_externally_replaced_provider() {
     }
     assert!(!fixture
         .game()
-        .join("addons/dtr-hider/bot_info.json")
+        .join("addons/dot-hider/bot_info.json")
         .exists());
     assert_eq!(
-        fs::read(fixture.game().join("addons/dtr-hider/map_whitelist.json")).unwrap(),
+        fs::read(fixture.game().join("addons/dot-hider/map_whitelist.json")).unwrap(),
         b"existing DTR config"
     );
     fixture.rollback().unwrap();

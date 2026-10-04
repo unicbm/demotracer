@@ -36,62 +36,6 @@ public sealed class BotHiderClanPresentationTests
     }
 
     [Fact]
-    public void MissingOverrideDoesNotReadUnsupportedSchema()
-    {
-        var state = new ClanPresentationState();
-        Assert.False(state.Apply(null, () => throw new Exception("unexpected read"),
-            _ => throw new Exception("unexpected write"), () => throw new Exception("unexpected publish")));
-    }
-
-    [Fact]
-    public void ReplacementAndExplicitClearRestoreOriginalPair()
-    {
-        var original = new BotHiderClan("base", 42);
-        var current = original;
-        var notifications = 0;
-        var state = new ClanPresentationState();
-        void Apply(BotHiderClan? clan) => state.Apply(clan, () => current,
-            value => current = value, () => notifications++);
-
-        Apply(new("team_B1ad3", 38084528));
-        Apply(new("", 0));
-        Assert.Equal(new BotHiderClan("", 0), current);
-        Apply(null);
-        Assert.Equal(original, current);
-        Assert.False(state.HasOverride);
-        Assert.Equal(3, notifications);
-        // Subsequent base changes must be captured anew.
-        original = current = new("new base", 99);
-        Apply(new("next", 11));
-        Apply(null);
-        Assert.Equal(original, current);
-    }
-
-    [Theory]
-    [InlineData("demo team", 42u)]
-    [InlineData("", 0u)]
-    public void UnsetNativeTagRestoresAsEmptyInsteadOfPassingNullToCss(string tag, uint id)
-    {
-        // CSS's string reader returns null for an unset m_szClan despite its
-        // non-nullable signature. Its native setter would call strdup(NULL).
-        var current = new BotHiderClan(null!, 0);
-        var state = new ClanPresentationState();
-        void Write(BotHiderClan value)
-        {
-            Assert.NotNull(value.Tag);
-            current = value;
-        }
-
-        var requested = new BotHiderClan(tag, id);
-        state.Apply(requested, () => current, Write, () => { });
-        Assert.Equal(requested, current);
-        state.Apply(null, () => current, Write, () => { });
-
-        Assert.Equal(new BotHiderClan("", 0), current);
-        Assert.False(state.HasOverride);
-    }
-
-    [Fact]
     public void FailedNotificationRetriesEvenWhenReadbackAlreadyMatches()
     {
         var current = new BotHiderClan("base", 42);
@@ -105,20 +49,6 @@ public sealed class BotHiderClanPresentationTests
         Assert.True(notified);
         state.Apply(wanted, () => current, _ => throw new Exception("unchanged clan was rewritten"),
             () => throw new Exception("unchanged clan was republished"));
-        state.Apply(null, () => current, value => current = value, () => { });
-        Assert.Equal(new BotHiderClan("base", 42), current);
     }
 
-    [Fact]
-    public void FailedPartialPairWriteCanBeRolledBack()
-    {
-        var original = new BotHiderClan("base", 42);
-        var current = original;
-        var state = new ClanPresentationState();
-        Assert.Throws<InvalidOperationException>(() => state.Apply(new("next", 22), () => current,
-            value => { current = current with { Tag = value.Tag }; throw new InvalidOperationException(); },
-            () => { }));
-        state.Apply(null, () => current, value => current = value, () => { });
-        Assert.Equal(original, current);
-    }
 }

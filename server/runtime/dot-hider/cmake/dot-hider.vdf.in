@@ -1,0 +1,5 @@
+"Metamod Plugin"
+{
+    "alias" "dot-hider"
+    "file"  "@BOT_HIDER_VDF_FILE@"
+}

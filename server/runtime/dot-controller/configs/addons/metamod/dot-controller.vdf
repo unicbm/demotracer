@@ -1,0 +1,5 @@
+"Metamod Plugin"
+{
+	"alias"	"dot-controller"
+	"file"	"addons/dot-controller/bin/win64/dot-controller"
+}

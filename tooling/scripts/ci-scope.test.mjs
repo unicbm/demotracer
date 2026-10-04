@@ -6,7 +6,7 @@ import test from 'node:test';
 import { scopeFor } from './ci-scope.mjs';
 
 test('docs changes do not compile products', () => {
-  assert.ok(Object.values(scopeFor(['README.md', 'docs/FORMAT.md', 'server/runtime/dtr-controller/README.md', 'desktop/converter/PROVENANCE.md'])).every(v => !v));
+  assert.ok(Object.values(scopeFor(['README.md', 'docs/FORMAT.md', 'server/runtime/dot-controller/README.md', 'desktop/converter/PROVENANCE.md'])).every(v => !v));
 });
 test('frontend avoids native and Rust work', () => {
   assert.deepEqual(scopeFor(['desktop/gui/src/App.tsx']), { parser:false, converter:false, desktop:false, frontend:true, playback:false, nativeCommon:false, fuzz:false, telemetry:false });
@@ -25,8 +25,8 @@ test('parser changes validate converter and GUI consumers', () => {
   assert.equal(s.playback, false);
 });
 test('provider changes exercise matched playback packaging', () => {
-  assert.ok(scopeFor(['server/runtime/dtr-hider/src/plugin.cpp']).playback);
-  assert.ok(scopeFor(['server/runtime/dtr-controller/src/plugin.cpp']).fuzz);
+  assert.ok(scopeFor(['server/runtime/dot-hider/src/plugin.cpp']).playback);
+  assert.ok(scopeFor(['server/runtime/dot-controller/src/plugin.cpp']).fuzz);
 });
 test('shared contracts, infrastructure and release validation run everything', () => {
   for (const paths of [['shared/contracts/playback-contract.v1.json'], ['server/runtime/common/econ/randomizer-catalog.json'], ['.github/workflows/ci.yml'], ['tooling/scripts/package-server.ps1']]) {

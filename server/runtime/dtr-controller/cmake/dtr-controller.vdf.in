@@ -1,5 +1,0 @@
-"Metamod Plugin"
-{
-    "alias" "dtr-controller"
-    "file"  "@BC_VDF_FILE@"
-}

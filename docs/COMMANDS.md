@@ -108,7 +108,7 @@ Identity modes `name`, `steam`, and `avatar` also apply a recorded player clan
 tag and Steam group ID through BotHider. CS2 renders the separate native tag
 with its own font; it is never appended to the player's name. Missing clan
 evidence leaves the base presentation intact; an explicit empty tag clears it.
-Identity `off` or lease release restores the original controller clan. Tags
+Identity `off` or lease release leaves the applied presentation in place. Tags
 follow the existing retained-identity behavior after natural playback finish.
 
 Replacement DTR bots with an unassigned TAB/HUD teammate color are repaired
