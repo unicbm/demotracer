@@ -982,7 +982,6 @@ textarea {
 }
 
 .settings-column { display: grid; gap: var(--space-4); min-width: 0; }
-.settings-content > .settings-group { margin-top: var(--space-4); }
 .settings-group {
   min-width: 0;
   padding: var(--space-4) var(--space-5);
@@ -1038,14 +1037,6 @@ textarea {
 .settings-group .settings-pane-toolbar { margin-bottom: var(--space-3); }
 .settings-group .release-product-hero { min-height: 64px; padding: var(--space-2) 0; background: transparent; border: 0; }
 .settings-group .release-actions { padding-inline: 0; background: transparent; }
-.settings-group .credits-section { padding-inline: 0; background: transparent; border: 0; border-top: 1px solid var(--divider); border-radius: 0; }
-.settings-group .credits-foundation-list { border: 0; }
-.settings-group .server-config-editor-card { padding: 0; }
-.settings-group .server-config-editor-card .settings-card-heading { padding-block: 0; border: 0; }
-.settings-group .server-config-editor-card .settings-card-heading > div { display: block; }
-.settings-group .server-config-path { padding: 0; background: transparent; border: 0; border-radius: 0; font-size: var(--type-micro); }
-.settings-group .server-config-workbench { min-height: 320px; }
-.settings-group .server-config-editor { min-height: 320px; }
 
 .settings-theme-entry {
   display: grid;
@@ -1170,17 +1161,15 @@ textarea {
 
 /* About and credits */
 .settings-about-pane {
-  max-width: none;
-  padding-bottom: var(--space-6);
+  padding: 0;
 }
 
 .credits-section {
   overflow: hidden;
-  margin-top: 14px;
-  padding: 15px var(--space-4) var(--space-4);
-  background: var(--surface-raised);
-  border: 1px solid var(--divider);
-  border-radius: var(--radius-md);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  background: transparent;
+  border: 0;
   box-shadow: none;
 }
 
@@ -1199,24 +1188,22 @@ textarea {
 
 .credits-list {
   padding: 0;
+  border: 0;
 }
 
 .credits-person-row {
-  min-height: 112px;
-  padding: 10px 6px;
+  min-height: 60px;
+  padding: var(--space-2);
+  gap: var(--space-3);
   border: 0;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
 }
 
 .credits-foundation-row {
-  min-height: 106px;
-  padding: 14px var(--space-4);
-  border-bottom-color: var(--divider);
-  border-radius: 0;
-}
-
-.credits-foundation-row:last-child {
-  border-bottom-color: transparent;
+  min-height: 0;
+  padding: var(--space-2);
+  gap: var(--space-1);
+  border-radius: var(--radius-sm);
 }
 
 .credits-person-row:hover,
@@ -1225,8 +1212,8 @@ textarea {
 }
 
 .credits-avatar {
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   border-color: var(--divider);
 }
 
@@ -1243,6 +1230,9 @@ textarea {
   border: 0;
   border-radius: 0;
 }
+
+.credits-project-links { padding-left: 46px; }
+.credits-contribution { margin-left: auto; white-space: nowrap; }
 
 /* Batch, analysis, archive, and task surfaces */
 .batch-workspace,
@@ -1537,6 +1527,16 @@ textarea {
   background: var(--surface-raised);
   border-bottom: 0;
 }
+
+.settings-serverConfig-modal { width: min(900px, calc(100vw - 52px)); }
+.settings-detail-body { min-height: 0; overflow-y: auto; padding: 0 var(--space-5) var(--space-5); }
+.settings-detail-body .settings-pane { width: 100%; margin: 0; padding: 0; animation: none; }
+.settings-detail-body .settings-card { margin: 0; padding: 0; background: transparent; border: 0; box-shadow: none; }
+.settings-detail-body .settings-card-heading { padding: var(--space-2) 0; border: 0; }
+.settings-detail-body .settings-pane-toolbar { margin-bottom: var(--space-3); }
+.settings-detail-body .server-config-path { padding: 0; background: transparent; border: 0; font-size: var(--type-micro); }
+.settings-detail-body .server-config-workbench { min-height: 0; }
+.settings-detail-body .server-config-editor { min-height: 260px; height: 36vh; }
 
 .settings-modal-header h2 {
   font-size: var(--type-section-large);

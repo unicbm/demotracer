@@ -618,7 +618,7 @@ dependencies = [
 
 [[package]]
 name = "cs2-demotracer-gui"
-version = "1.5.2"
+version = "1.5.3"
 dependencies = [
  "base64 0.23.1",
  "chrono",

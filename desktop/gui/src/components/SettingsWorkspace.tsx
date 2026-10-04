@@ -57,7 +57,7 @@ import { SelectControl, type SelectControlOption } from "./SelectControl";
 import { SwitchControl } from "./SwitchControl";
 import "./settings-workspace.css";
 
-type SettingsModal = "theme" | "customCss" | null;
+type SettingsModal = "theme" | "customCss" | "serverConfig" | "credits" | null;
 
 type ThemeColorKey = keyof ThemePalette;
 
@@ -415,11 +415,11 @@ export function SettingsWorkspace({
 
   useEffect(() => {
     const path = environment.cs2Path.trim();
-    if (!path || serverConfigDocument || loadingServerConfig) return;
+    if (settingsModal !== "serverConfig" || !path || serverConfigDocument || loadingServerConfig) return;
     if (autoLoadedConfigPath.current === path) return;
     autoLoadedConfigPath.current = path;
     void handleLoadServerConfig();
-  }, [environment.cs2Path, loadingServerConfig, onLoadServerConfig, serverConfigDocument]);
+  }, [environment.cs2Path, loadingServerConfig, onLoadServerConfig, serverConfigDocument, settingsModal]);
 
   const themeColorFields: ReadonlyArray<{ key: ThemeColorKey; label: string }> = [
     { key: "primary", label: words.themePrimaryColor },
@@ -1269,11 +1269,21 @@ export function SettingsWorkspace({
               <h2 id="settings-storage-title">{words.settingsNavPaths}</h2>
               {pathsView}
             </section>
+            <section className="settings-group settings-about-group" aria-labelledby="settings-about-title">
+              <h2 id="settings-about-title">{words.settingsAboutUpdates}</h2>
+              {desktopUpdateView}
+              <button className="settings-theme-entry" type="button" onClick={() => setSettingsModal("credits")}>
+                <strong>{words.creditsTitle}</strong><span /><ChevronIcon size={15} />
+              </button>
+            </section>
           </div>
           <div className="settings-column">
             <section className="settings-group" aria-labelledby="settings-playback-title">
               <h2 id="settings-playback-title">{words.settingsNavPlayback}</h2>
               {playbackView}
+              <button className="settings-theme-entry" type="button" onClick={() => setSettingsModal("serverConfig")}>
+                <strong>{words.serverConfigTitle}</strong><span /><ChevronIcon size={15} />
+              </button>
             </section>
             <section className="settings-group" aria-labelledby="settings-cs2-title">
               <h2 id="settings-cs2-title">{words.settingsNavCs2}</h2>
@@ -1281,16 +1291,17 @@ export function SettingsWorkspace({
             </section>
           </div>
         </div>
-        <section className="settings-group" aria-labelledby="settings-server-title">
-          <h2 id="settings-server-title">{words.serverConfigTitle}</h2>
-          {serverConfigView}
-        </section>
-        <section className="settings-group settings-about-group" aria-labelledby="settings-about-title">
-          <h2 id="settings-about-title">{words.settingsAboutUpdates}</h2>
-          {desktopUpdateView}
-          {aboutView}
-        </section>
       </div>
+
+      {settingsModal === "serverConfig" || settingsModal === "credits" ? (
+        <DialogPrimitive labelledBy="settings-detail-title" onDismiss={() => setSettingsModal(null)} className={`dialog-surface settings-modal settings-detail-modal settings-${settingsModal}-modal`}>
+          <header className="settings-modal-header">
+            <h2 id="settings-detail-title">{settingsModal === "serverConfig" ? words.serverConfigTitle : words.creditsTitle}</h2>
+            <button className="icon-button" type="button" onClick={() => setSettingsModal(null)} aria-label={words.close} title={words.close}><CloseIcon size={16} /></button>
+          </header>
+          <div className="settings-detail-body">{settingsModal === "serverConfig" ? serverConfigView : aboutView}</div>
+        </DialogPrimitive>
+      ) : null}
 
       {settingsModal === "theme" ? (
         <DialogPrimitive labelledBy="theme-settings-modal-title" onDismiss={() => setSettingsModal(null)} className="dialog-surface settings-modal settings-theme-modal">
