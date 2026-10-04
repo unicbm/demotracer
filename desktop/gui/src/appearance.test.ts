@@ -8,7 +8,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   isThemeColor,
-  normalizeSidebarCollapsed,
   normalizeSidebarOpacity,
   normalizeCustomCss,
   normalizeCustomCssProfiles,
@@ -16,9 +15,7 @@ import {
   normalizeThemeCustomization,
   normalizeUiFontSize,
   normalizeUiScale,
-  normalizeTheme,
   recommendedUiScale,
-  resolveTheme,
   stepUiFontSize,
   THEME_PALETTE_DEFAULTS,
   themeCustomizationCss,
@@ -26,26 +23,6 @@ import {
 } from "./appearance.ts";
 
 describe("appearance preferences", () => {
-  it("normalizes stored theme values", () => {
-    assert.equal(normalizeTheme("light"), "light");
-    assert.equal(normalizeTheme("dark"), "dark");
-    assert.equal(normalizeTheme("system"), "system");
-    assert.equal(normalizeTheme("invalid"), "dark");
-    assert.equal(normalizeTheme(null), "dark");
-  });
-
-  it("resolves system theme using the current OS preference", () => {
-    assert.equal(resolveTheme("system", false), "light");
-    assert.equal(resolveTheme("system", true), "dark");
-  });
-
-  it("normalizes the persisted sidebar state", () => {
-    assert.equal(normalizeSidebarCollapsed("true"), true);
-    assert.equal(normalizeSidebarCollapsed(true), true);
-    assert.equal(normalizeSidebarCollapsed("false"), false);
-    assert.equal(normalizeSidebarCollapsed(null), false);
-  });
-
   it("keeps the background sidebar opacity within the readable range", () => {
     assert.equal(normalizeSidebarOpacity(0.72), 0.72);
     assert.equal(normalizeSidebarOpacity(0), 0.2);

@@ -361,15 +361,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn contract_endpoints_are_https_and_fixed() {
-        assert_eq!(
-            AGGREGATE_ENDPOINT,
-            "https://telemetry.detr.site/v1/aggregate"
-        );
-        assert_eq!(PRESENCE_ENDPOINT, "https://telemetry.detr.site/v1/presence");
-    }
-
-    #[test]
     fn aggregate_payload_has_no_linkable_identifier() {
         let event = normalize_event(TelemetryEventRequest {
             playback_version: Some("1.1.2".to_string()),

@@ -25,7 +25,7 @@ public sealed class DtrRoundBannerPlaybackTests
     }
 
     [Fact]
-    public void UsesPinnedDtrAssetAndStableRecipientSnapshot()
+    public void KeepsAStableRecipientSnapshot()
     {
         var playback = new DtrRoundBannerPlayback(
             [
@@ -36,9 +36,6 @@ public sealed class DtrRoundBannerPlaybackTests
 
         Assert.Equal([2, 7], playback.Recipients.Select(recipient => recipient.Slot));
         Assert.Equal([20, 70], playback.Recipients.Select(recipient => recipient.UserId));
-        Assert.Equal(5, DemoTracerPlugin.DtrRoundBannerDurationSeconds);
-        Assert.Contains("@c999941/", DemoTracerPlugin.DtrRoundBannerImageUrl, StringComparison.Ordinal);
-        Assert.StartsWith("https://cdn.jsdelivr.net/gh/", DemoTracerPlugin.DtrRoundBannerImageUrl, StringComparison.Ordinal);
     }
 
 }

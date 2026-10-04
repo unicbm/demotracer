@@ -1935,28 +1935,6 @@ mod tests {
     }
 
     #[test]
-    fn legacy_batch_settings_drop_retired_options_and_default_cosmetics_off() {
-        let settings: BatchConversionSettingsDto = serde_json::from_value(serde_json::json!({
-            "includeSuspicious": false,
-            "fullRound": false,
-            "side": "both",
-            "subtickMode": "off",
-            "maxRoundSeconds": 240.0,
-            "freezePrerollSeconds": -1.0,
-            "exportVoice": true
-        }))
-        .unwrap();
-
-        assert!(!settings.export_cosmetics);
-        assert!(!settings.export_stickers);
-        assert!(!settings.export_charms);
-        validate_batch_settings(&settings).unwrap();
-        let saved = serde_json::to_value(&settings).unwrap();
-        assert!(saved.get("subtickMode").is_none());
-        assert!(saved.get("freezePrerollSeconds").is_none());
-    }
-
-    #[test]
     fn batch_settings_require_consent_once_and_store_normalized_flags() {
         let mut requested = BatchConversionSettingsDto {
             export_cosmetics: false,

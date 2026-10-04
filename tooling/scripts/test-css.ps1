@@ -20,9 +20,9 @@ $replayEconIndex = Join-Path $repoRoot "server\runtime\BotRandomizer\bin\$Config
 $componentArguments = @(
     "-p:PathMap=$repoRoot=/_/demotracer",
     "-p:DtrCommonRoot=$(Join-Path $repoRoot 'server/runtime/common')",
-    "-p:DtrHiderRoot=$(Join-Path $repoRoot 'server/runtime/dot-hider')",
+    "-p:DtrHiderRoot=$(Join-Path $repoRoot 'server/runtime/dtr-hider')",
     "-p:DtrRandomizerRoot=$(Join-Path $repoRoot 'server/runtime/BotRandomizer')",
-    "-p:DtrControllerRoot=$(Join-Path $repoRoot 'server/runtime/dot-controller')"
+    "-p:DtrControllerRoot=$(Join-Path $repoRoot 'server/runtime/dtr-controller')"
 )
 $nugetConfigPath = Join-Path $repoRoot "NuGet.Config"
 

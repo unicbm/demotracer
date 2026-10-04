@@ -11,13 +11,13 @@ namespace DemoTracer;
 
 internal static partial class BotControllerNative
 {
-    [DllImport("dot-controller", CallingConvention = CallingConvention.Cdecl)]
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_PublishAvatarOverride(ulong steamId, [In] byte[] png, int length);
 
-    [DllImport("dot-controller", CallingConvention = CallingConvention.Cdecl)]
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_ClearAvatarOverride(ulong steamId);
 
-    [DllImport("dot-controller", CallingConvention = CallingConvention.Cdecl)]
+    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern void DtrController_ClearAvatarOverrides();
 
     public static bool TryPublishAvatarOverride(ulong steamId, byte[] png, out string error)

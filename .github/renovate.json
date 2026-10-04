@@ -46,7 +46,7 @@
     },
     {
       "matchManagers": ["nuget"],
-      "matchFileNames": ["server/runtime/dot-hider/**"],
+      "matchFileNames": ["server/runtime/dtr-hider/**"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "hider dependencies"
     },

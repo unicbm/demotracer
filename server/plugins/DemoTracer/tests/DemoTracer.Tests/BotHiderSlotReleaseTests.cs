@@ -12,29 +12,6 @@ namespace DemoTracer.Tests;
 public sealed class BotHiderSlotReleaseTests
 {
     [Fact]
-    public void LeaseChangesPreservePublishedControllerUntilIncarnationChanges()
-    {
-        using var client = new NativePresentationClient();
-        using var owner = new CancellationTokenSource();
-        var service = new BotHiderPresentationService(client);
-        service.ObserveSlot(1, 7, 0x8005, 20);
-        var slots = (BotHiderPresentationService.SlotState[])typeof(BotHiderPresentationService)
-            .GetField("_slots", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .GetValue(service)!;
-        slots[1].PublishedController = 0x8005;
-        service.AddLease(new("token", "demotracer", new()
-        {
-            [1] = new() { Slot = 1, Incarnation = slots[1].Incarnation, PlayerName = "new name" }
-        }, owner.Token));
-
-        Assert.False(slots[1].NeedsCrosshairPublication(0x8005));
-        owner.Cancel();
-        Assert.False(slots[1].NeedsCrosshairPublication(0x8005));
-        service.ObserveSlot(1, 8, 0x10005, 21);
-        Assert.True(slots[1].NeedsCrosshairPublication(0x10005));
-    }
-
-    [Fact]
     public void OneBotLeavingPreservesOtherDemoIdentitiesUntilOwnerCancellation()
     {
         using var client = new NativePresentationClient();

@@ -27,8 +27,8 @@ importers:
         specifier: 2.12.0
         version: 2.12.0
       csgo-sharecode:
-        specifier: 6.0.0
-        version: 6.0.0
+        specifier: 7.0.0
+        version: 7.0.0
       flag-icons:
         specifier: 7.5.0
         version: 7.5.0
@@ -334,8 +334,8 @@ packages:
     resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
     engines: {node: '>=6'}
 
-  csgo-sharecode@6.0.0:
-    resolution: {integrity: sha512-ksa9LIrE4ix1r8kRC+zMYYzByuSUqBjMt6kVp+VqElfnVk5AJYw2U6pafWU9HQGj2os2zchrcesbqdUUxbAySA==}
+  csgo-sharecode@7.0.0:
+    resolution: {integrity: sha512-UMc99q0i+BBtQpQM718A5z5mo1WXMcsWmktF4U3WsW4fgu697HBUkzpSwWqiE/eFKkPuh0HO5hknt3OzAbS2ew==}
     engines: {node: '>=20.19.0'}
 
   csstype@3.2.3:
@@ -815,7 +815,7 @@ snapshots:
 
   clsx@2.1.1: {}
 
-  csgo-sharecode@6.0.0: {}
+  csgo-sharecode@7.0.0: {}
 
   csstype@3.2.3: {}
 

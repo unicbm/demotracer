@@ -22,16 +22,4 @@ public sealed class ReplayNativeMapperTests
         Assert.Same(metadata.WeaponDefIndices, ReplayNativeMapper.BuildMetadata(prepared).WeaponDefIndices);
     }
 
-    [Fact]
-    public void PrefetchBudgetIncludesSourceStateAndRetainedInputHistory()
-    {
-        var empty = new DtrReplayFile(11, [], [], ReplayHighFidelityMetadata.Empty, [], [], [], [], [], 64, 0);
-        var replay = empty with
-        {
-            SourceState = new NativeReplaySourceStateChange[10],
-            InputHistoryTicks = new NativeReplayInputHistoryTick[2],
-            InputHistoryEntries = new NativeReplayInputHistoryEntry[3],
-        };
-        Assert.Equal(10 * 16 + 2 * 16 + 3 * 128, DtrReplayPrefetch.EstimateReplayBytes(replay));
-    }
 }

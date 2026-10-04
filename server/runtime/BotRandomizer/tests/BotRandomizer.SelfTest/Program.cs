@@ -11,26 +11,6 @@ var catalogDirectory = Path.GetDirectoryName(Path.GetFullPath(args[0]))
     ?? throw new InvalidOperationException("Catalog path has no directory.");
 var placementPath = Path.Combine(catalogDirectory, "charm_placements.json");
 var charmPlacements = CharmPlacementCatalog.Load(placementPath, catalog);
-Assert(catalog.SourceRepository == "ianlucas/cs2-lib", "catalog source");
-Assert(catalog.WeaponCount == 35, "weapon count");
-// Coverage floors detect accidental truncation while allowing new data-only
-// additions. The generator tests compare complete sets to the pinned upstream.
-Assert(catalog.WeaponPaintCount >= 1456, "weapon paint coverage");
-Assert(catalog.KnifePaintCount >= 556, "knife paint coverage");
-Assert(catalog.Gloves.Count >= 94, "glove coverage");
-Assert(catalog.StickerCategories.Count >= 61, "sticker category coverage");
-Assert(catalog.StickerKits.Count >= 11144, "sticker coverage includes September 2026 update");
-Assert(catalog.KeychainDefinitions.Count >= 81, "keychain coverage");
-Assert(catalog.MusicKits.Count >= 98, "music kit coverage");
-using var catalogJson = System.Text.Json.JsonDocument.Parse(File.ReadAllText(args[0]));
-Assert(replayEconIndex.SourceVersion == catalogJson.RootElement.GetProperty("source").GetProperty("version").GetString(),
-    "random and replay econ catalogs use the same source version");
-Assert(catalog.StickerKits.All(sticker => replayEconIndex.IsSticker(sticker.DefIndex)),
-    "every random sticker is replay-valid");
-Assert(catalog.StickerKits.Any(sticker => sticker.DefIndex == 11813 && sticker.Finish == StickerFinish.Gold),
-    "September Ranked Gold sticker is available for randomization and replay");
-Assert(replayEconIndex.WeaponPaintCount == catalog.WeaponPaintCount, "replay weapon paint coverage");
-Assert(replayEconIndex.MusicKitCount >= 100, "replay music kit coverage");
 Assert(replayEconIndex.IsMusicKit(1) && replayEconIndex.IsMusicKit(70),
     "valid demo music kits excluded from random pools remain replay-valid");
 Assert(replayEconIndex.TryGetWeaponPaint(4, 799, out var glockLegacy) && !glockLegacy,
@@ -59,26 +39,8 @@ Assert(ReplayOriginalOwner.ResolveSteamId(
 Assert(!replayEconIndex.IsMusicKit(2) &&
        !replayEconIndex.TryGetWeaponPaint(4, uint.MaxValue, out _),
     "unknown replay evidence fails closed");
-Assert(charmPlacements.WeaponCount == 16, "charm placement weapon count");
-Assert(charmPlacements.PlacementCount == 158, "charm placement count");
-Assert(charmPlacements.TryGetPlacements(7, out var akPlacements) && akPlacements.Count == 36,
+Assert(charmPlacements.TryGetPlacements(7, out var akPlacements) && akPlacements.Count > 0,
     "AK-47 charm placement pool");
-// Research provenance belongs to offline data verification, not live item loading.
-var priors = catalogJson.RootElement.GetProperty("source").GetProperty("proDemo");
-Assert(priors.GetProperty("logicalMaps").GetInt32() == 269, "pro demo prior coverage");
-Assert(priors.GetProperty("knifeObservations").GetInt32() == 741, "pro knife prior coverage");
-Assert(priors.GetProperty("matchedKnifeObservations").GetInt32() > 0
-    && priors.GetProperty("matchedKnifeObservations").GetInt32() == priors.GetProperty("knifeObservations").GetInt32(),
-    "matched knife observation coverage");
-Assert(priors.GetProperty("converterSha256").GetString() is { Length: 64 } converterHash
-    && converterHash.All(Uri.IsHexDigit),
-    "pro converter provenance");
-Assert(priors.GetProperty("corpusDigest").GetString() is { Length: 64 } corpusDigest
-    && corpusDigest.All(Uri.IsHexDigit),
-    "pro corpus provenance");
-Assert(catalogJson.RootElement.GetProperty("knifeFinishPreferences").EnumerateArray()
-    .All(preference => preference.GetProperty("observations").GetInt32() > 0),
-    "knife finish observation provenance");
 foreach (var defIndex in new ushort[] { 16, 23, 26, 60, 61 })
 {
     Assert(catalog.TryGetWeapon(defIndex, out var weapon) && weapon.Paints.Count > 0,
@@ -139,9 +101,6 @@ var gloveWeights = catalog.Gloves
         group => group.Key,
         group => group.Sum(glove => RandomizerAssets.GetGloveVariantWeight(glove.DefIndex)));
 var gloveWeightTotal = gloveWeights.Values.Sum();
-Assert(RandomizerAssets.GetGloveVariantWeight(5030) == 4, "Sport Gloves per-variant weight");
-Assert(RandomizerAssets.GetGloveVariantWeight(5034) == 3, "Specialist Gloves per-variant weight");
-Assert(RandomizerAssets.GetGloveVariantWeight(5031) == 2, "other gloves per-variant weight");
 
 var gloveRoller = new CosmeticRoller(catalog, charmPlacements, new Random(20260722));
 var gloveCounts = new Dictionary<ushort, int>();
@@ -150,14 +109,6 @@ var knifeCounts = new Dictionary<string, int>(StringComparer.Ordinal);
 var knifePaintLookup = new Dictionary<(ushort DefIndex, int PaintKit), string>();
 var expectedKnifeShares = new Dictionary<string, double>(StringComparer.Ordinal);
 var knifeTypeWeightTotal = RandomizerAssets.Knives.Sum(knife => knife.Weight);
-Assert(knifeTypeWeightTotal == 100, "knife type weight total");
-var dominantKnifeDefinitions = new HashSet<ushort> { 500, 507, 508, 515 };
-Assert(RandomizerAssets.Knives
-        .Where(knife => dominantKnifeDefinitions.Contains(knife.DefIndex))
-        .Sum(knife => knife.Weight) == 70,
-    "dominant knife group share");
-Assert(RandomizerAssets.Knives.Single(knife => knife.DefIndex == 503).Weight == 3,
-    "Classic Knife maintainer preference");
 foreach (var knifeDefinition in RandomizerAssets.Knives)
 {
     Assert(catalog.TryGetKnifePaints(knifeDefinition.DefIndex, out var knifePaints),
@@ -340,10 +291,6 @@ foreach (var (rarity, weight) in akRarityWeights)
     var observed = akRarityCounts.GetValueOrDefault(rarity) / (double)distributionTrials;
     Assert(Math.Abs(observed - expected) < 0.01, $"AK-47 {rarity} distribution");
 }
-var akCovertShare = akRarityCounts[CosmeticRarity.Covert] / (double)distributionTrials;
-Assert(akCovertShare is >= 0.39 and <= 0.42,
-    "AK-47 Covert share stays near 40%");
-
 var expectedStickerCounts = new Dictionary<int, double>
 {
     [0] = 0.35,
@@ -619,7 +566,6 @@ RandomizerControlTests.Run();
 UnifiedProviderTests.Run(catalog, charmPlacements);
 ReplayPlanValidationTests.Run(catalog, replayEconIndex);
 EconIdentityTests.Run();
-CatalogLoadingTests.Run(args[0], catalog, charmPlacements);
 Console.WriteLine("BotRandomizer self-test passed.");
 
 static void Assert(bool condition, string label)

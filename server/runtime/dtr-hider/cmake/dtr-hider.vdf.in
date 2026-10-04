@@ -1,0 +1,5 @@
+"Metamod Plugin"
+{
+    "alias" "dtr-hider"
+    "file"  "@BOT_HIDER_VDF_FILE@"
+}

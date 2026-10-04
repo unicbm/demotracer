@@ -877,7 +877,7 @@ fn apply_validated_package(
     // Copy user data into the new namespace only for receipt-owned runtimes.
     // Keep the source and any existing destination; rollback covers new copies.
     let mut migrated_data = BTreeMap::new();
-    let whitelist = "addons/dot-hider/map_whitelist.json";
+    let whitelist = "addons/dtr-hider/map_whitelist.json";
     let installed_whitelist = paths.game_csgo.join(path_from_public(whitelist));
     ensure_no_reparse_below(&paths.game_csgo, &installed_whitelist)?;
     if installed_whitelist.is_file() {
@@ -891,19 +891,13 @@ fn apply_validated_package(
         affected.insert(whitelist.to_string(), Some(sha256_hex(&content)));
         migrated_data.insert(whitelist.to_string(), installed_whitelist);
     }
-    {
+    if let Some(previous) = &previous {
         for (group, marker, old_root, new_root) in [
-            (
-                "hider",
-                "",
-                "addons/dtr-hider",
-                "addons/dot-hider",
-            ),
             (
                 "hider",
                 "addons/bothider/bin/win64/bothider.dll",
                 "addons/BotHider",
-                "addons/dot-hider",
+                "addons/dtr-hider",
             ),
             (
                 "controller",
@@ -912,15 +906,15 @@ fn apply_validated_package(
                 "addons/counterstrikesharp/plugins/DtrController/recordings",
             ),
         ] {
-            if !marker.is_empty() && (external_groups.contains(group)
-                || !previous.as_ref().is_some_and(|previous| previous.files.iter().any(|file| {
+            if external_groups.contains(group)
+                || !previous.files.iter().any(|file| {
                     normalized_receipt_path(&file.path) == marker
                         && file_matches(
                             &paths.game_csgo.join(path_from_public(marker)),
                             file.size,
                             &file.sha256,
                         )
-                })))
+                })
             {
                 continue;
             }
@@ -942,7 +936,7 @@ fn apply_validated_package(
                 let relative = normalized_receipt_path(&format!("{new_root}/{}", suffix.display()));
                 let destination = paths.game_csgo.join(path_from_public(&relative));
                 ensure_no_reparse_below(&paths.game_csgo, &destination)?;
-                if destination.exists() || migrated_data.contains_key(&relative) {
+                if destination.exists() {
                     continue;
                 }
                 let content = fs::read(&file).map_err(|error| {
@@ -955,21 +949,6 @@ fn apply_validated_package(
     }
 
     let mut legacy_files = BTreeSet::new();
-    // The former DTR-specific names belong to this product, including installs
-    // made without a receipt. Retire their entrypoints before loading dot-*.
-    for relative in [
-        "addons/metamod/dtr-controller.vdf",
-        "addons/metamod/dtr-hider.vdf",
-        "addons/dtr-controller/bin/win64/dtr-controller.dll",
-        "addons/dtr-hider/bin/win64/dtr-hider.dll",
-    ] {
-        let target = paths.game_csgo.join(path_from_public(relative));
-        ensure_no_reparse_below(&paths.game_csgo, &target)?;
-        if target.is_file() {
-            affected.insert(relative.to_string(), None);
-            legacy_files.insert(relative.to_string());
-        }
-    }
     for relative in LEGACY_PROVIDER_DIRECTORIES {
         let directory = paths.game_csgo.join(path_from_public(relative));
         if directory.is_dir() {

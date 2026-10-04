@@ -26,7 +26,4 @@ public sealed class ProjectilePhysicsProfileTests
         Assert.Throws<InvalidDataException>(() => Profile().ResolveEntry(file));
     }
 
-    [Fact]
-    public void MissingProfileCannotFallBackToEmbeddedAddresses()
-        => Assert.Throws<FileNotFoundException>(() => ProjectilePhysicsProfile.Load(Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json")));
 }

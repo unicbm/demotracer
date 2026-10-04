@@ -5,8 +5,8 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <DtrHiderRoot Condition="'$(DtrHiderRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\runtime\dot-hider</DtrHiderRoot>
-    <DtrControllerRoot Condition="'$(DtrControllerRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\runtime\dot-controller</DtrControllerRoot>
+    <DtrHiderRoot Condition="'$(DtrHiderRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\runtime\dtr-hider</DtrHiderRoot>
+    <DtrControllerRoot Condition="'$(DtrControllerRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\runtime\dtr-controller</DtrControllerRoot>
     <DtrRandomizerRoot Condition="'$(DtrRandomizerRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\runtime\BotRandomizer</DtrRandomizerRoot>
   </PropertyGroup>
 

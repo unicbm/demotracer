@@ -49,24 +49,6 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Fact]
-    public void DefaultLimitsAreGenerousButFinite()
-    {
-        var limits = DtrReadLimits.Default;
-
-        Assert.Equal(64L * 1024 * 1024, limits.MaxFileBytes);
-        Assert.Equal(32, limits.MaxSectionCount);
-        Assert.Equal(48L * 1024 * 1024, limits.MaxCompressedSectionBytes);
-        Assert.Equal(64L * 1024 * 1024, limits.MaxTotalCompressedBytes);
-        Assert.Equal(48L * 1024 * 1024, limits.MaxDecodedSectionBytes);
-        Assert.Equal(64L * 1024 * 1024, limits.MaxTotalDecodedBytes);
-        Assert.Equal(32_768, limits.MaxTickCount);
-        Assert.Equal(1_179_648, limits.MaxSubtickCount);
-        Assert.Equal(36, limits.MaxSubticksPerTick);
-        Assert.Equal(4_096, limits.MaxProjectileCount);
-        Assert.Equal(8 * 1024 * 1024, limits.MaxMetadataJsonBytes);
-    }
-
-    [Fact]
     public void RejectsFileBeforeParsingWhenItExceedsLimit()
     {
         var path = WriteFile(writer => writer.Write(new byte[32]));

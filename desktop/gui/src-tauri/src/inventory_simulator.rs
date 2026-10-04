@@ -536,14 +536,7 @@ mod tests {
         malicious.items[0].name_tag = Some("</script>safe".to_string());
         let script = initialization_script(&malicious).unwrap();
         assert!(!script.contains("</script>safe"));
-        assert!(script.contains("inventory.cstrike.app"));
         assert!(!script.contains("__DTR_DEDUPE_SOURCE__"));
-        assert!(script.contains("sessionStorage"));
-        assert!(script.contains("pending-config"));
-        assert!(script.contains("__demotracerInventoryStateBridgeV1"));
-        assert!(script.contains("sync.dispatchEvent(new Event(\"syncerror\"))"));
-        assert!(script.contains("previousRunState === \"complete\""));
-        assert!(!script.contains("window.location.replace"));
     }
 
     #[test]

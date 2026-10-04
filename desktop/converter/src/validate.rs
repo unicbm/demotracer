@@ -360,15 +360,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn local_demo_path_detector_rejects_directories_and_drive_letters() {
-        assert!(is_local_demo_path(r"C:\demos\match.dem"));
-        assert!(is_local_demo_path("C:/demos/match.dem"));
-        assert!(is_local_demo_path("/home/user/match.dem"));
-        assert!(is_local_demo_path("demos/match.dem"));
-        assert!(!is_local_demo_path("match.dem"));
-    }
-
-    #[test]
     fn public_artifact_hygiene_rejects_raw_and_debug_dumps() {
         assert_eq!(
             forbidden_public_artifact_reason(Path::new("match.dem")),

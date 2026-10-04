@@ -43,9 +43,9 @@ CounterStrikeSharp.API 1.0.371. The exact native host pins are supplied by
 | Dependency | Used for |
 | --- | --- |
 | `server/runtime/common` | `DemoTracerApi`, econ data, and shared host contract |
-| `server/runtime/dot-hider` | BotHider API and provider regression tests |
+| `server/runtime/dtr-hider` | BotHider API and provider regression tests |
 | `server/runtime/BotRandomizer` | BotRandomizer API |
-| `server/runtime/dot-controller` | BotController public/provider API regression tests |
+| `server/runtime/dtr-controller` | BotController public/provider API regression tests |
 
 The plugin project contains only its source tree and references dependency
 projects explicitly. Generated econ data has

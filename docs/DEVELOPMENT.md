@@ -12,8 +12,8 @@ All product modules are maintained in this repository. Only
 | `third_party/demoparser/` | Maintained `demoparser` branch with the minimal `parser` / `csgoproto` workspace |
 | `server/plugins/DemoTracer/` | Playback module: production project in `src/DemoTracer`, configuration in `config`, tests in `tests/DemoTracer.Tests` |
 | `server/runtime/common/csharp/DemoTracerApi/` | Contract-only companion API installed under CounterStrikeSharp `shared/` |
-| `server/runtime/dot-controller/` | Native replay buffers, movement/input injection, weapon control, and C ABI |
-| `server/runtime/dot-hider/` | Native and managed bot identity/presentation provider |
+| `server/runtime/dtr-controller/` | Native replay buffers, movement/input injection, weapon control, and C ABI |
+| `server/runtime/dtr-hider/` | Native and managed bot identity/presentation provider |
 | `server/runtime/BotRandomizer/` | Bundled and version-locked cosmetic entity writer |
 | `server/runtime/common/native/` | Common component's shared native utilities and tests |
 | `server/runtime/common/contracts/` | Shared source-field declarations and native host/toolchain pins |
@@ -53,16 +53,16 @@ pnpm 11.9, .NET 10 and the Tauri Windows prerequisites. Native builds also need
 the pinned [server toolchain](../server/README.md#shared-hook-runtime).
 
 Dependency pins and licenses live in `third_party/`, component manifests,
-lockfiles and accompanying notices. dot-controller, dot-hider and BotRandomizer
+lockfiles and accompanying notices. dtr-controller, dtr-hider and BotRandomizer
 are maintained upstream derivatives; preserve their licenses, attribution and
 `UPSTREAM.md` files. Generated catalogs must not be edited by hand.
 
 BotRandomizer owns cosmetic entity writes; DemoTracer submits validated plans
-through API v3. Contact handoff requires dot-controller native perception; no
+through API v3. Contact handoff requires dtr-controller native perception; no
 external tracing provider is needed. Install the matched playback bundle rather
 than mixing provider DLLs.
 
-Replay has one movement input path: after the engine's `SetupMove`, dot-controller
+Replay has one movement input path: after the engine's `SetupMove`, dtr-controller
 supplies the demo's pre-command position and velocity in `CMoveData`. Native
 movement and `FinishMove` compute and publish the resulting pawn state. Replay
 initializes the pawn's pose and duck/ladder state only at start, seek, or loop
@@ -77,8 +77,8 @@ movement initializations without writing per-tick logs.
 | --- | --- |
 | `.dtr` writer / reader | v12 / v3-v12 |
 | Manifest ABI | 19 |
-| dot-controller native ABI | 21, minor 44+; 228-byte replay tick |
-| dot-hider / BotRandomizer API | 3 / 3 |
+| dtr-controller native ABI | 21, minor 44+; 228-byte replay tick |
+| dtr-hider / BotRandomizer API | 3 / 3 |
 | DemoTracer companion API | 7 |
 
 ## Component Maintenance
@@ -87,8 +87,8 @@ The bundled DTR bot runtime uses independent component identities:
 
 | Component | Native DLL | Managed DLL | Shared API | Capability |
 | --- | --- | --- | --- | --- |
-| `dot-controller` | `dot-controller.dll` | `DtrController.dll` | `DtrControllerApi.dll` | `dtr-controller:api` |
-| `dot-hider` | `dot-hider.dll` | `DtrHider.dll` | `DtrHiderApi.dll` | `dtr-hider:api:v3` |
+| `dtr-controller` | `dtr-controller.dll` | `DtrController.dll` | `DtrControllerApi.dll` | `dtr-controller:api` |
+| `dtr-hider` | `dtr-hider.dll` | `DtrHider.dll` | `DtrHiderApi.dll` | `dtr-hider:api:v3` |
 
 Native directories and Metamod aliases use the component names. CSS provider
 directories match their assembly names. Native exports use `DtrController_`
@@ -96,11 +96,14 @@ and `DtrHider_`; commands use `dtr_controller_` and `dtr_hider_` (CSS recording
 commands use `css_dtr_controller_`). No old-name aliases are registered.
 BotRandomizer retains its current unified provider, API, name and packaging.
 
-The GUI retires the former `dtr-controller` and `dtr-hider` native DLLs/VDFs and
-copies hider configuration without replacing existing destination files.
-Upstream-named files are migrated only when owned by the previous DTR receipt;
-externally replaced components are preserved. Installation rollback restores
-the prior files. Manual upgrades must remove old DTR VDFs before starting CS2.
+The GUI retires old DTR files only when the previous receipt still owns them.
+An externally replaced native/managed DLL, dependency manifest or VDF preserves
+the entire old component group. Without a receipt, upstream paths are untouched.
+The old dedicated `DemoTracerBotHider` provider is still retired. Native hider
+configuration and controller recordings are copied to the new namespace only
+for receipt-owned installations, without replacing existing user data; rollback
+restores the previous installation. Manual installers must make this ownership
+distinction themselves and migrate their configuration before starting the server.
 
 KHook coordinates shared detours, not competing bot control or presentation
 writes. Separate identities avoid file, loader, API and command collisions;

@@ -45,7 +45,7 @@ public sealed partial class DemoTracerPlugin
     private static readonly byte[] VoiceDtvMagicBytes = Encoding.ASCII.GetBytes(VoiceDtvMagic);
 
     [DllImport(
-        "dot-controller",
+        "dtr-controller",
         EntryPoint = "DtrController_SendVoiceFrame",
         CallingConvention = CallingConvention.Cdecl)]
     private static extern int BotControllerSendVoiceFrameSlice(

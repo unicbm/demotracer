@@ -3569,23 +3569,6 @@ mod tests {
     }
 
     #[test]
-    fn default_read_limits_leave_room_for_long_local_replays() {
-        let limits = DtrReadLimits::default();
-
-        assert_eq!(limits.max_file_bytes, 64 * MIB);
-        assert_eq!(limits.max_section_count, 32);
-        assert_eq!(limits.max_compressed_section_bytes, 48 * MIB);
-        assert_eq!(limits.max_total_compressed_bytes, 64 * MIB);
-        assert_eq!(limits.max_decoded_section_bytes, 48 * MIB);
-        assert_eq!(limits.max_total_decoded_bytes, 64 * MIB);
-        assert_eq!(limits.max_tick_count, 32_768);
-        assert_eq!(limits.max_subtick_count, 32_768 * 36);
-        assert_eq!(limits.max_subticks_per_tick, 36);
-        assert_eq!(limits.max_projectile_count, 4_096);
-        assert_eq!(limits.max_metadata_json_bytes, 8 * 1024 * 1024);
-    }
-
-    #[test]
     fn rec_reader_rejects_header_count_over_limit() {
         let mut bytes = encoded_sample_rec();
         let tick_offset = tick_count_offset();

@@ -7,10 +7,10 @@ $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 foreach ($relative in @(
     'server/plugins/DemoTracer/src/DemoTracer/bin/Release/net10.0',
     'server/runtime/common/csharp/DemoTracerApi/bin/Release/net10.0',
-    'server/runtime/dot-controller/csharp/DtrController/bin/Release',
-    'server/runtime/dot-controller/csharp/DtrControllerApi/bin/Release',
-    'server/runtime/dot-hider/csharp/DtrHider/bin/Release/net10.0',
-    'server/runtime/dot-hider/csharp/DtrHiderApi/bin/Release/net10.0'
+    'server/runtime/dtr-controller/csharp/DtrController/bin/Release',
+    'server/runtime/dtr-controller/csharp/DtrControllerApi/bin/Release',
+    'server/runtime/dtr-hider/csharp/DtrHider/bin/Release/net10.0',
+    'server/runtime/dtr-hider/csharp/DtrHiderApi/bin/Release/net10.0'
 )) {
     $source = Join-Path $root $relative
     if (-not (Test-Path -LiteralPath $source)) { throw "Missing tested build output: $relative" }

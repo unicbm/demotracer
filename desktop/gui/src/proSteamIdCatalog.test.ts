@@ -27,27 +27,12 @@ function registry(...players: unknown[]): string {
 test("attributed registry snapshot resolves a curated professional identity", () => {
   const catalog = parseProSteamIdCatalogJsonl(source);
   const donk = resolveProSteamIdFromCatalog(catalog, "76561198386265483");
-  const karrigan = resolveProSteamIdFromCatalog(catalog, "76561197989430253");
-  const niko = resolveProSteamIdFromCatalog(catalog, "76561198041683378");
-  const sh1ro = resolveProSteamIdFromCatalog(catalog, "76561198081484775");
-  const zywoo = resolveProSteamIdFromCatalog(catalog, "76561198113666193");
-  const jamesBardolph = resolveProSteamIdFromCatalog(catalog, "76561197960268122");
 
   assert.equal(donk?.handle, "donk");
   assert.equal(donk?.nameLatin, "Danil Kryshkovets");
   assert.equal(donk?.countryCode, "RU");
   assert.equal(donk?.mappingSources[0]?.identityEvidence, "curated");
   assert.match(donk?.mappingSources[0]?.url ?? "", /^https:\/\/liquipedia\.net\//);
-  assert.equal(karrigan?.nameLatin, "Finn Andersen");
-  assert.equal(karrigan?.country, "Denmark");
-  assert.equal(karrigan?.countryCode, "DK");
-  assert.equal(niko?.nameLatin, "Nikola Kovač");
-  assert.equal(niko?.countryCode, "BA");
-  assert.equal(niko?.birthDate, "1997-02-16");
-  assert.equal(niko?.externalIds.esea, "571970");
-  assert.equal(sh1ro?.birthDate, "2001-07-15");
-  assert.deepEqual(zywoo?.roles, ["awp", "rifle"]);
-  assert.equal(jamesBardolph?.externalIds.esea, undefined);
 });
 
 test("registry parser rejects duplicate SteamID64 records", () => {

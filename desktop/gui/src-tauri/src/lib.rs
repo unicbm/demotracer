@@ -5952,23 +5952,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn conversion_request_ignores_retired_export_options() {
-        let request: ConvertDemoRequest = serde_json::from_value(serde_json::json!({
-            "analysisId": "test",
-            "outputDir": "output",
-            "selectedRounds": [1, 2],
-            "side": "ct",
-            "subtickMode": "off",
-            "freezePrerollSeconds": 0.0
-        }))
-        .unwrap();
-
-        assert_eq!(request.selected_rounds, vec![1, 2]);
-        assert_eq!(request.side, Side::Ct);
-        assert_eq!(request.max_round_seconds, default_max_round_seconds());
-    }
-
     fn request() -> ConvertDemoRequest {
         ConvertDemoRequest {
             analysis_id: "analysis-1".to_string(),

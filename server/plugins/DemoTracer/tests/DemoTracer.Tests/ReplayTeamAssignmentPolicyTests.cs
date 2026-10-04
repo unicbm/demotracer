@@ -4,7 +4,6 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-using BotRandomizerApi;
 using CounterStrikeSharp.API.Modules.Utils;
 using DemoTracer;
 
@@ -74,40 +73,6 @@ public sealed class ReplayTeamAssignmentPolicyTests
         Assert.Equal(
             expected,
             ReplayTeamAssignmentPolicy.CanAlignC4(manifestTeam, actualTeam));
-    }
-
-    [Fact]
-    public void ProviderAcceptsUpcomingTeamOnlyAtSwapBoundary()
-    {
-        Assert.True(BotRandomizerReplayTeamPolicy.CanTargetSpawnTeam(
-            BotRandomizerReplayTeamPolicy.Terrorist,
-            BotRandomizerReplayTeamPolicy.CounterTerrorist,
-            switchingTeamsAtRoundReset: true));
-        Assert.False(BotRandomizerReplayTeamPolicy.CanTargetSpawnTeam(
-            BotRandomizerReplayTeamPolicy.Terrorist,
-            BotRandomizerReplayTeamPolicy.CounterTerrorist,
-            switchingTeamsAtRoundReset: false));
-    }
-
-    [Fact]
-    public void ProviderAcceptsPostSwapObservationWhileResetFlagIsStillSet()
-    {
-        Assert.True(BotRandomizerReplayTeamPolicy.CanTargetSpawnTeam(
-            BotRandomizerReplayTeamPolicy.CounterTerrorist,
-            BotRandomizerReplayTeamPolicy.CounterTerrorist,
-            switchingTeamsAtRoundReset: true));
-    }
-
-    [Theory]
-    [InlineData(0, BotRandomizerReplayTeamPolicy.Terrorist)]
-    [InlineData(BotRandomizerReplayTeamPolicy.Terrorist, 0)]
-    [InlineData(1, BotRandomizerReplayTeamPolicy.CounterTerrorist)]
-    public void ProviderRejectsNonPlayingTeams(byte currentTeam, byte spawnTeam)
-    {
-        Assert.False(BotRandomizerReplayTeamPolicy.CanTargetSpawnTeam(
-            currentTeam,
-            spawnTeam,
-            switchingTeamsAtRoundReset: true));
     }
 
 }

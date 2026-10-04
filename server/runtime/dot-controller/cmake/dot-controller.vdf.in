@@ -1,5 +1,0 @@
-"Metamod Plugin"
-{
-    "alias" "dot-controller"
-    "file"  "@BC_VDF_FILE@"
-}

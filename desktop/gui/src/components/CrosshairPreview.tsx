@@ -4,8 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import type { CrosshairV1 } from "csgo-sharecode";
-import type { Crosshair } from "../crosshairCode";
+import type { Crosshair, CrosshairLegacyV1 } from "csgo-sharecode";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import ancientSceneUrl from "../assets/crosshair-scenes/ancient.webp";
 import anubisSceneUrl from "../assets/crosshair-scenes/anubis.webp";
@@ -48,7 +47,7 @@ function storedSceneIndex(): number {
   }
 }
 
-function CrosshairSvg({ crosshair }: { crosshair: CrosshairV1 }) {
+function CrosshairSvg({ crosshair }: { crosshair: CrosshairLegacyV1 }) {
   const shapes = buildCrosshairRects(crosshair, VIEWBOX_SIZE);
   const logicalOutline = resolveCrosshairOutline(crosshair);
   const outline = logicalOutline > 0
@@ -89,7 +88,7 @@ function CrosshairSvg({ crosshair }: { crosshair: CrosshairV1 }) {
   );
 }
 
-function PixelCrosshair({ crosshair }: { crosshair: Exclude<Crosshair, CrosshairV1> }) {
+function PixelCrosshair({ crosshair }: { crosshair: Exclude<Crosshair, CrosshairLegacyV1> }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   useLayoutEffect(() => {
     const target = canvas.current;
@@ -137,7 +136,7 @@ export function CrosshairPreview({ code, label, unavailableLabel, words }: {
           ))}
         </div>
         <span className="crosshair-preview-map">{PREVIEW_SCENES[sceneIndex].map}</span>
-        {crosshair ? (crosshair.version === 1
+        {crosshair ? (crosshair.format === "legacy-v1"
           ? <CrosshairSvg crosshair={crosshair} />
           : <PixelCrosshair crosshair={crosshair} />) : <span aria-hidden="true">×</span>}
         <button className="crosshair-scene-arrow is-previous" type="button" onClick={() => moveScene(-1)} aria-label={words.previousCrosshairScene}><ArrowIcon size={16} /></button>
@@ -149,7 +148,7 @@ export function CrosshairPreview({ code, label, unavailableLabel, words }: {
         </div>
       </div>
       {crosshair ? <figcaption className="crosshair-preview-note">
-        {crosshair.version === 1 ? words.crosshairPreviewLegacyReference : words.crosshairPreviewPixelReference}
+        {crosshair.format === "legacy-v1" ? words.crosshairPreviewLegacyReference : words.crosshairPreviewPixelReference}
       </figcaption> : null}
     </figure>
   );

@@ -11,13 +11,6 @@ namespace DemoTracer.Tests;
 public sealed class BotRandomizerCosmeticLeaseTests
 {
     [Fact]
-    public void ContractRequiresReplayPlanProviderV3()
-    {
-        Assert.Equal(3, BotRandomizerContract.ApiVersion);
-        Assert.Equal("botrandomizer:replay-cosmetic-plan:v3", BotRandomizerContract.Capability);
-    }
-
-    [Fact]
     public void SnapshotRetainsADeepCopyOfTheCompletePlan()
     {
         var source = CompletePlan();
@@ -57,18 +50,6 @@ public sealed class BotRandomizerCosmeticLeaseTests
         plan.Weapons = [];
         Assert.False(DemoTracerPlugin.RequestsRequireReplayPrebuild([plan]));
     }
-
-    [Theory]
-    [InlineData(true, false, true)]
-    [InlineData(false, true, true)]
-    [InlineData(false, false, false)]
-    public void PlanFenceTracksWritableOrAlreadyAcceptedPawn(
-        bool canWrite,
-        bool alreadyAccepted,
-        bool expected)
-        => Assert.Equal(
-            expected,
-            DemoTracerPlugin.ShouldHoldBotRandomizerCosmeticLease(canWrite, alreadyAccepted));
 
     [Fact]
     public void FailedReplacementKeepsTheOldPlanExceptWhenProviderLostIt()

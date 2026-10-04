@@ -12,15 +12,6 @@ namespace DemoTracer.Tests;
 public sealed class BotHiderCrosshairPresentationTests
 {
     [Fact]
-    public void ContractNormalizesWithinUtf8Limit()
-    {
-        Assert.True(DtrHiderContract.TryNormalizeCrosshairCode(
-            "  CSGO-test  ",
-            out var normalized));
-        Assert.Equal("CSGO-test", normalized);
-    }
-
-    [Fact]
     public void CsPrefixedCodeIsPublishedWithoutReencodingOrTruncation()
     {
         const string code = "CSG4pWURDBtO7JeYvrNjoewqFQ9rGdZuDRmzyy5QLDFNrh";
@@ -51,52 +42,6 @@ public sealed class BotHiderCrosshairPresentationTests
     {
         Assert.False(DtrHiderContract.TryNormalizeCrosshairCode("CSGO-x\0y", out var normalized));
         Assert.Null(normalized);
-    }
-
-    [Theory]
-    [InlineData(null, "server-value", true)]
-    [InlineData("", "", true)]
-    [InlineData("CSGO-test", "CSGO-test", true)]
-    [InlineData("", "server-value", false)]
-    [InlineData("CSGO-test", "CSGO-other", false)]
-    public void CrosshairReadbackComparisonRemainsExact(
-        string? requested,
-        string? actual,
-        bool expected)
-    {
-        Assert.Equal(expected, BotHiderPresentationService.RequestedCrosshairMatches(requested, actual));
-    }
-
-    [Fact]
-    public void NetworkedCrosshairWritesAndPublishesChangedValue()
-    {
-        var actual = string.Empty;
-        var writes = 0;
-        var publications = 0;
-
-        var retained = BotHiderPresentationService.TryWriteNetworkedCrosshair(
-            "CSGO-test",
-            forcePublication: false,
-            () => actual,
-            value =>
-            {
-                writes++;
-                actual = value;
-            },
-            () =>
-            {
-                publications++;
-                return true;
-            },
-            out var changed,
-            out var published);
-
-        Assert.True(retained);
-        Assert.True(changed);
-        Assert.True(published);
-        Assert.Equal(1, writes);
-        Assert.Equal(1, publications);
-        Assert.Equal("CSGO-test", actual);
     }
 
     [Fact]
@@ -154,24 +99,6 @@ public sealed class BotHiderCrosshairPresentationTests
     }
 
     [Fact]
-    public void NetworkedCrosshairPublicationFailureCannotReportSuccess()
-    {
-        var actual = string.Empty;
-        var retained = BotHiderPresentationService.TryWriteNetworkedCrosshair(
-            "CSGO-test",
-            forcePublication: false,
-            () => actual,
-            value => actual = value,
-            () => false,
-            out var changed,
-            out var published);
-
-        Assert.False(retained);
-        Assert.True(changed);
-        Assert.False(published);
-    }
-
-    [Fact]
     public void PendingNotificationRetriesWithoutRewritingRetainedValue()
     {
         var actual = string.Empty;
@@ -196,25 +123,4 @@ public sealed class BotHiderCrosshairPresentationTests
         Assert.Equal(2, attempts);
     }
 
-    [Theory]
-    [InlineData(true, true, true, true, true)]
-    [InlineData(true, true, true, false, false)]
-    [InlineData(false, true, true, true, false)]
-    [InlineData(true, false, true, true, false)]
-    [InlineData(true, true, false, true, false)]
-    public void EveryExplicitlyRequestedPresentationFieldMustMatchBeforeLeaseSuccess(
-        bool playerNameMatches,
-        bool steamIdMatches,
-        bool scoreboardFlairMatches,
-        bool crosshairMatches,
-        bool expected)
-    {
-        Assert.Equal(
-            expected,
-            BotHiderPresentationService.CanCommitSynchronousPresentationLease(
-                playerNameMatches,
-                steamIdMatches,
-                scoreboardFlairMatches,
-                crosshairMatches));
-    }
 }

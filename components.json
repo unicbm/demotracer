@@ -17,13 +17,13 @@
     },
     {
       "id": "controller",
-      "path": "server/runtime/dot-controller",
+      "path": "server/runtime/dtr-controller",
       "repository": "unicbm/demotracer",
       "source": "product"
     },
     {
       "id": "hider",
-      "path": "server/runtime/dot-hider",
+      "path": "server/runtime/dtr-hider",
       "repository": "unicbm/demotracer",
       "source": "product"
     },

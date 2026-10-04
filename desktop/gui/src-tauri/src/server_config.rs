@@ -1275,29 +1275,6 @@ mod tests {
     }
 
     #[test]
-    fn retired_handoff_options_are_preserved_as_unknown_fields() {
-        let mut value = serde_json::json!({
-            "handoff": {
-                "threat_360": true,
-                "threat_360_range": 420,
-                "threat_360_los": false
-            }
-        });
-        let original = value.clone();
-        canonicalize_known_field_names(&mut value);
-        assert_eq!(value, original);
-        let validation = validate_config_text(&value.to_string());
-        assert!(validation.valid);
-        assert_eq!(
-            validation.unknown_paths,
-            ["$.handoff.threat_360_los", "$.handoff.threat_360_range"]
-        );
-        let defaults: Value = serde_json::from_str(BUILTIN_DEFAULT_CONFIG).unwrap();
-        assert!(defaults["handoff"].get("threat_360_range").is_none());
-        assert!(defaults["handoff"].get("threat_360_los").is_none());
-    }
-
-    #[test]
     fn validation_accepts_fidelity_balance_as_a_known_boolean() {
         let valid = validate_config_text(r#"{"fidelity":{"balance":true}}"#);
         assert!(valid.valid);

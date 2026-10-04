@@ -6,12 +6,12 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { decodeCrosshairShareCode, type CrosshairV1, type CrosshairV4 } from "csgo-sharecode";
+import { decodeCrosshairShareCode, type CrosshairLegacyV1, type CrosshairLegacyV4 } from "csgo-sharecode";
 import { buildCrosshairRects, decodePreviewCrosshair, rasterizeCrosshair, resolveCrosshairColor, resolveCrosshairOpacity } from "./crosshairPreviewModel.ts";
 
-function previewCrosshair(overrides: Partial<CrosshairV1>): CrosshairV1 {
+function previewCrosshair(overrides: Partial<CrosshairLegacyV1>): CrosshairLegacyV1 {
   return {
-    version: 1,
+    format: "legacy-v1",
     length: 2.5,
     thickness: 2,
     gap: -3,
@@ -20,7 +20,7 @@ function previewCrosshair(overrides: Partial<CrosshairV1>): CrosshairV1 {
     tStyleEnabled: false,
     centerDotEnabled: false,
     ...overrides,
-  } as CrosshairV1;
+  } as CrosshairLegacyV1;
 }
 
 describe("crosshair preview raster alignment", () => {
@@ -51,9 +51,9 @@ const V4_CROSS = "CSGO-F5x8c-aqWRz-PK48S-f35jY-EGV4M";
 const V3_CIRCLE = "CSGO-MWnwz-Zd4Zf-YbcB5-XiStM-wGeRF";
 const V4_DOT = "CSGO-Tsb5q-nLewQ-2SmK9-EaVNF-TyDEB";
 
-function pixelCrosshair(overrides: Partial<CrosshairV4> = {}): CrosshairV4 {
+function pixelCrosshair(overrides: Partial<CrosshairLegacyV4> = {}): CrosshairLegacyV4 {
   const decoded = decodePreviewCrosshair(V4_CROSS);
-  assert.equal(decoded.version, 4);
+  assert.equal(decoded.format, "legacy-v4");
   return { ...decoded, screenHeight: 1080, gap: 4, length: 8, thickness: 1, ...overrides };
 }
 
@@ -65,7 +65,7 @@ function pixel(image: ReturnType<typeof rasterizeCrosshair>, x: number, y: numbe
 describe("versioned crosshair previews", () => {
   it("decodes native V4 bytes instead of interpreting them as V1", () => {
     const crosshair = decodePreviewCrosshair(V4_CROSS);
-    assert.equal(crosshair.version, 4);
+    assert.equal(crosshair.format, "legacy-v4");
     assert.equal(crosshair.style, 4);
     assert.equal(crosshair.length, 2);
     assert.equal(crosshair.thickness, 2);
@@ -78,7 +78,7 @@ describe("versioned crosshair previews", () => {
 
   it("keeps V3 circle evidence distinct from a cross", () => {
     const crosshair = decodePreviewCrosshair(V3_CIRCLE);
-    assert.equal(crosshair.version, 3);
+    assert.equal(crosshair.format, "legacy-v3");
     assert.equal(crosshair.style, 3);
     assert.equal(crosshair.centerDotEnabled, true);
     assert.equal(buildCrosshairRects(crosshair).length, 1); // Only the center dot is rectangular.
