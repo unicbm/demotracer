@@ -255,10 +255,6 @@
   white-space: nowrap;
 }
 
-.release-manager-pane {
-  max-width: 920px;
-}
-
 .release-notice,
 .release-callout,
 .release-error {
@@ -275,29 +271,6 @@
   border: 1px solid color-mix(in srgb, var(--success) 28%, var(--divider));
   border-radius: var(--radius-md);
   font-size: var(--type-tiny);
-}
-
-.release-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  padding: var(--space-3) 14px;
-  gap: var(--space-2);
-}
-
-.release-progress {
-  height: 4px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--trace) 12%, var(--surface-subtle));
-  border-radius: var(--radius-pill);
-}
-
-.release-progress span {
-  display: block;
-  height: 100%;
-  background: var(--trace);
-  border-radius: inherit;
-  transition: width 120ms linear;
 }
 
 .release-error,
@@ -928,94 +901,7 @@
   white-space: nowrap;
 }
 
-/* Update status and download progress. */
-.release-product-hero {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  min-height: 86px;
-  padding: 14px var(--space-4);
-  gap: var(--space-3);
-  background:
-    radial-gradient(circle at 8% 0%, color-mix(in srgb, var(--trace) 9%, transparent), transparent 36%);
-  border-bottom: 1px solid color-mix(in srgb, var(--trace) 8%, var(--divider));
-}
-
-.release-product-mark {
-  display: grid;
-  width: 46px;
-  height: 46px;
-  place-items: center;
-  color: var(--trace);
-  background: color-mix(in srgb, var(--trace) 10%, var(--surface-subtle));
-  border-radius: var(--radius-md);
-}
-
-.release-product-copy { display: grid; min-width: 0; gap: 2px; }
-.release-product-copy h3 { overflow: hidden; font-size: var(--type-body); font-weight: var(--weight-bold); text-overflow: ellipsis; white-space: nowrap; }
-.release-product-copy h3 code { margin-left: 5px; color: var(--text-tertiary); font: var(--weight-semibold) var(--type-tiny)/1 var(--mono); }
-.release-product-copy p { color: var(--text-tertiary); font-size: var(--type-tiny); line-height: 15px; }
-
-.release-status-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 26px;
-  padding: 0 9px;
-  gap: 7px;
-  color: var(--text-secondary);
-  background: var(--surface-subtle);
-  border: 1px solid var(--divider);
-  border-radius: var(--radius-pill);
-  font-size: var(--type-tiny);
-  font-weight: var(--weight-bold);
-  white-space: nowrap;
-}
-
-.release-status-pill i { width: 6px; height: 6px; background: var(--text-tertiary); border-radius: var(--radius-circle); }
-.release-status-pill.is-current { color: var(--success); background: color-mix(in srgb, var(--success) 8%, var(--surface-subtle)); border-color: color-mix(in srgb, var(--success) 30%, var(--divider)); }
-.release-status-pill.is-current i { background: var(--success); }
-.release-status-pill.is-available { color: var(--trace); background: color-mix(in srgb, var(--trace) 10%, var(--surface-subtle)); border-color: color-mix(in srgb, var(--trace) 36%, var(--divider)); }
-.release-status-pill.is-available i,
-.release-status-pill.is-checking i,
-.release-status-pill.is-downloading i,
-.release-status-pill.is-installing i { background: var(--trace); box-shadow: 0 0 0 3px color-mix(in srgb, var(--trace) 12%, transparent); }
-.release-status-pill.is-error { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--surface-subtle)); border-color: color-mix(in srgb, var(--danger) 34%, var(--divider)); }
-.release-status-pill.is-error i { background: var(--danger); }
-.release-status-pill:is(.is-available, .is-checking, .is-downloading, .is-installing) i { animation: settings-update-pulse 1.8s ease-in-out infinite; }
-
-.release-notes-panel {
-  margin: 10px var(--space-4) 0;
-  padding: 10px var(--space-3);
-  background: color-mix(in srgb, var(--workspace) 56%, transparent);
-  border: 1px solid var(--divider);
-  border-radius: var(--radius-sm);
-}
-
-.release-notes-panel > strong { color: var(--trace); font-size: var(--type-tiny); letter-spacing: .05em; text-transform: uppercase; }
-.release-notes-panel p { margin-top: 5px; color: var(--text-secondary); font-size: var(--type-tiny); line-height: 17px; white-space: pre-line; }
-
-.release-download-feedback { display: grid; margin: var(--space-3) var(--space-4) 0; gap: 7px; }
-.release-download-feedback > div:first-child { display: flex; align-items: center; justify-content: space-between; color: var(--text-secondary); font-size: var(--type-tiny); }
-.release-download-feedback strong { color: var(--trace); font: var(--weight-bold) var(--type-tiny)/1 var(--mono); }
-
-.desktop-release-card .release-error { margin-inline: 16px; }
-.desktop-release-card .release-actions { justify-content: flex-end; padding-block: var(--space-2); }
-
-.release-progress.is-indeterminate span {
-  animation: settings-update-progress 1.1s ease-in-out infinite;
-}
-
 .release-spin { animation: settings-update-spin .75s linear infinite; }
-
-@keyframes settings-update-pulse {
-  0%, 100% { opacity: .72; transform: scale(.88); }
-  50% { opacity: 1; transform: scale(1.12); }
-}
-
-@keyframes settings-update-progress {
-  0% { transform: translateX(-120%); }
-  100% { transform: translateX(310%); }
-}
 
 @keyframes settings-update-spin { to { transform: rotate(360deg); } }
 
@@ -1031,8 +917,6 @@
   }
 
   .settings-about-pane { width: 100%; padding-inline: 12px; }
-  .release-product-hero { grid-template-columns: auto minmax(0, 1fr); }
-  .release-status-pill { grid-column: 1 / -1; justify-self: start; }
 }
 
 @media (max-width: 480px) {

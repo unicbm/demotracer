@@ -1035,8 +1035,6 @@ textarea {
 .settings-group .settings-card-heading > .text-button { flex: none; }
 .settings-group .settings-header-actions { flex-direction: row; flex-wrap: wrap; }
 .settings-group .settings-pane-toolbar { margin-bottom: var(--space-3); }
-.settings-group .release-product-hero { min-height: 64px; padding: var(--space-2) 0; background: transparent; border: 0; }
-.settings-group .release-actions { padding-inline: 0; background: transparent; }
 
 .settings-theme-entry {
   display: grid;
@@ -1092,7 +1090,6 @@ textarea {
 .settings-appearance-pane > .settings-card:first-child,
 .settings-export-pane > .settings-card:first-child,
 .settings-playback-pane > .settings-card:first-child,
-.release-manager-pane > .settings-card:first-child,
 .settings-environment-pane > .settings-card:first-child {
   margin-top: 0;
 }

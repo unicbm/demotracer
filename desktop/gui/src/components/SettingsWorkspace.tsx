@@ -18,7 +18,6 @@ import {
   ReplayIcon,
   SearchIcon,
   SlidersIcon,
-  TraceMark,
 } from "../icons";
 import {
   isThemeColor,
@@ -50,7 +49,6 @@ import type {
   Theme,
   WorkspaceBackground,
 } from "../types";
-import { releaseNotesForLanguage } from "../releaseNotes";
 import type { PlaybackHandoffMode, PlaybackPresetOptions } from "../playbackCommand";
 import { DialogPrimitive } from "./Dialog";
 import { SelectControl, type SelectControlOption } from "./SelectControl";
@@ -118,7 +116,6 @@ interface SettingsWorkspaceProps {
   savingServerConfig: boolean;
   detecting: boolean;
   detectionCompleted: boolean;
-  appVersion: string;
   guiUpdate: GuiUpdateStatus;
   playbackRelease: PlaybackReleaseStatus | null;
   playbackUpdate: PlaybackUpdateStatus;
@@ -333,7 +330,6 @@ export function SettingsWorkspace({
   savingServerConfig,
   detecting,
   detectionCompleted,
-  appVersion,
   guiUpdate,
   playbackRelease,
   playbackUpdate,
@@ -585,67 +581,6 @@ export function SettingsWorkspace({
           : guiUpdate.phase === "installing" ? words.releaseInstalling
             : guiUpdate.phase === "error" ? words.releaseCheckUnavailable
               : words.releaseNotChecked;
-  const guiReleaseNotes = releaseNotesForLanguage(guiUpdate.notes, language);
-  const guiProgressPercent = guiUpdate.totalBytes && guiUpdate.downloadedBytes != null
-    ? Math.min(100, Math.round((guiUpdate.downloadedBytes / guiUpdate.totalBytes) * 100))
-    : null;
-  const desktopUpdateView = (
-    <div className="settings-pane release-manager-pane">
-      {releaseNotice ? <div className="release-notice" role="status"><CheckIcon size={16} /><span>{releaseNotice}</span></div> : null}
-
-      <section
-        className={`settings-card release-card desktop-release-card is-${guiUpdate.phase}`}
-        data-update-phase={guiUpdate.phase}
-        aria-labelledby="desktop-release-title"
-      >
-        <div className="release-product-hero">
-          <span className="release-product-mark" aria-hidden="true"><TraceMark size={27} /></span>
-          <div className="release-product-copy">
-            <h3 id="desktop-release-title">DemoTracer <code>v{guiUpdate.currentVersion || appVersion || playbackRelease?.appVersion || "1.0.0"}</code></h3>
-            <p>{words.releaseAutomaticUpdates}</p>
-          </div>
-          <span className={`release-status-pill is-${guiUpdate.phase}`} role="status">
-            <i aria-hidden="true" />{guiStatus}
-          </span>
-        </div>
-
-        {guiReleaseNotes ? (
-          <section className="release-notes-panel" aria-label={words.releaseUpdateNotes}>
-            <strong>{words.releaseUpdateNotes}</strong>
-            <p>{guiReleaseNotes}</p>
-          </section>
-        ) : null}
-        {guiUpdate.phase === "downloading" || guiUpdate.phase === "installing" ? (
-          <div className="release-download-feedback" role="status" aria-live="polite">
-            <div>
-              <span>{guiUpdate.phase === "installing" ? words.releaseInstalling : words.releaseDownloading}</span>
-              <strong>{guiProgressPercent != null ? `${guiProgressPercent}%` : "…"}</strong>
-            </div>
-            <div className={`release-progress${guiProgressPercent == null ? " is-indeterminate" : ""}`}>
-              <span style={{ width: `${guiProgressPercent ?? 36}%` }} />
-            </div>
-          </div>
-        ) : null}
-        {guiUpdate.phase === "error" ? <p className="release-error"><AlertIcon size={15} />{words.releaseCheckUnavailable}</p> : null}
-        <footer className="release-actions">
-          <button className="secondary-button" type="button" disabled={guiUpdateBusy} onClick={onCheckGuiUpdate}>
-            <RefreshIcon className={guiUpdate.phase === "checking" ? "release-spin" : undefined} size={15} />
-            {guiUpdate.phase === "checking" ? words.releaseChecking : words.releaseCheckNow}
-          </button>
-          {guiUpdate.phase === "available" ? (
-            <button className="primary-button" type="button" onClick={onInstallGuiUpdate}>
-              <ReplayIcon size={15} />{words.releaseInstallNow} v{guiUpdate.availableVersion}
-            </button>
-          ) : (
-            <button className="text-button" type="button" onClick={() => onOpenExternal("https://github.com/unicbm/demotracer/releases")}>
-              <ExternalLinkIcon size={15} />{words.releaseOpenGithub}
-            </button>
-          )}
-        </footer>
-      </section>
-    </div>
-  );
-
   const playbackInstallView = (
     <section className="settings-card playback-install-card" aria-label={words.releasePlayback}>
       <div className="settings-card-heading">
@@ -1260,6 +1195,13 @@ export function SettingsWorkspace({
             <section className="settings-group" aria-labelledby="settings-general-title">
               <h2 id="settings-general-title">{words.settingsNavAppearance}</h2>
               {appearanceView}
+              <button className="settings-theme-entry" type="button" disabled={guiUpdateBusy} onClick={guiUpdate.phase === "available" ? onInstallGuiUpdate : onCheckGuiUpdate}>
+                <strong>{guiUpdate.phase === "available" ? words.releaseInstallNow : words.releaseCheckNow}</strong>
+                <em aria-live="polite">{guiStatus}</em><ChevronIcon size={15} />
+              </button>
+              <button className="settings-theme-entry" type="button" onClick={() => setSettingsModal("credits")}>
+                <strong>{words.creditsTitle}</strong><span /><ChevronIcon size={15} />
+              </button>
             </section>
             <section className="settings-group" aria-labelledby="settings-conversion-title">
               <h2 id="settings-conversion-title">{words.settingsNavExport}</h2>
@@ -1268,13 +1210,6 @@ export function SettingsWorkspace({
             <section className="settings-group" aria-labelledby="settings-storage-title">
               <h2 id="settings-storage-title">{words.settingsNavPaths}</h2>
               {pathsView}
-            </section>
-            <section className="settings-group settings-about-group" aria-labelledby="settings-about-title">
-              <h2 id="settings-about-title">{words.settingsAboutUpdates}</h2>
-              {desktopUpdateView}
-              <button className="settings-theme-entry" type="button" onClick={() => setSettingsModal("credits")}>
-                <strong>{words.creditsTitle}</strong><span /><ChevronIcon size={15} />
-              </button>
             </section>
           </div>
           <div className="settings-column">

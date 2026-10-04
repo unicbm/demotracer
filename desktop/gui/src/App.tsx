@@ -2759,7 +2759,6 @@ function App() {
             savingServerConfig={savingServerConfig}
             detecting={detectingInstallations}
             detectionCompleted={installDetectionCompleted}
-            appVersion={appVersion}
             guiUpdate={guiUpdate}
             playbackRelease={playbackRelease}
             playbackUpdate={playbackUpdate}
