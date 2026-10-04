@@ -5,7 +5,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 using CounterStrikeSharp.API;
-using System.Globalization;
 using System.Text.Json;
 
 namespace DemoTracer;
@@ -31,23 +30,17 @@ public sealed partial class DemoTracerPlugin
         ClearCs2LibEconIndex();
 
         var path = Path.Combine(ModuleDirectory, Cs2LibEconIndexFileName);
-        if (!File.Exists(path))
-        {
-            Server.PrintToConsole(
-                $"dtr: econ index not found; cosmetic/music/flair validation will fail closed path={path}");
-            return;
-        }
-
         try
         {
             using var document = JsonDocument.Parse(File.ReadAllText(path));
             var root = document.RootElement;
-            _cs2LibEconIndexVersion = ReadEconIndexVersion(root);
-            if (_cs2LibEconIndexVersion == "unknown")
+            var source = root.GetProperty("source");
+            if (source.GetProperty("package").GetString() != "@ianlucas/cs2-lib")
                 throw new InvalidDataException("econ index is not a recognized @ianlucas/cs2-lib projection");
+            _cs2LibEconIndexVersion = source.GetProperty("version").GetString()!;
             _replayEquipment = ReplayEquipmentCatalog.Parse(root);
-            ReadPaintPairs(root, "weapon_paints", _validWeaponCosmeticPaints, normalizeWeaponDefIndex: true);
-            ReadPaintPairs(root, "legacy_bodygroup_paints", _legacyCosmeticPaints, normalizeWeaponDefIndex: true);
+            ReadPaintPairs(root, "weapon_paints", _validWeaponCosmeticPaints);
+            ReadPaintPairs(root, "legacy_bodygroup_paints", _legacyCosmeticPaints);
             ReadUIntSet(root, "paint_kit_ids", _validPaintKits);
             ReadIntSet(root, "knife_defidx", _validKnifeCosmeticItemDefs);
             ReadIntSet(root, "glove_defidx", _validGloveCosmeticItemDefs);
@@ -88,111 +81,19 @@ public sealed partial class DemoTracerPlugin
         _cs2LibEconIndexVersion = "unknown";
     }
 
-    private static string ReadEconIndexVersion(JsonElement root)
-    {
-        if (root.TryGetProperty("source", out var source) &&
-            source.TryGetProperty("package", out var package) &&
-            package.ValueKind == JsonValueKind.String &&
-            package.GetString() == "@ianlucas/cs2-lib" &&
-            source.TryGetProperty("version", out var version) &&
-            version.ValueKind == JsonValueKind.String)
-        {
-            return version.GetString() ?? "unknown";
-        }
-        return "unknown";
-    }
-
     private void ReadPaintPairs(
         JsonElement root,
         string propertyName,
-        HashSet<(int WeaponDefIndex, uint PaintKit)> output,
-        bool normalizeWeaponDefIndex)
-    {
-        if (!root.TryGetProperty(propertyName, out var values) || values.ValueKind != JsonValueKind.Array)
-            return;
-
-        foreach (var value in values.EnumerateArray())
-        {
-            if (!TryReadIntProperty(value, "weapon_defidx", out var weaponDefIndex) ||
-                !TryReadUIntProperty(value, "paint_kit", out var paintKit) ||
-                paintKit == 0)
-            {
-                continue;
-            }
-
-            output.Add((normalizeWeaponDefIndex ? NormalizeWeaponDefIndex(weaponDefIndex) : weaponDefIndex, paintKit));
-        }
-    }
+        HashSet<(int WeaponDefIndex, uint PaintKit)> output)
+        => output.UnionWith(root.GetProperty(propertyName).EnumerateArray().Select(value => (
+            NormalizeWeaponDefIndex(value.GetProperty("weapon_defidx").GetInt32()),
+            value.GetProperty("paint_kit").GetUInt32())));
 
     private static void ReadIntSet(JsonElement root, string propertyName, HashSet<int> output)
-    {
-        if (!root.TryGetProperty(propertyName, out var values) || values.ValueKind != JsonValueKind.Array)
-            return;
-
-        foreach (var value in values.EnumerateArray())
-        {
-            if (TryReadInt(value, out var parsed))
-                output.Add(parsed);
-        }
-    }
+        => output.UnionWith(root.GetProperty(propertyName).EnumerateArray().Select(value => value.GetInt32()));
 
     private static void ReadUIntSet(JsonElement root, string propertyName, HashSet<uint> output)
-    {
-        if (!root.TryGetProperty(propertyName, out var values) || values.ValueKind != JsonValueKind.Array)
-            return;
-
-        foreach (var value in values.EnumerateArray())
-        {
-            if (TryReadUInt(value, out var parsed) && parsed > 0)
-                output.Add(parsed);
-        }
-    }
-
-    private static bool TryReadIntProperty(JsonElement value, string propertyName, out int parsed)
-    {
-        parsed = 0;
-        return value.ValueKind == JsonValueKind.Object &&
-               value.TryGetProperty(propertyName, out var property) &&
-               TryReadInt(property, out parsed);
-    }
-
-    private static bool TryReadUIntProperty(JsonElement value, string propertyName, out uint parsed)
-    {
-        parsed = 0;
-        return value.ValueKind == JsonValueKind.Object &&
-               value.TryGetProperty(propertyName, out var property) &&
-               TryReadUInt(property, out parsed);
-    }
-
-    private static bool TryReadInt(JsonElement value, out int parsed)
-    {
-        parsed = 0;
-        return value.ValueKind switch
-        {
-            JsonValueKind.Number => value.TryGetInt32(out parsed),
-            JsonValueKind.String => int.TryParse(
-                value.GetString(),
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out parsed),
-            _ => false
-        };
-    }
-
-    private static bool TryReadUInt(JsonElement value, out uint parsed)
-    {
-        parsed = 0;
-        return value.ValueKind switch
-        {
-            JsonValueKind.Number => value.TryGetUInt32(out parsed),
-            JsonValueKind.String => uint.TryParse(
-                value.GetString(),
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out parsed),
-            _ => false
-        };
-    }
+        => output.UnionWith(root.GetProperty(propertyName).EnumerateArray().Select(value => value.GetUInt32()));
 
     private bool IsKnownWeaponCosmeticPaint(int weaponDefIndex, uint paintKit)
         => _validWeaponCosmeticPaints.Contains((NormalizeWeaponDefIndex(weaponDefIndex), paintKit));

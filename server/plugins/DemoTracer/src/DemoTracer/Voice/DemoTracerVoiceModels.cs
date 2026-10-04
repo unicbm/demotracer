@@ -66,7 +66,7 @@ public sealed partial class DemoTracerPlugin
         public ulong DefaultSpeakerXuid { get; } = defaultSpeakerXuid;
         public byte[] AudioPayload { get; } = audioPayload;
         public List<VoiceClipRuntimeFrame> Frames { get; } = frames;
-        public List<int> RecipientSlots { get; private set; } = recipientSlots;
+        public List<int> RecipientSlots { get; } = recipientSlots;
         public bool StartedFromFreezePreroll { get; } = startedFromFreezePreroll;
         public bool IsAutomatic { get; init; }
         public int NextFrameIndex { get; set; }
@@ -75,13 +75,6 @@ public sealed partial class DemoTracerPlugin
         public int SentPackets { get; set; }
         public int FailedPackets { get; set; }
         public int LastReturnCode { get; set; }
-
-        public void PruneRecipients(Func<CCSPlayerController?, bool> predicate)
-        {
-            RecipientSlots = RecipientSlots
-                .Where(slot => predicate(Utilities.GetPlayerFromSlot(slot)))
-                .ToList();
-        }
 
         public bool TryResolveSpeaker(ulong xuid, out VoiceSpeakerPlayback speaker)
         {

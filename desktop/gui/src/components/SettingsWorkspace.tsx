@@ -942,7 +942,7 @@ export function SettingsWorkspace({
 
   const serverConfigView = (
     <div className="settings-pane server-config-pane">
-      <header className="settings-card settings-pane-toolbar">
+      {environment.cs2Path.trim() ? <header className="settings-card settings-pane-toolbar">
         <div className="settings-header-actions">
           <button className="secondary-button" type="button" disabled={!environment.cs2Path.trim() || loadingServerConfig || savingServerConfig || validatingServerConfig} onClick={() => void handleLoadServerConfig()}>
             <RefreshIcon size={16} />{loadingServerConfig ? words.loadingServerConfig : words.loadServerConfig}
@@ -954,7 +954,7 @@ export function SettingsWorkspace({
             <SlidersIcon size={16} />{savingServerConfig ? words.savingServerConfig : words.saveServerConfig}
           </button>
         </div>
-      </header>
+      </header> : null}
       {serverConfigFeedback ? <div className={`server-config-action-feedback is-${serverConfigFeedback.tone}`} role="status" aria-live="polite">{serverConfigFeedback.message}</div> : null}
 
       {!environment.cs2Path.trim() ? (

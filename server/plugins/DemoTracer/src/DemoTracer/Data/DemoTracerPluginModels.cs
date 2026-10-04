@@ -42,12 +42,11 @@ public sealed partial class DemoTracerPlugin
     {
         private readonly CCSPlayerController?[] _bySlot = new CCSPlayerController?[MaxPlayerSlots];
 
-        public TickPlayerSnapshot(
-            IReadOnlyList<CCSPlayerController> controllers,
-            IReadOnlyList<CCSPlayerController> teamPlayers)
+        public TickPlayerSnapshot(IReadOnlyList<CCSPlayerController> controllers)
         {
             Controllers = controllers;
-            TeamPlayers = teamPlayers;
+            TakeoverControllers = controllers.Where(controller =>
+                TryGetControllingBotState(controller, out var controllingBot) && controllingBot).ToArray();
 
             foreach (var controller in controllers)
             {
@@ -58,7 +57,7 @@ public sealed partial class DemoTracerPlugin
         }
 
         public IReadOnlyList<CCSPlayerController> Controllers { get; }
-        public IReadOnlyList<CCSPlayerController> TeamPlayers { get; }
+        public IReadOnlyList<CCSPlayerController> TakeoverControllers { get; }
 
         public bool TryGetSlot(int slot, out CCSPlayerController player)
         {
@@ -281,7 +280,7 @@ public sealed partial class DemoTracerPlugin
 
     private static bool TryParseHandoffMode(string value, out HandoffMode mode)
     {
-        mode = value.ToLowerInvariant() switch
+        HandoffMode? parsed = value.ToLowerInvariant() switch
         {
             "0" or "off" or "none" => HandoffMode.Off,
             "death" or "kill" => HandoffMode.Death,
@@ -290,15 +289,10 @@ public sealed partial class DemoTracerPlugin
             "1" or "auto" or "default" or
             "death_contact_c4" or "death_contact_c4planted" or "death_contact_c4_planted" or
             "death_or_contact_or_c4" or "death_or_contact_or_bomb" or "death_contact_bomb" => HandoffMode.DeathContactC4,
-            _ => HandoffMode.Off
+            _ => null
         };
-        return value.ToLowerInvariant() is "0" or "off" or "none" or
-            "death" or "kill" or
-            "contact" or "see" or "sight" or
-            "death_or_contact" or "contact_or_death" or
-            "1" or "auto" or "default" or
-            "death_contact_c4" or "death_contact_c4planted" or "death_contact_c4_planted" or
-            "death_or_contact_or_c4" or "death_or_contact_or_bomb" or "death_contact_bomb";
+        mode = parsed.GetValueOrDefault();
+        return parsed.HasValue;
     }
 
     private static bool HandoffIncludesDeath(HandoffMode mode)

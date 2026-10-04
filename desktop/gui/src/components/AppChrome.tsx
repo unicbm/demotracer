@@ -20,6 +20,7 @@ import {
   SidebarIcon,
   SlidersIcon,
   TraceMark,
+  ToolsIcon,
 } from "../icons";
 import type { TextDictionary } from "../i18n";
 
@@ -40,6 +41,7 @@ interface AppSidebarProps {
   libraryActive: boolean;
   analysisActive: boolean;
   analysisAvailable: boolean;
+  toolsActive: boolean;
   logsActive: boolean;
   settingsActive: boolean;
   updateAvailable: boolean;
@@ -47,6 +49,7 @@ interface AppSidebarProps {
   onOpenImport: () => void;
   onOpenLibrary: () => void;
   onOpenAnalysis: () => void;
+  onOpenTools: () => void;
   onOpenLogs: () => void;
   onOpenSettings: () => void;
   onToggleCollapsed: () => void;
@@ -146,6 +149,7 @@ export function AppSidebar({
   libraryActive,
   analysisActive,
   analysisAvailable,
+  toolsActive,
   logsActive,
   settingsActive,
   updateAvailable,
@@ -153,6 +157,7 @@ export function AppSidebar({
   onOpenImport,
   onOpenLibrary,
   onOpenAnalysis,
+  onOpenTools,
   onOpenLogs,
   onOpenSettings,
   onToggleCollapsed,
@@ -160,29 +165,16 @@ export function AppSidebar({
   const itemClass = (active: boolean) => `sidebar-nav-item${active ? " is-active" : ""}`;
   return (
     <aside className={`app-sidebar${collapsed ? " is-collapsed" : ""}`} aria-label={words.mainNavigation}>
-      <div className="sidebar-collapse-row">
-        <button
-          className="sidebar-collapse-button"
-          type="button"
-          onClick={onToggleCollapsed}
-          aria-label={collapsed ? words.expandSidebar : words.collapseSidebar}
-          aria-controls="app-sidebar-navigation"
-          aria-expanded={!collapsed}
-          title={collapsed ? words.expandSidebar : words.collapseSidebar}
-        >
-          <SidebarIcon size={18} />
-        </button>
-      </div>
       <div className="sidebar-quick-actions">
         <button
-          className={`sidebar-import-action${importActive ? " is-active" : ""}`}
+          className={itemClass(importActive)}
           type="button"
           disabled={busy}
           onClick={onOpenImport}
           aria-current={importActive ? "page" : undefined}
           title={words.navImport}
         >
-          <PlusIcon size={16} />
+          <PlusIcon size={17} />
           <span>{words.navImport}</span>
         </button>
       </div>
@@ -194,6 +186,10 @@ export function AppSidebar({
         <button className={itemClass(analysisActive)} type="button" disabled={!analysisAvailable} onClick={onOpenAnalysis} aria-current={analysisActive ? "page" : undefined} title={!analysisAvailable ? words.navAnalysisUnavailable : words.navAnalysis}>
           <ReplayIcon size={17} />
           <span>{words.navAnalysis}</span>
+        </button>
+        <button className={itemClass(toolsActive)} type="button" onClick={onOpenTools} aria-current={toolsActive ? "page" : undefined} title={words.navTools}>
+          <ToolsIcon size={17} />
+          <span>{words.navTools}</span>
         </button>
         <button className={itemClass(logsActive)} type="button" onClick={onOpenLogs} aria-current={logsActive ? "page" : undefined} title={words.navLogs}>
           <NoteIcon size={17} />
@@ -216,6 +212,17 @@ export function AppSidebar({
       </nav>
 
       <div className="sidebar-footer">
+        <button
+          className="sidebar-collapse-button"
+          type="button"
+          onClick={onToggleCollapsed}
+          aria-label={collapsed ? words.expandSidebar : words.collapseSidebar}
+          aria-controls="app-sidebar-navigation"
+          aria-expanded={!collapsed}
+          title={collapsed ? words.expandSidebar : words.collapseSidebar}
+        >
+          <SidebarIcon size={18} />
+        </button>
         <span className="sidebar-version">v{appVersion}</span>
       </div>
     </aside>

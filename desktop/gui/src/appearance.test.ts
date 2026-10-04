@@ -14,8 +14,7 @@ import {
   normalizeActiveCustomCssProfileId,
   normalizeThemeCustomization,
   normalizeUiFontSize,
-  normalizeUiScale,
-  recommendedUiScale,
+  recommendedUiFontSize,
   stepUiFontSize,
   THEME_PALETTE_DEFAULTS,
   themeCustomizationCss,
@@ -33,13 +32,6 @@ describe("appearance preferences", () => {
     assert.match(themeCustomizationCss(customization), /--sidebar-background-opacity: 73%/);
   });
 
-  it("normalizes legacy UI scale values for preference migration", () => {
-    assert.equal(normalizeUiScale("1.1"), 1.1);
-    assert.equal(normalizeUiScale(1.22), 1.25);
-    assert.equal(normalizeUiScale(null), 1);
-    assert.equal(normalizeUiScale("invalid"), 1);
-  });
-
   it("normalizes editable UI font sizes without blocking intermediate input", () => {
     assert.equal(normalizeUiFontSize("15"), 15);
     assert.equal(normalizeUiFontSize(12), 13);
@@ -49,11 +41,11 @@ describe("appearance preferences", () => {
     assert.equal(stepUiFontSize(13, -1), 13);
   });
 
-  it("recommends the larger first-run scale only for high-resolution displays", () => {
-    assert.equal(recommendedUiScale(1920, 1080, 1), 1);
-    assert.equal(recommendedUiScale(2560, 1440, 1), 1);
-    assert.equal(recommendedUiScale(2560, 1440, 1.5), 1.1);
-    assert.equal(recommendedUiScale(1920, 1080, 2), 1.1);
+  it("recommends a larger first-run font only for high-resolution displays", () => {
+    assert.equal(recommendedUiFontSize(1920, 1080, 1), 15);
+    assert.equal(recommendedUiFontSize(2560, 1440, 1), 15);
+    assert.equal(recommendedUiFontSize(2560, 1440, 1.5), 16);
+    assert.equal(recommendedUiFontSize(1920, 1080, 2), 16);
   });
 
   it("keeps custom CSS local storage bounded and ignores non-text values", () => {

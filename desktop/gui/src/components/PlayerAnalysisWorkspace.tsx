@@ -45,6 +45,7 @@ interface PlayerAnalysisWorkspaceProps {
   onBack: () => void;
   onCopy: (value: string, target: CopyTarget) => void;
   onOpenExternal: (url: string) => void;
+  onEditCrosshair: (code: string) => void;
   inventorySelection: InventorySimulatorSelectionController;
 }
 
@@ -84,6 +85,7 @@ export function PlayerAnalysisWorkspace({
   onBack,
   onCopy,
   onOpenExternal,
+  onEditCrosshair,
   inventorySelection,
 }: PlayerAnalysisWorkspaceProps) {
   const entries = teams.flatMap((team) => team.players.map((player, playerIndex) => {
@@ -306,6 +308,7 @@ export function PlayerAnalysisWorkspace({
                 copiedTarget={copiedTarget}
                 onCopy={onCopy}
                 onOpenExternal={onOpenExternal}
+                onEditCrosshair={onEditCrosshair}
                 inventorySelection={inventorySelection}
                 view="evidence"
               />

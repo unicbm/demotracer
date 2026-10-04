@@ -226,13 +226,14 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        state.PruneRecipients(IsVoiceRecipient);
+        state.RecipientSlots.RemoveAll(static slot => !IsVoiceRecipient(Utilities.GetPlayerFromSlot(slot)));
         if (state.RecipientSlots.Count == 0)
         {
             StopVoiceTestPlayback("no_live_recipients");
             return;
         }
 
+        Span<int> audibleRecipients = stackalloc int[MaxPlayerSlots];
         var elapsed = Math.Max(0.0f, Server.CurrentTime - state.StartTime);
         while (state.NextFrameIndex < state.Frames.Count)
         {
@@ -257,11 +258,11 @@ public sealed partial class DemoTracerPlugin
                 continue;
             }
 
-            var audibleRecipients = AudibleVoiceRecipientsForSpeaker(
-                state.RecipientSlots,
-                sender,
-                speaker.ExpectedTeam);
-            if (audibleRecipients.Count == 0)
+            var recipientCount = 0;
+            foreach (var slot in state.RecipientSlots)
+                if (CanVoiceRecipientHearSpeaker(Utilities.GetPlayerFromSlot(slot), sender, speaker.ExpectedTeam))
+                    audibleRecipients[recipientCount++] = slot;
+            if (recipientCount == 0)
             {
                 state.NextFrameIndex++;
                 continue;
@@ -279,7 +280,7 @@ public sealed partial class DemoTracerPlugin
             try
             {
                 var audio = IntPtr.Add(audioHandle.AddrOfPinnedObject(), frame.AudioOffset);
-                foreach (var recipientSlot in audibleRecipients)
+                foreach (var recipientSlot in audibleRecipients[..recipientCount])
                 {
                     var rc = SendVoiceFrameSlice(
                         recipientSlot,

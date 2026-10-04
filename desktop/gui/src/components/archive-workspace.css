@@ -1458,6 +1458,9 @@
   font-weight: var(--weight-semibold);
 }
 
+.archive-issues li span { min-width: 0; overflow-wrap: anywhere; }
+.archive-issues li code { display: block; color: var(--text-secondary); }
+
 .archive-issues li.is-error span { color: var(--danger); }
 .archive-issues li.is-warning span { color: var(--warning); }
 
@@ -1476,6 +1479,8 @@
   color: var(--text-primary);
   font-size: var(--type-section);
 }
+
+.archive-no-playable > p { margin: 0; color: var(--text-secondary); font-size: var(--type-support); }
 
 /* Compact archive workspace */
 .archive-toolbar {

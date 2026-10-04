@@ -31,13 +31,9 @@ uses the same plan without restarting.
 match statistics, chat, or voice metadata because they can draw the two sides
 from different source rounds. Recorded teammate colors remain available.
 
-Continuation, including overtime, selects the long-gun pool from recorded
-live-start inventories: every recorded player on the selected side must have a
-rifle or sniper rifle. Pistol rounds, SMG/shotgun/machine-gun or mixed pools, and
-missing loadout evidence are excluded. Cash balances, economy labels, and the
-balance-alignment setting do not affect selection. Both teams need at least two
-eligible source rounds on each side; both side assignments are prefetched so an
-overtime team swap can use the matching sources immediately.
+Playoff continuation draws from live-start inventories where every recorded
+player on the selected side has a rifle/sniper rifle. Both teams need at least
+two eligible rounds per side. Cash and economy settings do not affect selection.
 
 ## Desktop Preset
 
@@ -76,16 +72,9 @@ demo-backed throw evidence. Balance alignment writes only the demo-backed
 `m_iAccount` value once when the corresponding DTR round starts; missing
 evidence is left untouched.
 
-Advanced projectile diagnostics:
-
-Projectile alignment is uniform for every grenade kind: DemoTracer applies the
-recorded initial position and velocity once through CS2's entity teleport path
-before the projectile's first native physics step. The spawn listener records
-the entity; the synchronous physics hook applies the birth state without
-waiting another frame or shifting any timer. `dtr_runtime` reports the hook's
-actual availability. Flight, collision, detonation, and effect propagation remain
-owned by CS2. Effect positions are diagnostic evidence only; playback never teleports a
-projectile to an effect point or forces detonation.
+Projectile alignment applies recorded birth position and velocity once before
+the first physics step. CS2 owns subsequent flight, collision and detonation;
+effect positions are diagnostics only. `dtr_runtime` reports hook availability.
 
 | Command | Purpose |
 | --- | --- |
@@ -104,18 +93,12 @@ Use identity `name` or `off` when the original demo player is also connected to
 the local server. `steam` is the normal mode. `avatar` additionally applies a
 valid manifest PNG when available.
 
-Identity modes `name`, `steam`, and `avatar` also apply a recorded player clan
-tag and Steam group ID through BotHider. CS2 renders the separate native tag
-with its own font; it is never appended to the player's name. Missing clan
-evidence leaves the base presentation intact; an explicit empty tag clears it.
-Identity `off` or lease release leaves the applied presentation in place. Tags
-follow the existing retained-identity behavior after natural playback finish.
+`name`, `steam` and `avatar` also apply recorded clan tags/group IDs. Missing evidence leaves
+presentation unchanged; an explicit empty tag clears it. Identity `off` or
+lease release leaves the applied presentation in place.
 
-Replacement DTR bots with an unassigned TAB/HUD teammate color are repaired
-after spawning, independently of match-statistics synchronization. A recorded
-color is preferred; if it is occupied, the bot takes a free team color. Existing
-colors and human players are left unchanged. Missing recorded color evidence
-does not invent an override.
+Unassigned bot teammate colors use recorded evidence when available, selecting
+a free color if occupied. Existing colors and human players remain unchanged.
 
 ### Cosmetics
 
@@ -124,42 +107,18 @@ dtr_cosmetics [status|off|weapons|basic|full]
 dtr_cosmetics <weapons|knives|gloves|names|agents|stickers|charms|preserve_native> <on|off>
 ```
 
-`weapons` enables demo-backed paints and custom names for ordinary weapons;
-`full` additionally enables stickers and charms. Those optional fields remain
-default-off and are claimed only when the demo contains positive evidence for
-that weapon definition.
+| Preset | Enabled cosmetics |
+| --- | --- |
+| `off` | None |
+| `weapons` | Ordinary weapon paints and custom names |
+| `basic` | Weapons plus knives, gloves and agents |
+| `full` | Basic plus stickers and charms |
 
-The playback bundle includes the matched BotRandomizer v2 replay-plan provider.
-DemoTracer submits normalized demo evidence as parameters only; BotRandomizer
-is the sole cosmetic entity writer. Weapons and knives are prepared before
-`GiveNamedItem` constructs them, while Agent, gloves, and music kits are applied
-from BotRandomizer's next-spawn lifecycle. Missing Agent evidence preserves the
-engine-selected model. DemoTracer never rebuilds or hot-repairs cosmetic
-entities. Review the GSLT warning in the root README before enabling cosmetics.
-
-The bundled BotRandomizer also accepts the Bot Improver 1.4.4 Panel command
-from the server console or a server `.cfg`:
-
-```text
-bot_randomizer github.com/ed0ard/CS2-Bot-Randomizer <weapons|knives|gloves|agents|music|stickers|charms> <0|1>
-```
-
-All seven randomization switches default to enabled. They accept `on/off`,
-`yes/no`, and `true/false` as well. Positive DTR evidence takes precedence over
-these randomization defaults; missing Agent evidence retains DTR's existing
-preserve-engine-default policy. Without a DTR claim, a disabled category adds
-no randomized cosmetics. Disabling agents selects the normal team model, and
-disabling music clears the music kit at the next spawn or MVP event.
-The agent option also applies to round-start team intros; an explicit DTR agent
-keeps its recorded item ID, while DTR's preserve-engine-default policy leaves
-the intro agent untouched.
-
-Settings are read at natural spawn, item construction, and the existing
-wearable/pickup callbacks. Commands do not rebuild live inventory, reroll
-cached selections, revoke DTR plans, or unload a plugin. Existing weapons keep
-their applied cosmetics until replaced. Settings survive map changes; after a
-plugin reload, execute the server configuration again to restore its switches.
-Install one `BotRandomizer` provider in the normal plugin directory.
+Cosmetics default off and require demo evidence. The bundled BotRandomizer
+API v3 provider is the sole entity writer; DemoTracer submits plans. Missing
+agent evidence preserves the engine model. See [BotRandomizer](../server/runtime/BotRandomizer/README.md)
+for randomization commands, configuration and host requirements. Changes apply
+during spawn/item creation; existing items are not rebuilt.
 
 ### Handoff
 
@@ -171,9 +130,7 @@ dtr_handoff_360 [0|1]
 The default is `death_contact_c4 slot`: release an individual slot on death or
 contact; C4 planted releases all active slots. Contact uses fresh native bot
 perception. The 360 option disables only the native field-of-view restriction
-during replay; native visibility checks remain active. Range and LOS overrides
-are no longer supported. Existing `threat_360_range` and `threat_360_los` config
-fields are ignored; remove them when updating a server configuration.
+during replay; native visibility checks remain active.
 
 ### Chat and Voice
 
@@ -186,12 +143,11 @@ fields are ignored; remove them when updating a server configuration.
 | `dtr_voice_mix <voice_clip.dtv> <xuid=slot[,xuid=slot...]|loaded> [recipient_slot|all]` | Test multi-speaker mapping. |
 | `dtr_voice_stop` | Stop voice test playback. |
 
-When the demo contains usable voice frames, the converter writes
-`voice/roundXX.dtv` beside the manifest archive. Keep the sidecar with its
-matching manifest; copying only `.dtr` files is insufficient. DemoTracer maps
-speaker XUIDs to loaded replay bots. Observers hear all replay voice, human T/CT
-players hear their own team, and bots and HLTV are not recipients. Missing or
-unusable voice evidence simply produces no sidecar.
+Voice exports use `voice/roundXX.dtv` relative to the manifest, with at least
+two round-number digits. Keep these sidecars with the archive. Speakers map by
+XUID to replay bots. Observers hear all replay voice; human T/CT players hear
+their own team. Bots and HLTV are not recipients. Missing usable voice evidence
+produces no sidecar.
 
 ## Manual Replay Control
 
@@ -207,18 +163,15 @@ debugging.
 | `dtr_unload <slot>` | Unload one slot and clear its metadata. |
 | `dtr_kick <exact-name>|slot <slot>|sid <steamid64>` | Release and kick a replay bot safely. |
 
-Looping waits for all still-controlled looping slots to finish, then restarts
-them together from the live-play index. Each iteration refreshes event and
-projectile cursors and the replay loadout. Stopped or handed-off slots stay out
-of subsequent iterations. A complete loaded-round loop also restarts automatic
-chat and voice; manual slot loops do not start round media, and an independent
-voice test keeps playing.
+Loops restart the still-controlled slots together from the live-play index,
+refreshing cursors and loadouts. Stopped/handed-off slots stay out.
+A complete round loop restarts chat and voice; individual slot loops do not.
 
 ## Configuration
 
 Optional defaults live in `demotracer.config.json` next to `DemoTracer.dll`.
-Start from the packaged `demotracer.config.example.json`. The parser accepts
-JSON comments and trailing commas.
+Start from the packaged `demotracer.config.example.json`, using `fidelity`,
+`match` and `cosmetics` sections. JSON comments and trailing commas are accepted.
 
 | Setting | Default |
 | --- | --- |
@@ -249,28 +202,12 @@ plugin with `css_plugins reload DemoTracer`.
 | `dtr_controller_status` | Print native hooks and per-slot locks. |
 | `dtr_controller_perf [0|1|reset]` | Print, toggle, or reset native performance counters. |
 
-The legacy command aliases and `dtr_set` are no longer supported. Use the
-commands above. Runtime configuration uses `fidelity`, `match`, and `cosmetics`;
-the old `align` section is rejected.
-
 ## Known Boundaries
 
-- The former `!dtr_controller_record` / `!dtr_controller_replay` JSON recording
-  commands and controller SDK are retired. Use the GUI demo-to-.dtr workflow.
-- Playback targets local Windows x64 servers with the source map and enough safe
-  bot slots; it is not intended for matchmaking.
-- `.dtr` preserves its recorded evidence but is not a complete reconstruction
-  of every CS2 command or physics interaction.
-- Plugins that control bot AI, buying, inventory, movement, identity, or
-  presentation can conflict with replay state.
-- Boosts and player-on-player movement can differ when a human replaces a
-  recorded participant; complex handoff transitions remain best-effort.
-- Scoreboard alignment is best-effort and default-off. Some demos contain team
-  or default avatars rather than true player avatars.
-- Projectile alignment is not exact for every throw, especially molotov and
-  incendiary effects. Uncertain evidence stays on native CS2 behavior.
-- Voice requires usable voice netmessages. Sticker and keychain transforms
-  cannot reproduce every CS2 presentation detail exactly.
-- Cosmetic writes are explicit opt-in and positive-evidence-only. A missing or
-  incompatible bundled provider makes DemoTracer fail closed without stopping
-  playback; there is no managed direct-write fallback.
+- Playback needs the source map and enough safe bot slots on a local Windows x64 server.
+- Archived evidence does not reconstruct every CS2 physics interaction.
+  Boosts, handoff transitions and grenade effects can differ.
+- Other plugins writing bot movement, inventory or presentation may conflict.
+- Scoreboard and cosmetic alignment default off. Missing/incompatible cosmetic
+  providers disable cosmetic writes while playback continues.
+- Voice requires usable netmessages; some demos contain team/default avatars.

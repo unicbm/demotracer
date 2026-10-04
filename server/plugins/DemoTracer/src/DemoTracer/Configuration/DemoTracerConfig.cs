@@ -21,6 +21,7 @@ public sealed partial class DemoTracerPlugin
     private static readonly JsonSerializerOptions RuntimeConfigJsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
     };
@@ -200,27 +201,10 @@ public sealed partial class DemoTracerPlugin
 
         if (!string.IsNullOrWhiteSpace(cosmetics.Preset))
         {
-            switch (cosmetics.Preset.Trim().ToLowerInvariant())
-            {
-                case "off":
-                case "none":
-                    ApplyCosmeticPreset(CosmeticPreset.Off);
-                    break;
-                case "weapons":
-                case "weapon":
-                    ApplyCosmeticPreset(CosmeticPreset.Weapons);
-                    break;
-                case "basic":
-                    ApplyCosmeticPreset(CosmeticPreset.Basic);
-                    break;
-                case "full":
-                case "all":
-                    ApplyCosmeticPreset(CosmeticPreset.Full);
-                    break;
-                default:
-                    reply($"[DTR WARN] ignored config cosmetics.preset=\"{cosmetics.Preset}\"");
-                    break;
-            }
+            if (ParseCosmeticPreset(cosmetics.Preset) is { } preset)
+                ApplyCosmeticPreset(preset);
+            else
+                reply($"[DTR WARN] ignored config cosmetics.preset=\"{cosmetics.Preset}\"");
         }
 
         if (cosmetics.Weapons.HasValue)
@@ -318,128 +302,95 @@ public sealed partial class DemoTracerPlugin
 
     private static bool TryParseReplayIdentityMode(string value, out ReplayIdentityMode mode)
     {
-        mode = value.Trim().ToLowerInvariant() switch
+        ReplayIdentityMode? parsed = value.Trim().ToLowerInvariant() switch
         {
             "off" or "0" or "false" => ReplayIdentityMode.Off,
             "name" => ReplayIdentityMode.Name,
             "steam" or "sid" or "steamid" or "1" or "on" or "true" => ReplayIdentityMode.Steam,
             "avatar" or "avatars" or "event_avatar" or "event-avatar" => ReplayIdentityMode.Avatar,
             "full" => ReplayIdentityMode.Avatar,
-            _ => ReplayIdentityMode.Off,
+            _ => null,
         };
-        return value.Trim().ToLowerInvariant() is
-            "off" or "0" or "false" or
-            "name" or
-            "steam" or "sid" or "steamid" or "1" or "on" or "true" or
-            "avatar" or "avatars" or "event_avatar" or "event-avatar" or
-            "full";
+        mode = parsed.GetValueOrDefault();
+        return parsed.HasValue;
     }
 
     public sealed class DemoTracerRuntimeConfig
     {
-        [JsonPropertyName("identity")]
         public string? Identity { get; set; }
 
-        [JsonPropertyName("allow_partial")]
         public bool? AllowPartial { get; set; }
 
-        [JsonPropertyName("playoff")]
         public bool? Playoff { get; set; }
 
-        [JsonPropertyName("chat_auto")]
         public bool? ChatAuto { get; set; }
 
-        [JsonPropertyName("round_banner")]
         public bool? RoundBanner { get; set; }
 
-        [JsonPropertyName("handoff")]
         public DemoTracerHandoffConfig? Handoff { get; set; }
 
         [JsonPropertyName("align")]
         public JsonElement? UnsupportedAlign { get; set; }
 
-        [JsonPropertyName("fidelity")]
         public DemoTracerFidelityConfig? Fidelity { get; set; }
 
-        [JsonPropertyName("match")]
         public DemoTracerMatchConfig? Match { get; set; }
 
-        [JsonPropertyName("cosmetics")]
         public DemoTracerCosmeticsConfig? Cosmetics { get; set; }
     }
 
     public sealed class DemoTracerHandoffConfig
     {
-        [JsonPropertyName("mode")]
         public string? Mode { get; set; }
 
-        [JsonPropertyName("scope")]
         public string? Scope { get; set; }
 
         [JsonPropertyName("threat_360")]
         public bool? Threat360 { get; set; }
 
-        [JsonPropertyName("viewmodel_continuity")]
         public string? ViewmodelContinuity { get; set; }
     }
 
     public sealed class DemoTracerFidelityConfig
     {
-        [JsonPropertyName("preset")]
         public string? Preset { get; set; }
 
-        [JsonPropertyName("weapons")]
         public bool? Weapons { get; set; }
 
-        [JsonPropertyName("projectiles")]
         public bool? Projectiles { get; set; }
 
-        [JsonPropertyName("crosshair")]
         public bool? Crosshair { get; set; }
 
-        [JsonPropertyName("left_hand_desired")]
         public bool? LeftHandDesired { get; set; }
 
-        [JsonPropertyName("balance")]
         public bool? Balance { get; set; }
     }
 
     public sealed class DemoTracerMatchConfig
     {
-        [JsonPropertyName("preset")]
         public string? Preset { get; set; }
 
-        [JsonPropertyName("scoreboard")]
         public bool? Scoreboard { get; set; }
     }
 
     public sealed class DemoTracerCosmeticsConfig
     {
-        [JsonPropertyName("preset")]
         public string? Preset { get; set; }
 
-        [JsonPropertyName("weapons")]
         public bool? Weapons { get; set; }
 
-        [JsonPropertyName("knives")]
         public bool? Knives { get; set; }
 
-        [JsonPropertyName("gloves")]
         public bool? Gloves { get; set; }
 
-        [JsonPropertyName("names")]
         public bool? Names { get; set; }
 
-        [JsonPropertyName("agents")]
         public bool? Agents { get; set; }
 
-        [JsonPropertyName("stickers")]
         public bool? Stickers { get; set; }
 
-        [JsonPropertyName("charms")]
         public bool? Charms { get; set; }
 
-        [JsonPropertyName("preserve_native")]
         public bool? PreserveNative { get; set; }
     }
 }

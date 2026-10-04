@@ -73,6 +73,8 @@ import {
 } from "./components/BatchWorkspace";
 import { ExportInspector } from "./components/ExportInspector";
 import { LibraryWorkspace, type LibrarySort } from "./components/LibraryWorkspace";
+import { ToolsWorkspace } from "./components/ToolsWorkspace";
+import { INITIAL_CROSSHAIR, importCrosshair, type CrosshairEditorSession } from "./crosshairEditor";
 import { LogsWorkspace } from "./components/LogsWorkspace";
 import { InventorySimulatorPanel } from "./components/InventorySimulatorPanel";
 import type { PlaybackPresetOptions } from "./playbackCommand";
@@ -106,9 +108,7 @@ import {
 } from "./telemetry";
 import {
   ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY,
-  CUSTOM_CSS_STORAGE_KEY,
   normalizeActiveCustomCssProfileId,
-  normalizeCustomCss,
   normalizeCustomCssProfiles,
   normalizeSidebarCollapsed,
   normalizeTheme,
@@ -172,6 +172,7 @@ import type {
 } from "./types";
 
 function App() {
+  const [crosshairSession, setCrosshairSession] = useState<CrosshairEditorSession>(() => ({ original: INITIAL_CROSSHAIR, draft: INITIAL_CROSSHAIR, input: "" }));
   const [language, setLanguage] = useState<Language>(storedLanguage);
   const [theme, setTheme] = useState<Theme>(() => normalizeTheme(localStorage.getItem(THEME_STORAGE_KEY)));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
@@ -183,15 +184,9 @@ function App() {
   ));
   const [workspaceBackground, setWorkspaceBackground] = useState<WorkspaceBackground | null>(null);
   const [customCssProfiles, setCustomCssProfiles] = useState<CustomCssProfile[]>(loadCustomCssProfiles);
-  const [activeCustomCssProfileId, setActiveCustomCssProfileId] = useState<string | null>(() => {
-    const storedActive = normalizeActiveCustomCssProfileId(
-      localStorage.getItem(ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY),
-      customCssProfiles,
-    );
-    if (storedActive) return storedActive;
-    const legacyCss = normalizeCustomCss(localStorage.getItem(CUSTOM_CSS_STORAGE_KEY));
-    return customCssProfiles.find((profile) => legacyCss && profile.css === legacyCss)?.id ?? null;
-  });
+  const [activeCustomCssProfileId, setActiveCustomCssProfileId] = useState<string | null>(() => (
+    normalizeActiveCustomCssProfileId(localStorage.getItem(ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY), customCssProfiles)
+  ));
   const [phase, setPhase] = useState<Phase>("idle");
   const [singleTask, setSingleTask] = useState<"analysis" | "conversion" | null>(null);
   const [singleTaskPanelOpen, setSingleTaskPanelOpen] = useState(false);
@@ -284,17 +279,20 @@ function App() {
     loading: activityLogsLoading,
     range: activityLogRange,
     setRange: setActivityLogRange,
-    gsiStatus: gsiRuntimeStatus,
+    diagnostics,
+    transportError,
     record: recordActivityLog,
     refresh: refreshActivityLogs,
     openDirectory: openActivityLogDirectory,
     clear: clearActivityLogs,
   } = useActivityLogController({
-    language,
-    logsActive: activeSection === "logs",
     cs2Path: localEnvironment.cs2Path,
     onError: setGlobalError,
   });
+
+  useEffect(() => {
+    if (globalError) recordActivityLog("error", "app", `${globalError.code}\n${globalError.message}`);
+  }, [globalError, recordActivityLog]);
 
   const taskTokenRef = useRef(0);
   const manifestReadTokenRef = useRef(0);
@@ -474,6 +472,8 @@ function App() {
   // Library and import pages already have headings; analysis uses match context.
   const sessionTitle = activeSection === "analysis"
     ? analysisSessionTitle || words.navAnalysis
+    : activeSection === "tools"
+      ? words.navTools
     : activeSection === "logs"
       ? words.navLogs
       : activeSection === "settings"
@@ -896,7 +896,7 @@ function App() {
         durationBucket: telemetryDurationBucket(Date.now() - telemetryStartedAt),
       });
       if (preserveArchive) {
-        recordActivityLog("error", "analysis", `Parsing failed (${error.code}): ${fileName(path) || path}`);
+        recordActivityLog("error", "analysis", `Parsing failed (${error.code}): ${fileName(path) || path}\n${error.message}`);
         setSingleTask(null);
         setSingleTaskPanelOpen(false);
         setPhase("archive");
@@ -907,7 +907,7 @@ function App() {
       dispatchLibraryWorkspace({ type: "clear" });
       dispatchLibraryWorkspace({ type: "navigate", section: "analysis" });
       localStorage.removeItem(LIBRARY_SESSION_STORAGE_KEY);
-      recordActivityLog("error", "analysis", `Parsing failed (${error.code}): ${fileName(path) || path}`);
+      recordActivityLog("error", "analysis", `Parsing failed (${error.code}): ${fileName(path) || path}\n${error.message}`);
       setAnalysisError(userFacingErrorMessage(error, language));
       setPhase("analysisFailed");
       setSingleTask(null);
@@ -2411,7 +2411,7 @@ function App() {
         errorCode: error.code,
         durationBucket: telemetryDurationBucket(Date.now() - telemetryStartedAt),
       });
-      recordActivityLog("error", "conversion", `Conversion failed (${error.code}): ${fileName(sourcePath) || sourcePath}`);
+      recordActivityLog("error", "conversion", `Conversion failed (${error.code}): ${fileName(sourcePath) || sourcePath}\n${error.message}`);
       if (error.code === "output_exists") {
         setOverwriteConflict({ root: error.path || outputRoot, exists: true });
         setPhase("selecting");
@@ -2645,6 +2645,7 @@ function App() {
           libraryActive={activeSection === "library"}
           analysisActive={activeSection === "analysis"}
           analysisAvailable={analysisAvailable}
+          toolsActive={activeSection === "tools"}
           logsActive={activeSection === "logs"}
           settingsActive={activeSection === "settings"}
           updateAvailable={actionableUpdateAvailable}
@@ -2658,6 +2659,7 @@ function App() {
           }}
           onOpenLibrary={() => dispatchLibraryWorkspace({ type: "navigate", section: "library" })}
           onOpenAnalysis={() => dispatchLibraryWorkspace({ type: "navigate", section: "analysis" })}
+          onOpenTools={() => dispatchLibraryWorkspace({ type: "navigate", section: "tools" })}
           onOpenLogs={() => dispatchLibraryWorkspace({ type: "navigate", section: "logs" })}
           onOpenSettings={() => dispatchLibraryWorkspace({ type: "navigate", section: "settings" })}
           onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
@@ -2716,11 +2718,14 @@ function App() {
           </button>
         ) : null}
 
-        {activeSection === "logs" ? (
+        {activeSection === "tools" ? (
+          <ToolsWorkspace words={words} session={crosshairSession} onChange={setCrosshairSession} copiedTarget={copiedTarget} onCopy={(value, target) => void copyText(value, target)} />
+        ) : activeSection === "logs" ? (
           <LogsWorkspace
             words={words}
             entries={activityLogs}
-            gsiStatus={gsiRuntimeStatus}
+            diagnostics={diagnostics}
+            transportError={transportError}
             loading={activityLogsLoading}
             range={activityLogRange}
             onRangeChange={setActivityLogRange}
@@ -2922,6 +2927,14 @@ function App() {
             onPlaybackPresetChange={(patch) => setPlaybackPreset((current) => ({ ...current, ...patch }))}
             onCopy={(value, target) => void copyText(value, target)}
             onOpenExternal={(url) => void openExternal(url)}
+            onEditCrosshair={(code) => {
+              try {
+                setCrosshairSession(importCrosshair(code));
+                dispatchLibraryWorkspace({ type: "navigate", section: "tools" });
+              } catch {
+                setGlobalError({ code: "invalid_crosshair", message: words.chInvalidCode });
+              }
+            }}
             onSyncInventorySimulator={startInventorySimulatorBatch}
             onOpenFolder={() => void openPath(archive.root)}
             onSelectPlayer={(player) => dispatchLibraryWorkspace({ type: "selectPlayer", player })}
@@ -2933,7 +2946,6 @@ function App() {
             }}
             onBackToLibrary={() => dispatchLibraryWorkspace({ type: "navigate", section: "library" })}
             onReconvert={() => setReparseTarget({ kind: "archive", archive })}
-            onChooseManifest={() => void chooseManifest()}
           />
         ) : null}
         {phase === "analysisFailed" ? (

@@ -7,11 +7,12 @@
 use crate::model::source_state::SourceStateChange;
 use crate::model::{
     Cs2Rec, Cs2RecHeader, HighFidelityMetadata, MovementSnapshot, ProjectileKind,
-    ReplayCommandFrame, ReplayInputHistoryEntry, ReplayInputHistoryTick, ReplayMovementExtra,
-    ReplayProjectile, ReplayTick, SubtickMove, COMMAND_FIELDS_ALL, DTR_FORMAT_VERSION,
-    HIGH_FIDELITY_SCHEMA_VERSION, INPUT_HISTORY_FIELDS_ALL,
+    ReplayCommandFrame, ReplayInputHistoryEntry, ReplayInputHistoryTick, ReplayInventorySnapshot,
+    ReplayMovementExtra, ReplayProjectile, ReplayTick, SubtickMove, COMMAND_FIELDS_ALL,
+    DTR_FORMAT_VERSION, HIGH_FIDELITY_SCHEMA_VERSION, INPUT_HISTORY_FIELDS_ALL,
 };
 use crate::{io_error, Error, Result};
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Cursor, Read, Write};
 use std::path::Path;
@@ -324,7 +325,35 @@ fn read_rec_bounded<R: Read>(reader: &mut ReadBudget<R>, limits: DtrReadLimits) 
     finish_read_rec(reader, rec)
 }
 
-fn finish_read_rec<R: Read>(reader: &mut ReadBudget<R>, rec: Cs2Rec) -> Result<Cs2Rec> {
+fn finish_read_rec<R: Read>(reader: &mut ReadBudget<R>, mut rec: Cs2Rec) -> Result<Cs2Rec> {
+    let metadata = &mut rec.high_fidelity;
+    if metadata.schema_version == 4 {
+        metadata
+            .inventory_snapshots
+            .sort_by_key(|s| (s.tick_index, s.tick));
+        let mut previous = BTreeMap::<u64, ReplayInventorySnapshot>::new();
+        for snapshot in &mut metadata.inventory_snapshots {
+            let before = previous.get(&snapshot.steam_id);
+            for item in &mut snapshot.weapon_def_counts {
+                let count = before
+                    .and_then(|s| {
+                        s.weapon_def_counts
+                            .iter()
+                            .find(|old| old.weapon_def_index == item.weapon_def_index)
+                    })
+                    .map_or(0, |old| old.count);
+                item.acquired = item.count > count;
+            }
+            let (armor, helmet, defuser) = before.map_or((0, false, false), |s| {
+                (s.armor_value, s.has_helmet, s.has_defuser)
+            });
+            snapshot.gear_acquired = u8::from(snapshot.armor_value > armor)
+                | (u8::from(snapshot.has_helmet && !helmet) << 1)
+                | (u8::from(snapshot.has_defuser && !defuser) << 2);
+            previous.insert(snapshot.steam_id, snapshot.clone());
+        }
+        metadata.schema_version = HIGH_FIDELITY_SCHEMA_VERSION;
+    }
     validate_rec_semantics(&rec)?;
     reader.require_eof()?;
     Ok(rec)
@@ -2574,6 +2603,55 @@ mod tests {
             parsed.subticks[0].analog_forward.to_bits(),
             (-0.0_f32).to_bits()
         );
+    }
+
+    #[test]
+    fn rec_reader_adapts_schema4_inventory() {
+        let mut rec = sample_rec();
+        let mut metadata = serde_json::json!({
+            "schema_version": 4, "events": [], "inventory_snapshots": [
+                {"tick_index": 0, "tick": 100, "steam_id": 1,
+                 "weapon_def_counts": [{"weapon_def_index": 43, "count": 2}],
+                 "active_weapon_def_index": 43, "armor_value": 100,
+                 "has_helmet": true, "has_defuser": false},
+                {"tick_index": 1, "tick": 101, "steam_id": 1,
+                 "weapon_def_counts": [{"weapon_def_index": 43, "count": 2}],
+                 "active_weapon_def_index": 43, "armor_value": 60,
+                 "has_helmet": true, "has_defuser": true}
+            ]
+        });
+        for schema in [0, 3, 4, 5, 6] {
+            metadata["schema_version"] = schema.into();
+            rec.high_fidelity = serde_json::from_value(metadata.clone()).unwrap();
+            let json = serde_json::to_vec(&metadata).unwrap();
+            let mut bytes = encoded_sample_rec();
+            bytes.truncate(section_count_offset(&bytes));
+            let metadata_len_offset = play_start_offset() + 4;
+            bytes[metadata_len_offset..metadata_len_offset + 4]
+                .copy_from_slice(&(json.len() as u32).to_le_bytes());
+            write_sectioned_body(&mut bytes, &rec, &json).unwrap();
+            let result = read_rec(&mut bytes.as_slice());
+            if schema != 4 && schema != 5 {
+                assert!(result.unwrap_err().to_string().contains("metadata schema"));
+                continue;
+            }
+            let parsed = result.unwrap();
+            assert_eq!(
+                parsed.high_fidelity.schema_version,
+                HIGH_FIDELITY_SCHEMA_VERSION
+            );
+            let snapshots = &parsed.high_fidelity.inventory_snapshots;
+            assert_eq!(snapshots[0].weapon_def_counts[0].acquired, schema == 4);
+            assert_eq!(snapshots[0].gear_acquired, if schema == 4 { 3 } else { 0 });
+            assert!(!snapshots[1].weapon_def_counts[0].acquired);
+            assert_eq!(snapshots[1].gear_acquired, if schema == 4 { 4 } else { 0 });
+            let mut rewritten = Vec::new();
+            write_rec(&mut rewritten, &parsed).unwrap();
+            assert_eq!(
+                read_rec(&mut rewritten.as_slice()).unwrap().high_fidelity,
+                parsed.high_fidelity
+            );
+        }
     }
 
     #[test]

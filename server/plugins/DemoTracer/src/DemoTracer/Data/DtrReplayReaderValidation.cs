@@ -163,7 +163,7 @@ internal static partial class DtrReplayReader
     {
         var metadata = JsonSerializer.Deserialize<ReplayHighFidelityMetadata>(metadataJson, HifiJsonOptions)
             ?? ReplayHighFidelityMetadata.Empty;
-        if (metadata.SchemaVersion != ReplayHighFidelityMetadata.CurrentSchemaVersion)
+        if (metadata.SchemaVersion is not 4 and not ReplayHighFidelityMetadata.CurrentSchemaVersion)
             throw new InvalidDataException("unsupported replay metadata schema; reconvert the demo with the current GUI");
         metadata.Events ??= [];
         metadata.InventorySnapshots ??= [];
@@ -171,6 +171,11 @@ internal static partial class DtrReplayReader
         ValidateInventorySnapshots(metadata.InventorySnapshots, tickCount);
         metadata.InventorySnapshots = metadata.InventorySnapshots.OrderBy(snapshot => snapshot.TickIndex)
             .ThenBy(snapshot => snapshot.Tick).ToArray();
+        if (metadata.SchemaVersion == 4)
+        {
+            CompileInventoryAcquisitions(metadata.InventorySnapshots);
+            metadata.SchemaVersion = ReplayHighFidelityMetadata.CurrentSchemaVersion;
+        }
         metadata.Events = metadata.Events.OrderBy(item => item.TickIndex).ThenBy(item => item.Tick).ToArray();
         return metadata;
     }

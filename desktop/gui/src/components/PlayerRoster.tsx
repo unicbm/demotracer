@@ -620,6 +620,7 @@ function CrosshairEvidence({
   words,
   copiedTarget,
   onCopy,
+  onEditCrosshair,
 }: {
   codes: string[];
   viewmodels: string[];
@@ -627,12 +628,13 @@ function CrosshairEvidence({
   words: TextDictionary;
   copiedTarget: CopyTarget | null;
   onCopy: (value: string, target: CopyTarget) => void;
+  onEditCrosshair: (code: string) => void;
 }) {
   const [previewCode, setPreviewCode] = useState(codes[0]);
   return (
     <div className="player-setup-grid">
       <section className="roster-evidence-section player-crosshair-preview-section">
-        <header><strong>{words.crosshairPreview}</strong></header>
+        <header><strong>{words.crosshairPreview}</strong><button type="button" className="roster-external-action" onClick={() => onEditCrosshair(previewCode)}>{words.chEdit}</button></header>
         <CrosshairPreview code={previewCode} label={words.crosshairPreview} unavailableLabel={words.crosshairPreviewUnavailable} words={words} />
       </section>
       <div className="player-configuration-commands">
@@ -662,6 +664,7 @@ export function PlayerDossier({
   words,
   copiedTarget,
   onCopy,
+  onEditCrosshair,
   onOpenExternal,
   inventorySelection,
   view = "all",
@@ -672,6 +675,7 @@ export function PlayerDossier({
   words: TextDictionary;
   copiedTarget: CopyTarget | null;
   onCopy: (value: string, target: CopyTarget) => void;
+  onEditCrosshair: (code: string) => void;
   onOpenExternal: (url: string) => void;
   inventorySelection: InventorySimulatorSelectionController;
   view?: "all" | "configuration" | "cosmetics" | "evidence";
@@ -742,6 +746,7 @@ export function PlayerDossier({
       {showConfiguration && crosshairCodes.length > 0 ? (
         <CrosshairEvidence
           key={playerKey}
+          onEditCrosshair={onEditCrosshair}
           codes={crosshairCodes}
           viewmodels={viewmodels}
           playerKey={playerKey}

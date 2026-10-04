@@ -96,7 +96,7 @@ public sealed partial class DemoTracerPlugin
         {
             case "off":
             case "none":
-                ApplyMatchPreset(scoreboard: false);
+                SetScoreboardAlignEnabled(false);
                 ReplyMatchStatus(command.ReplyToCommand);
                 return;
             case "full":
@@ -108,7 +108,7 @@ public sealed partial class DemoTracerPlugin
                 var enabled = command.ArgCount >= 3
                     ? ParseOnOff(command.GetArg(2), _scoreboardAlignEnabled)
                     : true;
-                ApplyMatchPreset(scoreboard: enabled);
+                SetScoreboardAlignEnabled(enabled);
                 ReplyMatchStatus(command.ReplyToCommand);
                 return;
             default:

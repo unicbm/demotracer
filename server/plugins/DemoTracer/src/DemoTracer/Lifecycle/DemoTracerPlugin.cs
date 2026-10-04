@@ -35,9 +35,9 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     }
 
     private static readonly PluginCapability<IDemoTracerApi> ApiCapability = new("demotracer:api");
-    private static readonly JsonSerializerOptions ManifestJsonOptions = new()
+    internal static readonly JsonSerializerOptions ManifestJsonOptions = new()
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
     };
     private const float BulletHandoffMatchSeconds = 0.25f;
     private const int BulletHandoffMinDamage = 1;

@@ -12,6 +12,30 @@ namespace DemoTracer.Tests;
 
 public sealed class ManifestCompatibilityTests
 {
+    [Fact]
+    public void AutomaticVoiceUsesOnlyTheArchiveRoundSidecar()
+    {
+        var root = Directory.CreateTempSubdirectory("demotracer-voice-");
+        try
+        {
+            var voice = Directory.CreateDirectory(Path.Combine(root.FullName, "voice"));
+            File.WriteAllText(Path.Combine(voice.FullName, "voice_round01.dtv"), "DTRVOICE");
+            var resolve = typeof(DemoTracerPlugin).GetMethod("TryResolveVoiceSidecarForRound",
+                BindingFlags.Static | BindingFlags.NonPublic)!;
+            object?[] arguments = [Path.Combine(root.FullName, "manifest.json"), 1, null];
+            Assert.False((bool)resolve.Invoke(null, arguments)!);
+
+            var clip = Path.Combine(voice.FullName, "round01.dtv");
+            File.WriteAllText(clip, "DTRVOICE");
+            Assert.True((bool)resolve.Invoke(null, arguments)!);
+            Assert.Equal(clip, arguments[2]);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData(0, 0, false)]
     [InlineData(12, 3, false)]

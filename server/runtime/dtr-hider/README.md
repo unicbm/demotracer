@@ -1,112 +1,76 @@
 # dtr-hider
 
-[`unicbm/demotracer`](https://github.com/unicbm/demotracer/tree/main/server/runtime/dtr-hider) maintains the
-runtime shipped with CS2 DemoTracer. It combines the `dtr-hider` Metamod plugin
-with its matched `DtrHider.dll` CounterStrikeSharp presentation provider and
-`DtrHiderApi` shared assembly. Native exports use `DtrHider_` and the capability
-is `dtr-hider:api:v3`.
-The bundle contains all three parts. No separately installed upstream BotHider
-is required. See [UPSTREAM.md](UPSTREAM.md) for attribution and maintained differences.
+Bot identity and presentation provider for CS2 DemoTracer:
 
-Function and virtual hooks use Metamod's shared KHook engine. Build and run
-against the source pins in `server/runtime/common/contracts/hook-runtime.v1.json`.
+| Part | Purpose |
+| --- | --- |
+| `src/` → `dtr-hider.dll` | Native fake-client adoption, persona state and ping |
+| `csharp/DtrHider/` → `DtrHider.dll` | CounterStrikeSharp presentation publisher |
+| `csharp/DtrHiderApi/` → `DtrHiderApi.dll` | Shared capability `dtr-hider:api:v3` |
 
-## Standalone checks
+Install all three from the matched Playback bundle and restart the server.
+Do not run another BotHider provider alongside them. Native late loading is
+unsupported; native unload is refused while managed bots remain connected.
+Managed provider reload releases leases and can reconnect to the native runtime.
 
-Build from the DemoTracer working tree. Shared infrastructure is consumed
-directly from `server/runtime/common`.
+## Build
 
-With PowerShell 7, CMake, a C++20 compiler, and .NET 10 installed:
+With .NET 10, PowerShell 7, CMake and a C++20 compiler, run from this directory:
 
 ```powershell
 ./tools/check.ps1
-./tools/check.ps1 -Dotnet /path/to/dotnet -NativeBuild
+./tools/check.ps1 -NativeBuild
 ```
 
-The default check builds the provider and runs Release native tests without a
-CS2 SDK. `-NativeBuild` additionally builds the plugin with the SDK environment
-described in [TECH.md](TECH.md). For a local shared-code checkout, use
-`-CommonDirectory /path/to/common`; direct CMake builds accept
-`-DDTR_COMMON_DIR=...`.
-The check script stages native installation files in `.build/native/package/`.
+The default command builds the managed provider and runs Release native tests.
+`-NativeBuild` also needs the [server SDK environment](../../README.md#shared-hook-runtime)
+and stages native files in `.build/native/package/`.
+Use `-Dotnet <path>` to select a .NET executable.
 
-The native layer owns fake-client adoption, synthetic persona state, ping, and
-a synchronous, main-thread C ABI (native ABI 3). The C# layer is the only publisher for visible
-name, SteamID64, clan tag/group ID, ping, scoreboard flair, and server-replicated crosshair state.
-It never assigns teams or respawns bots. Ordinary bots follow the engine's
-round lifecycle; DemoTracer prepares and respawns only its own replay roster.
+## Presentation API
 
-Consumers use `dtr-hider:api:v3` for presentation overrides.
+The provider publishes name, SteamID64, clan tag/group ID, ping, scoreboard
+flair and crosshair. It does not assign teams or respawn bots.
 
-## Presentation leases
+Query `TryGetManagedSlot` for the current incarnation, then acquire or replace
+`BotHiderPresentationOverride` entries:
 
-DTR presentation uses an all-or-none ownership lease. Success
-requires native userinfo and the requested controller fields to be applied
-and read back before returning; it does not acknowledge delivery to every
-client or promise simultaneous rendering across slots. Failed replacements
-keep the previous lease; a failed write is not a successful presentation.
+- Acquisition validates the entire batch, applies requested native/controller
+  fields and verifies readback before succeeding. This confirms server state, not client delivery.
+- Each slot has one owner. Replace/release requires the exact opaque lease token;
+  failed replacement preserves the previous lease.
+- Supply a cancellable owner lifetime; cancel it on the server thread at unload.
+  All API operations run on that thread. There is no renewal heartbeat.
+- Map/provider teardown revokes leases. Disconnect or slot reuse removes only
+  that participant; surviving slots keep their lease.
+- Release removes ownership without restoring presentation. Omitted fields keep
+  their values; explicit empty clan/crosshair values clear them.
+- Explicit SteamID 0 and conflicting nonzero SteamIDs reject the batch.
+- Subscribe to `ProviderChanged` for provider replacement and unsubscribe at unload.
 
-Lease rules:
+Native/C# communication uses synchronous ABI 3. Session, incarnation and full
+controller handles identify writes. Native notifications queue server-thread
+reconciliation; hooks do not write controller fields during adoption.
+Spawn, death, round and presentation events reconcile active leases.
+Crosshair changes require readback and native network notification.
 
-- each request carries the provider-issued slot incarnation;
-- one lease owns a slot at a time;
-- replacement and release require the exact opaque lease token;
-- acquisition requires a cancellable owner lifetime; the consumer cancels it
-  on unload, synchronously releasing ownership without a heartbeat or timeout;
-- all API operations, including owner cancellation, run on the server thread;
-- provider reload and map change revoke leases;
-- disconnect, loss of managed state, and slot reuse remove only the affected
-  slot; surviving slots retain their identity and the existing lease token;
-- release ends ownership without restoring names, SteamIDs, crosshairs, flair
-  or clan tags; the next Demo can apply its own presentation;
-- an active lease is reconciled against both native client state and controller
-  fields after spawn/death, round events, and native presentation changes;
-- exact SteamID conflicts fail the whole batch instead of selecting another
-  persona.
+## Runtime commands and personas
 
-See [TECH.md](TECH.md) for native publication details.
+| Command | Purpose |
+| --- | --- |
+| `dtr_hider_status` | Provider, hooks, managed slots, incarnations and leases |
+| `dtr_hider_disguise <0|1>` | Toggle native disguise; may rebuild bots |
+| `dtr_hider_namesource <0|1>` | Use engine names or configured persona names for new adoptions |
 
-## Runtime commands
+The disguise toggle preserves `bot_quota` and `bot_quota_mode`, including zero.
+It is separate from the Bot Improver Panel's Profiles toggle.
 
-- `dtr_hider_status`: provider, hook, managed-slot, incarnation, and lease status.
-- `dtr_hider_disguise <0|1>`: global native disguise toggle.
-- `dtr_hider_namesource <0|1>`: choose engine bot names or `bot_info.json` names for
-  newly adopted personas.
+The bundle ships `bot_info.example.json` and preserves server-local `bot_info.json`.
+Configured personas are exclusive to one bot each. Without an available persona,
+bots keep their engine name and SteamID 0; other presentation fields still work.
+A lease can supply an exact nonzero SteamID, which remains after release.
 
-Each configured persona can be assigned to one bot at a time. When the roster is
-exhausted, additional bots keep their engine name and unconfigured identity.
+## Credits and license
 
-The bundle ships `bot_info.example.json` and never overwrites a server-local
-`bot_info.json`. Copy and customize the example only when explicit persona base
-data is wanted. Without it, the base keeps the engine bot name and SteamID 0;
-name, clan, crosshair, and other presentation fields remain usable. A lease may
-supply an exact nonzero SteamID that remains after release.
-Explicit lease requests for SteamID 0 are rejected. Configured persona SteamID
-collisions are resolved before adoption, so the base and initial published
-identity agree and release does not undo that choice.
-
-`dtr_hider_disguise` may rebuild bots. It preserves the existing `bot_quota` value and
-`bot_quota_mode`, including a quota of zero; it does not infer a fill-mode quota
-from the number of humans and bots.
-
-## Co-installation
-
-Install or update the native runtime with a full server restart. Native late
-loading is rejected, and native unload is rejected while managed bots remain
-connected, before any hook is removed. Disguised bots depend on those hooks;
-clearing the plugin's slot table cannot safely undo their engine state. Managed
-provider reload still releases its leases and can reconnect to the loaded
-native runtime.
-
-The managed provider installs as `DtrHider/DtrHider.dll`. Replace the
-previous `DemoTracerBotHider` directory during migration. Do not run an upstream
-provider beside this matched native/C# provider. Multiple publishers can
-overwrite the same controller presentation fields.
-
-The Panel Profiles toggle is not mapped to `dtr_hider_disguise`: this fork's native
-disguise switch may rebuild bots. Keep Profiles enabled when using both components.
-
-## Upstream and license
-
-See [UPSTREAM.md](UPSTREAM.md) for the imported baseline and update policy.
-Original attribution and AGPL-3.0-only license files are preserved here.
+AGPL-3.0-only. Original attribution, imported baseline and maintenance boundaries
+are preserved in [UPSTREAM.md](UPSTREAM.md) and [LICENSE](LICENSE).

@@ -408,6 +408,8 @@ fn package_receipts_require_matching_playback_contracts() {
     newer_native.compatibility.bot_controller.min_abi_minor += 1;
     let mut newer_reader = receipt.clone();
     newer_reader.compatibility.dtr_reader.max += 1;
+    let mut old_inventory_reader = receipt.clone();
+    old_inventory_reader.compatibility.inventory_plan_reader = None;
     let mut changed_hider = receipt.clone();
     changed_hider.compatibility.bot_hider.native_abi += 1;
     let mut changed_layout = receipt.clone();
@@ -419,6 +421,7 @@ fn package_receipts_require_matching_playback_contracts() {
     for changed in [
         newer_native,
         newer_reader,
+        old_inventory_reader,
         newer_css,
         changed_hider,
         changed_layout,

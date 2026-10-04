@@ -6,14 +6,9 @@
 
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
-using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Utils;
-using System.Buffers.Binary;
 using System.Globalization;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.RegularExpressions;
 
 namespace DemoTracer;
 
@@ -279,117 +274,10 @@ public sealed partial class DemoTracerPlugin
     private static string FirstVoiceDiagnostic(IReadOnlyList<string> diagnostics)
         => diagnostics.Count == 0 ? string.Empty : diagnostics[0];
 
-    private bool TryResolveVoiceSidecarForRound(
-        string manifestPath,
-        int round,
-        out string clipPath)
+    private static bool TryResolveVoiceSidecarForRound(string manifestPath, int round, out string clipPath)
     {
-        clipPath = string.Empty;
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var directory in CandidateVoiceSidecarDirectories(manifestPath))
-        {
-            if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
-                continue;
-
-            var root = Path.GetFullPath(directory);
-            foreach (var fileName in ExactVoiceSidecarFileNames(round))
-            {
-                var candidate = Path.Combine(root, fileName);
-                if (!seen.Add(candidate) || !File.Exists(candidate))
-                    continue;
-                if (LooksLikeVoiceDtvClip(candidate))
-                {
-                    clipPath = candidate;
-                    return true;
-                }
-            }
-
-            IEnumerable<string> matches;
-            try
-            {
-                matches = Directory.EnumerateFiles(root, "*.dtv", SearchOption.TopDirectoryOnly)
-                    .Where(path => seen.Add(path))
-                    .Where(path => VoiceSidecarFileNameMatchesRound(Path.GetFileName(path), round))
-                    .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
-                    .Take(32)
-                    .ToArray();
-            }
-            catch
-            {
-                continue;
-            }
-
-            foreach (var candidate in matches)
-            {
-                if (LooksLikeVoiceDtvClip(candidate))
-                {
-                    clipPath = candidate;
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private IEnumerable<string> CandidateVoiceSidecarDirectories(string manifestPath)
-    {
-        var manifestDir = Path.GetDirectoryName(Path.GetFullPath(manifestPath));
-        if (!string.IsNullOrWhiteSpace(manifestDir))
-        {
-            yield return Path.Combine(manifestDir, "voice");
-            yield return manifestDir;
-        }
-
-        foreach (var gameDir in CandidateGameDirectories())
-        {
-            yield return Path.Combine(gameDir, "voice");
-            yield return gameDir;
-        }
-    }
-
-    private static IEnumerable<string> ExactVoiceSidecarFileNames(int round)
-    {
-        var plain = round.ToString(CultureInfo.InvariantCulture);
-        var padded = round.ToString("D2", CultureInfo.InvariantCulture);
-        yield return $"round{padded}.dtv";
-        yield return $"round{plain}.dtv";
-        yield return $"round{padded}_all.dtv";
-        yield return $"round{plain}_all.dtv";
-        yield return $"voice_round{padded}.dtv";
-        yield return $"voice_round{plain}.dtv";
-        yield return $"voice_round{padded}_all.dtv";
-        yield return $"voice_round{plain}_all.dtv";
-        yield return $"demotracer_voice_round{padded}.dtv";
-        yield return $"demotracer_voice_round{plain}.dtv";
-        yield return $"demotracer_voice_round{padded}_all.dtv";
-        yield return $"demotracer_voice_round{plain}_all.dtv";
-    }
-
-    private static bool VoiceSidecarFileNameMatchesRound(string fileName, int round)
-    {
-        if (round < 0)
-            return false;
-        var stem = Path.GetFileNameWithoutExtension(fileName).ToLowerInvariant();
-        var pattern = $@"(^|[^0-9])round0*{round.ToString(CultureInfo.InvariantCulture)}([^0-9]|$)";
-        return Regex.IsMatch(stem, pattern, RegexOptions.CultureInvariant);
-    }
-
-    private static bool LooksLikeVoiceDtvClip(string path)
-    {
-        try
-        {
-            using var stream = File.OpenRead(path);
-            if (stream.Length < VoiceDtvMagicBytes.Length)
-                return false;
-            Span<byte> magic = stackalloc byte[VoiceDtvMagicBytes.Length];
-            return stream.Read(magic) == VoiceDtvMagicBytes.Length &&
-                   magic.SequenceEqual(VoiceDtvMagicBytes);
-        }
-        catch
-        {
-            return false;
-        }
+        clipPath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(manifestPath))!, "voice", $"round{round:D2}.dtv");
+        return File.Exists(clipPath);
     }
 
     private static List<int> ResolveAllVoiceRecipients()
@@ -496,19 +384,6 @@ public sealed partial class DemoTracerPlugin
 
     private static bool IsVoiceRecipient(CCSPlayerController? player)
         => player is { IsValid: true } && !player.IsHLTV && !player.IsBot;
-
-    private static List<int> AudibleVoiceRecipientsForSpeaker(
-        IReadOnlyList<int> recipientSlots,
-        CCSPlayerController sender,
-        CsTeam? expectedTeam)
-        => recipientSlots
-            .Where(slot => CanVoiceRecipientHearSpeaker(
-                Utilities.GetPlayerFromSlot(slot),
-                sender,
-                expectedTeam))
-            .Distinct()
-            .OrderBy(slot => slot)
-            .ToList();
 
     private static bool CanVoiceRecipientHearSpeaker(
         CCSPlayerController? recipient,

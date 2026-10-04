@@ -56,25 +56,6 @@ settings for subsequent safe lifecycle writes. Disconnect, map change and
 unload invalidate stale ownership/callbacks. Human players and human-controlled
 bot pawns are not replay targets. See [API.md](API.md).
 
-## Source layout
-
-- `BotRandomizer.cs` owns plugin lifetime, bot events and the shared restore
-  schedule. Spawn and restore use one next-frame path with the same wearable
-  retries; ownership changes invalidate pending work without rebuilding items.
-- `BotRandomizerItems.cs` owns signature binding and the single GiveNamedItem
-  pre/post hook pair. `WeaponItemViewStore` prepares item views; `CosmeticApplicator`
-  handles live wearable/agent writes and their caches.
-- `BotRandomizerApiFacade.cs` adapts the v3 contract to the host.
-  `ReplayPlanValidator` validates and copies requests without engine access;
-  `CosmeticWriteLeaseStore` manages ownership separately from item writes.
-- `CosmeticRoller` and `RandomizerOptions` choose random defaults. Catalogs
-  contain item data and weights; research provenance is checked by offline
-  data tests rather than being a prerequisite for runtime loading.
-
-The self-tests exercise the production validator, ownership transitions,
-quality rules and deterministic random selections. Native write timing,
-pickup and reload behavior still require game-server testing.
-
 ## Build and maintain
 
 From `server/runtime/BotRandomizer`:
@@ -95,9 +76,8 @@ The project installs common's `econ/randomizer-catalog.json` as
 `cosmetic_catalog.json`; update it through `common/tools/cs2-lib-data` and commit
 affected consumers together. `charm_placements.json` stays provider-local.
 
-Self-tests read the build output and validate catalog loading, ownership and
-random selection. Game updates also require signature and live-server checks.
-DemoTracer bundles the same public ZIP used by ordinary bot servers.
+Checks cover catalog loading, ownership and random selection. Game updates
+also require signature and live-server checks. DemoTracer bundles the same ZIP.
 
 Original work: ed0ard, Misaka17032, unicbm and XBribo. See `LICENSE`,
 `THIRD_PARTY_NOTICES.md`, and upstream history for attribution.

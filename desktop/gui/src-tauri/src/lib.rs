@@ -9,21 +9,18 @@ mod archive_info;
 mod atomic_file;
 mod batch;
 mod catalog;
-mod gsi;
 mod gui_preferences;
 mod http_client;
 mod inventory_simulator;
 mod playback_installation;
 mod playback_manager;
 mod server_config;
+mod server_diagnostics;
 mod steam_profile;
 mod target_lock;
 mod telemetry;
 
-use activity_log::{
-    append_activity_log, clear_activity_logs, list_activity_logs, maintain_activity_logs,
-    ActivityLogLevel, ActivityLogState,
-};
+use activity_log::{append_activity_log, list_activity_logs, ActivityLogLevel, ActivityLogState};
 use base64::Engine as _;
 use batch::{
     cancel_batch_import, list_batch_imports, read_batch_import, resume_batch_import,
@@ -54,7 +51,6 @@ use cs2_demotracer::model::{
 use cs2_demotracer::quality::AnalysisOptions;
 use cs2_demotracer::validate::validate_dtr_path;
 use cs2_demotracer::voice_export::export_round_voice_sidecars;
-use gsi::{configure_gsi, gsi_status, GsiState};
 use gui_preferences::{load_gui_preferences, save_gui_preferences};
 use inventory_simulator::{set_inventory_simulator_panel, start_inventory_simulator_batch};
 use playback_installation::{choose_cs2_dir, detect_cs2_installations};
@@ -64,6 +60,9 @@ use playback_manager::{
 };
 use serde::{Deserialize, Serialize};
 use server_config::{load_server_config, save_server_config, validate_server_config};
+use server_diagnostics::{
+    configure_server_diagnostics, server_diagnostics, ServerDiagnosticsState,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -5663,16 +5662,14 @@ pub fn run() {
             let activity_root = app.path().app_local_data_dir()?.join("logs");
             let activity = ActivityLogState::new(activity_root)
                 .map_err(|error| std::io::Error::other(error.message))?;
-            let _ = activity.maintain();
+            app.handle().plugin(activity.plugin())?;
             let _ = activity.append(
                 ActivityLogLevel::Info,
                 "app",
                 format!("CS2 DemoTracer {} started", env!("CARGO_PKG_VERSION")),
             );
-            let gsi = GsiState::new(activity.clone());
-            gsi.start();
             app.manage(activity);
-            app.manage(gsi);
+            app.manage(ServerDiagnosticsState::default());
             if let (Some(window), Some(icon)) = (
                 app.get_webview_window("main"),
                 app.default_window_icon().cloned(),
@@ -5740,11 +5737,9 @@ pub fn run() {
             load_steam_profiles,
             list_activity_logs,
             append_activity_log,
-            maintain_activity_logs,
-            clear_activity_logs,
             open_activity_log_directory,
-            configure_gsi,
-            gsi_status,
+            configure_server_diagnostics,
+            server_diagnostics,
             telemetry::configure_telemetry,
             telemetry::submit_telemetry
         ])

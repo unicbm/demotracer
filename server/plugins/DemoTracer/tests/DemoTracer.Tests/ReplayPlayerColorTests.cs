@@ -61,7 +61,7 @@ public sealed class ReplayPlayerColorTests
         var evidence = JsonSerializer.Deserialize("""
             { "player_color": " Yellow ", "player_user_id": 12, "player_entity_id": 15,
               "score": 20, "kills": 8, "deaths": 4, "assists": 2, "mvps": 1 }
-            """, type)!;
+            """, type, DemoTracerPlugin.ManifestJsonOptions)!;
         var result = typeof(DemoTracerPlugin).GetMethod("SelectReplayScoreboardEvidence",
             BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [evidence, includeMatchStats])!;
 

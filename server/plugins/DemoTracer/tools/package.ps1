@@ -34,7 +34,6 @@ foreach ($name in @('LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'UPSTREAM.
     $files["$plugin/$name"] = Join-Path $root $name
 }
 $files["$plugin/demotracer.config.example.json"] = Join-Path $root 'config/demotracer.config.example.json'
-$files["$plugin/docs/DEVELOPMENT.md"] = Join-Path $root 'docs/DEVELOPMENT.md'
 $files['addons/counterstrikesharp/shared/DemoTracerApi/DemoTracerApi.dll'] = $apiOutput
 $entries = @()
 foreach ($path in $files.Keys) {

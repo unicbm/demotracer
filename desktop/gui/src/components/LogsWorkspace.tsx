@@ -7,7 +7,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FolderIcon, RefreshIcon, SearchIcon, TrashIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
-import type { ActivityLogLevel, AppLogEntry, GsiStatus } from "../types";
+import type { ActivityLogLevel, AppLogEntry, ServerDiagnostics } from "../types";
+import { SelectControl } from "./SelectControl";
 import "./logs-workspace.css";
 
 type LogFilter = "all" | ActivityLogLevel;
@@ -16,7 +17,8 @@ export type ActivityLogRange = "today" | "sevenDays" | "all";
 interface LogsWorkspaceProps {
   words: TextDictionary;
   entries: AppLogEntry[];
-  gsiStatus: GsiStatus | null;
+  diagnostics: ServerDiagnostics | null;
+  transportError: string | null;
   loading: boolean;
   range: ActivityLogRange;
   onRangeChange: (range: ActivityLogRange) => void;
@@ -25,129 +27,107 @@ interface LogsWorkspaceProps {
   onClear: () => void;
 }
 
-function sourceLabel(words: TextDictionary, source: string): string {
-  if (source === "analysis") return words.logsSourceAnalysis;
-  if (source === "conversion") return words.logsSourceConversion;
-  if (source === "batch") return words.logsSourceBatch;
-  if (source === "gsi") return words.logsSourceGsi;
-  if (source === "app") return words.logsSourceApp;
-  return source;
-}
-
-function levelLabel(words: TextDictionary, level: ActivityLogLevel): string {
-  if (level === "debug") return words.logsLevelDebug;
-  if (level === "warn") return words.logsLevelWarn;
-  if (level === "error") return words.logsLevelError;
-  return words.logsLevelInfo;
-}
-
 function formatLogTime(timestampMs: number): string {
   const date = new Date(timestampMs);
   const part = (value: number) => String(value).padStart(2, "0");
   return `${part(date.getMonth() + 1)}-${part(date.getDate())} ${part(date.getHours())}:${part(date.getMinutes())}:${part(date.getSeconds())}`;
 }
 
-export function LogsWorkspace({
-  words,
-  entries,
-  gsiStatus,
-  loading,
-  range,
-  onRangeChange,
-  onRefresh,
-  onOpenFolder,
-  onClear,
-}: LogsWorkspaceProps) {
+export function LogsWorkspace({ words, entries, diagnostics, transportError, loading, range,
+  onRangeChange, onRefresh, onOpenFolder, onClear }: LogsWorkspaceProps) {
   const [level, setLevel] = useState<LogFilter>("all");
+  const [source, setSource] = useState("all");
   const [query, setQuery] = useState("");
+  const [following, setFollowing] = useState(true);
+  const [now, setNow] = useState(Date.now);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const normalizedQuery = query.trim().toLocaleLowerCase();
   const filtered = useMemo(() => entries.filter((entry) => {
     if (level !== "all" && entry.level !== level) return false;
-    if (!normalizedQuery) return true;
-    return `${entry.source} ${entry.message}`.toLocaleLowerCase().includes(normalizedQuery);
-  }), [entries, level, normalizedQuery]);
+    if (source !== "all" && entry.source.startsWith("server:") !== (source === "server")) return false;
+    return `${entry.source} ${entry.message}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+  }), [entries, level, query, source]);
   useEffect(() => {
-    const node = scrollRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [filtered.length]);
+    if (following && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [filtered, following]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-  const gsiTone = gsiStatus?.error ? "error"
-    : gsiStatus?.connected ? "connected"
-      : gsiStatus?.configured && gsiStatus.listening ? "waiting"
-        : "idle";
-  const gsiLabel = gsiStatus?.error ? words.gsiUnavailable
-    : gsiStatus?.connected ? words.gsiConnected
-      : gsiStatus?.configured ? words.gsiWaiting
-        : words.gsiNotConfigured;
-  const gsiDetail = [
-    gsiStatus?.map,
-    gsiStatus?.round != null ? `R${gsiStatus.round}` : null,
-    gsiStatus?.roundPhase,
-    gsiStatus?.playerActivity,
-  ].filter(Boolean).join(" · ");
+  const health = diagnostics?.health;
+  const fresh = !!health && now - health.writtenAtMs >= -5000 && now - health.writtenAtMs < 30000;
+  const unavailable = !health ? words.runtimeWaiting
+    : !health.running ? words.runtimeStopped : !fresh ? words.runtimeStale : null;
+  const modules = [
+    { name: "DemoTracer", available: health?.running, label: words.runtimeRunning },
+    { name: "dtr-controller", available: health?.botController.compatible, label: words.runtimeAvailable },
+    { name: "dtr-hider", available: health?.botHider.available, label: words.runtimeAvailable },
+    { name: "BotRandomizer", available: health?.botRandomizer.available, label: words.runtimeAvailable },
+  ];
+  const errors = [transportError, diagnostics?.healthError, diagnostics?.logError].filter(Boolean);
 
   return (
     <section className="logs-workspace" aria-label={words.logsTitle}>
-      <section className={`gsi-status-strip is-${gsiTone}`} aria-label={words.gsiTitle}>
-        <span className="gsi-status-dot" aria-hidden="true" />
-        <strong>{words.gsiTitle}</strong>
-        <b>{gsiLabel}</b>
-        {gsiDetail ? <code>{gsiDetail}</code> : null}
-        {gsiStatus?.lastUpdateMs ? (
-          <small>{words.gsiLastUpdate.replace("{time}", formatLogTime(gsiStatus.lastUpdateMs))}</small>
-        ) : null}
+      <section className="runtime-status" aria-label={words.runtimeTitle}>
+        <div className="runtime-status-heading">
+          <span>{words.runtimeTitle}</span>
+          <small title={words.runtimeCadence}>{health ? words.runtimeLastUpdate.replace("{time}", formatLogTime(health.writtenAtMs)) : words.runtimeWaiting}</small>
+        </div>
+        <div className="runtime-modules">
+          {modules.map((module) => (
+            <div className="runtime-module" key={module.name}>
+              <strong>{module.name}</strong>
+              <span className={unavailable ? "" : module.available ? "is-ready" : "is-error"}>
+                {unavailable || (module.available ? module.label : words.runtimeUnavailable)}
+              </span>
+            </div>
+          ))}
+        </div>
+        {errors.map((error, index) => <pre className="logs-transport-error" role="alert" key={index}>{error}</pre>)}
       </section>
 
       <div className="logs-toolbar">
-        <label className="logs-range-filter">
-          <span className="sr-only">{words.logsRange}</span>
-          <select value={range} onChange={(event) => onRangeChange(event.target.value as ActivityLogRange)}>
-            <option value="today">{words.logsRangeToday}</option>
-            <option value="sevenDays">{words.logsRangeSevenDays}</option>
-            <option value="all">{words.logsRangeAll}</option>
-          </select>
-        </label>
-        <label className="logs-level-filter">
-          <span className="sr-only">{words.logsFilter}</span>
-          <select value={level} onChange={(event) => setLevel(event.target.value as LogFilter)}>
-            <option value="all">{words.logsLevelAll.toLocaleUpperCase()}</option>
-            <option value="debug">DEBUG</option>
-            <option value="info">INFO</option>
-            <option value="warn">WARN</option>
-            <option value="error">ERROR</option>
-          </select>
-        </label>
+        <SelectControl value={range} label={words.logsRange} options={[
+          { value: "today", label: words.logsRangeToday }, { value: "sevenDays", label: words.logsRangeSevenDays }, { value: "all", label: words.logsRangeAll },
+        ]} onChange={(value) => onRangeChange(value as ActivityLogRange)} />
+        <SelectControl value={level} label={words.logsFilter} options={[
+          { value: "all", label: words.logsLevelAll }, { value: "debug", label: "DEBUG" }, { value: "info", label: "INFO" },
+          { value: "warn", label: "WARN" }, { value: "error", label: "ERROR" },
+        ]} onChange={(value) => setLevel(value as LogFilter)} />
+        <SelectControl value={source} label={words.logsSource} options={[
+          { value: "all", label: words.logsSourceAll }, { value: "gui", label: words.logsSourceGui }, { value: "server", label: words.logsSourceServer },
+        ]} onChange={setSource} />
         <label className="logs-search">
           <SearchIcon size={16} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={words.logsSearchPlaceholder} />
+          <input aria-label={words.logsSearchPlaceholder} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={words.logsSearchPlaceholder} />
         </label>
         <div className="logs-toolbar-actions">
-          <button className="icon-button" type="button" onClick={onOpenFolder} aria-label={words.logsOpenFolder} title={words.logsOpenFolder}>
-            <FolderIcon size={16} />
-          </button>
-          <button className="icon-button" type="button" disabled={loading} onClick={onRefresh} aria-label={words.logsRefresh} title={words.logsRefresh}>
-            <RefreshIcon className={loading ? "release-spin" : undefined} size={16} />
-          </button>
-          <button className="icon-button logs-clear-button" type="button" disabled={entries.length === 0} onClick={onClear} aria-label={words.logsClear} title={words.logsClear}>
-            <TrashIcon size={16} />
-          </button>
+          <button className="icon-button" type="button" onClick={onOpenFolder} aria-label={words.logsOpenFolder} title={words.logsOpenFolder}><FolderIcon size={16} /></button>
+          <button className="icon-button" type="button" disabled={loading} onClick={onRefresh} aria-label={words.logsRefresh} title={words.logsRefresh}><RefreshIcon className={loading ? "release-spin" : undefined} size={16} /></button>
+          <button className="icon-button" type="button" disabled={entries.length === 0} onClick={onClear} aria-label={words.logsClear} title={words.logsClear}><TrashIcon size={16} /></button>
         </div>
       </div>
 
-      <div className="logs-scroll" ref={scrollRef} role="log" aria-live="polite">
-        {filtered.length > 0 ? filtered.map((entry) => (
-          <article className={`log-entry is-${entry.level}`} key={entry.id}>
-            <header>
+      <div className="logs-scroll" ref={scrollRef} role="log" aria-live="off" onScroll={(event) => {
+        const node = event.currentTarget;
+        setFollowing(node.scrollHeight - node.scrollTop - node.clientHeight < 24);
+      }}>
+        {filtered.length ? filtered.map((entry) => {
+          const [firstLine, ...details] = entry.message.split("\n");
+          return (
+            <article className={`log-entry is-${entry.level}`} key={entry.id}>
               <time dateTime={new Date(entry.timestampMs).toISOString()}>{formatLogTime(entry.timestampMs)}</time>
-              <strong>{levelLabel(words, entry.level).toLocaleUpperCase()}</strong>
-            </header>
-            <p>[{sourceLabel(words, entry.source)}] {entry.message}</p>
-          </article>
-        )) : (
-          <div className="logs-empty">{words.logsEmpty}</div>
-        )}
+              <strong>{entry.level.toUpperCase()}</strong>
+              <span className="log-source" title={entry.source}>{entry.source.replace(/^server:/, "")}</span>
+              {details.length ? <details><summary>{firstLine}</summary><pre>{details.join("\n")}</pre></details> : <p>{firstLine}</p>}
+            </article>
+          );
+        }) : <div className="logs-empty">{words.logsEmpty}</div>}
       </div>
+      <footer className="logs-footer">
+        <span title={diagnostics?.logPath || undefined}>{diagnostics?.logPath || words.logsNoServerFile}</span>
+        <button type="button" className="text-button" aria-pressed={following} onClick={() => setFollowing(!following)}>{following ? "✓ " : ""}{words.logsFollow}</button>
+      </footer>
     </section>
   );
 }

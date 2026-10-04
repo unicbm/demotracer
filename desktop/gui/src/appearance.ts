@@ -17,21 +17,13 @@ export const UI_FONT_SIZE_DEFAULT = 15;
 export const SIDEBAR_OPACITY_DEFAULT = 0.86;
 export const SIDEBAR_OPACITY_MIN = 0.2;
 export const THEME_CUSTOMIZATION_STYLE_ID = "demotracer-theme-customization";
-export const CUSTOM_CSS_STORAGE_KEY = "demotracer.custom-css.v1";
 export const CUSTOM_CSS_STYLE_ID = "demotracer-custom-css";
 export const CUSTOM_CSS_PROFILES_STORAGE_KEY = "demotracer.custom-css-profiles.v1";
 export const ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY = "demotracer.active-custom-css-profile.v1";
-export const LEGACY_APPEARANCE_STORAGE_KEYS = [
-  "demotracer.ui-skin.v1",
-  "demotracer.sidebar-width.v1",
-  "demotracer.sidebar-collapsed.v1",
-] as const;
 export const THEME_BACKGROUNDS: Record<ResolvedTheme, string> = {
   light: "#f5f6f8",
   dark: "#20212b",
 };
-export const UI_SCALE_STEPS = [0.9, 1, 1.1, 1.25] as const;
-export type UiScale = (typeof UI_SCALE_STEPS)[number];
 
 export interface ThemePalette {
   primary: string;
@@ -113,15 +105,6 @@ export function themeBackground(theme: ResolvedTheme): string {
   return THEME_BACKGROUNDS[theme];
 }
 
-export function normalizeUiScale(value: unknown): UiScale {
-  if (value === null || value === undefined || value === "") return 1;
-  const numeric = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(numeric)) return 1;
-  return UI_SCALE_STEPS.reduce((nearest, candidate) => (
-    Math.abs(candidate - numeric) < Math.abs(nearest - numeric) ? candidate : nearest
-  ), 1 as UiScale);
-}
-
 export function normalizeUiFontSize(value: unknown): number {
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric)) return UI_FONT_SIZE_DEFAULT;
@@ -138,17 +121,17 @@ export function stepUiFontSize(current: number, direction: 1 | -1): number {
   return normalizeUiFontSize(normalizeUiFontSize(current) + direction);
 }
 
-export function recommendedUiScale(
+export function recommendedUiFontSize(
   screenWidth: number,
   screenHeight: number,
   devicePixelRatio: number,
-): UiScale {
+): number {
   const ratio = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
   const physicalWidth = Math.max(0, screenWidth) * ratio;
   const physicalHeight = Math.max(0, screenHeight) * ratio;
   const longEdge = Math.max(physicalWidth, physicalHeight);
   const shortEdge = Math.min(physicalWidth, physicalHeight);
-  return longEdge >= 3000 && shortEdge >= 1600 ? 1.1 : 1;
+  return longEdge >= 3000 && shortEdge >= 1600 ? UI_FONT_SIZE_DEFAULT + 1 : UI_FONT_SIZE_DEFAULT;
 }
 
 export function normalizeCustomCss(value: unknown): string {
@@ -277,7 +260,7 @@ export function themeCustomizationCss(customization: ThemeCustomization): string
   if (customization.fontFamily) rules.push(`:root { --font-ui: ${customization.fontFamily}; }`);
   if (customization.monoFontFamily) rules.push(`:root { --mono: ${customization.monoFontFamily}; }`);
   if (customization.sidebarOpacity !== undefined) {
-    rules.push(`:root { --sidebar-background-opacity: ${normalizeSidebarOpacity(customization.sidebarOpacity) * 100}%; }`);
+    rules.push(`:root { --sidebar-background-opacity: ${customization.sidebarOpacity * 100}%; }`);
   }
   if (customization.light) {
     rules.push(`:root[data-color-mode="light"] {\n  ${paletteCss(customization.light)};\n}`);
@@ -289,7 +272,7 @@ export function themeCustomizationCss(customization: ThemeCustomization): string
 }
 
 export function applyThemeCustomization(customization: ThemeCustomization, target: Document = document): void {
-  const css = themeCustomizationCss(normalizeThemeCustomization(customization));
+  const css = themeCustomizationCss(customization);
   let style = target.getElementById(THEME_CUSTOMIZATION_STYLE_ID) as HTMLStyleElement | null;
   if (!css) {
     style?.remove();
@@ -305,9 +288,8 @@ export function applyThemeCustomization(customization: ThemeCustomization, targe
 }
 
 export function applyCustomCss(css: string, target: Document = document): void {
-  const normalized = normalizeCustomCss(css);
   let style = target.getElementById(CUSTOM_CSS_STYLE_ID) as HTMLStyleElement | null;
-  if (!normalized) {
+  if (!css) {
     style?.remove();
     return;
   }
@@ -316,5 +298,5 @@ export function applyCustomCss(css: string, target: Document = document): void {
     style.id = CUSTOM_CSS_STYLE_ID;
     target.head.append(style);
   }
-  style.textContent = normalized;
+  style.textContent = css;
 }

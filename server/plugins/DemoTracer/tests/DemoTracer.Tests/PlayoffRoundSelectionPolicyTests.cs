@@ -137,7 +137,7 @@ public sealed class PlayoffRoundSelectionPolicyTests
                 { "round": 10, "side": "t", "steam_id": 101, "first_weapon_def_index": 7 }
               ]
             }
-            """, manifestType)!;
+            """, manifestType, DemoTracerPlugin.ManifestJsonOptions)!;
         var method = typeof(DemoTracerPlugin).GetMethod("FindEligiblePlayoffRounds", BindingFlags.Static | BindingFlags.NonPublic)!;
 
         Assert.Equal([8], (int[])method.Invoke(null, [manifest, "t", new HashSet<ulong> { 101 }])!);

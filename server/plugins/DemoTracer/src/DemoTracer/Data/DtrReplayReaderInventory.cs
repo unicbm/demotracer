@@ -24,4 +24,19 @@ internal static partial class DtrReplayReader
         }
     }
 
+    private static void CompileInventoryAcquisitions(ReplayInventorySnapshot[] snapshots)
+    {
+        var previous = new Dictionary<ulong, ReplayInventorySnapshot>();
+        foreach (var snapshot in snapshots)
+        {
+            previous.TryGetValue(snapshot.SteamId, out var before);
+            var counts = before?.WeaponDefCounts.ToDictionary(item => item.WeaponDefIndex, item => item.Count);
+            foreach (var item in snapshot.WeaponDefCounts)
+                item.Acquired = item.Count > (counts?.GetValueOrDefault(item.WeaponDefIndex) ?? 0);
+            snapshot.GearAcquired = (byte)((snapshot.ArmorValue > (before?.ArmorValue ?? 0) ? 1 : 0) |
+                (snapshot.HasHelmet && before?.HasHelmet != true ? 2 : 0) |
+                (snapshot.HasDefuser && before?.HasDefuser != true ? 4 : 0));
+            previous[snapshot.SteamId] = snapshot;
+        }
+    }
 }

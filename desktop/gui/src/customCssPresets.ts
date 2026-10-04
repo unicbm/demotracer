@@ -6,8 +6,6 @@
 
 import type { CustomCssProfile } from "./appearance";
 
-export const CUSTOM_CSS_STARTER_PROFILES_STORAGE_KEY = "demotracer.custom-css-starter-profiles.v4";
-
 const LIGHT_ROOTS = `:root,
 :root[data-color-mode="light"],
 :root[data-theme="light"]:not([data-color-mode]),

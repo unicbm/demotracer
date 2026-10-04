@@ -2,13 +2,12 @@
 
 [Install and use DemoTracer](../README.md) · [Contribute](../CONTRIBUTING.md)
 
-- [Development](DEVELOPMENT.md): architecture, source builds, validation, and
-  release packaging.
+- [Development](DEVELOPMENT.md): source builds, checks and packaging.
+- [Server requirements](../server/README.md): runtime installation and host pins.
 - [Commands](COMMANDS.md): public playback commands and runtime defaults.
 - [Format](FORMAT.md): `.dtr` layout, version gates, and decoder limits.
 - [Signature maintenance](SIGNATURES.md): signature locations and game-update checks.
 - [Online behavior](ONLINE_SERVICES.md): network requests and local data policy.
-- [Anonymous telemetry](TELEMETRY.md): default aggregate and optional presence contracts,
-  retention, deployment, and aggregate admin reporting.
+- [Telemetry operations](TELEMETRY.md): retention, deployment and reporting.
 - [CS2 Insight GUI reference](CS2_INSIGHT_GUI_REFERENCE.md): source provenance
   and the scope of the project-specific paid UI authorization.

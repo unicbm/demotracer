@@ -48,6 +48,7 @@ interface ArchiveWorkspaceProps {
   onPlaybackPresetChange: (patch: Partial<PlaybackPresetOptions>) => void;
   onCopy: (value: string, target: CopyTarget) => void;
   onOpenExternal: (url: string) => void;
+  onEditCrosshair: (code: string) => void;
   onSyncInventorySimulator: (items: InventorySimulatorItem[], language: Language) => Promise<void>;
   onOpenFolder: () => void;
   onSelectPlayer: (selection: PlayerSelection) => void;
@@ -55,7 +56,6 @@ interface ArchiveWorkspaceProps {
   onSelectSeriesMap: (manifestPath: string) => void;
   onBackToLibrary: () => void;
   onReconvert: () => void;
-  onChooseManifest: () => void;
 }
 
 function sameManifestPath(left: string, right: string): boolean {
@@ -185,7 +185,7 @@ function adaptArchiveResult(
 function ArchiveIssues({ archive, words }: { archive: ManifestArchive; words: TextDictionary }) {
   if (archive.issues.length === 0) return null;
   return (
-    <details className="archive-issues">
+    <details className="archive-issues" open={!archive.playable}>
       <summary>
         <span><AlertIcon size={15} />{words.archiveIssues}</span>
         <strong>{archive.issues.length}</strong>
@@ -195,11 +195,7 @@ function ArchiveIssues({ archive, words }: { archive: ManifestArchive; words: Te
         {archive.issues.map((issue, index) => (
           <li className={`is-${issue.severity}`} key={`${issue.code}-${issue.round ?? "all"}-${index}`}>
             {issue.round !== undefined && issue.round !== null ? <b>Round {issue.round}</b> : null}
-            <span>{issue.code.toLocaleLowerCase().includes("missing") || issue.code.toLocaleLowerCase().includes("unavailable")
-              ? words.archiveIssueUnavailable
-              : issue.code.toLocaleLowerCase().includes("version") || issue.code.toLocaleLowerCase().includes("compat")
-                ? words.archiveIssueIncompatible
-                : words.archiveIssueWarning}</span>
+            <span>{issue.message}{issue.path ? <code>{issue.path}</code> : null}</span>
           </li>
         ))}
       </ul>
@@ -223,6 +219,7 @@ export function ArchiveWorkspace({
   onPlaybackPresetChange,
   onCopy,
   onOpenExternal,
+  onEditCrosshair,
   onSyncInventorySimulator,
   onOpenFolder,
   onSelectPlayer,
@@ -230,7 +227,6 @@ export function ArchiveWorkspace({
   onSelectSeriesMap,
   onBackToLibrary,
   onReconvert,
-  onChooseManifest,
 }: ArchiveWorkspaceProps) {
   const playableRounds = archive.rounds.filter((round) => round.available);
   const selected = playableRounds.find((round) => round.round === selectedRound) ?? playableRounds[0];
@@ -332,6 +328,7 @@ export function ArchiveWorkspace({
         onBack={onClosePlayer}
         onCopy={onCopy}
         onOpenExternal={onOpenExternal}
+        onEditCrosshair={onEditCrosshair}
         inventorySelection={inventorySelection}
       />
     );
@@ -494,7 +491,7 @@ export function ArchiveWorkspace({
             {archive.rounds.length === 0 ? (
               <div className="archive-empty-state">
                 <AlertIcon size={18} />
-                <span>{words.noPlayableRounds}</span>
+                <span>{words.noArchiveRounds}</span>
               </div>
             ) : null}
           </div>
@@ -522,9 +519,10 @@ export function ArchiveWorkspace({
           ) : (
             <div className="archive-no-playable">
               <AlertIcon size={20} />
-              <strong>{words.noPlayableRounds}</strong>
-              <button className="secondary-button" type="button" onClick={onChooseManifest}>
-                {words.openAnotherArchive}
+              <strong>{archive.compatibility === "unsupported" ? words.archiveVersionUnsupported : words.noPlayableRounds}</strong>
+              <p>{words.archivePlaybackRecovery}</p>
+              <button className="secondary-button" type="button" disabled={busy} onClick={onReconvert}>
+                <RefreshIcon size={15} />{words.reconvertArchive}
               </button>
               <ArchiveIssues archive={archive} words={words} />
             </div>

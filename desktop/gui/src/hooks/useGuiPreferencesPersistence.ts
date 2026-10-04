@@ -7,7 +7,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { CustomCssProfile, ThemeCustomization } from "../appearance";
-import { parseCommandError, reconcileCustomCssProfiles } from "../appSupport";
+import { parseCommandError } from "../appSupport";
 import {
   createGuiPreferences,
   normalizeGuiPreferences,
@@ -70,20 +70,13 @@ export function useGuiPreferencesPersistence({
           });
           return;
         }
-        const profiles = reconcileCustomCssProfiles(
-          preferences.appearance.customCssProfiles,
-          true,
-        );
-        const activeProfileId = profiles.some((profile) => (
-          profile.id === preferences.appearance.activeCustomCssProfileId
-        )) ? preferences.appearance.activeCustomCssProfileId : null;
         setLanguage(preferences.language);
         setTheme(preferences.appearance.theme);
         setUiFontSize(preferences.appearance.uiFontSize);
         setSidebarCollapsed(preferences.appearance.sidebarCollapsed);
         setThemeCustomization(preferences.appearance.themeCustomization);
-        setCustomCssProfiles(profiles);
-        setActiveCustomCssProfileId(activeProfileId);
+        setCustomCssProfiles(preferences.appearance.customCssProfiles);
+        setActiveCustomCssProfileId(preferences.appearance.activeCustomCssProfileId);
       }
       setHydrated(true);
     }).catch((reason) => {

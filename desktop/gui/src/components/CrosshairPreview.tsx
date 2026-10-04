@@ -16,12 +16,13 @@ import nukeSceneUrl from "../assets/crosshair-scenes/nuke.webp";
 import {
   buildCrosshairRects,
   decodePreviewCrosshair,
-  rasterizeCrosshair,
   resolveCrosshairColor,
   resolveCrosshairOpacity,
   resolveCrosshairOutline,
   resolveCrosshairViewBox,
 } from "../crosshairPreviewModel";
+import { createCrosshairCanvas } from "../crosshairCanvas";
+import { advanceCrosshairAnimation, buildCrosshairFrame, createCrosshairAnimation, isAnimatedCrosshair } from "../crosshairRenderer";
 import { ArrowIcon } from "../icons";
 import type { TextDictionary } from "../i18n";
 
@@ -29,12 +30,12 @@ const VIEWBOX_SIZE = 48;
 const SCENE_STORAGE_KEY = "demotracer:crosshair-preview-scene:v1";
 const PREVIEW_SCENES = [
   { map: "Dust II", src: dust2SceneUrl },
-  { map: "Mirage", src: mirageSceneUrl },
-  { map: "Inferno", src: infernoSceneUrl },
-  { map: "Ancient", src: ancientSceneUrl },
   { map: "Nuke", src: nukeSceneUrl },
-  { map: "Cache", src: cacheSceneUrl },
+  { map: "Mirage", src: mirageSceneUrl },
+  { map: "Ancient", src: ancientSceneUrl },
   { map: "Anubis", src: anubisSceneUrl },
+  { map: "Cache", src: cacheSceneUrl },
+  { map: "Inferno", src: infernoSceneUrl },
 ] as const;
 
 function storedSceneIndex(): number {
@@ -88,33 +89,79 @@ function CrosshairSvg({ crosshair }: { crosshair: CrosshairLegacyV1 }) {
   );
 }
 
-function PixelCrosshair({ crosshair }: { crosshair: Exclude<Crosshair, CrosshairLegacyV1> }) {
+function PixelCrosshair({ crosshair, animate }: { crosshair: Exclude<Crosshair, CrosshairLegacyV1>; animate: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const [cpu, setCpu] = useState(false);
+  const parameters = useRef({ crosshair, animate });
+  const repaint = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    parameters.current = { crosshair, animate };
+    repaint.current?.();
+  }, [crosshair, animate]);
   useLayoutEffect(() => {
     const target = canvas.current;
-    const context = target?.getContext("2d");
-    if (!target || !context) return;
-    const pixels = rasterizeCrosshair(crosshair, VIEWBOX_SIZE);
-    target.width = pixels.width;
-    target.height = pixels.height;
-    const image = context.createImageData(pixels.width, pixels.height);
-    image.data.set(pixels.data);
-    context.putImageData(image, 0, 0);
-  }, [crosshair]);
-  return <canvas ref={canvas} className="crosshair-preview-svg" aria-hidden="true" />;
+    if (!target) return;
+    const renderer = createCrosshairCanvas(target, cpu);
+    if (!renderer) { if (!cpu) setCpu(true); return; }
+    const state = createCrosshairAnimation();
+    let request = 0, last = 0, visible = true;
+    const paint = (now: number) => {
+      const { crosshair, animate } = parameters.current;
+      const elapsed = last ? (now - last) / 1000 : 0;
+      if (cpu && elapsed > 0 && elapsed < 1 / 30) { request = requestAnimationFrame(paint); return; }
+      if (animate) advanceCrosshairAnimation(state, elapsed);
+      last = now;
+      const width = Math.max(1, Math.floor(target.clientWidth)), height = Math.max(1, Math.floor(target.clientHeight));
+      renderer.draw(buildCrosshairFrame(crosshair, { width, height, animate, time: state.time, recoil: state.recoil }), width, height);
+      if (animate && visible && !document.hidden) request = requestAnimationFrame(paint);
+    };
+    const refresh = () => {
+      cancelAnimationFrame(request); last = 0;
+      if (visible && !document.hidden) paint(performance.now());
+    };
+    const resize = new ResizeObserver(refresh);
+    repaint.current = refresh;
+    resize.observe(target);
+    const intersection = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; refresh(); });
+    intersection.observe(target);
+    const lost = (event: Event) => { event.preventDefault(); setCpu(true); };
+    target.addEventListener("webglcontextlost", lost);
+    document.addEventListener("visibilitychange", refresh);
+    refresh();
+    return () => {
+      repaint.current = null;
+      cancelAnimationFrame(request);
+      resize.disconnect(); intersection.disconnect();
+      target.removeEventListener("webglcontextlost", lost);
+      document.removeEventListener("visibilitychange", refresh);
+      renderer.dispose();
+    };
+  }, [cpu]);
+  return <canvas key={String(cpu)} ref={canvas} className="crosshair-preview-canvas" aria-hidden="true" />;
 }
 
-export function CrosshairPreview({ code, label, unavailableLabel, words }: {
+export function CrosshairPreview({ code, ...props }: {
   code: string;
   label: string;
   unavailableLabel: string;
   words: TextDictionary;
 }) {
-  const [sceneIndex, setSceneIndex] = useState(storedSceneIndex);
   const crosshair = useMemo(() => {
     try { return decodePreviewCrosshair(code); }
     catch { return null; }
   }, [code]);
+  return <CrosshairParameterPreview crosshair={crosshair} {...props} />;
+}
+
+export function CrosshairParameterPreview({ crosshair, label, unavailableLabel, words }: {
+  crosshair: Crosshair | null;
+  label: string;
+  unavailableLabel: string;
+  words: TextDictionary;
+}) {
+  const [sceneIndex, setSceneIndex] = useState(storedSceneIndex);
+  const [animate, setAnimate] = useState(() => !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const dynamic = crosshair?.format !== "legacy-v1" && crosshair !== null && isAnimatedCrosshair(crosshair.style);
   const selectScene = (index: number) => {
     setSceneIndex(index);
     try {
@@ -138,7 +185,9 @@ export function CrosshairPreview({ code, label, unavailableLabel, words }: {
         <span className="crosshair-preview-map">{PREVIEW_SCENES[sceneIndex].map}</span>
         {crosshair ? (crosshair.format === "legacy-v1"
           ? <CrosshairSvg crosshair={crosshair} />
-          : <PixelCrosshair crosshair={crosshair} />) : <span aria-hidden="true">×</span>}
+          : <PixelCrosshair crosshair={crosshair} animate={dynamic && animate} />) : <span aria-hidden="true">×</span>}
+        {dynamic ? <button className="crosshair-preview-animation" type="button" aria-pressed={animate}
+          onClick={() => setAnimate((value) => !value)}>{animate ? words.crosshairPreviewStop : words.crosshairPreviewPlay}</button> : null}
         <button className="crosshair-scene-arrow is-previous" type="button" onClick={() => moveScene(-1)} aria-label={words.previousCrosshairScene}><ArrowIcon size={16} /></button>
         <button className="crosshair-scene-arrow is-next" type="button" onClick={() => moveScene(1)} aria-label={words.nextCrosshairScene}><ArrowIcon size={16} /></button>
         <div className="crosshair-scene-dots" role="group" aria-label={words.crosshairSceneSelector}>

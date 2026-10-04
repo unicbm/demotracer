@@ -7,7 +7,7 @@
 export type Language = "zh" | "en";
 export type Theme = "system" | "light" | "dark";
 export type SideChoice = "both" | "t" | "ct";
-export type WorkspaceSection = "library" | "analysis" | "batch" | "logs" | "settings";
+export type WorkspaceSection = "library" | "analysis" | "batch" | "logs" | "settings" | "tools";
 
 export type ActivityLogLevel = "debug" | "info" | "warn" | "error";
 
@@ -19,27 +19,22 @@ export interface AppLogEntry {
   message: string;
 }
 
-export interface ActivityLogMaintenance {
-  checkedFiles: number;
-  removedFiles: number;
-  repairedLines: number;
-}
-
-export interface GsiStatus {
-  listening: boolean;
-  configured: boolean;
-  connected: boolean;
-  port: number;
-  configPath?: string | null;
-  lastUpdateMs?: number | null;
-  provider?: string | null;
-  map?: string | null;
-  mapPhase?: string | null;
-  round?: number | null;
-  roundPhase?: string | null;
-  playerActivity?: string | null;
-  playerHealth?: number | null;
-  error?: string | null;
+export interface ServerDiagnostics {
+  revision: number;
+  session: string;
+  health: {
+    schemaVersion: number;
+    writtenAtMs: number;
+    running: boolean;
+    pluginVersion: string;
+    botController: { compatible: boolean };
+    botHider: { available: boolean };
+    botRandomizer: { available: boolean };
+  } | null;
+  healthError: string | null;
+  logError: string | null;
+  logPath: string | null;
+  entries: AppLogEntry[];
 }
 
 export type Phase =

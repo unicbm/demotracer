@@ -19,7 +19,7 @@ public sealed class BotHiderClanPresentationTests
     [InlineData("{\"tag\":null,\"id\":0}")]
     public void IncompleteManifestEvidenceDoesNotClearBase(string json)
         => Assert.Null(DemoTracerPlugin.NormalizeReplayClan(
-            JsonSerializer.Deserialize<DemoTracerPlugin.ReplayClan>(json)));
+            JsonSerializer.Deserialize<DemoTracerPlugin.ReplayClan>(json, DemoTracerPlugin.ManifestJsonOptions)));
 
     [Fact]
     public void ExplicitEmptyAndUnicodeArePreserved()
@@ -28,7 +28,7 @@ public sealed class BotHiderClanPresentationTests
         {
             var json = JsonSerializer.Serialize(new { tag = pair.Tag, id = pair.Id });
             Assert.Equal(pair, DemoTracerPlugin.NormalizeReplayClan(
-                JsonSerializer.Deserialize<DemoTracerPlugin.ReplayClan>(json)));
+                JsonSerializer.Deserialize<DemoTracerPlugin.ReplayClan>(json, DemoTracerPlugin.ManifestJsonOptions)));
         }
         Assert.False(DtrHiderContract.IsValidClan(new("x\0y", 1)));
         Assert.False(DtrHiderContract.IsValidClan(new(new string('组', 43), 1)));

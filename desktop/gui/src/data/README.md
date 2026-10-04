@@ -1,45 +1,36 @@
-# Professional player identity data
+# GUI catalogs
 
-This repository tracks the generated
-`cs2-pro-steamid-lib.v1.jsonl` snapshot so clean checkouts build
-reproducibly. Its embedded source revision and CC0/CC BY-SA provenance must be
-preserved whenever the snapshot is refreshed.
+These generated files are tracked so clean checkouts build without a separate
+data checkout. Keep their embedded revisions, checksums and license metadata.
 
-`professional-players.v2.json` is a generated, offline catalog. It has two
-deliberately separate evidence layers:
+| File | Source |
+| --- | --- |
+| `cs2-pro-steamid-lib.v1.jsonl` | Pinned [CS2-pro-steamid-lib](../../../../third_party/cs2-pro-steamid-lib/README.vendor.md) snapshot; CC0/CC BY-SA provenance |
+| `professional-players.v2.json` | Demo-verified subset of XBribo/CS2-Bot-Hider plus exact HLTV roster matches; upstream AGPL-3.0-only attribution retained |
+| `cs2-cosmetic-catalog.v1.json` | [cs2-lib](../../../../third_party/cs2-lib/README.vendor.md) cosmetic projection |
 
-1. A professional-profile record from `XBribo/CS2-Bot-Hider` is admitted only
-   when its SteamID64 is confirmed by the local demo-derived identity census.
-   Unambiguous upstream ID mistakes are replaced by the demo truth.
-2. A SteamID64 can also be admitted directly when the same ten normalized
-   player handles form an exact roster match between a demo series and an HLTV
-   all-maps scoreboard. This strict match attaches a unique HLTV Player ID and
-   fills upstream coverage gaps without a name-only guess. A manually reviewed
-   enrichment file may then add the registered real name and nationality for
-   that already-linked Player ID.
+## Refresh
 
-Current team, age, prize money, rankings, achievements, player photos, and
-market price estimates are intentionally excluded. They are time-sensitive or
-belong to a different data/license boundary and are not identity evidence.
-
-The generated catalog embeds the source revision, checksum, license identifier,
-verification timestamp, and aggregate evidence counts. It contains no local
-paths, raw demos, crosshair codes, or cosmetic data.
-
-Generate it with:
+Run from the repository root. The identity importer requires a clean checkout
+of the revision in [`pro-steamid-catalog-source.json`](../../pro-steamid-catalog-source.json):
 
 ```powershell
-python desktop/gui/scripts/generate-professional-player-catalog.py `
-  --comparison <comparison.csv> `
-  --summary <audit-summary.json> `
-  --enrichment src/data/professional-player-enrichment.v1.json `
-  --demo-memberships <player-demo-memberships.csv> `
-  --hltv-scoreboards <hltv-scoreboards.csv> `
-  --hltv-verified-at <YYYY-MM-DD> `
-  --output src/data/professional-players.v2.json
+node desktop/gui/scripts/import-pro-steamid-catalog.mjs <cs2-pro-steamid-lib>
+node desktop/gui/scripts/generate-cosmetic-catalog.mjs <cs2-lib-checkout>
 ```
 
-The upstream Bot Hider catalog is licensed AGPL-3.0-only. The derived subset
-retains that upstream attribution and must remain separately auditable in the
-generated catalog. The rest of the project remains governed by the repository
-license and the per-component notices recorded in source control.
+The identity importer reads committed data offline. Refresh the demo-verified
+supplement from its local evidence with:
+
+```powershell
+py -3 desktop/gui/scripts/generate-professional-player-catalog.py `
+  --comparison <comparison.csv> --summary <audit-summary.json> `
+  --enrichment desktop/gui/src/data/professional-player-enrichment.v1.json `
+  --demo-memberships <player-demo-memberships.csv> `
+  --hltv-scoreboards <hltv-scoreboards.csv> --hltv-verified-at <YYYY-MM-DD> `
+  --output desktop/gui/src/data/professional-players.v2.json
+```
+
+The supplement requires demo-verified SteamIDs. HLTV links require an exact
+ten-player roster match; enrichment applies only to verified Player IDs.
+Do not add local paths, raw demos, photos, rankings or market estimates.

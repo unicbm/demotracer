@@ -16,10 +16,7 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin
 {
     private static TickPlayerSnapshot BuildTickPlayerSnapshot()
-    {
-        var controllers = FindPlayerControllers();
-        return new TickPlayerSnapshot(controllers, FindTeamPlayers(controllers));
-    }
+        => new(FindPlayerControllers());
 
     private List<CCSPlayerController> FindReplayTargets()
     {
@@ -61,7 +58,7 @@ public sealed partial class DemoTracerPlugin
     {
         return playerSnapshot.TryGetSlot(slot, out var player) &&
                player is { IsValid: true } &&
-               IsReplayTargetBot(player, playerSnapshot.Controllers);
+               IsReplayTargetBot(player, playerSnapshot.TakeoverControllers);
     }
 
     private static bool IsReplayControllerSafe(CCSPlayerController player)

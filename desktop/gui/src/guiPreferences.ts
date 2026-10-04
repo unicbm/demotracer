@@ -33,16 +33,6 @@ export interface GuiPreferencesV1 {
   appearance: GuiAppearancePreferencesV1;
 }
 
-interface GuiPreferencesInput {
-  language: Language;
-  theme: Theme;
-  uiFontSize: number;
-  sidebarCollapsed: boolean;
-  themeCustomization: ThemeCustomization;
-  customCssProfiles: readonly CustomCssProfile[];
-  activeCustomCssProfileId: string | null;
-}
-
 function recordValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -73,17 +63,9 @@ export function normalizeGuiPreferences(value: unknown): GuiPreferencesV1 | null
   };
 }
 
-export function createGuiPreferences(input: GuiPreferencesInput): GuiPreferencesV1 {
-  return normalizeGuiPreferences({
-    schemaVersion: GUI_PREFERENCES_SCHEMA_VERSION,
-    language: input.language,
-    appearance: {
-      theme: input.theme,
-      uiFontSize: input.uiFontSize,
-      sidebarCollapsed: input.sidebarCollapsed,
-      themeCustomization: input.themeCustomization,
-      customCssProfiles: input.customCssProfiles,
-      activeCustomCssProfileId: input.activeCustomCssProfileId,
-    },
-  }) as GuiPreferencesV1;
+export function createGuiPreferences({
+  language,
+  ...appearance
+}: GuiAppearancePreferencesV1 & { language: Language }): GuiPreferencesV1 {
+  return normalizeGuiPreferences({ schemaVersion: GUI_PREFERENCES_SCHEMA_VERSION, language, appearance })!;
 }

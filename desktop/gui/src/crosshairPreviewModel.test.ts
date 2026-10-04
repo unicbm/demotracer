@@ -83,7 +83,7 @@ describe("versioned crosshair previews", () => {
     assert.equal(crosshair.centerDotEnabled, true);
     assert.equal(buildCrosshairRects(crosshair).length, 1); // Only the center dot is rectangular.
     const image = rasterizeCrosshair(crosshair);
-    assert.deepEqual(pixel(image, 21, 24), [255, 255, 255, 128]); // Antialiased ring boundary at radius 3.
+    assert.deepEqual(pixel(image, 21, 24), [255, 255, 255, 253]); // Current preview adds the native half-pixel circle offset.
     assert.deepEqual(pixel(image, 23, 23), [255, 255, 255, 255]); // Dot.
   });
 
@@ -94,19 +94,19 @@ describe("versioned crosshair previews", () => {
   });
 
   it("uses pixel units and center-relative gaps with native odd/even alignment", () => {
-    const [right, left, bottom, top] = buildCrosshairRects(pixelCrosshair());
+    const [left, right, top, bottom] = buildCrosshairRects(pixelCrosshair());
     assert.deepEqual(right, { x: 27, y: 23, width: 8, height: 1 });
     assert.deepEqual(left, { x: 12, y: 23, width: 8, height: 1 });
     assert.deepEqual(bottom, { x: 23, y: 27, width: 1, height: 8 });
     assert.deepEqual(top, { x: 23, y: 12, width: 1, height: 8 });
     const even = buildCrosshairRects(pixelCrosshair({ thickness: 2, gap: 0 }));
-    assert.equal(even[0].x, 24);
-    assert.equal(even[1].x + even[1].width, 24);
+    assert.equal(even[1].x, 24);
+    assert.equal(even[0].x + even[0].width, 24);
   });
 
   it("scales authored pixels to 1080p, preserving zero sizes and rounding positive sizes", () => {
     const crosshair = pixelCrosshair({ screenHeight: 2160, length: 8, thickness: 2, gap: 4 });
-    assert.deepEqual(buildCrosshairRects(crosshair)[0], { x: 25, y: 23, width: 4, height: 1 });
+    assert.deepEqual(buildCrosshairRects(crosshair)[1], { x: 25, y: 23, width: 4, height: 1 });
     assert.deepEqual(buildCrosshairRects(pixelCrosshair({ thickness: 0 })), []);
     assert.deepEqual(buildCrosshairRects(pixelCrosshair({ length: 0 })), []);
     assert.equal(buildCrosshairRects(pixelCrosshair({ screenHeight: 0 }))[0].width, 8);
@@ -121,6 +121,12 @@ describe("versioned crosshair previews", () => {
     assert.equal(pixel(image, 24, 24)[3], 0);
   });
 
+  it("bounds thumbnail allocation while retaining very large authored shapes", () => {
+    const image = rasterizeCrosshair(pixelCrosshair({ screenHeight: 1, length: 255, thickness: 255, gap: 127 }));
+    assert.equal(image.width, 512);
+    assert.ok(image.data.some((value, index) => index % 4 === 3 && value > 0));
+  });
+
   it("renders a half outline on the top/left at full opacity", () => {
     const half = rasterizeCrosshair(pixelCrosshair({ style: 6, thickness: 2, outlineMode: 2 }));
     const full = rasterizeCrosshair(pixelCrosshair({ style: 6, thickness: 2, outlineMode: 1 }));
@@ -133,7 +139,7 @@ describe("versioned crosshair previews", () => {
     const image = rasterizeCrosshair(pixelCrosshair({ gap: 0, thickness: 2, alpha: 128, centerDotEnabled: true }));
     assert.deepEqual(pixel(image, 23, 23), [85, 232, 255, 128]);
     const outlined = rasterizeCrosshair(pixelCrosshair({ style: 6, thickness: 2, alpha: 128, outlineMode: 1 }));
-    assert.deepEqual(pixel(outlined, 23, 23), [68, 186, 204, 160]);
+    assert.deepEqual(pixel(outlined, 23, 23), [76, 210, 231, 160]); // Linear-space fill/outline composition.
     assert.deepEqual(pixel(outlined, 22, 23), [0, 0, 0, 128]);
     assert.ok(rasterizeCrosshair(pixelCrosshair({ alpha: 0 })).data.every((value) => value === 0));
   });

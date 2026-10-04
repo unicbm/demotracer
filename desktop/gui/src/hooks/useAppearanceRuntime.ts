@@ -13,10 +13,7 @@ import {
   applyCustomCss,
   applyThemeCustomization,
   CUSTOM_CSS_PROFILES_STORAGE_KEY,
-  CUSTOM_CSS_STORAGE_KEY,
   normalizeActiveCustomCssProfileId,
-  normalizeCustomCssProfiles,
-  normalizeThemeCustomization,
   normalizeUiFontSize,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
   stepUiFontSize,
@@ -30,15 +27,10 @@ import {
 } from "../appearance";
 import {
   INVENTORY_SIMULATOR_PANEL_WIDTH_KEY,
-  LEGACY_UI_SCALE_STORAGE_KEY,
   measureInventorySimulatorPanel,
   normalizeInventorySimulatorPanelWidth,
   parseCommandError,
 } from "../appSupport";
-import {
-  CUSTOM_CSS_STARTER_PROFILES_STORAGE_KEY,
-  STARTER_CUSTOM_CSS_PROFILES,
-} from "../customCssPresets";
 import {
   IGNORED_UPDATE_VERSIONS_STORAGE_KEY,
   type IgnoredUpdateVersions,
@@ -132,40 +124,27 @@ export function useAppearanceRuntime({
   useEffect(() => {
     const normalized = normalizeUiFontSize(uiFontSize);
     localStorage.setItem(UI_FONT_SIZE_STORAGE_KEY, String(normalized));
-    localStorage.removeItem(LEGACY_UI_SCALE_STORAGE_KEY);
     document.documentElement.style.zoom = "";
     document.documentElement.style.setProperty("--ui-font-size", `${normalized}px`);
     if ("__TAURI_INTERNALS__" in window) void getCurrentWebview().setZoom(1).catch(() => undefined);
   }, [uiFontSize]);
 
   useEffect(() => {
-    const normalized = normalizeThemeCustomization(themeCustomization);
-    applyThemeCustomization(normalized);
-    if (Object.keys(normalized).length > 0) {
-      localStorage.setItem(THEME_CUSTOMIZATION_STORAGE_KEY, JSON.stringify(normalized));
+    applyThemeCustomization(themeCustomization);
+    if (Object.keys(themeCustomization).length > 0) {
+      localStorage.setItem(THEME_CUSTOMIZATION_STORAGE_KEY, JSON.stringify(themeCustomization));
     } else {
       localStorage.removeItem(THEME_CUSTOMIZATION_STORAGE_KEY);
     }
   }, [themeCustomization]);
 
   useEffect(() => {
-    const normalizedProfiles = normalizeCustomCssProfiles(customCssProfiles);
-    if (STARTER_CUSTOM_CSS_PROFILES.every((starter) => (
-      normalizedProfiles.some((profile) => profile.id === starter.id && profile.css === starter.css)
-    ))) {
-      localStorage.setItem(CUSTOM_CSS_STARTER_PROFILES_STORAGE_KEY, "1");
-    }
-    if (normalizedProfiles.length > 0) {
-      localStorage.setItem(CUSTOM_CSS_PROFILES_STORAGE_KEY, JSON.stringify(normalizedProfiles));
-    } else {
-      localStorage.removeItem(CUSTOM_CSS_PROFILES_STORAGE_KEY);
-    }
-    const normalizedActiveId = normalizeActiveCustomCssProfileId(activeCustomCssProfileId, normalizedProfiles);
+    localStorage.setItem(CUSTOM_CSS_PROFILES_STORAGE_KEY, JSON.stringify(customCssProfiles));
+    const normalizedActiveId = normalizeActiveCustomCssProfileId(activeCustomCssProfileId, customCssProfiles);
     if (normalizedActiveId) localStorage.setItem(ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY, normalizedActiveId);
     else localStorage.removeItem(ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY);
-    const activeCss = normalizedProfiles.find((profile) => profile.id === normalizedActiveId)?.css ?? "";
+    const activeCss = customCssProfiles.find((profile) => profile.id === normalizedActiveId)?.css ?? "";
     applyCustomCss(activeCss);
-    localStorage.removeItem(CUSTOM_CSS_STORAGE_KEY);
   }, [activeCustomCssProfileId, customCssProfiles]);
 
   useEffect(() => {

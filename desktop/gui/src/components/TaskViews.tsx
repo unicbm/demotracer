@@ -23,6 +23,8 @@ export type CopyTarget =
   | "output"
   | "manifest"
   | "demoPath"
+  | "crosshair-editor"
+  | "crosshair-convars"
   | `player:${string}:${"steam" | "crosshair" | "viewmodel" | "inspect"}:${number}`;
 export type CommandMode = "sequence" | "round";
 

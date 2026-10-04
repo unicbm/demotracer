@@ -618,24 +618,31 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Theory]
-    [InlineData(4, false)]
+    [InlineData(0, false)]
+    [InlineData(3, false)]
+    [InlineData(4, true)]
     [InlineData(5, true)]
-    public void ReaderRequiresCurrentCompiledInventory(int schema, bool supported)
+    [InlineData(6, false)]
+    public void ReaderAdaptsOnlySchema4Inventory(int schema, bool supported)
     {
         var metadata = Encoding.UTF8.GetBytes($$"""
             {"schema_version":{{schema}},"inventory_snapshots":[{"tick_index":0,"steam_id":1,
             "weapon_def_counts":[{"weapon_def_index":43,"count":2,"acquired":false}],
-            "armor_value":100,"has_helmet":true,"gear_acquired":0}]}
+            "armor_value":100,"has_helmet":true,"gear_acquired":0},
+            {"tick_index":1,"steam_id":1,"weapon_def_counts":[{"weapon_def_index":43,"count":1}],
+            "armor_value":60,"has_helmet":true},
+            {"tick_index":2,"steam_id":1,"weapon_def_counts":[{"weapon_def_index":43,"count":2}],
+            "armor_value":60,"has_helmet":true,"has_defuser":true}]}
             """);
-        var snapshots = BuildV2SnapshotPayload([new NativeMovementSnapshot(), new NativeMovementSnapshot()]);
+        var snapshots = BuildV2SnapshotPayload(new NativeMovementSnapshot[4]);
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0,
+            WriteCompleteHeader(writer, version: 12, tickCount: 3, subtickCount: 0,
                 metadataJsonLength: (uint)metadata.Length);
             writer.Write(6U);
-            WriteEmptyPlaybackState(writer, 1);
-            WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
-            WriteSection(writer, 2, CodecNone, 1, new byte[8]);
+            WriteEmptyPlaybackState(writer, 3);
+            WriteSection(writer, 1, CodecNone, 4, snapshots, sectionVersion: 2);
+            WriteSection(writer, 2, CodecNone, 3, new byte[24]);
             WriteSection(writer, 4, CodecNone, 1, metadata);
             WriteSection(writer, 5, CodecNone, 0, []);
         });
@@ -644,13 +651,24 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
             Assert.Contains("metadata schema", Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path)).Message);
             return;
         }
-        var snapshot = Assert.Single(DtrReplayReader.Read(path).HighFidelity.InventorySnapshots);
-        Assert.False(Assert.Single(snapshot.WeaponDefCounts).Acquired);
-        Assert.Equal(0, snapshot.GearAcquired);
-        var timeline = new ReplayInventoryTimeline([snapshot]);
-        Assert.True(timeline.Advance(0));
-        Assert.False(timeline.PendingWeapons.ContainsKey(43));
-        Assert.False(timeline.Armor.HasValue);
+        var decoded = DtrReplayReader.Read(path).HighFidelity;
+        Assert.Equal(5, decoded.SchemaVersion);
+        Assert.Equal([schema == 4, false, schema == 4],
+            decoded.InventorySnapshots.Select(s => Assert.Single(s.WeaponDefCounts).Acquired));
+        Assert.Equal(schema == 4 ? new byte[] { 3, 0, 4 } : [0, 0, 0],
+            decoded.InventorySnapshots.Select(s => s.GearAcquired));
+        var timeline = new ReplayInventoryTimeline(decoded.InventorySnapshots);
+        timeline.Start(0);
+        timeline.PendingWeapons.Clear();
+        timeline.ClearGear();
+        Assert.True(timeline.Advance(1));
+        Assert.Empty(timeline.PendingWeapons);
+        Assert.Null(timeline.Armor);
+        Assert.True(timeline.Advance(2));
+        Assert.Equal(schema == 4, timeline.PendingWeapons.ContainsKey(43));
+        Assert.Equal(schema == 4 ? true : (bool?)null, timeline.Defuser);
+        Assert.Null(timeline.Armor);
+        Assert.Null(timeline.Helmet);
     }
 
     [Fact]

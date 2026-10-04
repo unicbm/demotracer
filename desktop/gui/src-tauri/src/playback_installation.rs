@@ -72,6 +72,8 @@ pub(crate) struct PlaybackContractWire {
     pub(crate) dtr_writer: u32,
     #[serde(default)]
     pub(crate) inventory_plan_schema: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) inventory_plan_reader: Option<DtrReaderContractWire>,
     #[serde(default)]
     pub(crate) dtr_section_writer_codec: String,
     #[serde(default)]

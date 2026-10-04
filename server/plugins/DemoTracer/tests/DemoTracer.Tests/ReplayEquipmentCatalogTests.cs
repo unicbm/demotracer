@@ -49,7 +49,7 @@ public sealed class ReplayEquipmentCatalogTests
     {
         using var document = System.Text.Json.JsonDocument.Parse("{}");
 
-        Assert.Throws<InvalidDataException>(() =>
+        Assert.Throws<KeyNotFoundException>(() =>
             ReplayEquipmentCatalog.Parse(document.RootElement));
     }
 
@@ -66,7 +66,7 @@ public sealed class ReplayEquipmentCatalogTests
             """;
         using var document = System.Text.Json.JsonDocument.Parse(json);
 
-        Assert.Throws<InvalidDataException>(() =>
+        Assert.Throws<ArgumentException>(() =>
             ReplayEquipmentCatalog.Parse(document.RootElement));
     }
 }

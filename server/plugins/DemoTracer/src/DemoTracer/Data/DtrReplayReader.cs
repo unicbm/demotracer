@@ -75,7 +75,7 @@ internal static partial class DtrReplayReader
 
     private static readonly JsonSerializerOptions HifiJsonOptions = new()
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
     };
 
     public static DtrReplayFile Read(string path)

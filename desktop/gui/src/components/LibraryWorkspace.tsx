@@ -959,10 +959,9 @@ export function LibraryWorkspace({
           <div>
             <span>{words.libraryFolder}</span>
             <h2>{words.libraryEmptyTitle}</h2>
-            <p>{words.libraryEmptyBody}</p>
+            <p>{words.libraryDefaultLocation}</p>
           </div>
           <button className="primary-button" type="button" onClick={onChooseExportRoot}><FolderIcon size={17} />{words.chooseLibrary}</button>
-          <small>{words.libraryDefaultLocation}</small>
         </div>
       ) : (
         <>

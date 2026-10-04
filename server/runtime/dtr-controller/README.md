@@ -1,140 +1,47 @@
 # dtr-controller
 
-The maintained source repository is
-[`unicbm/demotracer`](https://github.com/unicbm/demotracer/tree/main/server/runtime/dtr-controller).
-It contains the native `dtr-controller.dll` runtime used directly by DemoTracer,
-with `DtrController_` exports. ABI 22 removes the retired recording and public
-control SDK, including its native buffers, request queue, and profile reader.
-Replay layouts and DTR formats are unchanged.
-See [UPSTREAM.md](UPSTREAM.md) for attribution and maintained differences.
+Windows x64 Metamod runtime for DemoTracer movement and input replay.
+The native library is `dtr-controller.dll`; exports use `DtrController_`.
+ABI requirements are in the [playback contract](../../../shared/contracts/playback-contract.v1.json).
 
-## Standalone checks
+## Build and install
 
-Build from the DemoTracer working tree. Shared infrastructure is consumed
-directly from `server/runtime/common`.
-
-With PowerShell 7, CMake, and a C++20 compiler installed:
+From this directory, with PowerShell 7, CMake and a C++20 compiler:
 
 ```powershell
 ./tools/check.ps1
 ./tools/check.ps1 -NativeBuild
 ```
 
-The default check runs Release native tests without a
-CS2 SDK. `-NativeBuild` additionally builds the plugin and requires the SDK
-environment described below. For a local shared-code checkout, use
-`-CommonDirectory /path/to/common`; direct builds accept
-`-DDTR_COMMON_DIR=...`.
-The check script stages native installation files in `.build/native/package/`.
+The default command runs Release native tests without the CS2 SDK.
+`-NativeBuild` also builds the plugin using the [server SDK environment](../../README.md#shared-hook-runtime)
+and stages `.build/native/package/addons/`:
 
-## Runtime
+- `dtr-controller/bin/win64/dtr-controller.dll`
+- `dtr-controller/gamedata.json`
+- `metamod/dtr-controller.vdf`
 
-This Metamod:Source plugin replays converted CS2 demos through bots using the
-engine's movement and input hooks. DemoTracer calls its native API directly;
-console commands expose locks and diagnostics. The supported target is Win64. Linux
-build scaffolding exists, but the bundled gamedata still has unresolved Linux
-signatures/offsets, so Linux runtime packages are not supported yet.
+Use the matched product Playback bundle for installation and restart the server.
+Linux runtime packages are unsupported.
 
-------------------------------------------------------------------------
+## Replay and locks
 
-## Locks
+After `SetupMove`, replay supplies demo pre-command position and velocity in
+`CMoveData`; native movement and `FinishMove` produce the pawn state.
+Pose and duck/ladder initialization occur only at start, seek or loop boundaries.
+Missing command axes are neutral.
 
-- **Weapon** — pin a bot to one weapon slot; AI switches are blocked.
-- **Aim** — freeze `CCSBot::Upkeep`; view holds still, AI keeps deciding/moving.
-- **All** — freeze both `CCSBot::Update` and `CCSBot::Upkeep` for callers that
-  explicitly need a full native-AI freeze.
+Native AI continues perception during replay so it is ready for handoff.
+Replay blocks conflicting weapon selection. DemoTracer uses `Lock(All)` only
+during freeze-time pre-roll and releases it at `round_freeze_end`.
 
-------------------------------------------------------------------------
+| Lock | Effect |
+| --- | --- |
+| `weapon` | Pin a weapon slot and block AI switching |
+| `aim` | Freeze `CCSBot::Upkeep`; AI decisions and movement continue |
+| `all` | Freeze both `CCSBot::Update` and `Upkeep` |
 
-## Replay
-
-The GUI converts demos into DTR files; the playback plugin loads their recorded
-movement, commands, and subticks into the native runtime. While replay
-owns the bot's injected command, movement, and view output, native AI update and
-upkeep continue in the background so perception and decision state are ready for
-handoff. Replay ownership still blocks native `EquipBestWeapon`, `EquipPistol`,
-and conflicting `SelectItem` actions; only the weapon requested by the active
-replay tick may pass through the hooked selection path. DemoTracer applies a
-scoped `Lock(All)` only during freeze-time pre-roll, where contact cannot occur,
-then releases it on `round_freeze_end`. Do not otherwise apply `Lock(All)` to a
-replay bot when that continuity is wanted.
-
-------------------------------------------------------------------------
-
-## Movement Intent
-
-BotController exposes optional low-level movement intent exports for callers
-that already own policy and target selection:
-
-- `DtrController_SetUsercmdMovementIntent`
-- `DtrController_ClearUsercmdMovementIntent`
-- `DtrController_SetLeftHandIntent`
-- `DtrController_ClearLeftHandIntent`
-- `DtrController_GetMovementIntentContractVersion`
-
-ABI minor 44 preserves movement input contract 1: positive forward is W and
-positive left is A in both usercmd and CMoveData. Consumers can query the version
-before acquiring control. Owned button transitions are encoded against the
-previous engine-held state, preserving single-tick jump presses and unrelated
-native input; button-only modifiers retain native movement axes. This includes
-the input-boundary fix previously validated by the Bot Improver consumer.
-
-The `LeftHandIntent` names are compatibility aliases. The native primitive
-writes short-lived button and analog movement intent into the usercmd/movedata
-path only. Its supported button mask is WASD, duck, jump, walk, and primary
-attack (`IN_ATTACK`); callers own the decision to set or clear those buttons.
-It does not choose targets, aim, switch weapons, teleport, or write absolute
-velocity. Other button bits are ignored. Intent and replay execution require
-the current autonomous bot pawn; human players can still be recorded. A pawn
-replacement or human takeover invalidates existing control. Active DTR replay owns its replay slot,
-and replay load/start/stop/finish/clear paths clear any movement intent on that
-slot.
-
-------------------------------------------------------------------------
-
-## Slots
-
-| Target  | Engine | Weapon                  |
-| ------- | ------ | ----------------------- |
-| `Slot1` | 0      | Primary                 |
-| `Slot2` | 1      | Pistol                  |
-| `Slot3` | 2      | Knife / Zeus            |
-| `Slot4` | 3      | Grenades                |
-| `Slot5` | 4      | C4                      |
-
-------------------------------------------------------------------------
-
-## Install
-
-The build stages a ready-to-copy `addons/` tree under `build/package/`.
-
-- `dtr-controller.dll` → `csgo/addons/dtr-controller/bin/win64/`
-- `gamedata.json` → `csgo/addons/dtr-controller/`
-- `dtr-controller.vdf`  → `csgo/addons/metamod/`
-
-------------------------------------------------------------------------
-
-## Build
-
-Env: `HL2SDKCS2`, `MMSOURCE_DEV`, `CSGO_PROTO`, `protoc` (3.21.x) on PATH.
-`MMSOURCE_DEV` must include Metamod's KHook API and initialized KHook submodule;
-use the matched source pins in `server/runtime/common/contracts/hook-runtime.v1.json`.
-ABI minor 43 uses Metamod's shared KHook engine for function hooks. No private
-detour engine is linked into the runtime.
-
-```
-cmake -B build -G "Visual Studio 18 2026" -A x64
-cmake --build build --config Release
-```
-
-Config sources (vdf + gamedata) live under `configs/addons/`; the build copies
-them into the package tree automatically.
-
-------------------------------------------------------------------------
-
-## Commands
-
-```
+```text
 dtr_controller_lock <all|aim|weapon> <slot> [slot1..slot5]
 dtr_controller_unlock <all|aim|weapon> <slot>
 dtr_controller_unlock_all <all|aim|weapon>
@@ -142,58 +49,43 @@ dtr_controller_perf [0|1|reset]
 dtr_controller_status
 ```
 
-`weapon` mode requires the weapon slot as the third argument.
+Weapon slots 1–5 are primary, pistol, knife/Zeus, grenades and C4.
+Replay is controlled through the native API and [DemoTracer commands](../../../docs/COMMANDS.md).
 
+## Movement intent API
+
+`DtrController_SetUsercmdMovementIntent` and `ClearUsercmdMovementIntent`
+apply short-lived input to autonomous bot pawns. `GetMovementIntentContractVersion`
+returns contract 1: positive forward is W; positive left is A.
+`SetLeftHandIntent` / `ClearLeftHandIntent` are aliases.
+
+Supported buttons are WASD, duck, jump, walk and primary attack. Button-only
+modifiers preserve native axes; transitions preserve single-command presses.
+The API does not select targets, aim, switch weapons or teleport.
+Pawn replacement or human takeover invalidates control. DTR replay owns its
+slot and clears other intent on load, start, stop, finish and clear.
+
+## Avatar publication
+
+On the game thread, `DtrController_PublishAvatarOverride(steamId, png, length)`
+publishes and verifies a PNG of at most 16 KiB. A nonnegative return confirms
+server publication; client caching may delay display.
+`ClearAvatarOverride` and `ClearAvatarOverrides` restore preceding entries
+without overwriting a later writer. Map shutdown drops ownership; unload restores owned entries.
+
+```text
+dtr_controller_avatar_status
+dtr_controller_avatar_override_probe <steamid64> <png_path>
+dtr_controller_avatar_override_clear <steamid64>
 ```
-dtr_controller_lock aim 1                # freeze bot 1's view, AI still runs
-dtr_controller_lock all 1                # explicit full native-AI freeze
-dtr_controller_lock weapon 1 slot3       # force bot 1 to knife
-dtr_controller_unlock_all weapon         # clear every weapon lock
-dtr_controller_perf 1                    # enable and print replay perf counters
-dtr_controller_status                    # print hook status + every per-slot lock
-```
 
-Record / replay is driven through the C-ABI below, not console commands.
+DemoTracer uses manifest-backed PNGs only when avatar playback is enabled.
+Avatar publication does not change dtr-hider identity leases.
 
-Replay provides simulation-local angles and the final post-angle getter. The
-engine updates and networks `m_angEyeAngles` at its normal command boundary.
-Command angles use recorded command data, or the tick pre view when absent.
+## Credits and license
 
-------------------------------------------------------------------------
-
-## Demo-backed avatar publication
-
-DemoTracer's native avatar publisher uses ABI 22 and capability bit 18.
-`DtrController_PublishAvatarOverride(steamId, png, length)` synchronously writes
-and verifies a PNG of at most 16 KiB. A nonnegative result confirms server
-publication, not display on a remote client. `DtrController_ClearAvatarOverride`
-and `DtrController_ClearAvatarOverrides` restore preceding data, preserving a
-later writer's replacement. Call these functions on the server game thread.
-
-Avatar publication updates the server's `ServerAvatarOverrides` table. Client
-caching can delay visible changes. Map shutdown discards publication ownership;
-plugin unload restores owned server entries while preserving later writers.
-
-`dtr_controller_avatar_status` reports server publication availability and active ownership.
-`dtr_controller_avatar_override_probe <steamid64> <png_path>` and
-`dtr_controller_avatar_override_clear <steamid64>` exercise the same publisher for local
-diagnostics. Avatar refresh does not republish userinfo or replace BotHider's
-identity lease. PNG selection remains opt-in and manifest-backed in DemoTracer.
-
-## Special thanks
-
-- [cs2kz-metamod](https://github.com/KZGlobalTeam/cs2kz-metamod) for helping determine the replay framework.
-
-------------------------------------------------------------------------
-
-## License
-
-AGPL-3.0-only. This DemoTracer runtime is a maintained derivative of
-[XBribo/CS2-Bot-Controller](https://github.com/XBribo/CS2-Bot-Controller); see
-[UPSTREAM.md](UPSTREAM.md) for the maintenance boundary.
-
-------------------------------------------------------------------------
-
-## Author
-
-**XBribo and DemoTracer contributors**
+AGPL-3.0-only. Maintained derivative of
+[XBribo/CS2-Bot-Controller](https://github.com/XBribo/CS2-Bot-Controller);
+see [UPSTREAM.md](UPSTREAM.md). Authors: XBribo and DemoTracer contributors.
+Thanks to [cs2kz-metamod](https://github.com/KZGlobalTeam/cs2kz-metamod)
+for the replay framework groundwork.

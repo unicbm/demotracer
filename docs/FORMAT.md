@@ -15,13 +15,14 @@ velocities from positions.
 - Current writer format: `.dtr` v12
 - Rust/Desktop and runtime readers: v12 only
 - Required manifest ABI: 19
-- Required high-fidelity metadata schema: 5
+- High-fidelity metadata: writer schema 5; readers accept schemas 4 and 5
 - Current BotController native ABI: 22
 - Current DemoTracer companion API: 7
 
-Only current archives are supported. Older or unversioned manifests, DTR v3–v11,
-and metadata schemas 1–4 are rejected with a request to reconvert the original
-demo using the current GUI. Readers do not upgrade or infer missing versions.
+Manifest ABI 19 and DTR v12 are required. Readers adapt metadata schema 4 to
+schema 5 once at load. Older or unversioned manifests, DTR v3–v11, and metadata
+schemas 1–3 are rejected with a request to reconvert the original demo using
+the current GUI. Readers do not infer missing versions.
 Playback requires the matching ABI 22 bundle.
 
 ## Reader Safety Limits
@@ -63,9 +64,7 @@ not a SteamID64 or the team's `m_szClanTeamname`.
 Absent or incomplete evidence produces no override. An explicit empty tag and
 ID zero clears the clan. Tags preserve Unicode and are bounded to 127 UTF-8
 bytes with embedded NUL rejected; this is an application safety limit.
-The optional field is additive: manifest ABI 19 and `.dtr` v12 stay unchanged.
-Playback requires the matched BotHider managed API v3 to apply clan evidence.
-Re-export a current archive without clan evidence to add it.
+Playback requires the matched dtr-hider managed API v3 to apply clan evidence.
 
 ## Manifest Crosshair Evidence
 
@@ -75,15 +74,7 @@ string. Both legacy `CSGO-xxxxx-xxxxx-xxxxx-xxxxx-xxxxx` codes and the newer
 code through the controller's networked crosshair field; the game client owns
 rendering, including its GPU crosshair path. No server-side HUD geometry or
 re-encoding is involved. The existing 63-byte publication limit accommodates
-both formats, so manifest and native API versions are unchanged.
-
-The GUI decodes legacy V1/V3/V4 and CS-format version 1. It retains signed gap,
-independent outline RGBA, split alpha precision, and scope-dot color/scale
-settings. Reference previews support Static Quadrant ring sectors and full/half
-outlines. They use a 1080p reference without live weapon spread or recoil;
-scope-dot settings remain in the original code and do not turn the ordinary
-crosshair thumbnail into a scoped view. Unsupported formats show unavailable
-instead of being interpreted as an older layout.
+both formats.
 
 ## Manifest Cosmetic Inspect Data
 
@@ -134,7 +125,9 @@ attributes. No inspect payload is generated for partial glove evidence.
 | player_name | `u16 len + utf8` | Demo player name |
 | section_count | `u32` | Number of section records |
 
-Round replay files may store up to 10 seconds of same-round freeze-time
+Non-empty replays require `play_start_tick_index < tick_count`.
+
+Round replay files may store up to 120 seconds of same-round freeze-time
 context before `play_start_tick_index`. Playback still begins at
 `round_freeze_end`; the pre-start context preserves held grenade button state
 without replaying arbitrarily long paused freeze time.
@@ -178,6 +171,7 @@ Unknown section IDs must be skipped using `compressed_len`. Duplicate known
 sections are invalid. Missing required sections are invalid. Optional
 tick-aligned sections may be omitted; when present, their `element_count` must
 equal `tick_count`.
+Projectile and metadata sections are required when their header counts are nonzero.
 
 The v12 writer uses Zstandard level 9 with independent, dictionary-free sections.
 It stores a section uncompressed when compression would not reduce its size,
@@ -201,17 +195,10 @@ All stored floats must be finite. Converter output retains only valid entries
 referenced by `attack1_start_history_index` or `attack2_start_history_index`,
 deduplicates shared references, and remaps both indexes to the retained order.
 
-The matched Windows runtime currently retains this evidence in the file but
-does not advertise or perform input-history injection. `CSGOUserCmdPB` and its
-entries are engine-owned; even in-place protobuf mutation can corrupt the live
-command ring across the module ABI boundary. When the capability is absent,
-the managed loader uses the extended replay entry point and leaves the entire
-live input-history graph untouched. Playback and prefetch validate the complete
-section, including entry fields and attack indexes, then discard its decoded
-arrays. Full inspection reads retain them. The section remains available for a future
-engine-owned injection path. `target_ent_index` additionally requires live
-identity remapping because demo entity indexes are not stable on the replay
-server.
+The Windows runtime validates but does not inject input history into the
+engine-owned command graph. Playback/prefetch discard decoded arrays after
+validation; inspection reads retain them. `target_ent_index` refers to demo
+entities and cannot be used as a live server identity.
 
 ## Columnar Delta-Varint Sections
 
@@ -397,7 +384,7 @@ entry points validate these arguments without retaining a second copy.
 
 ## High-Fidelity Metadata
 
-Section ID `4` contains optional UTF-8 JSON metadata. Only schema `5` is accepted.
+Section ID `4` contains optional UTF-8 JSON metadata. Schemas `4` and `5` are accepted.
 
 The top-level object contains:
 
@@ -429,8 +416,10 @@ snapshot. `gear_acquired` is a bit mask: armor increase `1`, helmet acquisition
 `2`, defuser acquisition `4`. Full counts and gear remain checkpoints for starting
 or seeking; normal playback consumes acquisition flags and cancels pending grants
 when later counts fall. It never repairs damage or refills unchanged utility.
-Playback consumes this plan directly; it does not compile old observations or
-infer utility acquisitions from pickup events.
+For schema 4, readers calculate these flags once from successive inventory
+snapshots per player and normalize the in-memory metadata to schema 5. Files
+are not rewritten. Playback consumes the same plan for both schemas and does
+not infer utility acquisitions from pickup events.
 
 Projectile metadata entries contain:
 
@@ -445,20 +434,6 @@ Projectile metadata entries contain:
 | effect_position | `f32[3]` | Demo effect position, such as inferno start burn |
 | effect_source | string | Source event/property used for the effect position |
 | effect_confidence | `f32` | Converter confidence in the effect match |
-
-## Parser Checklist
-
-1. Validate magic `CSDTRREC` and require `version == 12`.
-2. Read all header fields, then `section_count`.
-3. Parse known sections and skip unknown sections using `compressed_len`.
-4. Require snapshots, tick metadata, subticks, input history, and source state.
-   Require projectile/high-fidelity sections when their header counts are non-zero.
-5. Require section version 2 for snapshots, command frames and source state;
-   all other known sections use version 1. Accept only raw or Zstd payloads.
-6. Rebuild ticks from snapshots and metadata; require their subtick sum to equal
-   `subtick_count`. Validate input-history counts and attack indexes.
-7. Parse metadata as schema 5 when present. For non-empty replays, require
-   `play_start_tick_index < tick_count`.
 
 ## Source State Changes
 

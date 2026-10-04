@@ -5,7 +5,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 using System.Runtime.InteropServices;
-using System.Text.Json.Serialization;
 
 namespace DemoTracer;
 
@@ -250,130 +249,59 @@ internal sealed class ReplayHighFidelityMetadata
     public const int CurrentSchemaVersion = 5;
     public static ReplayHighFidelityMetadata Empty { get; } = new() { SchemaVersion = CurrentSchemaVersion };
 
-    [JsonPropertyName("schema_version")]
     public int SchemaVersion { get; set; }
-
-    [JsonPropertyName("round_start_balance")]
     public uint? RoundStartBalance { get; set; }
-
-    [JsonPropertyName("events")]
     public ReplayHifiEvent[] Events { get; set; } = [];
-
-    [JsonPropertyName("inventory_snapshots")]
     public ReplayInventorySnapshot[] InventorySnapshots { get; set; } = [];
-
-    [JsonPropertyName("projectiles")]
     public ReplayProjectileMetadata[] Projectiles { get; set; } = [];
 }
 
 internal sealed class ReplayProjectileMetadata
 {
-    [JsonPropertyName("tick_index")]
     public uint TickIndex { get; set; }
-
-    [JsonPropertyName("tick")]
     public int Tick { get; set; }
-
-    [JsonPropertyName("kind")]
     public string Kind { get; set; } = string.Empty;
-
-    [JsonPropertyName("weapon_def_index")]
     public int WeaponDefIndex { get; set; }
-
-    [JsonPropertyName("effect_tick_index")]
     public uint? EffectTickIndex { get; set; }
-
-    [JsonPropertyName("effect_tick")]
     public int? EffectTick { get; set; }
-
-    [JsonPropertyName("effect_position")]
     public float[]? EffectPosition { get; set; }
-
-    [JsonPropertyName("effect_source")]
     public string EffectSource { get; set; } = string.Empty;
-
-    [JsonPropertyName("effect_confidence")]
     public float EffectConfidence { get; set; }
 }
 
 internal sealed class ReplayHifiEvent
 {
-    [JsonPropertyName("tick_index")]
     public uint TickIndex { get; set; }
-
-    [JsonPropertyName("tick")]
     public int Tick { get; set; }
-
-    [JsonPropertyName("kind")]
     public string Kind { get; set; } = string.Empty;
-
-    [JsonPropertyName("actor_steam_id")]
     public ulong? ActorSteamId { get; set; }
-
-    [JsonPropertyName("target_steam_id")]
     public ulong? TargetSteamId { get; set; }
-
-    [JsonPropertyName("weapon_def_index")]
     public int? WeaponDefIndex { get; set; }
-
-    [JsonPropertyName("item_name")]
     public string? ItemName { get; set; }
-
-    [JsonPropertyName("entity_id")]
     public int? EntityId { get; set; }
-
-    [JsonPropertyName("actor_count_after")]
     public int? ActorCountAfter { get; set; }
-
-    [JsonPropertyName("target_count_after")]
     public int? TargetCountAfter { get; set; }
-
-    [JsonPropertyName("damage")]
     public int? Damage { get; set; }
-
-    [JsonPropertyName("health")]
     public int? Health { get; set; }
 }
 
 internal sealed class ReplayInventorySnapshot
 {
-    [JsonPropertyName("tick_index")]
     public uint TickIndex { get; set; }
-
-    [JsonPropertyName("tick")]
     public int Tick { get; set; }
-
-    [JsonPropertyName("steam_id")]
     public ulong SteamId { get; set; }
-
-    [JsonPropertyName("weapon_def_counts")]
     public ReplayInventoryItemCount[] WeaponDefCounts { get; set; } = [];
-
-    [JsonPropertyName("active_weapon_def_index")]
     public int ActiveWeaponDefIndex { get; set; }
-
-    [JsonPropertyName("armor_value")]
     public int ArmorValue { get; set; }
-
-    [JsonPropertyName("has_helmet")]
     public bool HasHelmet { get; set; }
-
-    [JsonPropertyName("has_defuser")]
     public bool HasDefuser { get; set; }
-
-    [JsonPropertyName("gear_acquired")]
     public byte GearAcquired { get; set; }
 }
 
 internal sealed class ReplayInventoryItemCount
 {
-    [JsonPropertyName("weapon_def_index")]
     public int WeaponDefIndex { get; set; }
-
-    [JsonPropertyName("count")]
     public int Count { get; set; }
-
-    [JsonPropertyName("acquired")]
     public bool Acquired { get; set; }
 }
 

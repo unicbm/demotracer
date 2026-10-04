@@ -33,6 +33,10 @@ semver = "=1.0.28"
 url = "=2.5.8"
 uuid = { version = "=1.26.1", features = ["v4"] }
 zip = { version = "=6.0.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+tauri-plugin-log = "=2.8.0"
+notify = "=8.2.0"
+log = "=0.4.33"
+chrono = "=0.4.45"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "=0.61.2", features = [

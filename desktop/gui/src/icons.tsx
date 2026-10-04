@@ -233,3 +233,9 @@ export function GithubIcon({ size = 18, ...props }: IconProps) {
     </svg>
   );
 }
+
+export function ToolsIcon({ size = 18, ...props }: IconProps) {
+  return <svg {...base(size)} {...props}>
+    <path d="M14.5 6.5 18 3a6 6 0 0 0-7.5 7.5L3.8 17.2a2.1 2.1 0 0 0 3 3l6.7-6.7A6 6 0 0 0 21 6l-3.5 3.5z" />
+  </svg>;
+}

@@ -61,6 +61,9 @@ function Read-CargoPackageVersion([string]$RelativePath, [string]$PackageName) {
 $contract = (Read-Text "shared\contracts\playback-contract.v1.json") | ConvertFrom-Json
 Assert-Equal "inventory plan writer" (Read-RegexValue "desktop/converter/src/model/mod.rs" 'HIGH_FIDELITY_SCHEMA_VERSION:\s*u32\s*=\s*(\d+)' "metadata schema") ([string]$contract.inventory_plan_schema)
 Assert-Equal "inventory plan reader" (Read-RegexValue "server/plugins/DemoTracer/src/DemoTracer/Native/BotControllerNativeTypes.cs" 'CurrentSchemaVersion\s*=\s*(\d+)' "metadata schema") ([string]$contract.inventory_plan_schema)
+Assert-Equal "inventory plan maximum reader" ([string]$contract.inventory_plan_reader.max) ([string]$contract.inventory_plan_schema)
+Assert-Equal "inventory plan Rust adapter" (Read-RegexValue "desktop/converter/src/rec_writer/mod.rs" 'metadata\.schema_version == (\d+)' "metadata adapter") ([string]$contract.inventory_plan_reader.min)
+Assert-Equal "inventory plan CSS adapter" (Read-RegexValue "server/plugins/DemoTracer/src/DemoTracer/Data/DtrReplayReaderValidation.cs" 'metadata\.SchemaVersion == (\d+)' "metadata adapter") ([string]$contract.inventory_plan_reader.min)
 foreach ($id in @("dtr-controller", "dtr-hider")) {
     $root = "server/runtime/$id"
     $componentContract = if ($id -eq "dtr-controller") { $contract.bot_controller } else { $contract.bot_hider }

@@ -134,9 +134,9 @@ public sealed partial class DemoTracerPlugin
                 continue;
             }
 
+            // ProcessReplayTick already checked takeover safety for these slots.
             if (!playerSnapshot.TryGetSlot(slot, out var replayBot) ||
-                replayBot is not { IsValid: true, PawnIsAlive: true } ||
-                !IsReplayTargetBot(replayBot, playerSnapshot.Controllers))
+                replayBot is not { IsValid: true, PawnIsAlive: true })
             {
                 ClearReplayLeftHandDesiredLatch(slot);
                 continue;

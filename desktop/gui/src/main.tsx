@@ -22,6 +22,10 @@ import "@mantine/core/styles/ModalBase.css";
 import "@mantine/core/styles/Modal.css";
 import "@mantine/core/styles/ScrollArea.css";
 import "@mantine/core/styles/Input.css";
+import "@mantine/core/styles/Slider.css";
+import "@mantine/core/styles/ColorPicker.css";
+import "@mantine/core/styles/ColorSwatch.css";
+import "@mantine/core/styles/NumberInput.css";
 import "@mantine/core/styles/Combobox.css";
 import "@mantine/core/styles/InlineInput.css";
 import "@mantine/core/styles/Switch.css";
@@ -38,7 +42,6 @@ import "@fontsource-variable/noto-sans/standard.css";
 import App from "./App";
 import {
   applyThemeCustomization,
-  LEGACY_APPEARANCE_STORAGE_KEYS,
   normalizeTheme,
   normalizeThemeCustomization,
   resolveTheme,
@@ -62,7 +65,6 @@ document.documentElement.style.backgroundColor = initialBackground;
 document.body.style.backgroundColor = initialBackground;
 document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", initialBackground);
 applyThemeCustomization(normalizeThemeCustomization(localStorage.getItem(THEME_CUSTOMIZATION_STORAGE_KEY)));
-for (const key of LEGACY_APPEARANCE_STORAGE_KEYS) localStorage.removeItem(key);
 
 const mantineTheme = createTheme({
   fontFamily: "var(--font-ui)",

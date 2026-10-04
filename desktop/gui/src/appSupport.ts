@@ -13,20 +13,13 @@ import {
 } from "./playbackCommand";
 import {
   CUSTOM_CSS_PROFILES_STORAGE_KEY,
-  CUSTOM_CSS_STORAGE_KEY,
-  normalizeCustomCss,
   normalizeCustomCssProfiles,
   normalizeUiFontSize,
-  normalizeUiScale,
-  recommendedUiScale,
-  UI_FONT_SIZE_DEFAULT,
+  recommendedUiFontSize,
   UI_FONT_SIZE_STORAGE_KEY,
   type CustomCssProfile,
 } from "./appearance";
-import {
-  CUSTOM_CSS_STARTER_PROFILES_STORAGE_KEY,
-  STARTER_CUSTOM_CSS_PROFILES,
-} from "./customCssPresets";
+import { STARTER_CUSTOM_CSS_PROFILES } from "./customCssPresets";
 import { COSMETIC_PHRASE, TEXT } from "./i18n";
 import { storedLibraryPreferences, uniqueLibraryRoots } from "./library";
 import { readStoredLibrarySession } from "./librarySession";
@@ -64,7 +57,6 @@ export const DEFAULT_LOCAL_ENVIRONMENT: LocalEnvironmentSettings = {
 
 export const BATCH_PREFERENCES_STORAGE_KEY = "demotracer.batch-preferences.v1";
 export const COSMETIC_CONSENT_STORAGE_KEY = "demotracer.cosmetic-consent.v1";
-export const LEGACY_UI_SCALE_STORAGE_KEY = "demotracer.ui-scale.v1";
 export const INVENTORY_SIMULATOR_PANEL_WIDTH_KEY = "demotracer.inventory-simulator-panel-width.v1";
 export const INVENTORY_SIMULATOR_PANEL_DEFAULT_WIDTH = 580;
 export const INVENTORY_SIMULATOR_PANEL_MIN_WIDTH = 440;
@@ -176,15 +168,8 @@ export function storedLanguage(): Language {
 }
 
 export function storedUiFontSize(): number {
-  const stored = localStorage.getItem(UI_FONT_SIZE_STORAGE_KEY);
-  if (stored !== null) return normalizeUiFontSize(stored);
-  const legacyScale = localStorage.getItem(LEGACY_UI_SCALE_STORAGE_KEY);
-  if (legacyScale !== null) {
-    const scale = normalizeUiScale(legacyScale);
-    return normalizeUiFontSize(UI_FONT_SIZE_DEFAULT + Math.round((scale - 1) * 10));
-  }
-  const recommendedScale = recommendedUiScale(window.screen.width, window.screen.height, window.devicePixelRatio);
-  return normalizeUiFontSize(UI_FONT_SIZE_DEFAULT + Math.round((recommendedScale - 1) * 10));
+  return normalizeUiFontSize(localStorage.getItem(UI_FONT_SIZE_STORAGE_KEY)
+    ?? recommendedUiFontSize(window.screen.width, window.screen.height, window.devicePixelRatio));
 }
 
 export function storedCosmeticConsent(): boolean {
@@ -438,43 +423,6 @@ export function mergeActivityLogs(current: AppLogEntry[], incoming: AppLogEntry[
 }
 
 export function loadCustomCssProfiles(): CustomCssProfile[] {
-  const stored = normalizeCustomCssProfiles(localStorage.getItem(CUSTOM_CSS_PROFILES_STORAGE_KEY));
-  const legacyCss = normalizeCustomCss(localStorage.getItem(CUSTOM_CSS_STORAGE_KEY));
-  const profiles = stored.length > 0
-    ? stored
-    : legacyCss.trim()
-      ? [{ id: "migrated-custom-css", name: "Custom CSS", css: legacyCss }]
-      : [];
-  return reconcileCustomCssProfiles(
-    profiles,
-    localStorage.getItem(CUSTOM_CSS_STARTER_PROFILES_STORAGE_KEY) === "1",
-  );
-}
-
-export function reconcileCustomCssProfiles(
-  profiles: readonly CustomCssProfile[],
-  starterProfilesSeeded: boolean,
-): CustomCssProfile[] {
-  const normalizedProfiles = normalizeCustomCssProfiles(profiles);
-  const starterById = new Map(STARTER_CUSTOM_CSS_PROFILES.map((profile) => [profile.id, profile]));
-  const isLegacyStarter = (profile: CustomCssProfile, starter: CustomCssProfile) => (
-    profile.css.includes(`/* DemoTracer · ${starter.name} */`)
-    && !profile.css.includes("@media (prefers-color-scheme: dark)")
-  );
-  const refreshedProfiles = normalizedProfiles.map((profile) => {
-    const starter = starterById.get(profile.id);
-    if (!starter) return profile;
-    return !starterProfilesSeeded || isLegacyStarter(profile, starter) ? starter : profile;
-  });
-  if (starterProfilesSeeded && refreshedProfiles.every((profile, index) => profile === normalizedProfiles[index])) {
-    return normalizedProfiles;
-  }
-  const existingIds = new Set(refreshedProfiles.map((profile) => profile.id));
-  const existingNames = new Set(refreshedProfiles.map((profile) => profile.name.toLocaleLowerCase()));
-  return [
-    ...refreshedProfiles,
-    ...STARTER_CUSTOM_CSS_PROFILES.filter((profile) => (
-      !existingIds.has(profile.id) && !existingNames.has(profile.name.toLocaleLowerCase())
-    )),
-  ];
+  const stored = localStorage.getItem(CUSTOM_CSS_PROFILES_STORAGE_KEY);
+  return stored === null ? [...STARTER_CUSTOM_CSS_PROFILES] : normalizeCustomCssProfiles(stored);
 }

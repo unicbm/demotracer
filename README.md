@@ -41,9 +41,8 @@
    installed separately. Update the GUI first and keep the bundle's DLLs together.
 5. Open a converted match and copy its playback command to the server console.
 
-Analysis and conversion run locally and do not require a CS2 server or developer
-tools. Playback controls bots only. The desktop app validates playback packages
-when installing them; server setup is covered in the linked documentation.
+Analysis and conversion work locally without a server or developer tools.
+Playback controls bots only.
 
 ## Desktop Workflow
 
@@ -53,9 +52,8 @@ when installing them; server setup is covered in the linked documentation.
   <sub>Keep converted matches in a searchable local replay library.</sub>
 </p>
 
-The library can import existing archives, repair metadata, reconnect moved
-source demos, and preserve custom notes. Opening a match exposes its score,
-roster, round timeline, playback presets, and generated commands.
+Import archives, repair metadata, reconnect moved demos and keep notes in the
+library. Open a match for its roster, timeline and playback commands.
 
 <p align="center">
   <img src="docs/media/gui-cosmetic-evidence.png" alt="DemoTracer player analysis with demo-backed cosmetic evidence" width="100%">
@@ -115,20 +113,15 @@ enabled by default; active-user estimates require opt-in.
 Only artifacts attached by `unicbm` to this repository's GitHub Releases are
 official builds. See [Trademarks](TRADEMARKS.md).
 
-## Development and Reference
+## Development
 
 ```powershell
 git clone --recurse-submodules https://github.com/unicbm/demotracer.git
 ```
 
-The GUI, converter, playback plugin and bot runtimes are maintained here.
-Only `third_party/demoparser` is a submodule.
-
-- [Development](docs/DEVELOPMENT.md): source map, builds, tests and packaging.
-- [Commands](docs/COMMANDS.md): playback commands and defaults.
-- [Format](docs/FORMAT.md): `.dtr` layout and decoder limits.
-- [Documentation](docs/README.md): all references.
-- [Contributing](CONTRIBUTING.md): contribution workflow.
+See [Development](docs/DEVELOPMENT.md) for builds and packaging,
+[Commands](docs/COMMANDS.md) for playback, and [Contributing](CONTRIBUTING.md)
+for changes. All references are in the [documentation index](docs/README.md).
 
 ## Credits and License
 
