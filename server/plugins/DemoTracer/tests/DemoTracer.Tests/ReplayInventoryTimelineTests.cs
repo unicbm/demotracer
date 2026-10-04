@@ -8,18 +8,12 @@ namespace DemoTracer.Tests;
 
 public sealed class ReplayInventoryTimelineTests
 {
-    private static ReplayInventoryTimeline LegacyTimeline(ReplayInventorySnapshot[] snapshots)
-    {
-        DtrReplayReader.CompileLegacyInventory(snapshots);
-        return new(snapshots);
-    }
-
-    private static ReplayInventorySnapshot At(uint tick, int armor = 0, bool helmet = false, bool kit = false,
-        params int[] weapons) => new()
+    private static ReplayInventorySnapshot At(uint tick, int[] weapons, int[] acquired,
+        int armor = 0, bool helmet = false, bool kit = false, byte gear = 0) => new()
         {
-            TickIndex = tick, ArmorValue = armor, HasHelmet = helmet, HasDefuser = kit,
+            TickIndex = tick, ArmorValue = armor, HasHelmet = helmet, HasDefuser = kit, GearAcquired = gear,
             WeaponDefCounts = weapons.GroupBy(def => def).Select(group => new ReplayInventoryItemCount
-                { WeaponDefIndex = group.Key, Count = group.Count() }).ToArray(),
+                { WeaponDefIndex = group.Key, Count = group.Count(), Acquired = acquired.Contains(group.Key) }).ToArray(),
         };
 
     [Theory]
@@ -29,7 +23,7 @@ public sealed class ReplayInventoryTimelineTests
     [InlineData(200, true)]
     public void StartUsesOnlyEquipmentAlreadyAcquired(uint cursor, bool bought)
     {
-        var timeline = LegacyTimeline([At(0, weapons: [4]), At(100, 100, true, true, 4, 7)]);
+        var timeline = new ReplayInventoryTimeline([At(0, weapons: [4], acquired: [4]), At(100, [4, 7], [7], 100, true, true, 7)]);
         timeline.Start(cursor);
         Assert.Equal(bought, timeline.PendingWeapons.ContainsKey(7));
         Assert.Equal(bought ? 100 : 0, timeline.Armor);
@@ -41,10 +35,10 @@ public sealed class ReplayInventoryTimelineTests
     [Fact]
     public void PurchaseDoesNotRefillOtherConsumedItemsOrRepairCombatDamage()
     {
-        var timeline = LegacyTimeline([
-            At(0, 100, true, false, 7, 43, 43),
-            At(10, 60, true, false, 7, 43, 43, 45),
-            At(20, 60, true, true, 7, 43, 43, 45),
+        var timeline = new ReplayInventoryTimeline([
+            At(0, [7, 43, 43], [7, 43], 100, true, false, 3),
+            At(10, [7, 43, 43, 45], [45], 60, true),
+            At(20, [7, 43, 43, 45], [], 60, true, true, 4),
         ]);
         timeline.Start(0);
         timeline.PendingWeapons.Clear(); // Initial grant completed; server then consumes a flash.
@@ -63,8 +57,9 @@ public sealed class ReplayInventoryTimelineTests
     [Fact]
     public void DroppedItemsCancelUnfinishedGrantsAndCanBeAcquiredAgain()
     {
-        var timeline = LegacyTimeline([
-            At(0, weapons: [7, 43, 43]), At(10, weapons: [43]), At(20, weapons: [7, 43]),
+        var timeline = new ReplayInventoryTimeline([
+            At(0, weapons: [7, 43, 43], acquired: [7, 43]), At(10, weapons: [43], acquired: []),
+            At(20, weapons: [7, 43], acquired: [7]),
         ]);
         timeline.Start(0);
         timeline.ClearGear();
@@ -79,7 +74,7 @@ public sealed class ReplayInventoryTimelineTests
     [Fact]
     public void MissingInitialEvidenceNeverUsesAFutureSnapshotAndRestartResetsProgress()
     {
-        var timeline = LegacyTimeline([At(50, 100, true, true, 7)]);
+        var timeline = new ReplayInventoryTimeline([At(50, [7], [7], 100, true, true, 7)]);
         timeline.Start(0);
         Assert.Empty(timeline.PendingWeapons);
         Assert.Null(timeline.Armor);
@@ -89,4 +84,13 @@ public sealed class ReplayInventoryTimelineTests
         Assert.Empty(timeline.PendingWeapons);
         Assert.Null(timeline.Armor);
     }
+
+    [Theory]
+    [InlineData(1, 2, 2)]
+    [InlineData(1, 1, 1)]
+    [InlineData(2, 1, 2)]
+    [InlineData(1, -1, 1)]
+    [InlineData(0, 2, 0)]
+    public void UtilityCountUsesAmmoForStackedFlashbangs(int entities, int ammo, int expected)
+        => Assert.Equal(expected, DemoTracerPlugin.ObservedUtilityCount(entities, ammo));
 }

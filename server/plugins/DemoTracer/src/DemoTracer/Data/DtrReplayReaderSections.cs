@@ -4,7 +4,6 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 
@@ -162,10 +161,9 @@ internal static partial class DtrReplayReader
 
     private const byte SectionCodecZstd = 2;
 
-    private static void ValidateKnownSectionCodec(DtrSectionHeader header, string name, uint version)
+    private static void ValidateKnownSectionCodec(DtrSectionHeader header, string name)
     {
-        if (header.Codec is not SectionCodecNone and not RecCodecBrotli and not SectionCodecZstd ||
-            (header.Codec == SectionCodecZstd && version < 12))
+        if (header.Codec is not SectionCodecNone and not SectionCodecZstd)
             throw new InvalidDataException($"unsupported {name} section codec {header.Codec}");
         if (header.Codec == SectionCodecNone && header.CompressedLength != header.UncompressedLength)
         {
@@ -185,7 +183,6 @@ internal static partial class DtrReplayReader
         return codec switch
         {
             SectionCodecNone => RequireExactLength(compressed, expectedLength, "uncompressed section"),
-            RecCodecBrotli => DecompressBrotli(compressed, expectedLength),
             SectionCodecZstd => DecompressZstd(compressed, expectedLength),
             _ => throw new InvalidDataException($"unsupported section codec {codec}")
         };
@@ -218,20 +215,6 @@ internal static partial class DtrReplayReader
                 throw new EndOfStreamException("truncated skipped section");
             remaining -= read;
         }
-    }
-
-    private static int ExpectedBodyLength(int tickCount, int subtickCount, int projectileCount, int metadataJsonLength)
-    {
-        var snapshotCount = tickCount == 0 ? 0 : (long)tickCount + 1;
-        var expected = checked(
-            snapshotCount * BotControllerNative.MovementSnapshotByteSize +
-            (long)tickCount * TickMetadataByteSize +
-            (long)projectileCount * ProjectileEventByteSize +
-            metadataJsonLength +
-            (long)subtickCount * BotControllerNative.SubtickMoveByteSize);
-        if (expected > int.MaxValue)
-            throw new InvalidDataException($"expected .dtr body length too large: {expected}");
-        return (int)expected;
     }
 
     private static int ExpectedSectionLength(int count, int elementSize, string name)
@@ -297,28 +280,6 @@ internal static partial class DtrReplayReader
         }
         if (total != declaredSubtickCount)
             throw new InvalidDataException($"tick subtick sum {total} != header subtick count {declaredSubtickCount}");
-    }
-
-    private static byte[] DecompressBrotli(byte[] compressed, int expectedLength)
-    {
-        using var input = new MemoryStream(compressed, writable: false);
-        using var brotli = new BrotliStream(input, CompressionMode.Decompress);
-        var output = GC.AllocateUninitializedArray<byte>(expectedLength);
-        var totalRead = 0;
-        while (totalRead < output.Length)
-        {
-            var read = brotli.Read(output, totalRead, output.Length - totalRead);
-            if (read == 0)
-            {
-                throw new InvalidDataException(
-                    $"decompressed body length {totalRead} != expected {expectedLength}");
-            }
-            totalRead += read;
-        }
-
-        if (brotli.ReadByte() != -1)
-            throw new InvalidDataException($"decompressed body exceeds expected length {expectedLength}");
-        return output;
     }
 
     private static byte[] DecompressZstd(byte[] compressed, int expectedLength)

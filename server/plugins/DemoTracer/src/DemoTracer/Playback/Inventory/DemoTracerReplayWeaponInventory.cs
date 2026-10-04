@@ -24,6 +24,9 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
+    internal static int ObservedUtilityCount(int entityCount, int? ammoCount)
+        => entityCount <= 0 ? 0 : Math.Max(entityCount, ammoCount ?? 0);
+
     private Dictionary<string, int> CountCurrentLoadoutItems(CCSPlayerController player)
     {
         var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -49,7 +52,7 @@ public sealed partial class DemoTracerPlugin
                     : null;
                 counts[itemName] = Math.Max(
                     counts.GetValueOrDefault(itemName),
-                    ReplayUtilityGrantPolicy.ObservedUtilityCount(1, ammoCount));
+                    ObservedUtilityCount(1, ammoCount));
                 continue;
             }
 
@@ -85,7 +88,7 @@ public sealed partial class DemoTracerPlugin
         }
 
         return GetReplayWeaponSlot(className) == ReplayWeaponSlot.Utility
-            ? ReplayUtilityGrantPolicy.ObservedUtilityCount(entityCount, ammoCount)
+            ? ObservedUtilityCount(entityCount, ammoCount)
             : entityCount;
     }
 

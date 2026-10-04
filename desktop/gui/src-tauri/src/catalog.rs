@@ -6,8 +6,7 @@
 
 use super::{
     archive_info::{read_demo_info, DemoArchiveInfo, DemoInfoRead},
-    CommandErrorDto, CommandResult, MAX_MANIFEST_BYTES, MIN_SUPPORTED_DTR_FORMAT_VERSION,
-    MIN_SUPPORTED_MANIFEST_ABI,
+    CommandErrorDto, CommandResult, MAX_MANIFEST_BYTES,
 };
 use cs2_demotracer::demo_id::sha256_hex;
 use cs2_demotracer::demo_reader::is_supported_demo_path;
@@ -142,7 +141,6 @@ struct LibraryManifestWire {
     tick_rate: Option<f32>,
     abi: Option<i32>,
     format_version: Option<u32>,
-    dtr_format_version: Option<u32>,
     #[serde(default)]
     avatar_overrides: Vec<LibraryAvatarOverrideWire>,
     rounds: Option<Vec<LibraryRoundWire>>,
@@ -440,7 +438,6 @@ pub(crate) fn summarize_manifest(path: &Path) -> Result<LibraryEntryDto, String>
         tick_rate,
         abi,
         format_version,
-        dtr_format_version,
         avatar_overrides,
         rounds,
         files,
@@ -454,10 +451,7 @@ pub(crate) fn summarize_manifest(path: &Path) -> Result<LibraryEntryDto, String>
     };
     let rounds = rounds.unwrap_or_default();
     let abi = abi.unwrap_or(0);
-    let format_version = dtr_format_version
-        .filter(|version| *version != 0)
-        .or(format_version)
-        .unwrap_or(0);
+    let format_version = format_version.unwrap_or(0);
     let compatibility = manifest_compatibility(abi, format_version);
     let archive_root = path.parent().unwrap_or_else(|| Path::new("."));
     let demo_id = if demo_id.trim().is_empty() {
@@ -824,17 +818,10 @@ fn source_demo_path_is_available(value: &str) -> bool {
 }
 
 fn manifest_compatibility(abi: i32, format_version: u32) -> String {
-    let abi_supported = abi == 0 || (MIN_SUPPORTED_MANIFEST_ABI..=DEMOTRACER_ABI).contains(&abi);
-    let format_supported = format_version == 0
-        || (MIN_SUPPORTED_DTR_FORMAT_VERSION..=DTR_FORMAT_VERSION).contains(&format_version);
-    if !abi_supported || !format_supported {
-        "unsupported"
-    } else if abi == 0 || format_version == 0 {
-        "legacy"
-    } else if abi == DEMOTRACER_ABI && format_version == DTR_FORMAT_VERSION {
+    if abi == DEMOTRACER_ABI && format_version == DTR_FORMAT_VERSION {
         "current"
     } else {
-        "supported"
+        "unsupported"
     }
     .to_string()
 }

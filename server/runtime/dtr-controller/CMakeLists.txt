@@ -52,7 +52,7 @@ if(NOT PROTO_DIR OR NOT EXISTS "${PROTO_DIR}/network_connection.proto" OR
 endif()
 
 # eiface.h needs network_connection.pb.h; the usercmd protos give us
-# CSGOUserCmdPB / CSubtickMoveStep for subtick record + replay.
+# CSGOUserCmdPB / CSubtickMoveStep for subtick replay.
 if(DEFINED ENV{PROTOC} AND EXISTS "$ENV{PROTOC}")
     set(PROTOC_EXE "$ENV{PROTOC}")
 else()
@@ -108,7 +108,6 @@ add_library(dtr-controller SHARED
     src/BuyController/BuyControllerState.cpp
     src/BotController/BotController.cpp
     src/BotController/BotControllerState.cpp
-    src/BotController/PublicBotProfile.cpp
     src/BotRecorder/InputInjector.cpp
     src/BotRecorder/MotionRecorder.cpp
     src/BotRecorder/ReplaySourceState.cpp

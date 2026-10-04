@@ -111,8 +111,6 @@ pub(crate) struct BotControllerContractWire {
     #[serde(default)]
     pub(crate) movement_intent_version: i32,
     #[serde(default)]
-    pub(crate) public_control_api: i32,
-    #[serde(default)]
     pub(crate) replay_tick_bytes: u32,
     #[serde(default)]
     pub(crate) replay_tick_event_tail: String,

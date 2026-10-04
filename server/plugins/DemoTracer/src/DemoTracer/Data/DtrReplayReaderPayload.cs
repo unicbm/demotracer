@@ -4,7 +4,6 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 
@@ -12,63 +11,7 @@ namespace DemoTracer;
 
 internal static partial class DtrReplayReader
 {
-    private static NativeMovementSnapshot ReadCurrentSnapshot(BinaryReader reader)
-    {
-        return new NativeMovementSnapshot
-        {
-            OriginX = reader.ReadSingle(),
-            OriginY = reader.ReadSingle(),
-            OriginZ = reader.ReadSingle(),
-            VelX = reader.ReadSingle(),
-            VelY = reader.ReadSingle(),
-            VelZ = reader.ReadSingle(),
-            Pitch = reader.ReadSingle(),
-            Yaw = reader.ReadSingle(),
-            Roll = reader.ReadSingle(),
-            EntityFlags = reader.ReadUInt32(),
-            MoveType = reader.ReadByte(),
-            Pad0 = reader.ReadByte(),
-            Pad1 = reader.ReadByte(),
-            Pad2 = reader.ReadByte(),
-            Buttons = reader.ReadUInt64(),
-            Buttons1 = reader.ReadUInt64(),
-            Buttons2 = reader.ReadUInt64(),
-            DuckAmount = reader.ReadSingle(),
-            DuckSpeed = reader.ReadSingle(),
-            LadderNormalX = reader.ReadSingle(),
-            LadderNormalY = reader.ReadSingle(),
-            LadderNormalZ = reader.ReadSingle(),
-            Ducked = reader.ReadByte(),
-            Ducking = reader.ReadByte(),
-            DesiresDuck = reader.ReadByte(),
-            ActualMoveType = reader.ReadByte()
-        };
-    }
-
-    private static NativeMovementSnapshot[] ReadSnapshotsFromSection(
-        byte[] body,
-        int count,
-        uint sectionVersion)
-        => sectionVersion switch
-        {
-            SectionVersionV1 => ReadSnapshotsFromSectionV1(body, count),
-            SectionVersionV2 => ReadSnapshotsFromSectionV2(body, count),
-            _ => throw new InvalidDataException(
-                $"unsupported snapshots section version {sectionVersion}")
-        };
-
-    private static NativeMovementSnapshot[] ReadSnapshotsFromSectionV1(byte[] body, int count)
-    {
-        using var stream = new MemoryStream(body, writable: false);
-        using var reader = new BinaryReader(stream);
-        var snapshots = new NativeMovementSnapshot[count];
-        for (var i = 0; i < count; i++)
-            snapshots[i] = ReadCurrentSnapshot(reader);
-        RequireConsumed(stream, "snapshots");
-        return snapshots;
-    }
-
-    private static NativeMovementSnapshot[] ReadSnapshotsFromSectionV2(byte[] body, int count)
+    private static NativeMovementSnapshot[] ReadSnapshotsFromSection(byte[] body, int count)
     {
         using var stream = new MemoryStream(body, writable: false);
         using var reader = new BinaryReader(stream);
@@ -174,51 +117,7 @@ internal static partial class DtrReplayReader
         };
     }
 
-    private static NativeReplayCommandFrame[] ReadCommandFramesFromSection(
-        byte[] body,
-        int count,
-        uint sectionVersion)
-        => sectionVersion switch
-        {
-            SectionVersionV1 => ReadCommandFramesFromSectionV1(body, count),
-            SectionVersionV2 => ReadCommandFramesFromSectionV2(body, count),
-            _ => throw new InvalidDataException(
-                $"unsupported command frames section version {sectionVersion}")
-        };
-
-    private static NativeReplayCommandFrame[] ReadCommandFramesFromSectionV1(byte[] body, int count)
-    {
-        using var stream = new MemoryStream(body, writable: false);
-        using var reader = new BinaryReader(stream);
-        var frames = new NativeReplayCommandFrame[count];
-        for (var i = 0; i < count; i++)
-        {
-            frames[i] = new NativeReplayCommandFrame
-            {
-                ForwardMove = reader.ReadSingle(),
-                LeftMove = reader.ReadSingle(),
-                UpMove = reader.ReadSingle(),
-                Pitch = reader.ReadSingle(),
-                Yaw = reader.ReadSingle(),
-                Roll = reader.ReadSingle(),
-                Buttons = reader.ReadUInt64(),
-                Buttons1 = reader.ReadUInt64(),
-                Buttons2 = reader.ReadUInt64(),
-                MouseDx = reader.ReadInt32(),
-                MouseDy = reader.ReadInt32(),
-                WeaponSelect = reader.ReadInt32(),
-                Fields = reader.ReadUInt32(),
-                LeftHandDesired = reader.ReadByte(),
-                Pad0 = reader.ReadByte(),
-                Pad1 = reader.ReadByte(),
-                Pad2 = reader.ReadByte()
-            };
-        }
-        RequireConsumed(stream, "command frames");
-        return frames;
-    }
-
-    private static NativeReplayCommandFrame[] ReadCommandFramesFromSectionV2(byte[] body, int count)
+    private static NativeReplayCommandFrame[] ReadCommandFramesFromSection(byte[] body, int count)
     {
         using var stream = new MemoryStream(body, writable: false);
         using var reader = new BinaryReader(stream);

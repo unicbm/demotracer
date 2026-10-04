@@ -109,11 +109,6 @@ public sealed partial class DemoTracerPlugin
     private static bool IsFreshBulletHandoffEvent(float eventTime)
         => Server.CurrentTime - eventTime <= BulletHandoffMatchSeconds;
 
-    private static bool IsReplaySlotPlaying(int slot)
-    {
-        return slot >= 0 && BotControllerNative.GetReplayState(slot).Playing;
-    }
-
     private bool ReplayBotHasContact(int slot, out string contactReason)
     {
         contactReason = string.Empty;

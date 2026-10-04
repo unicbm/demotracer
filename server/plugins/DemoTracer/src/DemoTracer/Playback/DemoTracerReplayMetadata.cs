@@ -135,9 +135,6 @@ public sealed partial class DemoTracerPlugin
             normalizedScoreboard,
             metadata.Projectiles ?? [],
             hifiEvents,
-            inventorySnapshots.Length == 0
-                ? ReplayUtilityGrantPolicy.Compile(hifiEvents, steamId, metadata.PlayStartTickIndex, _replayEquipment)
-                : [],
             inventorySnapshots,
             metadata.HighFidelity?.RoundStartBalance,
             metadata.TickCount,

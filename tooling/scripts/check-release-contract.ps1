@@ -130,7 +130,7 @@ if ([string]::IsNullOrWhiteSpace([string]$releaseNotes.zh) -or [string]::IsNullO
 $null = Read-Text "tooling\release\github-release.v$Version.md"
 
 Assert-Equal "manifest ABI" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'DEMOTRACER_ABI:\s*i32\s*=\s*(\d+)' "manifest ABI") ([string]$contract.manifest_abi)
-Assert-Equal "CSS maximum manifest ABI" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Lifecycle\DemoTracerPlugin.cs" 'MaxManifestAbiVersion\s*=\s*(\d+)' "maximum manifest ABI") ([string]$contract.manifest_abi)
+Assert-Equal "CSS manifest ABI" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Lifecycle\DemoTracerPlugin.cs" 'ManifestAbiVersion\s*=\s*(\d+)' "manifest ABI") ([string]$contract.manifest_abi)
 Assert-Equal "DTR writer" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'DTR_FORMAT_VERSION:\s*u32\s*=\s*(\d+)' "DTR writer") ([string]$contract.dtr_writer)
 Assert-Equal "DTR section codec" ([string]$contract.dtr_section_writer_codec) "zstd"
 Assert-Equal "DTR Zstd level" (Read-RegexValue "desktop\converter\src\rec_writer\mod.rs" 'ZSTD_LEVEL:\s*i32\s*=\s*(\d+)' "Zstd level") ([string]$contract.dtr_section_zstd_level)
@@ -141,7 +141,6 @@ Assert-Equal "CSS maximum DTR reader" (Read-RegexValue "server\plugins\DemoTrace
 Assert-Equal "CSS native ABI" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'ExpectedAbiVersion\s*=\s*(\d+)' "CSS native ABI") ([string]$contract.bot_controller.abi_major)
 Assert-Equal "runtime native ABI" (Read-RegexValue "server\runtime\dtr-controller\src\common\exports.cpp" 'kBotControllerAbiMajor\s*=\s*(\d+)' "runtime native ABI") ([string]$contract.bot_controller.abi_major)
 Assert-Equal "minimum native ABI minor" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\DemoTracerRuntimeHealth.cs" 'MinimumBotControllerAbiMinor\s*=\s*(\d+)' "minimum native ABI minor") ([string]$contract.bot_controller.min_abi_minor)
-Assert-Equal "BotController public control API" (Read-RegexValue "server\runtime\dtr-controller\src\common\exports.cpp" 'DtrController_GetPublicApiVersion\(\)\s*\{\s*return\s+(\d+)' "public control API") ([string]$contract.bot_controller.public_control_api)
 Assert-Equal "BotController movement input contract" (Read-RegexValue "server\runtime\dtr-controller\src\common\exports.cpp" 'DtrController_GetMovementIntentContractVersion\(\)\s*\{\s*return\s+(\d+)' "movement input contract") ([string]$contract.bot_controller.movement_intent_version)
 Assert-Equal "BotController replay tick size" (Read-RegexValue "server\runtime\dtr-controller\src\BotRecorder\MotionRecorder.h" 'sizeof\(ReplayTick\)\s*==\s*(\d+)' "native replay tick size") ([string]$contract.bot_controller.replay_tick_bytes)
 Assert-Equal "BotController replay event tail" ([string]$contract.bot_controller.replay_tick_event_tail) "reserved_zero"

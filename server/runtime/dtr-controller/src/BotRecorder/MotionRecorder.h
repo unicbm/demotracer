@@ -1,4 +1,4 @@
-// Motion recording & replay
+// Demo-backed motion replay
 
 #pragma once
 
@@ -219,34 +219,6 @@ namespace BotController
         void ResetReplayPerfCounters();
         ReplayPerfCounters GetReplayPerfCounters();
         void AddReplayPerf(ReplayPerfCounter counter, uint64_t amount = 1);
-
-        // ---- recording ----
-        bool StartRecord(int slot); // clears old buffer, begins capture
-        bool StopRecord(int slot);  // stops
-        bool ClearRecordedMotion(int slot); // stops and releases recorded buffers
-        bool IsRecording(int slot);
-        int RecordedTickCount(int slot);    // <0 on bad slot
-        int RecordedSubtickCount(int slot); // <0 on bad slot
-
-        // ProcessMovement hook: capture pre snapshot
-        void OnCapturePre(int slot, void *services, void *cmd);
-        // ProcessMovement hook: capture post snapshot + commit the tick
-        void OnCapturePost(int slot, void *services, void *cmd);
-        // PlayerRunCommand hook: stash this tick's subtick moves (pending).
-        void OnCaptureSubticks(int slot, const SubtickMove *moves, int count);
-
-        // Track which WeaponServices* maps to this recording slot
-        void SetLiveWs(int slot, void *ws);
-        void *LiveWs(int slot);
-        // SelectItem tap: update the slot's current weapon def index.
-        void SetCurrentDef(int slot, int defIndex);
-
-        // Copy recorded data out to caller buffers; returns elements written.
-        int CopyTicks(int slot, ReplayTick *out, int maxTicks);
-        int CopySubticks(int slot, SubtickMove *out, int maxSubticks);
-        void OnCaptureCommand(int slot, const ReplayCommandFrameData &command);
-        int RecordedCommandCount(int slot);
-        int CopyCommands(int slot, ReplayCommandFrameData *out, int maxCommands);
 
         // ---- replay ----
         // Load parallel arrays into a slot's replay buffer

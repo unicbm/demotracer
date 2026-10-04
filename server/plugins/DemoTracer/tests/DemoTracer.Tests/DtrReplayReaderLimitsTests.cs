@@ -4,7 +4,6 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-using System.IO.Compression;
 using System.Text;
 
 namespace DemoTracer.Tests;
@@ -12,41 +11,9 @@ namespace DemoTracer.Tests;
 public sealed class DtrReplayReaderLimitsTests : IDisposable
 {
     private const byte CodecNone = 0;
-    private const byte CodecBrotli = 1;
     private readonly string tempDirectory = Path.Combine(
         Path.GetTempPath(),
         $"demotracer-reader-tests-{Guid.NewGuid():N}");
-
-    [Theory]
-    [InlineData(0U, 2U, 0U, 1U, true)]
-    [InlineData(0U, 2U, 0U, 0U, true)]
-    [InlineData(0U, 2U, 1U, 0U, false)]
-    [InlineData(0U, 2U, 0x7fc00000U, 1U, false)]
-    [InlineData(0U, 5U, 2U, 1U, false)]
-    [InlineData(1U, 2U, 0U, 1U, false)]
-    [InlineData(0U, 999U, 0U, 1U, false)]
-    public void SourceStateValidatesPresenceTypeAndTick(uint tick, uint field, uint bits, uint present, bool valid)
-    {
-        var path = WriteFile(writer =>
-        {
-            var snapshots = BuildV2SnapshotPayload([new NativeMovementSnapshot(), new NativeMovementSnapshot()]);
-            WriteCompleteHeader(writer, 11, 1, 0);
-            writer.Write(5U);
-            WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
-            WriteSection(writer, 2, CodecNone, 1, new byte[8]);
-            WriteSection(writer, 5, CodecNone, 0, []);
-            var history = new byte[16];
-            BitConverter.GetBytes(-1).CopyTo(history, 4); BitConverter.GetBytes(-1).CopyTo(history, 8);
-            WriteSection(writer, 8, CodecNone, 1, history);
-            using var body = new MemoryStream();
-            using var payload = new BinaryWriter(body, Encoding.UTF8, leaveOpen: true);
-            payload.Write(tick); payload.Write(field); payload.Write(bits); payload.Write(present); payload.Flush();
-            WriteSection(writer, 9, CodecNone, 1, body.ToArray());
-        });
-        if (!valid) { Assert.Contains("source state", Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path)).Message); return; }
-        var change = Assert.Single(DtrReplayReader.Read(path).SourceState);
-        Assert.Equal(bits, change.ValueBits); Assert.Equal(present, change.Present);
-    }
 
     [Fact]
     public void RejectsFileBeforeParsingWhenItExceedsLimit()
@@ -62,7 +29,7 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     [Fact]
     public void RejectsTickCountBeforeReadingTheRestOfTheHeader()
     {
-        var path = WriteFile(writer => WriteHeaderPrefix(writer, version: 7, tickCount: 2, subtickCount: 0));
+        var path = WriteFile(writer => WriteHeaderPrefix(writer, version: 12, tickCount: 2, subtickCount: 0));
         var limits = DtrReadLimits.Default with { MaxTickCount = 1 };
 
         var error = Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path, limits));
@@ -73,7 +40,7 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     [Fact]
     public void RejectsImpossibleHeaderSubtickRatio()
     {
-        var path = WriteFile(writer => WriteHeaderPrefix(writer, version: 3, tickCount: 1, subtickCount: 37));
+        var path = WriteFile(writer => WriteHeaderPrefix(writer, version: 12, tickCount: 1, subtickCount: 37));
 
         var error = Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path));
 
@@ -84,9 +51,9 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     public void RejectsProjectileAndMetadataCountsAtTheirLimits()
     {
         var projectilePath = WriteFile(writer =>
-            WriteHeaderPrefix(writer, version: 4, tickCount: 0, subtickCount: 0, projectileCount: 2));
+            WriteHeaderPrefix(writer, version: 12, tickCount: 0, subtickCount: 0, projectileCount: 2));
         var metadataPath = WriteFile(writer =>
-            WriteHeaderPrefix(writer, version: 6, tickCount: 0, subtickCount: 0, metadataJsonLength: 2));
+            WriteHeaderPrefix(writer, version: 12, tickCount: 0, subtickCount: 0, metadataJsonLength: 2));
 
         var projectileError = Assert.Throws<InvalidDataException>(() =>
             DtrReplayReader.Read(
@@ -106,7 +73,7 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     {
         var path = WriteFile(writer =>
         {
-            WriteHeaderPrefix(writer, version: 3, tickCount: 0, subtickCount: 0);
+            WriteHeaderPrefix(writer, version: 12, tickCount: 0, subtickCount: 0);
             writer.Write(ushort.MaxValue);
         });
 
@@ -115,64 +82,19 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         Assert.Contains("string in .dtr", error.Message);
     }
 
-    [Fact]
-    public void RejectsLegacyBodyBudgetsBeforeReadingPayload()
-    {
-        var path = WriteFile(writer =>
-        {
-            WriteCompleteHeader(writer, version: 6, tickCount: 0, subtickCount: 0);
-            writer.Write(CodecBrotli);
-            writer.Write(0UL);
-            writer.Write(11UL);
-        });
-        var limits = DtrReadLimits.Default with { MaxCompressedSectionBytes = 10 };
-
-        var error = Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path, limits));
-
-        Assert.Contains("body_compressed_len 11 exceeds limit 10", error.Message);
-    }
-
-    [Fact]
-    public void RejectsLegacyDecodedBodyBudgetBeforeCheckingItsShape()
-    {
-        var path = WriteFile(writer =>
-        {
-            WriteCompleteHeader(writer, version: 6, tickCount: 0, subtickCount: 0);
-            writer.Write(CodecBrotli);
-            writer.Write(11UL);
-            writer.Write(0UL);
-        });
-        var limits = DtrReadLimits.Default with { MaxDecodedSectionBytes = 10 };
-
-        var error = Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path, limits));
-
-        Assert.Contains("body_uncompressed_len 11 exceeds limit 10", error.Message);
-    }
-
     [Theory]
     [InlineData(3U)]
-    [InlineData(5U)]
-    public void KeepsLegacyVersionsReadable(uint version)
+    [InlineData(11U)]
+    [InlineData(13U)]
+    public void RejectsOtherFormatVersions(uint version)
     {
-        var compressed = Compress([]);
-        var path = WriteFile(writer =>
-        {
-            WriteCompleteHeader(writer, version, tickCount: 0, subtickCount: 0);
-            writer.Write(CodecBrotli);
-            writer.Write(0UL);
-            writer.Write((ulong)compressed.Length);
-            writer.Write(compressed);
-        });
-
-        var replay = DtrReplayReader.Read(path);
-
-        Assert.Equal(version, replay.Version);
-        Assert.Empty(replay.Ticks);
-        Assert.Empty(replay.Subticks);
+        var path = WriteFile(writer => WriteHeaderPrefix(writer, version, tickCount: 0, subtickCount: 0));
+        var error = Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path));
+        Assert.Contains("reconvert the demo", error.Message);
     }
 
     [Fact]
-    public void ReadsV8ColumnDeltaSectionsBitExactly()
+    public void ReadsColumnDeltaSectionsBitExactly()
     {
         var pre = new NativeMovementSnapshot
         {
@@ -228,8 +150,9 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         BitConverter.GetBytes(42).CopyTo(tickMetadata, 0);
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 8, tickCount: 1, subtickCount: 0);
-            writer.Write(4U);
+            WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0);
+            writer.Write(6U);
+            WriteEmptyPlaybackState(writer, 1);
             WriteSection(
                 writer,
                 sectionId: 1,
@@ -250,7 +173,7 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
 
         var replay = DtrReplayReader.Read(path);
 
-        Assert.Equal(8U, replay.Version);
+        Assert.Equal(12U, replay.Version);
         Assert.Single(replay.Ticks);
         Assert.Equal(
             BitConverter.SingleToUInt32Bits(pre.OriginX),
@@ -277,7 +200,7 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Fact]
-    public void ReadsV9InputHistoryWithAttackIndexes()
+    public void ReadsInputHistoryWithAttackIndexes()
     {
         var snapshots = BuildV2SnapshotPayload([new NativeMovementSnapshot(), new NativeMovementSnapshot()]);
         byte[] tickMetadata;
@@ -315,8 +238,9 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
 
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 9, tickCount: 1, subtickCount: 0);
-            writer.Write(4U);
+            WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0);
+            writer.Write(5U);
+            WriteSection(writer, 9, CodecNone, 0, [], sectionVersion: 2);
             WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
             WriteSection(writer, 2, CodecNone, 1, tickMetadata);
             WriteSection(writer, 5, CodecNone, 0, []);
@@ -413,8 +337,9 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     private string WriteAuxiliaryReplay(byte[] history, byte[] extras, int historySections = 1)
         => WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 9, tickCount: 1, subtickCount: 0);
-            writer.Write((uint)(4 + historySections));
+            WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0);
+            writer.Write((uint)(5 + historySections));
+            WriteSection(writer, 9, CodecNone, 0, [], sectionVersion: 2);
             WriteSection(writer, 1, CodecNone, 2,
                 BuildV2SnapshotPayload([new NativeMovementSnapshot(), new NativeMovementSnapshot()]), sectionVersion: 2);
             WriteSection(writer, 2, CodecNone, 1, new byte[8]);
@@ -425,27 +350,16 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         });
 
     [Fact]
-    public void ReadsV10BackdatedSubtickWhenBitExactly()
+    public void ReadsBackdatedSubtickWhenBitExactly()
     {
         const float when = -1.671875f;
-        var path = WriteFile(writer => WriteSingleSubtickReplay(writer, version: 10, when));
+        var path = WriteFile(writer => WriteSingleSubtickReplay(writer, version: 12, when));
 
         var replay = DtrReplayReader.Read(path);
 
-        Assert.Equal(10U, replay.Version);
+        Assert.Equal(12U, replay.Version);
         var subtick = Assert.Single(replay.Subticks);
         Assert.Equal(BitConverter.SingleToUInt32Bits(when), BitConverter.SingleToUInt32Bits(subtick.When));
-    }
-
-    [Fact]
-    public void RejectsBackdatedSubtickWhenBeforeV10()
-    {
-        var path = WriteFile(writer =>
-            WriteSingleSubtickReplay(writer, version: 9, when: -1.0f / 128.0f));
-
-        var error = Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path));
-
-        Assert.Contains("when must be finite and in [0, 1)", error.Message);
     }
 
     [Fact]
@@ -474,8 +388,9 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         var tickMetadata = new byte[16];
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 8, tickCount: 2, subtickCount: 0);
-            writer.Write(3U);
+            WriteCompleteHeader(writer, version: 12, tickCount: 2, subtickCount: 0);
+            writer.Write(5U);
+            WriteEmptyPlaybackState(writer, 2);
             WriteSection(
                 writer,
                 sectionId: 1,
@@ -501,19 +416,20 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Fact]
-    public void ReadsRoundStartBalanceFromHighFidelitySchemaFour()
+    public void ReadsRoundStartBalanceFromCurrentMetadata()
     {
         var metadata = Encoding.UTF8.GetBytes(
-            """{"schema_version":4,"round_start_balance":5250,"events":[],"inventory_snapshots":[],"projectiles":[]}""");
+            """{"schema_version":5,"round_start_balance":5250,"events":[],"inventory_snapshots":[],"projectiles":[]}""");
         var path = WriteFile(writer =>
         {
             WriteCompleteHeader(
                 writer,
-                version: 7,
+                version: 12,
                 tickCount: 0,
                 subtickCount: 0,
                 metadataJsonLength: (uint)metadata.Length);
-            writer.Write(4U);
+            writer.Write(6U);
+            WriteEmptyPlaybackState(writer, 0);
             WriteSection(writer, sectionId: 1, codec: CodecNone, elementCount: 0, payload: []);
             WriteSection(writer, sectionId: 2, codec: CodecNone, elementCount: 0, payload: []);
             WriteSection(writer, sectionId: 4, codec: CodecNone, elementCount: 1, payload: metadata);
@@ -522,7 +438,7 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
 
         var replay = DtrReplayReader.Read(path);
 
-        Assert.Equal(4, replay.HighFidelity.SchemaVersion);
+        Assert.Equal(5, replay.HighFidelity.SchemaVersion);
         Assert.Equal(5_250U, replay.HighFidelity.RoundStartBalance);
     }
 
@@ -531,8 +447,9 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     {
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 7, tickCount: 0, subtickCount: 0);
-            writer.Write(3U);
+            WriteCompleteHeader(writer, version: 12, tickCount: 0, subtickCount: 0);
+            writer.Write(5U);
+            WriteEmptyPlaybackState(writer, 0);
             WriteSection(writer, sectionId: 1, codec: CodecNone, elementCount: 0, payload: []);
             WriteSection(writer, sectionId: 2, codec: CodecNone, elementCount: 0, payload: []);
             WriteSection(writer, sectionId: 5, codec: CodecNone, elementCount: 0, payload: []);
@@ -552,10 +469,10 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         0, 0, 0, 0, 0, 0, 0, 0x80, 0x80, 0x80, 0xbf, 0x3f // DuckRoot XOR planes
     }).ToArray();
 
-    private string WriteSourceStateFile(byte[] body, int count = 9, uint version = 12, int ticks = 8,
+    private string WriteSourceStateFile(byte[] body, int count = 9, int ticks = 8,
         byte codec = CodecNone, int? uncompressedLength = null)
         => WriteFile(writer => {
-            WriteCompleteHeader(writer, version, (uint)ticks, 0);
+            WriteCompleteHeader(writer, 12, (uint)ticks, 0);
             writer.Write(5U);
             WriteSection(writer, 1, CodecNone, ticks + 1,
                 BuildV2SnapshotPayload(new NativeMovementSnapshot[ticks + 1]), sectionVersion: 2);
@@ -613,15 +530,14 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Theory]
-    [InlineData(8, 12U, 0)]
-    [InlineData(10, 12U, 0)]
-    [InlineData(9, 11U, 0)]
-    [InlineData(9, 12U, 1)]
-    public void CompactSourceRejectsCountVersionAndLengthMismatch(int count, uint version, int extraBytes)
+    [InlineData(8, 0)]
+    [InlineData(10, 0)]
+    [InlineData(9, 1)]
+    public void CompactSourceRejectsCountAndLengthMismatch(int count, int extraBytes)
     {
         var body = CompactSourceFixture().Concat(new byte[extraBytes]).ToArray();
         Assert.Contains("source state", Assert.Throws<InvalidDataException>(() =>
-            DtrReplayReader.Read(WriteSourceStateFile(body, count, version))).Message);
+            DtrReplayReader.Read(WriteSourceStateFile(body, count))).Message);
     }
 
     [Fact]
@@ -642,14 +558,12 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Fact]
-    public void ZstdCodecRequiresV12EvenForExistingSectionLayouts()
+    public void RejectsRetiredBrotliCodec()
     {
         var path = WriteFile(writer => {
-            WriteCompleteHeader(writer, 11, 1, 0);
+            WriteCompleteHeader(writer, 12, 0, 0);
             writer.Write(1U);
-            var body = BuildV2SnapshotPayload(new NativeMovementSnapshot[2]);
-            using var compressor = new ZstdSharp.Compressor(9);
-            WriteSection(writer, 1, 2, 2, compressor.Wrap(body).ToArray(), body.Length, sectionVersion: 2);
+            WriteSection(writer, 2, 1, 0, []);
         });
         Assert.Contains("codec", Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path)).Message);
     }
@@ -687,13 +601,14 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     [InlineData("{\"tick_index\":0,\"steam_id\":1,\"weapon_def_counts\":[{\"weapon_def_index\":7,\"count\":1},{\"weapon_def_index\":7,\"count\":1}]}")]
     public void RejectsUnsafeInventoryAcquisitionsBeforePlayback(string snapshot)
     {
-        var metadata = Encoding.UTF8.GetBytes("{\"inventory_snapshots\":[" + snapshot + "]}");
+        var metadata = Encoding.UTF8.GetBytes("{\"schema_version\":5,\"inventory_snapshots\":[" + snapshot + "]}");
         var snapshots = BuildV2SnapshotPayload([new NativeMovementSnapshot(), new NativeMovementSnapshot()]);
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 8, tickCount: 1, subtickCount: 0,
+            WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0,
                 metadataJsonLength: (uint)metadata.Length);
-            writer.Write(4U);
+            writer.Write(6U);
+            WriteEmptyPlaybackState(writer, 1);
             WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
             WriteSection(writer, 2, CodecNone, 1, new byte[8]);
             WriteSection(writer, 4, CodecNone, 1, metadata);
@@ -703,9 +618,9 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Theory]
-    [InlineData(4, true)]
-    [InlineData(5, false)]
-    public void ReaderCompilesLegacyAcquisitionsButPreservesCompiledPlan(int schema, bool acquired)
+    [InlineData(4, false)]
+    [InlineData(5, true)]
+    public void ReaderRequiresCurrentCompiledInventory(int schema, bool supported)
     {
         var metadata = Encoding.UTF8.GetBytes($$"""
             {"schema_version":{{schema}},"inventory_snapshots":[{"tick_index":0,"steam_id":1,
@@ -715,21 +630,27 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         var snapshots = BuildV2SnapshotPayload([new NativeMovementSnapshot(), new NativeMovementSnapshot()]);
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 8, tickCount: 1, subtickCount: 0,
+            WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0,
                 metadataJsonLength: (uint)metadata.Length);
-            writer.Write(4U);
+            writer.Write(6U);
+            WriteEmptyPlaybackState(writer, 1);
             WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
             WriteSection(writer, 2, CodecNone, 1, new byte[8]);
             WriteSection(writer, 4, CodecNone, 1, metadata);
             WriteSection(writer, 5, CodecNone, 0, []);
         });
+        if (!supported)
+        {
+            Assert.Contains("metadata schema", Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path)).Message);
+            return;
+        }
         var snapshot = Assert.Single(DtrReplayReader.Read(path).HighFidelity.InventorySnapshots);
-        Assert.Equal(acquired, Assert.Single(snapshot.WeaponDefCounts).Acquired);
-        Assert.Equal(acquired ? 3 : 0, snapshot.GearAcquired);
+        Assert.False(Assert.Single(snapshot.WeaponDefCounts).Acquired);
+        Assert.Equal(0, snapshot.GearAcquired);
         var timeline = new ReplayInventoryTimeline([snapshot]);
         Assert.True(timeline.Advance(0));
-        Assert.Equal(acquired, timeline.PendingWeapons.ContainsKey(43));
-        Assert.Equal(acquired, timeline.Armor.HasValue);
+        Assert.False(timeline.PendingWeapons.ContainsKey(43));
+        Assert.False(timeline.Armor.HasValue);
     }
 
     [Fact]
@@ -741,8 +662,9 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         BitConverter.GetBytes(-1).CopyTo(tickMetadata, 0);
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 8, tickCount: 1, subtickCount: 0);
-            writer.Write(3U);
+            WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0);
+            writer.Write(5U);
+            WriteEmptyPlaybackState(writer, 1);
             WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
             WriteSection(writer, 2, CodecNone, 1, tickMetadata);
             WriteSection(writer, 5, CodecNone, 0, []);
@@ -764,8 +686,9 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
             [new NativeReplayCommandFrame { WeaponSelect = -1, Fields = 1U << 31 }]);
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 8, tickCount: 1, subtickCount: 0);
-            writer.Write(4U);
+            WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0);
+            writer.Write(6U);
+            WriteEmptyPlaybackState(writer, 1);
             WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
             WriteSection(writer, 2, CodecNone, 1, tickMetadata);
             WriteSection(writer, 5, CodecNone, 0, []);
@@ -778,11 +701,11 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Fact]
-    public void RejectsV7SectionCountBeforeReadingSectionHeaders()
+    public void RejectsSectionCountBeforeReadingSectionHeaders()
     {
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 7, tickCount: 0, subtickCount: 0);
+            WriteCompleteHeader(writer, version: 12, tickCount: 0, subtickCount: 0);
             writer.Write(2U);
         });
         var limits = DtrReadLimits.Default with { MaxSectionCount = 1 };
@@ -797,12 +720,12 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     {
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 7, tickCount: 0, subtickCount: 0);
+            WriteCompleteHeader(writer, version: 12, tickCount: 0, subtickCount: 0);
             writer.Write(1U);
             WriteSectionHeader(
                 writer,
                 sectionId: 1,
-                codec: CodecBrotli,
+                codec: CodecNone,
                 elementCount: 1,
                 uncompressedLength: 0,
                 compressedLength: 10);
@@ -814,11 +737,11 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Fact]
-    public void ReservesBytesForRemainingV7HeadersBeforeReadingPayload()
+    public void ReservesBytesForRemainingHeadersBeforeReadingPayload()
     {
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 7, tickCount: 0, subtickCount: 0);
+            WriteCompleteHeader(writer, version: 12, tickCount: 0, subtickCount: 0);
             writer.Write(2U);
             WriteSectionHeader(
                 writer,
@@ -836,11 +759,11 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Fact]
-    public void EnforcesCumulativeV7SectionBudgets()
+    public void EnforcesCumulativeSectionBudgets()
     {
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 7, tickCount: 0, subtickCount: 0);
+            WriteCompleteHeader(writer, version: 12, tickCount: 0, subtickCount: 0);
             writer.Write(2U);
             WriteSection(writer, sectionId: 99, codec: CodecNone, elementCount: 0, payload: new byte[5]);
             WriteSectionHeader(
@@ -876,8 +799,9 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     {
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 7, tickCount: 0, subtickCount: 0);
-            writer.Write(4U);
+            WriteCompleteHeader(writer, version: 12, tickCount: 0, subtickCount: 0);
+            writer.Write(6U);
+            WriteEmptyPlaybackState(writer, 0);
             WriteSection(
                 writer,
                 sectionId: 99,
@@ -897,35 +821,13 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Fact]
-    public void RejectsBrotliOutputBeyondDeclaredSectionLength()
-    {
-        var compressed = Compress([42]);
-        var path = WriteFile(writer =>
-        {
-            WriteCompleteHeader(writer, version: 7, tickCount: 0, subtickCount: 0);
-            writer.Write(1U);
-            WriteSection(
-                writer,
-                sectionId: 1,
-                codec: CodecBrotli,
-                elementCount: 0,
-                payload: compressed,
-                uncompressedLength: 0);
-        });
-
-        var error = Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path));
-
-        Assert.Contains("exceeds expected length 0", error.Message);
-    }
-
-    [Fact]
     public void RejectsMoreThanThirtySixSubticksInTickMetadata()
     {
         var tickMetadata = new byte[8];
         BitConverter.GetBytes(37U).CopyTo(tickMetadata, 4);
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 7, tickCount: 1, subtickCount: 36);
+            WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 36);
             writer.Write(1U);
             WriteSection(
                 writer,
@@ -1009,7 +911,8 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         }
 
         WriteCompleteHeader(writer, version, tickCount: 1, subtickCount: 1);
-        writer.Write(4U);
+        writer.Write(5U);
+        WriteSection(writer, 9, CodecNone, 0, [], sectionVersion: 2);
         WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
         WriteSection(writer, 2, CodecNone, 1, tickMetadata);
         WriteSection(writer, 5, CodecNone, 1, subticks);
@@ -1033,12 +936,21 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         writer.Write(0UL);
         writer.Write(tickCount);
         writer.Write(subtickCount);
-        if (version >= 4)
-            writer.Write(projectileCount);
-        if (version >= 5)
-            writer.Write(0U);
-        if (version >= 6)
-            writer.Write(metadataJsonLength);
+        writer.Write(projectileCount);
+        writer.Write(0U);
+        writer.Write(metadataJsonLength);
+    }
+
+    private static void WriteEmptyPlaybackState(BinaryWriter writer, int ticks)
+    {
+        var history = new byte[ticks * 16];
+        for (var i = 0; i < ticks; i++)
+        {
+            BitConverter.GetBytes(-1).CopyTo(history, i * 16 + 4);
+            BitConverter.GetBytes(-1).CopyTo(history, i * 16 + 8);
+        }
+        WriteSection(writer, 8, CodecNone, ticks, history);
+        WriteSection(writer, 9, CodecNone, 0, [], sectionVersion: 2);
     }
 
     private static void WriteSection(
@@ -1048,7 +960,7 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         int elementCount,
         byte[] payload,
         int? uncompressedLength = null,
-        uint sectionVersion = 1)
+        uint? sectionVersion = null)
     {
         WriteSectionHeader(
             writer,
@@ -1068,10 +980,10 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         int elementCount,
         int uncompressedLength,
         int compressedLength,
-        uint sectionVersion = 1)
+        uint? sectionVersion = null)
     {
         writer.Write(sectionId);
-        writer.Write(sectionVersion);
+        writer.Write(sectionVersion ?? (sectionId is 1 or 6 or 9 ? 2U : 1U));
         writer.Write(codec);
         writer.Write((byte)0);
         writer.Write((ushort)0);
@@ -1202,11 +1114,4 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         } while (value != 0);
     }
 
-    private static byte[] Compress(byte[] bytes)
-    {
-        using var output = new MemoryStream();
-        using (var brotli = new BrotliStream(output, CompressionLevel.SmallestSize, leaveOpen: true))
-            brotli.Write(bytes);
-        return output.ToArray();
-    }
 }

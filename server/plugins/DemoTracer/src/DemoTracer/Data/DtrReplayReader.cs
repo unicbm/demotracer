@@ -4,7 +4,6 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 
@@ -49,7 +48,6 @@ internal sealed record DtrReadLimits
 
 internal static partial class DtrReplayReader
 {
-    private const byte RecCodecBrotli = 1;
     private const byte SectionCodecNone = 0;
     private const int SectionHeaderByteSize = 36;
     private const int TickMetadataByteSize = 8;
@@ -110,9 +108,9 @@ internal static partial class DtrReplayReader
             throw new InvalidDataException("bad .dtr magic");
 
         var version = reader.ReadUInt32();
-        if (version is < BotControllerNative.MinRecFormatVersion or > BotControllerNative.RecFormatVersion)
+        if (version != BotControllerNative.RecFormatVersion)
             throw new InvalidDataException(
-                $"unsupported .dtr version {version}; expected {BotControllerNative.MinRecFormatVersion}..{BotControllerNative.RecFormatVersion}");
+                $"unsupported .dtr version {version}; expected {BotControllerNative.RecFormatVersion}; reconvert the demo with the current GUI");
 
         var tickRate = reader.ReadSingle();
         _ = reader.ReadUInt32(); // round
@@ -123,42 +121,16 @@ internal static partial class DtrReplayReader
         _ = reader.ReadUInt64(); // steam_id
         var tickCount = CheckedLimitedCount(reader.ReadUInt32(), limits.MaxTickCount, "tick_count");
         var subtickCount = CheckedLimitedCount(reader.ReadUInt32(), limits.MaxSubtickCount, "subtick_count");
-        var projectileCount = version >= 4
-            ? CheckedLimitedCount(reader.ReadUInt32(), limits.MaxProjectileCount, "projectile_count")
-            : 0;
-        var playStartTickIndex = version >= 5
-            ? CheckedCount(reader.ReadUInt32(), "play_start_tick_index")
-            : 0;
-        var metadataJsonLength = version >= 6
-            ? CheckedLimitedCount(reader.ReadUInt32(), limits.MaxMetadataJsonBytes, "metadata_json_len")
-            : 0;
+        var projectileCount = CheckedLimitedCount(reader.ReadUInt32(), limits.MaxProjectileCount, "projectile_count");
+        var playStartTickIndex = CheckedCount(reader.ReadUInt32(), "play_start_tick_index");
+        var metadataJsonLength = CheckedLimitedCount(reader.ReadUInt32(), limits.MaxMetadataJsonBytes, "metadata_json_len");
         ValidateHeaderSubtickCounts(tickCount, subtickCount, limits.MaxSubticksPerTick);
         ValidatePlayStartTickIndex(tickCount, playStartTickIndex);
         _ = ReadRecString(reader); // map
         _ = ReadRecString(reader); // player name
 
-        var replay = version >= 7
-            ? ReadV7Sections(
-                reader,
-                version,
-                tickRate,
-                tickCount,
-                subtickCount,
-                projectileCount,
-                playStartTickIndex,
-                metadataJsonLength,
-                limits,
-                retainAuxiliaryData)
-            : ReadLegacyBody(
-                reader,
-                version,
-                tickRate,
-                tickCount,
-                subtickCount,
-                projectileCount,
-                playStartTickIndex,
-                metadataJsonLength,
-                limits);
+        var replay = ReadSections(reader, tickRate, tickCount, subtickCount,
+            projectileCount, playStartTickIndex, metadataJsonLength, limits, retainAuxiliaryData);
 
         if (stream.Position != stream.Length)
             throw new InvalidDataException("trailing bytes after top-level .dtr payload");
@@ -166,114 +138,8 @@ internal static partial class DtrReplayReader
         return replay;
     }
 
-    private static DtrReplayFile ReadLegacyBody(
+    private static DtrReplayFile ReadSections(
         BinaryReader reader,
-        uint version,
-        float tickRate,
-        int tickCount,
-        int subtickCount,
-        int projectileCount,
-        int playStartTickIndex,
-        int metadataJsonLength,
-        DtrReadLimits limits)
-    {
-        var codec = reader.ReadByte();
-        if (codec != RecCodecBrotli)
-            throw new InvalidDataException($"unsupported .dtr codec {codec}");
-
-        var bodyUncompressedLength = CheckedLimitedLength(
-            reader.ReadUInt64(),
-            Math.Min(limits.MaxDecodedSectionBytes, limits.MaxTotalDecodedBytes),
-            "body_uncompressed_len");
-        var bodyCompressedLength = CheckedLimitedLength(
-            reader.ReadUInt64(),
-            Math.Min(limits.MaxCompressedSectionBytes, limits.MaxTotalCompressedBytes),
-            "body_compressed_len");
-        var expectedBodyLength = ExpectedBodyLength(tickCount, subtickCount, projectileCount, metadataJsonLength);
-        if (bodyUncompressedLength != expectedBodyLength)
-            throw new InvalidDataException($"body length {bodyUncompressedLength} != expected {expectedBodyLength}");
-
-        EnsureRemaining(reader, bodyCompressedLength, "compressed .dtr body");
-        var compressed = reader.ReadBytes(bodyCompressedLength);
-        if (compressed.Length != bodyCompressedLength)
-            throw new EndOfStreamException("truncated compressed .dtr body");
-
-        var body = DecompressBrotli(compressed, bodyUncompressedLength);
-        using var bodyStream = new MemoryStream(body, writable: false);
-        using var bodyReader = new BinaryReader(bodyStream);
-
-        var snapshotCount = tickCount == 0 ? 0 : tickCount + 1;
-        var snapshots = new NativeMovementSnapshot[snapshotCount];
-        for (var i = 0; i < snapshotCount; i++)
-            snapshots[i] = ReadCurrentSnapshot(bodyReader);
-
-        var ticks = new NativeReplayTick[tickCount];
-        long expectedSubticks = 0;
-        for (var i = 0; i < tickCount; i++)
-        {
-            var weaponDefIndex = bodyReader.ReadInt32();
-            var numSubtick = bodyReader.ReadUInt32();
-            ValidateAndAddTickSubticks(numSubtick, ref expectedSubticks, subtickCount, limits.MaxSubticksPerTick);
-            ticks[i] = new NativeReplayTick
-            {
-                Pre = snapshots[i],
-                Post = snapshots[i + 1],
-                WeaponDefIndex = weaponDefIndex,
-                NumSubtick = numSubtick
-            };
-        }
-
-        if (expectedSubticks != subtickCount)
-            throw new InvalidDataException($"tick subtick sum {expectedSubticks} != header subtick count {subtickCount}");
-
-        var projectiles = new ReplayProjectileEvent[projectileCount];
-        for (var i = 0; i < projectileCount; i++)
-            projectiles[i] = ReadProjectileEvent(bodyReader);
-
-        var highFidelity = ReplayHighFidelityMetadata.Empty;
-        if (metadataJsonLength > 0)
-        {
-            var metadataJson = bodyReader.ReadBytes(metadataJsonLength);
-            if (metadataJson.Length != metadataJsonLength)
-                throw new EndOfStreamException("truncated high_fidelity metadata in .dtr");
-            highFidelity = ReadHighFidelityMetadata(metadataJson, tickCount);
-        }
-
-        var subticks = new NativeSubtickMove[subtickCount];
-        for (var i = 0; i < subtickCount; i++)
-        {
-            subticks[i] = new NativeSubtickMove
-            {
-                When = bodyReader.ReadSingle(),
-                Button = bodyReader.ReadUInt32(),
-                Pressed = bodyReader.ReadSingle(),
-                AnalogForward = bodyReader.ReadSingle(),
-                AnalogLeft = bodyReader.ReadSingle(),
-                PitchDelta = bodyReader.ReadSingle(),
-                YawDelta = bodyReader.ReadSingle()
-            };
-        }
-
-        if (bodyStream.Position != bodyStream.Length)
-            throw new InvalidDataException("trailing bytes in .dtr body");
-
-        return new DtrReplayFile(
-            version,
-            ticks,
-            MergeProjectileMetadata(projectiles, highFidelity),
-            highFidelity,
-            subticks,
-            [],
-            [],
-            [],
-            [],
-            tickRate,
-            (uint)playStartTickIndex);
-    }
-
-    private static DtrReplayFile ReadV7Sections(
-        BinaryReader reader,
-        uint version,
         float tickRate,
         int tickCount,
         int subtickCount,
@@ -357,12 +223,11 @@ internal static partial class DtrReplayReader
                 _ => throw new InvalidDataException($"unsupported known section {header.SectionId}")
             };
             RejectDuplicate(!seenKnownSections.Add(header.SectionId), name);
-            var usesV2ColumnLayout = version >= 8 &&
-                header.SectionId is SectionSnapshots or SectionCommandFrames;
+            var usesV2ColumnLayout = header.SectionId is SectionSnapshots or SectionCommandFrames;
             if (header.SectionId == SectionInputHistory)
                 RequireInputHistorySectionShape(header, tickCount);
             else if (header.SectionId == SectionSourceState)
-                RequireSourceStateSectionShape(header, version, tickCount, limits, ref totalDecodedBytes);
+                RequireSourceStateSectionShape(header, tickCount, limits, ref totalDecodedBytes);
             else
                 RequireSectionShape(
                     header,
@@ -370,7 +235,7 @@ internal static partial class DtrReplayReader
                     expectedElementCount,
                     usesV2ColumnLayout ? null : expectedUncompressedLength,
                     usesV2ColumnLayout ? SectionVersionV2 : SectionVersionV1);
-            ValidateKnownSectionCodec(header, name, version);
+            ValidateKnownSectionCodec(header, name);
 
             EnsureRemaining(
                 reader,
@@ -382,10 +247,7 @@ internal static partial class DtrReplayReader
             switch (header.SectionId)
             {
                 case SectionSnapshots:
-                    snapshots = ReadSnapshotsFromSection(
-                        body,
-                        snapshotCount,
-                        header.SectionVersion);
+                    snapshots = ReadSnapshotsFromSection(body, snapshotCount);
                     break;
                 case SectionTickMetadata:
                     tickMetadata = ReadTickMetadataFromSection(body, tickCount);
@@ -407,18 +269,13 @@ internal static partial class DtrReplayReader
                     seenHighFidelity = true;
                     break;
                 case SectionCommandFrames:
-                    commandFrames = ReadCommandFramesFromSection(
-                        body,
-                        tickCount,
-                        header.SectionVersion);
+                    commandFrames = ReadCommandFramesFromSection(body, tickCount);
                     break;
                 case SectionMovementExtras:
                     movementExtras = ReadMovementExtrasFromSection(body, tickCount, retainAuxiliaryData);
                     break;
                 case SectionSourceState:
-                    sourceState = header.SectionVersion == SectionVersionV2
-                        ? ReadCompactSourceState(body, header.ElementCount, tickCount)
-                        : ReadSourceState(body, header.ElementCount, tickCount);
+                    sourceState = ReadCompactSourceState(body, header.ElementCount, tickCount);
                     break;
                 case SectionInputHistory:
                     (inputHistoryTicks, inputHistoryEntries) =
@@ -427,7 +284,7 @@ internal static partial class DtrReplayReader
             }
         }
 
-        if (version >= 11 && sourceState is null)
+        if (sourceState is null)
             throw new InvalidDataException("missing required section source state");
         if (snapshots is null)
             throw new InvalidDataException("missing required section snapshots");
@@ -439,7 +296,7 @@ internal static partial class DtrReplayReader
             throw new InvalidDataException("missing required section projectiles");
         if (metadataJsonLength > 0 && !seenHighFidelity)
             throw new InvalidDataException("missing required section high fidelity metadata");
-        if (version >= 9 && inputHistoryTicks is null)
+        if (inputHistoryTicks is null)
             throw new InvalidDataException("missing required section input history");
 
         var ticks = new NativeReplayTick[tickCount];
@@ -460,17 +317,17 @@ internal static partial class DtrReplayReader
             throw new InvalidDataException($"tick subtick sum {expectedSubticks} != header subtick count {subtickCount}");
 
         return new DtrReplayFile(
-            version,
+            BotControllerNative.RecFormatVersion,
             ticks,
             MergeProjectileMetadata(projectiles ?? [], highFidelity),
             highFidelity,
             subticks,
             commandFrames ?? [],
             movementExtras ?? [],
-            inputHistoryTicks ?? [],
+            inputHistoryTicks,
             inputHistoryEntries ?? [],
             tickRate,
-            (uint)playStartTickIndex) { SourceState = sourceState ?? [] };
+            (uint)playStartTickIndex) { SourceState = sourceState };
     }
 
 }

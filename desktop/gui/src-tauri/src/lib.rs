@@ -80,8 +80,6 @@ const MAX_MAX_ROUND_SECONDS: f32 = 1800.0;
 const MAX_MANIFEST_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_LIBRARY_AVATAR_BYTES: usize = 4 * 1024 * 1024;
 const MAX_WORKSPACE_BACKGROUND_BYTES: usize = 16 * 1024 * 1024;
-const MIN_SUPPORTED_MANIFEST_ABI: i32 = 12;
-const MIN_SUPPORTED_DTR_FORMAT_VERSION: u32 = 3;
 const OUTPUT_COMPLETION_MARKER: &str = ".demotracer-complete";
 const OUTPUT_COMPLETION_MARKER_CONTENT: &[u8] = b"CS2 DemoTracer output completed successfully.\n";
 const INTERACTIVE_ANALYSIS_READ_OPTIONS: ReadDemoOptions = ReadDemoOptions {
@@ -812,7 +810,6 @@ struct ManifestArchiveWire {
     tick_rate: Option<f32>,
     abi: Option<i32>,
     format_version: Option<u32>,
-    dtr_format_version: Option<u32>,
     avatar_overrides: Option<Vec<ManifestAvatarWire>>,
     rounds: Option<Vec<ManifestRoundWire>>,
     files: Option<Vec<ManifestFileWire>>,
@@ -2852,57 +2849,35 @@ fn read_manifest_for(value: &str) -> CommandResult<ManifestArchiveDto> {
     let declared_avatars = manifest.avatar_overrides.take().unwrap_or_default();
     let total_files = declared_files.len();
     let abi = manifest.abi.unwrap_or(0);
-    let declared_dtr_format_version = manifest.dtr_format_version.unwrap_or(0);
-    let format_version = if declared_dtr_format_version != 0 {
-        declared_dtr_format_version
-    } else {
-        manifest.format_version.unwrap_or(0)
-    };
-    let abi_supported = abi == 0 || (MIN_SUPPORTED_MANIFEST_ABI..=DEMOTRACER_ABI).contains(&abi);
-    let format_supported = format_version == 0
-        || (MIN_SUPPORTED_DTR_FORMAT_VERSION..=DTR_FORMAT_VERSION).contains(&format_version);
+    let format_version = manifest.format_version.unwrap_or(0);
+    let abi_supported = abi == DEMOTRACER_ABI;
+    let format_supported = format_version == DTR_FORMAT_VERSION;
     let version_supported = abi_supported && format_supported;
-    let compatibility = if !version_supported {
-        "unsupported"
-    } else if abi == 0 || format_version == 0 {
-        "legacy"
-    } else if abi == DEMOTRACER_ABI && format_version == DTR_FORMAT_VERSION {
+    let compatibility = if version_supported {
         "current"
     } else {
-        "supported"
+        "unsupported"
     }
     .to_string();
 
     let mut issues = Vec::new();
     let mut fatal_metadata_issue = false;
     let mut fatal_manifest_structure = false;
-    if manifest.abi.is_none() || abi == 0 {
-        issues.push(ManifestIssueDto::warning(
-            "manifest_abi_missing",
-            "The manifest has no explicit ABI and is treated as legacy.",
-        ));
-    } else if !abi_supported {
+    if !abi_supported {
         fatal_metadata_issue = true;
         issues.push(ManifestIssueDto::error(
             "manifest_abi_unsupported",
             format!(
-                "Manifest ABI {abi} is unsupported; expected {MIN_SUPPORTED_MANIFEST_ABI}..{DEMOTRACER_ABI}."
+                "Manifest ABI {abi} is unsupported; expected {DEMOTRACER_ABI}. Reconvert the demo with the current GUI."
             ),
         ));
     }
-    if manifest.dtr_format_version.is_none() && manifest.format_version.is_none()
-        || format_version == 0
-    {
-        issues.push(ManifestIssueDto::warning(
-            "manifest_format_missing",
-            "The manifest has no explicit replay format version and is treated as legacy.",
-        ));
-    } else if !format_supported {
+    if !format_supported {
         fatal_metadata_issue = true;
         issues.push(ManifestIssueDto::error(
             "manifest_format_unsupported",
             format!(
-                "Replay format {format_version} is unsupported; expected {MIN_SUPPORTED_DTR_FORMAT_VERSION}..{DTR_FORMAT_VERSION}."
+                "Replay format {format_version} is unsupported; expected {DTR_FORMAT_VERSION}. Reconvert the demo with the current GUI."
             ),
         ));
     }
@@ -5821,7 +5796,7 @@ mod tests {
                 "map": "de_mirage",
                 "tick_rate": 64.0,
                 "abi": DEMOTRACER_ABI,
-                "dtr_format_version": DTR_FORMAT_VERSION,
+                "format_version": DTR_FORMAT_VERSION,
                 "files": [{
                     "path": "round01/t/player.dtr",
                     "round": 1,
@@ -6093,7 +6068,7 @@ mod tests {
                 "map": "de_mirage",
                 "tick_rate": 64.0,
                 "abi": DEMOTRACER_ABI,
-                "dtr_format_version": DTR_FORMAT_VERSION,
+                "format_version": DTR_FORMAT_VERSION,
                 "files": [{
                     "round": 0,
                     "side": "t",
@@ -7686,36 +7661,26 @@ mod tests {
     }
 
     #[test]
-    fn read_manifest_honors_format_alias_and_rejects_newer_abi() {
+    fn read_manifest_requires_current_versions() {
         let temp = ManifestTestDir::new("versions");
         temp.write_dtr("round03/t/a.dtr", 3, "t", 301);
         let mut value = manifest_json(
             vec![manifest_round(3, 1)],
             vec![manifest_file("round03/t/a.dtr", 3, "t", 301)],
         );
-        value["abi"] = serde_json::json!(15);
-        value["format_version"] = serde_json::json!(999);
-        value["dtr_format_version"] = serde_json::json!(6);
-        let manifest_path = temp.write_manifest(value.clone());
-        let supported = read_manifest_for(&manifest_path.display().to_string()).unwrap();
-        assert_eq!(supported.compatibility, "supported");
-        assert_eq!(supported.format_version, 6);
-        assert!(supported.playable);
-
-        value["dtr_format_version"] = serde_json::json!(0);
-        temp.write_manifest(value.clone());
-        let fallback = read_manifest_for(&manifest_path.display().to_string()).unwrap();
-        assert_eq!(fallback.format_version, 999);
-        assert_eq!(fallback.compatibility, "unsupported");
-        assert!(issue_codes(&fallback).contains("manifest_format_unsupported"));
-
-        value["dtr_format_version"] = serde_json::json!(6);
-        value["abi"] = serde_json::json!(DEMOTRACER_ABI + 1);
-        temp.write_manifest(value);
-        let unsupported = read_manifest_for(&manifest_path.display().to_string()).unwrap();
-        assert_eq!(unsupported.compatibility, "unsupported");
-        assert!(!unsupported.playable);
-        assert!(issue_codes(&unsupported).contains("manifest_abi_unsupported"));
+        for (abi, format) in [
+            (15, 6),
+            (0, 0),
+            (DEMOTRACER_ABI + 1, DTR_FORMAT_VERSION),
+            (DEMOTRACER_ABI, DTR_FORMAT_VERSION + 1),
+        ] {
+            value["abi"] = serde_json::json!(abi);
+            value["format_version"] = serde_json::json!(format);
+            let path = temp.write_manifest(value.clone());
+            let result = read_manifest_for(&path.display().to_string()).unwrap();
+            assert_eq!(result.compatibility, "unsupported");
+            assert!(!result.playable);
+        }
     }
 
     #[test]

@@ -11,8 +11,8 @@ namespace DemoTracer;
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 internal struct NativeReplaySourceStateChange
 {
-    // ABI 21.40: Present bit 0 is presence; bits 1..24 are PlayerTick run
-    // length minus one. All other fields retain legacy 0/1 presence.
+    // Present bit 0 is presence; bits 1..24 are PlayerTick run length minus one.
+    // All other fields use 0/1 presence.
     public uint TickIndex, FieldId, ValueBits, Present;
 }
 internal static partial class DtrReplayReader
@@ -91,19 +91,11 @@ internal static partial class DtrReplayReader
     ];
 
     private static void RequireSourceStateSectionShape(
-        DtrSectionHeader header, uint version, int tickCount, DtrReadLimits limits, ref long totalDecodedBytes)
+        DtrSectionHeader header, int tickCount, DtrReadLimits limits, ref long totalDecodedBytes)
     {
-        if (version < 11)
-            throw new InvalidDataException("source state requires DTR 11");
         if (header.ElementCount > (long)tickCount * SourceKinds.Length)
             throw new InvalidDataException("source state count exceeds tick/field capacity");
-        if (header.SectionVersion == SectionVersionV1)
-        {
-            RequireSectionShape(header, "source state", header.ElementCount,
-                ExpectedSectionLength(header.ElementCount, 16, "source state"), SectionVersionV1);
-            return;
-        }
-        if (version < 12 || header.SectionVersion != SectionVersionV2)
+        if (header.SectionVersion != SectionVersionV2)
             throw new InvalidDataException("unsupported source state section version");
         var length = header.UncompressedLength;
         if (length % 12 != 0 || length / 12 > header.ElementCount ||
@@ -185,30 +177,4 @@ internal static partial class DtrReplayReader
         return changes;
     }
 
-    private static NativeReplaySourceStateChange[] ReadSourceState(byte[] body, int count, int tickCount)
-    {
-        using var reader = new BinaryReader(new MemoryStream(body, writable: false));
-        var changes = new NativeReplaySourceStateChange[count];
-        (uint Tick, uint Field)? previous = null;
-        for (var i = 0; i < count; ++i)
-        {
-            var change = new NativeReplaySourceStateChange
-            {
-                TickIndex = reader.ReadUInt32(),
-                FieldId = reader.ReadUInt32(),
-                ValueBits = reader.ReadUInt32(),
-                Present = reader.ReadUInt32()
-            };
-            var key = (change.TickIndex, change.FieldId);
-            if (change.TickIndex >= tickCount || change.FieldId >= SourceKinds.Length || change.Present > 1 ||
-                (previous.HasValue && previous.Value.CompareTo(key) >= 0) ||
-                (change.Present == 0 && change.ValueBits != 0) ||
-                (change.Present == 1 && SourceKinds[change.FieldId] == SourceKind.F32 && !float.IsFinite(BitConverter.UInt32BitsToSingle(change.ValueBits))) ||
-                (change.Present == 1 && SourceKinds[change.FieldId] == SourceKind.Bool && change.ValueBits > 1))
-                throw new InvalidDataException("invalid or unordered source state change");
-            changes[i] = change;
-            previous = key;
-        }
-        return changes;
-    }
 }

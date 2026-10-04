@@ -17,8 +17,6 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin
 {
     private const string RuntimeConfigFileName = "demotracer.config.json";
-    private bool _runtimeConfigHadLegacyAlign;
-    private bool _runtimeConfigHadNewSections;
 
     private static readonly JsonSerializerOptions RuntimeConfigJsonOptions = new()
     {
@@ -54,8 +52,6 @@ public sealed partial class DemoTracerPlugin
         {
             if (announceMissing)
                 reply($"[DTR OK] config not found; using built-in defaults. path=\"{path}\"");
-            _runtimeConfigHadLegacyAlign = false;
-            _runtimeConfigHadNewSections = false;
             ResetRuntimeConfigDefaults();
             ApplyRuntimeConfigSideEffects();
             return;
@@ -66,6 +62,8 @@ public sealed partial class DemoTracerPlugin
         {
             var json = File.ReadAllText(path);
             config = JsonSerializer.Deserialize<DemoTracerRuntimeConfig>(json, RuntimeConfigJsonOptions);
+            if (config?.UnsupportedAlign != null)
+                throw new JsonException("The align config is no longer supported. Use fidelity, match and cosmetics.");
         }
         catch (Exception ex)
         {
@@ -88,11 +86,6 @@ public sealed partial class DemoTracerPlugin
     private void ApplyRuntimeConfig(DemoTracerRuntimeConfig config, Action<string> reply)
     {
         ResetRuntimeConfigDefaults();
-        _runtimeConfigHadLegacyAlign = config.Align != null;
-        _runtimeConfigHadNewSections = config.Fidelity != null || config.Match != null || config.Cosmetics != null;
-        if (_runtimeConfigHadLegacyAlign && _runtimeConfigHadNewSections)
-            reply("[DTR WARN] config contains legacy align and new fidelity/match/cosmetics sections; new sections override matching legacy fields.");
-
         if (!string.IsNullOrWhiteSpace(config.Identity))
         {
             if (TryParseReplayIdentityMode(config.Identity, out var identityMode))
@@ -110,7 +103,6 @@ public sealed partial class DemoTracerPlugin
         if (config.RoundBanner.HasValue)
             _roundBannerEnabled = config.RoundBanner.Value;
 
-        ApplyRuntimeAlignConfig(config.Align, reply);
         ApplyRuntimeFidelityConfig(config.Fidelity, reply);
         ApplyRuntimeMatchConfig(config.Match, reply);
         ApplyRuntimeCosmeticsConfig(config.Cosmetics, reply);
@@ -138,33 +130,6 @@ public sealed partial class DemoTracerPlugin
         ApplyCosmeticPreset(CosmeticPreset.Off);
         _preserveNativeBotCosmetics = false;
         SetScoreboardAlignEnabled(false);
-    }
-
-    private void ApplyRuntimeAlignConfig(DemoTracerAlignConfig? align, Action<string> reply)
-    {
-        if (align == null)
-            return;
-
-        if (align.Weapons.HasValue)
-            SetWeaponAlignEnabled(align.Weapons.Value);
-        if (align.Projectiles.HasValue)
-            SetProjectileAlignEnabled(align.Projectiles.Value);
-        if (align.Cosmetics.HasValue)
-            SetCosmeticAlignEnabled(align.Cosmetics.Value);
-        if (align.Stickers.HasValue)
-            SetStickerAlignEnabled(align.Stickers.Value);
-        if (align.Charms.HasValue)
-            SetCharmAlignEnabled(align.Charms.Value);
-        if (align.Crosshair.HasValue)
-            SetCrosshairAlignEnabled(align.Crosshair.Value);
-        if (align.LeftHandDesired.HasValue)
-        {
-            _leftHandDesiredEnabled = align.LeftHandDesired.Value;
-            if (!_leftHandDesiredEnabled)
-                reply(LeftHandDesiredFidelityNotice);
-        }
-        if (align.Scoreboard.HasValue)
-            SetScoreboardAlignEnabled(align.Scoreboard.Value);
     }
 
     private void ApplyRuntimeFidelityConfig(DemoTracerFidelityConfig? fidelity, Action<string> reply)
@@ -345,7 +310,6 @@ public sealed partial class DemoTracerPlugin
 
     private void ReplyRuntimeSettings(Action<string> reply, string prefix)
     {
-        reply($"{prefix} schema=v2 legacy_align={FormatOnOff(_runtimeConfigHadLegacyAlign)} new_sections={FormatOnOff(_runtimeConfigHadNewSections)}");
         reply($"{prefix} playback identity={ReplayIdentityModeName()} allow_partial={FormatOnOff(_partialReplayEnabled)} playoff={FormatOnOff(_playoffEnabled)} chat_auto={FormatOnOff(_chatAutoEnabled)} round_banner={FormatOnOff(_roundBannerEnabled)} handoff={FormatHandoffMode(_handoffMode)}:{(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} handoff_360={FormatOnOff(_handoffThreat360Enabled)}");
         reply($"{prefix} fidelity preset={AlignPresetName()} weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_mode=birth_once crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)}");
         reply($"{prefix} match preset={(_scoreboardAlignEnabled ? "scoreboard" : "off")} scoreboard={FormatOnOff(_scoreboardAlignEnabled)}");
@@ -392,7 +356,7 @@ public sealed partial class DemoTracerPlugin
         public DemoTracerHandoffConfig? Handoff { get; set; }
 
         [JsonPropertyName("align")]
-        public DemoTracerAlignConfig? Align { get; set; }
+        public JsonElement? UnsupportedAlign { get; set; }
 
         [JsonPropertyName("fidelity")]
         public DemoTracerFidelityConfig? Fidelity { get; set; }
@@ -417,33 +381,6 @@ public sealed partial class DemoTracerPlugin
 
         [JsonPropertyName("viewmodel_continuity")]
         public string? ViewmodelContinuity { get; set; }
-    }
-
-    public sealed class DemoTracerAlignConfig
-    {
-        [JsonPropertyName("weapons")]
-        public bool? Weapons { get; set; }
-
-        [JsonPropertyName("projectiles")]
-        public bool? Projectiles { get; set; }
-
-        [JsonPropertyName("crosshair")]
-        public bool? Crosshair { get; set; }
-
-        [JsonPropertyName("left_hand_desired")]
-        public bool? LeftHandDesired { get; set; }
-
-        [JsonPropertyName("cosmetics")]
-        public bool? Cosmetics { get; set; }
-
-        [JsonPropertyName("stickers")]
-        public bool? Stickers { get; set; }
-
-        [JsonPropertyName("charms")]
-        public bool? Charms { get; set; }
-
-        [JsonPropertyName("scoreboard")]
-        public bool? Scoreboard { get; set; }
     }
 
     public sealed class DemoTracerFidelityConfig

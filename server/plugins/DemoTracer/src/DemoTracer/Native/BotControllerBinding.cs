@@ -20,13 +20,7 @@ internal static partial class BotControllerNative
     private static extern int DtrController_Unlock(int slot, int kind);
 
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_GetVersion();
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_GetAbiInfo(out BotControllerAbiInfo info, int size);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern ulong DtrController_GetCapabilities();
 
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern IntPtr DtrController_GetBuildId();
@@ -48,24 +42,6 @@ internal static partial class BotControllerNative
 
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_GetVoiceStatus();
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_SendVoiceFrame(
-        int recipientSlot,
-        int senderClient,
-        ulong senderXuid,
-        [In] byte[] audio,
-        int audioBytes,
-        int sampleRate,
-        float voiceLevel,
-        int sequenceBytes,
-        int sectionNumber,
-        int uncompressedSampleOffset,
-        uint numPackets,
-        [In] uint[] packetOffsets,
-        int packetOffsetCount,
-        int tick,
-        int audibleMask);
 
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_SetControllerControllingBotOffset(int offset);
@@ -92,44 +68,10 @@ internal static partial class BotControllerNative
         int size);
 
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_SetUsercmdMovementIntent(
-        int slot,
-        ulong buttonsSet,
-        ulong buttonsClear,
-        float analogForward,
-        float analogLeft,
-        int durationMs,
-        int flags);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_ClearUsercmdMovementIntent(int slot);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_SetLeftHandIntent(
-        int slot,
-        ulong buttonsSet,
-        ulong buttonsClear,
-        float analogForward,
-        float analogLeft,
-        int durationMs,
-        int flags);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_ClearLeftHandIntent(int slot);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_SetLeftHandDesiredLatch(
         int slot,
         int enabled,
         int leftHandDesired);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_LoadReplay(
-        int slot,
-        [In] NativeReplayTick[] ticks,
-        int tickCount,
-        [In] NativeSubtickMove[] subs,
-        int subCount);
 
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_LoadReplayExtended(
@@ -142,25 +84,6 @@ internal static partial class BotControllerNative
         int commandFrameCount,
         [In] NativeReplayMovementExtra[] movementExtras,
         int movementExtraCount);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_LoadReplayWithInputHistory(
-        int slot,
-        [In] NativeReplayTick[] ticks,
-        int tickCount,
-        [In] NativeSubtickMove[] subs,
-        int subCount,
-        [In] NativeReplayCommandFrame[] commandFrames,
-        int commandFrameCount,
-        [In] NativeReplayMovementExtra[] movementExtras,
-        int movementExtraCount,
-        [In] NativeReplayInputHistoryTick[] inputHistoryTicks,
-        int inputHistoryTickCount,
-        [In] NativeReplayInputHistoryEntry[] inputHistoryEntries,
-        int inputHistoryEntryCount);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_StartReplay(int slot, int loop);
 
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_StartReplayAt(int slot, int loop, int startIndex);
@@ -179,18 +102,9 @@ internal static partial class BotControllerNative
     private static extern int DtrController_ReleaseReplayBuffer(int slot);
 
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_GetReplayCursor(int slot);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_GetReplayTotal(int slot);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_GetReplaySlotState(
         int slot,
         out NativeReplaySlotState state);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_GetReplayTick(int slot, out NativeReplayTick tick);
 
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_SwitchBotWeapon(int slot, int defIndex);
@@ -199,19 +113,9 @@ internal static partial class BotControllerNative
     private static extern int DtrController_GetBotActiveWeaponDef(int slot);
 
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_SetBuyPlan(
-        int slot,
-        [MarshalAs(UnmanagedType.LPStr)] string aliases);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_SetBuySkip(int slot);
 
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_ClearBuyPlan(int slot);
 
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_ClearAllBuyPlans();
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_GetBuyPlanItemCount(int slot);
 }

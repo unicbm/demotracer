@@ -16,9 +16,6 @@ public sealed partial class DemoTracerPlugin
         [JsonPropertyName("format_version")]
         public int FormatVersion { get; set; }
 
-        [JsonPropertyName("dtr_format_version")]
-        public int DtrFormatVersion { get; set; }
-
         [JsonPropertyName("abi")]
         public int Abi { get; set; }
 
@@ -36,8 +33,6 @@ public sealed partial class DemoTracerPlugin
 
         [JsonPropertyName("avatar_overrides")]
         public List<ManifestAvatarOverride> AvatarOverrides { get; set; } = new();
-
-        public int EffectiveDtrFormatVersion => DtrFormatVersion != 0 ? DtrFormatVersion : FormatVersion;
     }
 
     private sealed class ManifestRound
@@ -462,17 +457,9 @@ public sealed partial class DemoTracerPlugin
         if (string.IsNullOrWhiteSpace(manifest.Map))
             throw new InvalidDataException("manifest map is required");
 
-        var formatVersion = manifest.EffectiveDtrFormatVersion;
-        if (formatVersion != 0)
-        {
-            var minVersion = (int)BotControllerNative.MinRecFormatVersion;
-            var maxVersion = (int)BotControllerNative.RecFormatVersion;
-            if (formatVersion < minVersion || formatVersion > maxVersion)
-            {
-                throw new InvalidDataException(
-                    $"manifest format_version {formatVersion} unsupported; expected {minVersion}..{maxVersion}");
-            }
-        }
+        if (manifest.FormatVersion != BotControllerNative.RecFormatVersion)
+            throw new InvalidDataException(
+                $"manifest format_version {manifest.FormatVersion} unsupported; expected {BotControllerNative.RecFormatVersion}; reconvert the demo with the current GUI");
 
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var manifestDir = Path.GetDirectoryName(Path.GetFullPath(manifestPath)) ?? ".";
@@ -528,13 +515,10 @@ public sealed partial class DemoTracerPlugin
 
     private static void ValidateManifestAbi(int abi)
     {
-        if (abi == 0)
-            return;
-
-        if (abi < MinManifestAbiVersion || abi > MaxManifestAbiVersion)
+        if (abi != ManifestAbiVersion)
         {
             throw new InvalidDataException(
-                $"manifest abi {abi} unsupported; expected {MinManifestAbiVersion}..{MaxManifestAbiVersion}");
+                $"manifest abi {abi} unsupported; expected {ManifestAbiVersion}; reconvert the demo with the current GUI");
         }
     }
 

@@ -77,7 +77,7 @@ cmake --build server/runtime/common/.build/native-tests --config Release
 ctest --test-dir server/runtime/common/.build/native-tests -C Release --output-on-failure
 ```
 
-The current playback contract requires dtr-controller ABI 21, minor 44 or newer.
+The current playback contract requires dtr-controller ABI 22.
 The GUI rejects install receipts from the older hook runtime. The managed
 heartbeat reports older dtr-controller binaries as incompatible.
 

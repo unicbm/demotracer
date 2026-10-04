@@ -100,19 +100,6 @@ namespace BotController
 
         static KHook::Return<char> BC_FASTCALL HookedSelectItem(void *ws, void *weapon, int flag)
         {
-            // Recording : a human switching weapons calls SelectItem
-            if (weapon)
-            {
-                int def = ReadDefIndex(weapon);
-                if (def >= 0)
-                    for (int s = 0; s < MotionRecorder::kMaxSlots; ++s)
-                    {
-                        if (MotionRecorder::IsRecording(s) &&
-                            MotionRecorder::LiveWs(s) == ws)
-                            MotionRecorder::SetCurrentDef(s, def);
-                    }
-            }
-
             void *pawn = nullptr;
             if (!SafeRead(ws, tg::kServices_Pawn, pawn) || !pawn)
                 return g_hookSelectItem.Continue(ws, weapon, flag);

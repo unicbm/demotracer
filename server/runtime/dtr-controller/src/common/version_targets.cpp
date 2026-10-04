@@ -1,7 +1,6 @@
 // Resolve structure offsets from live SchemaSystem and private gamedata.
 
 #include "version_targets.h"
-#include "PublicBotProfile.h"
 #include "schema_resolver.h"
 #include "sig_scan.h"
 
@@ -14,7 +13,6 @@ namespace BotController::targets
 {
     void LoadFromGamedata(const nlohmann::json &gd)
     {
-        PublicBotProfile::Configure(gd);
         kEntIdentity_EHandle     = Sig::FindPlatformOffset(gd, "CEntityIdentity::EHandle", kEntIdentity_EHandle);
         kBuy_InitialDelay        = Sig::FindPlatformOffset(gd, "BuyState::InitialDelay", kBuy_InitialDelay);
         kBuy_DoneBuying          = Sig::FindPlatformOffset(gd, "BuyState::DoneBuying", kBuy_DoneBuying);

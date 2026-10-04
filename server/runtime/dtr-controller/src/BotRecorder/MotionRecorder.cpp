@@ -1,4 +1,4 @@
-// Motion recording & replay implementation
+// Demo-backed motion replay implementation
 
 #include "MotionRecorder.h"
 #include "platform.h"
@@ -24,23 +24,6 @@ namespace BotController
 {
     namespace MotionRecorder
     {
-        struct RecordState
-        {
-            std::atomic<bool> recording{false};
-            std::vector<ReplayTick> ticks;
-            std::vector<SubtickMove> subs;
-            // Subtick moves seen on PlayerRunCommand, awaiting the matching
-            // ProcessMovement post that commits them to a tick.
-            std::vector<SubtickMove> pendingSubs;
-            std::vector<ReplayCommandFrameData> commands;
-            ReplayCommandFrameData pendingCommand{};
-            MovementSnapshot pendingPre{};
-            bool havePre{false};
-            std::atomic<void *> liveWs{nullptr};
-            std::atomic<int> currentDef{-1};
-            std::mutex mu; // guards ticks/subs/pending/pre
-        };
-
         struct ReplayState
         {
             std::atomic<bool> playing{false};
@@ -72,7 +55,6 @@ namespace BotController
             std::mutex mu; // guards replay buffers and offset tables
         };
 
-        static std::array<RecordState, kMaxSlots> g_rec;
         static std::array<ReplayState, kMaxSlots> g_rep;
 
         static void InvalidateReplayWeaponCache(ReplayState &p)
@@ -292,284 +274,6 @@ namespace BotController
                 g_perf.movementInputs.load(std::memory_order_relaxed),
                 g_perf.movementInitializations.load(std::memory_order_relaxed),
             };
-        }
-
-        // Read a MovementSnapshot from live engine state (services -> pawn).
-        static bool ReadSnapshot(int slot, void *services, MovementSnapshot &out)
-        {
-            if (!services)
-                return false;
-            void *pawn = InputInjector::ResolveReplayPawn(slot, services);
-            if (!pawn)
-                return false;
-
-            MovementSnapshot value = out;
-            std::array<float, 3> velocity{};
-            std::array<float, 3> ladderNormal{};
-            std::array<float, 3> viewAngles{};
-            if (!SafeRead(pawn, tg::kEnt_AbsVelocity, velocity) ||
-                !SafeRead(pawn, tg::kEnt_Flags, value.entityFlags) ||
-                !SafeRead(pawn, tg::kEnt_MoveType, value.moveType) ||
-                !SafeRead(pawn, tg::kEnt_ActualMoveType, value.actualMoveType) ||
-                !SafeRead(services, tg::kServices_Buttons, value.buttons) ||
-                !SafeRead(services, tg::kServices_Buttons1, value.buttons1) ||
-                !SafeRead(services, tg::kServices_Buttons2, value.buttons2) ||
-                !SafeRead(services, tg::kServices_DuckAmount, value.duckAmount) ||
-                !SafeRead(services, tg::kServices_DuckSpeed, value.duckSpeed) ||
-                !SafeRead(services, tg::kServices_LadderNormal, ladderNormal) ||
-                !SafeRead(services, tg::kServices_Ducked, value.ducked) ||
-                !SafeRead(services, tg::kServices_Ducking, value.ducking) ||
-                !SafeRead(services, tg::kServices_DesiresDuck, value.desiresDuck) ||
-                !SafeRead(pawn, tg::kPawn_ViewAngle, viewAngles))
-                return false;
-
-            value.velX = velocity[0];
-            value.velY = velocity[1];
-            value.velZ = velocity[2];
-            value.ladderNormalX = ladderNormal[0];
-            value.ladderNormalY = ladderNormal[1];
-            value.ladderNormalZ = ladderNormal[2];
-            value.pitch = viewAngles[0];
-            value.yaw = viewAngles[1];
-            value.roll = viewAngles[2];
-
-            void *node = SceneNodeForEntity(pawn);
-            if (node)
-            {
-                std::array<float, 3> origin{};
-                if (!SafeRead(node, tg::kNode_AbsOrigin, origin))
-                    return false;
-                value.originX = origin[0];
-                value.originY = origin[1];
-                value.originZ = origin[2];
-            }
-            out = value;
-            return true;
-        }
-
-        // ---- recording ----
-
-        bool StartRecord(int slot)
-        {
-            if (!ValidSlot(slot))
-                return false;
-            RecordState &r = g_rec[slot];
-            {
-                std::lock_guard<std::mutex> lk(r.mu);
-                r.ticks.clear();
-                r.subs.clear();
-                r.pendingSubs.clear();
-                r.havePre = false;
-                r.commands.clear();
-                r.pendingCommand = {};
-                r.ticks.reserve(4096); // ~64s @ 64 tick
-                r.subs.reserve(4096);
-            }
-            r.currentDef.store(-1, std::memory_order_relaxed);
-            r.liveWs.store(nullptr, std::memory_order_relaxed);
-            r.recording.store(true, std::memory_order_release);
-            return true;
-        }
-
-        bool StopRecord(int slot)
-        {
-            if (!ValidSlot(slot))
-                return false;
-            g_rec[slot].recording.store(false, std::memory_order_release);
-            return true;
-        }
-
-        bool ClearRecordedMotion(int slot)
-        {
-            if (!ValidSlot(slot)) return false;
-            auto &record = g_rec[slot];
-            record.recording.store(false, std::memory_order_release);
-            std::lock_guard lock(record.mu);
-            std::vector<ReplayTick>().swap(record.ticks);
-            std::vector<SubtickMove>().swap(record.subs);
-            std::vector<SubtickMove>().swap(record.pendingSubs);
-            std::vector<ReplayCommandFrameData>().swap(record.commands);
-            record.pendingCommand = {};
-            record.havePre = false;
-            record.currentDef.store(-1, std::memory_order_relaxed);
-            record.liveWs.store(nullptr, std::memory_order_relaxed);
-            return true;
-        }
-
-        bool IsRecording(int slot)
-        {
-            return ValidSlot(slot) &&
-                   g_rec[slot].recording.load(std::memory_order_acquire);
-        }
-
-        int RecordedTickCount(int slot)
-        {
-            if (!ValidSlot(slot))
-                return -1;
-            RecordState &r = g_rec[slot];
-            std::lock_guard<std::mutex> lk(r.mu);
-            return static_cast<int>(r.ticks.size());
-        }
-
-        int RecordedSubtickCount(int slot)
-        {
-            if (!ValidSlot(slot))
-                return -1;
-            RecordState &r = g_rec[slot];
-            std::lock_guard<std::mutex> lk(r.mu);
-            return static_cast<int>(r.subs.size());
-        }
-
-        void SetLiveWs(int slot, void *ws)
-        {
-            if (ValidSlot(slot))
-            {
-                g_rec[slot].liveWs.store(ws, std::memory_order_relaxed);
-            }
-        }
-
-        void *LiveWs(int slot)
-        {
-            return ValidSlot(slot)
-                       ? g_rec[slot].liveWs.load(std::memory_order_relaxed)
-                       : nullptr;
-        }
-
-        void SetCurrentDef(int slot, int defIndex)
-        {
-            if (ValidSlot(slot))
-                g_rec[slot].currentDef.store(defIndex, std::memory_order_relaxed);
-        }
-
-        void OnCapturePre(int slot, void *services, void *cmd)
-        {
-            (void)cmd;
-            if (!ValidSlot(slot) || !services)
-                return;
-            RecordState &r = g_rec[slot];
-            if (!r.recording.load(std::memory_order_acquire))
-                return;
-            MovementSnapshot pre{};
-            if (!ReadSnapshot(slot, services, pre))
-                return;
-            std::lock_guard<std::mutex> lk(r.mu);
-            r.pendingPre = pre;
-            r.havePre = true;
-        }
-
-        void OnCaptureSubticks(int slot, const SubtickMove *moves, int count)
-        {
-            if (!ValidSlot(slot) || count < 0)
-                return;
-            RecordState &r = g_rec[slot];
-            if (!r.recording.load(std::memory_order_acquire))
-                return;
-            if (count > kMaxSubtickPerTick)
-                count = kMaxSubtickPerTick;
-            std::lock_guard<std::mutex> lk(r.mu);
-            r.pendingSubs.clear();
-            for (int i = 0; i < count; ++i)
-                r.pendingSubs.push_back(moves[i]);
-        }
-
-        void OnCapturePost(int slot, void *services, void *cmd)
-        {
-            // cmd is actually the CMoveData* (hook passes moveData here)
-            if (!ValidSlot(slot) || !services)
-                return;
-            RecordState &r = g_rec[slot];
-            if (!r.recording.load(std::memory_order_acquire))
-                return;
-
-            MovementSnapshot post{};
-            if (!ReadSnapshot(slot, services, post))
-                return;
-
-            if (cmd)
-            {
-                std::array<float, 3> origin{};
-                if (!SafeRead(cmd, tg::kMove_AbsOrigin, origin))
-                    return;
-                post.originX = origin[0];
-                post.originY = origin[1];
-                post.originZ = origin[2];
-            }
-
-            // Active weapon def for this tick.
-            void *ws = r.liveWs.load(std::memory_order_relaxed);
-            int def = WeaponLockerHooks::ActiveWeaponDef(ws);
-            if (def < 0)
-                def = r.currentDef.load(std::memory_order_relaxed);
-
-            {
-                std::lock_guard<std::mutex> lk(r.mu);
-                ReplayTick t{};
-                t.pre = r.havePre ? r.pendingPre : post;
-                t.post = post;
-                t.weaponDefIndex = def;
-                t.numSubtick = static_cast<uint32_t>(r.pendingSubs.size());
-                for (const auto &sm : r.pendingSubs)
-                    r.subs.push_back(sm);
-                r.ticks.push_back(t);
-                r.commands.push_back(r.pendingCommand);
-                r.pendingCommand = {};
-                r.pendingSubs.clear();
-                r.havePre = false;
-            }
-        }
-
-        int CopyTicks(int slot, ReplayTick *out, int maxTicks)
-        {
-            if (!ValidSlot(slot) || !out || maxTicks <= 0)
-                return 0;
-            RecordState &r = g_rec[slot];
-            std::lock_guard<std::mutex> lk(r.mu);
-            int n = static_cast<int>(r.ticks.size());
-            if (n > maxTicks)
-                n = maxTicks;
-            for (int i = 0; i < n; ++i)
-                out[i] = r.ticks[i];
-            return n;
-        }
-
-        int CopySubticks(int slot, SubtickMove *out, int maxSubticks)
-        {
-            if (!ValidSlot(slot) || !out || maxSubticks <= 0)
-                return 0;
-            RecordState &r = g_rec[slot];
-            std::lock_guard<std::mutex> lk(r.mu);
-            int n = static_cast<int>(r.subs.size());
-            if (n > maxSubticks)
-                n = maxSubticks;
-            for (int i = 0; i < n; ++i)
-                out[i] = r.subs[i];
-            return n;
-        }
-
-        void OnCaptureCommand(int slot, const ReplayCommandFrameData &command)
-        {
-            if (!ValidSlot(slot)) return;
-            auto &record = g_rec[slot];
-            std::lock_guard lock(record.mu);
-            if (record.recording.load(std::memory_order_acquire)) record.pendingCommand = command;
-        }
-
-        int RecordedCommandCount(int slot)
-        {
-            if (!ValidSlot(slot)) return -1;
-            auto &record = g_rec[slot];
-            std::lock_guard lock(record.mu);
-            return static_cast<int>(record.commands.size());
-        }
-
-        int CopyCommands(int slot, ReplayCommandFrameData *out, int maxCommands)
-        {
-            if (!ValidSlot(slot) || !out || maxCommands <= 0) return 0;
-            auto &record = g_rec[slot];
-            std::lock_guard lock(record.mu);
-            const int count = std::min(maxCommands, static_cast<int>(record.commands.size()));
-            std::copy_n(record.commands.begin(), count, out);
-            return count;
         }
 
         // ---- replay ----
@@ -1431,10 +1135,7 @@ namespace BotController
         void ClearAll()
         {
             for (int i = 0; i < kMaxSlots; ++i)
-            {
-                ClearRecordedMotion(i);
                 ReleaseReplayBuffer(i);
-            }
             InputInjector::ClearAllUsercmdMovementIntents();
             ReplayPawnEquipment::ClearAll();
         }

@@ -1,15 +1,14 @@
 // CS2 movement hooks
 // SetupMove (single replay kinematic input boundary)
-// ProcessMovement (engine simulation + recording)
+// ProcessMovement (engine simulation + movement intent)
 // FinishMove (engine output + final replay view)
-// PlayerRunCommand(subtick record + re-inject)
+// PlayerRunCommand (replay command and subtick injection)
 
 #include "playercommand.h"
 
 #include "InputInjector.h"
 #include "ButtonState.h"
 #include "LeftHandDesiredLatch.h"
-#include "UsercmdRequests.h"
 #include "BotController.h"
 #include "BotControllerState.h"
 #include "ccsbot_slot.h"
@@ -72,8 +71,6 @@ namespace BotController
         static bool g_setupMoveActive = false;
         // True once PlayerRunCommand is hooked
         static bool g_subtickActive = false;
-        static UsercmdRequests g_requests;
-        static std::array<std::atomic<uint32_t>, kMaxSlots> g_publicControlHandles{};
         static std::string g_status = "not_attempted";
 
         // slot -> live CCSPlayer_MovementServices*
@@ -136,85 +133,6 @@ namespace BotController
             if (!std::isfinite(value))
                 return 0.0f;
             return std::clamp(value, -1.0f, 1.0f);
-        }
-
-        static bool CanUsePublicControl(int slot)
-        {
-            if (!g_subtickActive || slot < 0 || slot >= kMaxSlots ||
-                MotionRecorder::IsReplaying(slot) || BotControllerState::GetAll(slot)) return false;
-            const uint32_t handle = LiveEntities::HandleForEntity(LiveEntities::BotPawnForSlot(slot));
-            if (!handle) return false;
-            if (g_publicControlHandles[slot].load(std::memory_order_acquire) != handle)
-            {
-                g_requests.Clear(slot);
-                g_publicControlHandles[slot].store(handle, std::memory_order_release);
-            }
-            return true;
-        }
-
-        int64_t InjectUsercmd(int slot, uint64_t buttons, int durationMs)
-        {
-            return CanUsePublicControl(slot)
-                ? g_requests.Add(slot, UsercmdRequests::Kind::Injection, buttons, durationMs, NowMs()) : -1;
-        }
-        bool CancelUsercmdInjection(int slot, int64_t id)
-        { return g_requests.Cancel(slot, UsercmdRequests::Kind::Injection, id); }
-        int64_t StartUsercmdMovement(int slot, float forward, float left)
-        {
-            return CanUsePublicControl(slot)
-                ? g_requests.Add(slot, UsercmdRequests::Kind::Movement, 0, 0, NowMs(), forward, left) : -1;
-        }
-        bool UpdateUsercmdMovement(int slot, int64_t id, float forward, float left)
-        { return CanUsePublicControl(slot) && g_requests.UpdateMovement(slot, id, forward, left); }
-        bool CancelUsercmdMovement(int slot, int64_t id)
-        { return g_requests.Cancel(slot, UsercmdRequests::Kind::Movement, id); }
-        bool SuppressUsercmd(int slot, uint64_t buttons, int durationMs)
-        {
-            return durationMs > 0 && CanUsePublicControl(slot) &&
-                g_requests.Add(slot, UsercmdRequests::Kind::Suppression, buttons, durationMs, NowMs()) > 0;
-        }
-        int64_t StartUsercmdSuppression(int slot, uint64_t buttons)
-        {
-            return CanUsePublicControl(slot)
-                ? g_requests.Add(slot, UsercmdRequests::Kind::Suppression, buttons, 0, NowMs()) : -1;
-        }
-        bool CancelUsercmdSuppression(int slot, int64_t id)
-        { return g_requests.Cancel(slot, UsercmdRequests::Kind::Suppression, id); }
-        void ClearUsercmdInjections(int slot)
-        {
-            g_requests.Clear(slot);
-            if (slot >= 0 && slot < kMaxSlots)
-                g_publicControlHandles[slot].store(0, std::memory_order_release);
-        }
-
-        static void ApplyPublicControl(int slot, PlayerCommand *pc, CBaseUserCmdPB *base)
-        {
-            const auto frame = g_requests.Advance(slot, NowMs(), {
-                pc->buttonstates.m_pButtonStates[0], pc->buttonstates.m_pButtonStates[1],
-                pc->buttonstates.m_pButtonStates[2]});
-            auto *buttons = base->mutable_buttons_pb();
-            buttons->set_buttonstate1(frame.buttons.state1);
-            buttons->set_buttonstate2(frame.buttons.state2);
-            buttons->set_buttonstate3(frame.buttons.state3);
-            pc->buttonstates.m_pButtonStates[0] = frame.buttons.state1;
-            pc->buttonstates.m_pButtonStates[1] = frame.buttons.state2;
-            pc->buttonstates.m_pButtonStates[2] = frame.buttons.state3;
-            if (frame.movement)
-            {
-                base->set_forwardmove(frame.forward * kCommandMoveSpeed);
-                base->set_leftmove(frame.left * kCommandMoveSpeed);
-            }
-            for (int i = 0; i < base->subtick_moves_size(); ++i)
-            {
-                auto *step = base->mutable_subtick_moves(i);
-                step->set_button(step->button() & ~frame.controlledMask);
-                if (step->button() == 0) step->set_pressed(false);
-                if (frame.movement)
-                {
-                    step->set_analog_forward_delta(0);
-                    step->set_analog_left_delta(0);
-                }
-            }
         }
 
         static uint64_t ButtonsForAnalog(float analogForward, float analogLeft)
@@ -434,7 +352,6 @@ namespace BotController
         {
             if (slot < 0 || slot >= kMaxSlots)
                 return false;
-            ClearUsercmdInjections(slot);
             g_intentExpireMs[slot].store(0, std::memory_order_release);
             g_intentPawnHandles[slot].store(0, std::memory_order_relaxed);
             g_intentButtonsSet[slot].store(0, std::memory_order_relaxed);
@@ -614,17 +531,6 @@ namespace BotController
             return slot >= 0 ? slot : RegisteredSlotForServices(services);
         }
 
-        // services -> pawn -> WeaponServices*, for the recording weapon tap.
-        static void *ServicesToWeaponServices(void *services)
-        {
-            int slot = ServicesToSlot(services);
-            void *pawn = ResolveReplayPawn(slot, services);
-            if (!pawn)
-                return nullptr;
-            void *ws = nullptr;
-            return SafeRead(pawn, tg::kPawn_WeaponServices, ws) ? ws : nullptr;
-        }
-
         static float NormalizeDeg(float a)
         {
             a = std::fmod(a + 180.0f, 360.0f);
@@ -726,7 +632,7 @@ namespace BotController
             return {KHook::Action::Ignore};
         }
 
-        // ---- ProcessMovement: record pre/post; replay simulation is native ----
+        // ---- ProcessMovement: native simulation and movement intent ----
 
         static KHook::Return<void> BC_FASTCALL HookedProcessMovement(void *services, void *moveData)
         {
@@ -742,8 +648,6 @@ namespace BotController
             if (slot >= 0 && slot < kMaxSlots)
                 g_slotServices[slot].store(services, std::memory_order_release);
 
-            bool recording = slot >= 0 && slot < kMaxSlots &&
-                             MotionRecorder::IsRecording(slot);
             bool replaying = ReplayActiveAndSafe(slot, services);
             if (replaying)
             {
@@ -755,22 +659,11 @@ namespace BotController
                 !replaying && !IsSlotControllingBot(slot) &&
                 ActiveUsercmdMovementIntent(slot, services, movementIntent);
 
-            // Recording weapon tap
-            if (recording)
-            {
-                MotionRecorder::SetLiveWs(slot, ServicesToWeaponServices(services));
-                if (!g_physicsActive)
-                    MotionRecorder::OnCapturePre(slot, services, moveData);
-            }
-
             if (hasMovementIntent)
                 ApplyUsercmdMovementIntentToMoveData(services, moveData, movementIntent);
 
             g_hookProcessMovement.Continue(services, moveData);
 
-            // Recording: commit the tick here only when PhysicsSimulate isn't the boundary
-            if (recording && !g_physicsActive)
-                MotionRecorder::OnCapturePost(slot, services, moveData);
             return {KHook::Action::Ignore};
         }
 
@@ -794,15 +687,13 @@ namespace BotController
             return {KHook::Action::Ignore};
         }
 
-        // ---- PlayerRunCommand: subtick record + re-inject ----
+        // ---- PlayerRunCommand: replay command and subtick injection ----
 
         static KHook::Return<void> BC_FASTCALL HookedPlayerRunCommand(void *services, void *cmd)
         {
             ProjectileBirthAlign::ProcessPending();
             MotionRecorder::AddReplayPerf(MotionRecorder::ReplayPerfCounter::PlayerRunCommandHook);
             int slot = ServicesToSlot(services);
-            bool recording = slot >= 0 && slot < kMaxSlots &&
-                             MotionRecorder::IsRecording(slot);
             bool replaying = ReplayActiveAndSafe(slot, services);
             if (replaying)
             {
@@ -825,86 +716,11 @@ namespace BotController
                     reinterpret_cast<uintptr_t>(pawn), handle, safeOwner);
             }
 
-            bool hasPublicControl = g_requests.Pending(slot);
-            if (hasPublicControl && (!CanUsePublicControl(slot) ||
-                ResolveReplayPawn(slot, services) != LiveEntities::BotPawnForSlot(slot)))
-            {
-                ClearUsercmdInjections(slot);
-                hasPublicControl = false;
-            }
-            hasPublicControl = hasPublicControl && g_requests.Pending(slot);
-            if (cmd && (recording || replaying || hasMovementIntent || hasLeftHandLatch || hasPublicControl))
+            if (cmd && (replaying || hasMovementIntent || hasLeftHandLatch))
             {
                 // Compiler computes the multiple-inheritance adjust here.
                 auto *pc = reinterpret_cast<PlayerCommand *>(cmd);
                 CBaseUserCmdPB *base = pc->mutable_base();
-
-                if (recording)
-                {
-                    // Read this tick's subtick_moves into SubtickMove[] and
-                    // stash; OnCapturePost (PhysicsSimulate-post) commits them.
-                    int n = base->subtick_moves_size();
-                    if (n > MotionRecorder::kMaxSubtickPerTick)
-                        n = MotionRecorder::kMaxSubtickPerTick;
-                    SubtickMove moves[MotionRecorder::kMaxSubtickPerTick];
-                    for (int i = 0; i < n; ++i)
-                    {
-                        const CSubtickMoveStep &s = base->subtick_moves(i);
-                        moves[i].when = s.when();
-                        moves[i].button = static_cast<uint32_t>(s.button());
-                        moves[i].pressed = s.pressed() ? 1.0f : 0.0f;
-                        moves[i].analogForward = s.analog_forward_delta();
-                        moves[i].analogLeft = s.analog_left_delta();
-                        moves[i].pitchDelta = s.pitch_delta();
-                        moves[i].yawDelta = s.yaw_delta();
-                    }
-                    MotionRecorder::OnCaptureSubticks(slot, moves, n);
-
-                ReplayCommandFrameData command{};
-                command.buttons = pc->buttonstates.m_pButtonStates[0];
-                command.buttons1 = pc->buttonstates.m_pButtonStates[1];
-                command.buttons2 = pc->buttonstates.m_pButtonStates[2];
-                command.fields |= MotionRecorder::kCommandFieldButtons;
-                if (base->has_forwardmove())
-                {
-                    command.forwardMove = base->forwardmove();
-                    command.fields |= MotionRecorder::kCommandFieldForwardMove;
-                }
-                if (base->has_leftmove())
-                {
-                    command.leftMove = base->leftmove();
-                    command.fields |= MotionRecorder::kCommandFieldLeftMove;
-                }
-                if (base->has_upmove())
-                {
-                    command.upMove = base->upmove();
-                    command.fields |= MotionRecorder::kCommandFieldUpMove;
-                }
-                if (base->has_viewangles())
-                {
-                    const CMsgQAngle& view = base->viewangles();
-                    command.pitch = view.x();
-                    command.yaw = view.y();
-                    command.roll = view.z();
-                    command.fields |= MotionRecorder::kCommandFieldViewAngles;
-                }
-                if (base->has_mousedx() || base->has_mousedy())
-                {
-                    command.mouseDx = base->mousedx();
-                    command.mouseDy = base->mousedy();
-                    command.fields |= MotionRecorder::kCommandFieldMouse;
-                }
-                if (base->has_weaponselect())
-                {
-                    command.weaponSelect = base->weaponselect();
-                    command.fields |= MotionRecorder::kCommandFieldWeaponSelect;
-                }
-                // This is a complete engine command, not a demo delta. An
-                // omitted protobuf bool is the authoritative default false.
-                command.leftHandDesired = pc->left_hand_desired() ? 1 : 0;
-                command.fields |= MotionRecorder::kCommandFieldLeftHand;
-                MotionRecorder::OnCaptureCommand(slot, command);
-                }
 
                 if (replaying)
                 {
@@ -1006,8 +822,6 @@ namespace BotController
 
                 if (hasMovementIntent)
                     ApplyUsercmdMovementIntentToCommand(services, pc, base, movementIntent);
-                if (hasPublicControl && !hasMovementIntent)
-                    ApplyPublicControl(slot, pc, base);
             }
 
             g_hookPlayerRunCommand.Continue(services, cmd);
@@ -1021,7 +835,6 @@ namespace BotController
         }
 
         // ---- PhysicsSimulate: the per-tick boundary ----
-        // Records pre/post + commits
 
         static KHook::Return<void> BC_FASTCALL HookedPhysicsSimulate(void *controller)
         {
@@ -1032,8 +845,6 @@ namespace BotController
                                  ? g_slotServices[slot].load(std::memory_order_acquire)
                                  : nullptr;
 
-            bool recording = slot >= 0 && slot < kMaxSlots && services &&
-                             MotionRecorder::IsRecording(slot);
             if (slot >= 0 && slot < kMaxSlots)
             {
                 g_slotControllers[slot].store(controller, std::memory_order_release);
@@ -1042,15 +853,8 @@ namespace BotController
 
             bool replaying = services && ReplayActiveAndSafe(slot, services);
 
-            // pre: snapshot start-of-tick state once (before any subtick mover).
-            if (recording)
-                MotionRecorder::OnCapturePre(slot, services, nullptr);
-
             g_hookPhysicsSimulate.Continue(controller);
 
-            // post: snapshot end-of-tick state + commit one frame
-            if (recording)
-                MotionRecorder::OnCapturePost(slot, services, nullptr);
             if (replaying)
                 MotionRecorder::OnReplayCommit(slot, services);
             return {KHook::Action::Ignore};

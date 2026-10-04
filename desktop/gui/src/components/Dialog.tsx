@@ -8,10 +8,7 @@ import { Modal } from "@mantine/core";
 import {
   type ReactNode,
   type RefObject,
-  useCallback,
   useEffect,
-  useLayoutEffect,
-  useState,
 } from "react";
 
 export interface DialogPrimitiveProps {
@@ -37,35 +34,6 @@ export function DialogPrimitive({
   scrimClassName = "dialog-scrim",
   className = "dialog-surface",
 }: DialogPrimitiveProps) {
-  const [contentElement, setContentElement] = useState<HTMLDivElement | null>(null);
-  const contentRef = useCallback((element: HTMLDivElement | null) => setContentElement(element), []);
-
-  useLayoutEffect(() => {
-    const content = contentElement;
-    if (!content) return;
-
-    const syncAccessibleName = () => {
-      if (content.getAttribute("aria-labelledby") !== labelledBy) {
-        content.setAttribute("aria-labelledby", labelledBy);
-      }
-      if (describedBy) {
-        if (content.getAttribute("aria-describedby") !== describedBy) {
-          content.setAttribute("aria-describedby", describedBy);
-        }
-      } else if (content.hasAttribute("aria-describedby")) {
-        content.removeAttribute("aria-describedby");
-      }
-    };
-
-    syncAccessibleName();
-    const observer = new MutationObserver(syncAccessibleName);
-    observer.observe(content, {
-      attributes: true,
-      attributeFilter: ["aria-labelledby", "aria-describedby"],
-    });
-    return () => observer.disconnect();
-  }, [contentElement, describedBy, labelledBy]);
-
   useEffect(() => {
     const frame = requestAnimationFrame(() => initialFocusRef?.current?.focus({ preventScroll: true }));
     return () => {
@@ -92,7 +60,7 @@ export function DialogPrimitive({
     >
       <Modal.Overlay className={scrimClassName} />
       <Modal.Content
-        ref={contentRef}
+        renderRoot={(props) => <section {...props} aria-labelledby={labelledBy} aria-describedby={describedBy} />}
         classNames={{ content: className }}
       >
         {children}

@@ -27,13 +27,10 @@ public sealed partial class DemoTracerPlugin
     [ConsoleCommand("dtr_handoff", "dtr_handoff <off|death|contact|death_or_contact|death_contact_c4> [all|slot]")]
     [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
     public void HandoffCommand(CCSPlayerController? player, CommandInfo command)
-        => SetHandoffMode(command, argOffset: 1);
-
-    private void SetHandoffMode(CommandInfo command, int argOffset)
     {
-        if (command.ArgCount > argOffset)
+        if (command.ArgCount > 1)
         {
-            if (!TryParseHandoffMode(command.GetArg(argOffset), out var mode))
+            if (!TryParseHandoffMode(command.GetArg(1), out var mode))
             {
                 command.ReplyToCommand("usage: dtr_handoff <off|death|contact|death_or_contact|death_contact_c4> [all|slot]");
                 return;
@@ -41,9 +38,9 @@ public sealed partial class DemoTracerPlugin
             _handoffMode = mode;
         }
 
-        if (command.ArgCount > argOffset + 1)
+        if (command.ArgCount > 2)
         {
-            var scope = command.GetArg(argOffset + 1);
+            var scope = command.GetArg(2);
             if (scope.Equals("slot", StringComparison.OrdinalIgnoreCase))
                 _handoffAllSlots = false;
             else if (scope.Equals("all", StringComparison.OrdinalIgnoreCase))
@@ -92,48 +89,6 @@ public sealed partial class DemoTracerPlugin
             $"dtr: handoff_360={_handoffThreat360Enabled}");
     }
 
-    private void SetIdentityMode(CommandInfo command)
-    {
-        if (command.ArgCount < 3)
-        {
-            command.ReplyToCommand("usage: dtr_set identity <off|name|steam|avatar|full>");
-            return;
-        }
-
-        switch (command.GetArg(2).ToLowerInvariant())
-        {
-            case "off":
-            case "0":
-            case "false":
-                _replayIdentityMode = ReplayIdentityMode.Off;
-                break;
-            case "name":
-                _replayIdentityMode = ReplayIdentityMode.Name;
-                break;
-            case "steam":
-            case "sid":
-            case "steamid":
-            case "1":
-            case "on":
-            case "true":
-                _replayIdentityMode = ReplayIdentityMode.Steam;
-                break;
-            case "avatar":
-            case "avatars":
-            case "event_avatar":
-            case "event-avatar":
-            case "full":
-                _replayIdentityMode = ReplayIdentityMode.Avatar;
-                break;
-            default:
-                command.ReplyToCommand("usage: dtr_set identity <off|name|steam|avatar|full>");
-                return;
-        }
-
-        ApplyRuntimeConfigSideEffects();
-        command.ReplyToCommand($"[DTR OK] identity={ReplayIdentityModeName()}");
-    }
-
     [ConsoleCommand("dtr_partial", "dtr_partial <0|1>")]
     [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
     public void PartialCommand(CCSPlayerController? player, CommandInfo command)
@@ -160,46 +115,6 @@ public sealed partial class DemoTracerPlugin
         }
 
         command.ReplyToCommand($"dtr: replay_identity={ReplayIdentityModeName()}");
-    }
-
-    [ConsoleCommand("dtr_set", "dtr_set <identity|align|handoff|allow_partial> ...")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void SetCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        if (command.ArgCount < 2)
-        {
-            command.ReplyToCommand("usage: dtr_set identity <off|name|steam|avatar|full>");
-            command.ReplyToCommand("usage: dtr_set align <weapons|loadout|active_weapon|slot_lock|projectiles|cosmetics|stickers|charms|crosshair|left_hand|scoreboard> <off|on>");
-            command.ReplyToCommand("usage: dtr_set handoff <off|death|contact|death_or_contact|death_contact_c4> [slot|all]");
-            command.ReplyToCommand("usage: dtr_set allow_partial <off|on>");
-            return;
-        }
-
-        switch (command.GetArg(1).ToLowerInvariant())
-        {
-            case "identity":
-                SetIdentityMode(command);
-                return;
-            case "align":
-                SetAlignMode(command);
-                return;
-            case "handoff":
-                SetHandoffMode(command, argOffset: 2);
-                return;
-            case "allow_partial":
-            case "partial":
-                if (command.ArgCount < 3)
-                {
-                    command.ReplyToCommand("usage: dtr_set allow_partial <off|on>");
-                    return;
-                }
-                _partialReplayEnabled = ParseOnOff(command.GetArg(2), _partialReplayEnabled);
-                command.ReplyToCommand($"[DTR OK] allow_partial={FormatOnOff(_partialReplayEnabled)}");
-                return;
-            default:
-                command.ReplyToCommand("[DTR ERR] unknown setting namespace. Use identity, align, handoff, or allow_partial.");
-                return;
-        }
     }
 
     [ConsoleCommand("dtr_bots", "dtr_bots")]
@@ -324,7 +239,7 @@ public sealed partial class DemoTracerPlugin
                 .Order()
                 .ToArray();
             command.ReplyToCommand(
-                $"[DTR DOCTOR] manifest type=round path=\"{manifestPath}\" map={manifest.Map} abi={manifest.Abi} dtr_format={manifest.EffectiveDtrFormatVersion} files={manifest.Files.Count} avatar_overrides={manifest.AvatarOverrides.Count} rounds={FormatRoundList(rounds)}");
+                $"[DTR DOCTOR] manifest type=round path=\"{manifestPath}\" map={manifest.Map} abi={manifest.Abi} dtr_format={manifest.FormatVersion} files={manifest.Files.Count} avatar_overrides={manifest.AvatarOverrides.Count} rounds={FormatRoundList(rounds)}");
             return;
         }
 

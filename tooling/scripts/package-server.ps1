@@ -267,7 +267,6 @@ if (-not (Test-SameFullPath $botHiderRuntimeRoot $defaultBotHiderRuntimeRoot)) {
 $runtimeDll = Join-Path $runtimeRoot "addons\dtr-controller\bin\win64\dtr-controller.dll"
 Require-Path $runtimeDll "BotController runtime DLL"
 Assert-BinaryContainsExport $runtimeDll "DtrController_GetAbiInfo"
-Assert-BinaryContainsExport $runtimeDll "DtrController_GetPublicApiVersion"
 Assert-BinaryContainsExport $runtimeDll "DtrController_GetCapabilities"
 Assert-BinaryContainsExport $runtimeDll "DtrController_GetBuyStatus"
 Assert-BinaryContainsExport $runtimeDll "DtrController_RequestEquipBestWeapon"
@@ -501,7 +500,7 @@ through CS2's native `say` / `say_team` path when `dtr_chat_auto on` is enabled
 
 - Required BotController native ABI: __BOTCONTROLLER_ABI__
 - Required BotController native ABI minor: __BOTCONTROLLER_ABI_MINOR__ or newer
-- Supported `.dtr` reader versions: __DTR_READER_MIN__..__DTR_READER_MAX__
+- Supported `.dtr` format: __DTR_READER_MAX__ only; reconvert older archives with the current GUI.
 - DemoTracer companion API: __DEMOTRACER_API__
 - DemoTracer BotHider API: __BOTHIDER_API__
 - BotRandomizer replay-plan API: __BOTRANDOMIZER_API__
@@ -552,7 +551,6 @@ than the narrower random-roll pools. DemoTracer does not mutate weapon econ
 state, knife subclasses, gloves, agent models, or music-kit fields directly.
 '@
 $readme = $readme.Replace("__VERSION__", $Version)
-$readme = $readme.Replace("__DTR_READER_MIN__", [string]$playbackContract.dtr_reader.min)
 $readme = $readme.Replace("__DTR_READER_MAX__", [string]$playbackContract.dtr_reader.max)
 $readme = $readme.Replace("__BOTCONTROLLER_ABI__", [string]$playbackContract.bot_controller.abi_major)
 $readme = $readme.Replace("__BOTCONTROLLER_ABI_MINOR__", [string]$playbackContract.bot_controller.min_abi_minor)

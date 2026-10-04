@@ -125,22 +125,6 @@ namespace
               "prepare command");
     }
 
-    void RecordingUsesBodySceneNode()
-    {
-        Reset();
-        Check(mr::StartRecord(slot), "start recording");
-        Put(node, tg::kNode_AbsOrigin, std::array<float, 3>{10, 20, 30});
-        mr::OnCapturePre(slot, services.data(), nullptr);
-        Put(node, tg::kNode_AbsOrigin, std::array<float, 3>{40, 50, 60});
-        mr::OnCapturePost(slot, services.data(), nullptr);
-        ReplayTick captured{};
-        Check(mr::CopyTicks(slot, &captured, 1) == 1 &&
-              captured.pre.originX == 10 && captured.pre.originY == 20 && captured.pre.originZ == 30 &&
-              captured.post.originX == 40 && captured.post.originY == 50 && captured.post.originZ == 60,
-              "recording did not follow the live body/scene-node chain");
-        Check(mr::ClearRecordedMotion(slot), "release recorded fixture");
-    }
-
     void SimulatedOutput()
     {
         Put(node, tg::kNode_AbsOrigin, std::array<float, 3>{107.0f, 2.0f, 16.0f});
@@ -337,8 +321,6 @@ namespace
         currentBotPawn = false;
         Check(!mr::StartReplay(slot, false) && !mr::StartReplayUntil(slot, false, 0, 2),
               "human or stale pawn acquired replay ownership");
-        // Recording is intentionally permitted for a normal human player.
-        Check(mr::StartRecord(slot) && mr::StopRecord(slot), "human recording was restricted");
         currentBotPawn = true;
         Check(mr::StartReplay(slot, false), "valid bot cannot start after rejected starts");
         Prepare();
@@ -622,7 +604,6 @@ namespace BotController
 
 int main()
 {
-    RecordingUsesBodySceneNode();
     ContinuousInputAndEngineOutput();
     StartSeekLoopAndHeldResume();
     FinishAndHumanTakeover();

@@ -22,14 +22,6 @@ const ZSTD_FRAME_HEADER_MAX_BYTES: usize = 18;
 const MAX_ZSTD_WINDOW_LOG: u32 = 27; // 128 MiB decoder history window.
 const READ_BUFFER_BYTES: usize = 64 * 1024;
 
-#[derive(Clone, Debug)]
-pub struct LoadedDemoInput {
-    pub bytes: Vec<u8>,
-    pub stem: String,
-    pub display_path: String,
-    pub compressed: bool,
-}
-
 /// Returns true for the supported compressed demo filename form, ignoring
 /// ASCII case (for example, `match.dem.zst`).
 pub fn is_zstd_demo_path(path: &Path) -> bool {
@@ -46,25 +38,6 @@ pub fn is_supported_demo_path(path: &Path) -> bool {
             let name = name.to_ascii_lowercase();
             name.ends_with(".dem") || name.ends_with(".dem.zst")
         })
-}
-
-/// Reads the logical CS2 demo bytes. Zstd is detected from either the
-/// `.dem.zst` filename or frame magic and decompressed with a hard output cap.
-pub fn read_demo_input_bytes(path: &Path) -> Result<Vec<u8>> {
-    read_demo_input_bytes_with_limit(path, MAX_DECOMPRESSED_DEMO_BYTES).map(|(bytes, _)| bytes)
-}
-
-/// Loads and, when needed, decompresses a demo without parsing it. Callers can
-/// use this to expose a separate decompression stage before invoking
-/// `read_loaded_demo_with_options`.
-pub fn load_demo_input(path: &Path) -> Result<LoadedDemoInput> {
-    let (bytes, compressed) = read_demo_input_bytes_with_limit(path, MAX_DECOMPRESSED_DEMO_BYTES)?;
-    Ok(LoadedDemoInput {
-        bytes,
-        stem: demo_input_stem(path),
-        display_path: path.display().to_string(),
-        compressed,
-    })
 }
 
 /// Hashes logical demo content without parsing it or retaining the whole demo
@@ -259,11 +232,11 @@ mod input_tests {
         let bytes = b"PBDEMS2\0logical demo bytes";
         fs::write(&path, bytes).unwrap();
 
-        let loaded = load_demo_input(&path).unwrap();
-        assert_eq!(loaded.bytes, bytes);
-        assert_eq!(loaded.stem, "match");
-        assert_eq!(loaded.display_path, path.display().to_string());
-        assert!(!loaded.compressed);
+        let (loaded, compressed) =
+            read_demo_input_bytes_with_limit(&path, MAX_DECOMPRESSED_DEMO_BYTES).unwrap();
+        assert_eq!(loaded, bytes);
+        assert_eq!(demo_input_stem(&path), "match");
+        assert!(!compressed);
         assert_eq!(
             demo_content_sha256(&path).unwrap(),
             crate::demo_id::sha256_hex(bytes)
@@ -278,11 +251,11 @@ mod input_tests {
         let compressed = zstd::stream::encode_all(&bytes[..], 1).unwrap();
         fs::write(&path, compressed).unwrap();
 
-        let loaded = load_demo_input(&path).unwrap();
-        assert_eq!(loaded.bytes, bytes);
-        assert_eq!(loaded.stem, "faceit-match");
-        assert_eq!(loaded.display_path, path.display().to_string());
-        assert!(loaded.compressed);
+        let (loaded, compressed) =
+            read_demo_input_bytes_with_limit(&path, MAX_DECOMPRESSED_DEMO_BYTES).unwrap();
+        assert_eq!(loaded, bytes);
+        assert_eq!(demo_input_stem(&path), "faceit-match");
+        assert!(compressed);
         assert_eq!(
             demo_content_sha256(&path).unwrap(),
             crate::demo_id::sha256_hex(bytes)
@@ -297,10 +270,11 @@ mod input_tests {
         let compressed = zstd::stream::encode_all(&bytes[..], 1).unwrap();
         fs::write(&path, compressed).unwrap();
 
-        let loaded = load_demo_input(&path).unwrap();
-        assert_eq!(loaded.bytes, bytes);
-        assert_eq!(loaded.stem, "renamed");
-        assert!(loaded.compressed);
+        let (loaded, compressed) =
+            read_demo_input_bytes_with_limit(&path, MAX_DECOMPRESSED_DEMO_BYTES).unwrap();
+        assert_eq!(loaded, bytes);
+        assert_eq!(demo_input_stem(&path), "renamed");
+        assert!(compressed);
     }
 
     #[test]
@@ -392,7 +366,8 @@ mod input_tests {
         let path = temp.path().join("broken.dem.zst");
         fs::write(&path, b"not a zstd frame").unwrap();
 
-        let error = read_demo_input_bytes(&path).unwrap_err();
+        let error =
+            read_demo_input_bytes_with_limit(&path, MAX_DECOMPRESSED_DEMO_BYTES).unwrap_err();
         assert!(matches!(error, Error::ZstdDemo { .. }));
         assert!(error.to_string().contains("failed to decompress zstd demo"));
     }
@@ -408,8 +383,6 @@ impl Default for ReadDemoOptions {
     fn default() -> Self {
         Self {
             collect_voice: false,
-            // Keep the public read_demo/read_demo_bytes API complete. Library callers that
-            // cannot export cosmetics explicitly opt into the lean property set instead.
             collect_cosmetics: true,
         }
     }
@@ -978,58 +951,22 @@ mod demoparser_impl {
         Parser::new_with_decode_plan(settings, mode, decode_plan).parse_demo(bytes)
     }
 
-    pub fn read_demo(path: &Path) -> Result<ParsedDemo> {
-        read_demo_with_options(path, ReadDemoOptions::default())
-    }
-
-    pub fn read_demo_with_options(path: &Path, options: ReadDemoOptions) -> Result<ParsedDemo> {
-        read_demo_with_options_and_cancel(path, options, None)
-    }
-
-    pub fn read_demo_with_options_and_cancel(
+    pub(crate) fn read_demo_with_options_and_cancel(
         path: &Path,
         options: ReadDemoOptions,
         cancelled: Option<&AtomicBool>,
     ) -> Result<ParsedDemo> {
-        let input = load_demo_input(path)?;
-        read_loaded_demo_with_options_and_cancel(&input, options, cancelled)
-    }
-
-    pub fn read_demo_bytes(bytes: &[u8], stem: &str, display_path: &str) -> Result<ParsedDemo> {
-        read_demo_bytes_with_options(bytes, stem, display_path, ReadDemoOptions::default())
-    }
-
-    pub fn read_loaded_demo_with_options(
-        input: &LoadedDemoInput,
-        options: ReadDemoOptions,
-    ) -> Result<ParsedDemo> {
-        read_loaded_demo_with_options_and_cancel(input, options, None)
-    }
-
-    pub fn read_loaded_demo_with_options_and_cancel(
-        input: &LoadedDemoInput,
-        options: ReadDemoOptions,
-        cancelled: Option<&AtomicBool>,
-    ) -> Result<ParsedDemo> {
+        let (bytes, _) = read_demo_input_bytes_with_limit(path, MAX_DECOMPRESSED_DEMO_BYTES)?;
         read_demo_bytes_with_options_and_cancel(
-            &input.bytes,
-            &input.stem,
-            &input.display_path,
+            &bytes,
+            &demo_input_stem(path),
+            &path.display().to_string(),
             options,
             cancelled,
         )
     }
 
-    pub fn read_demo_bytes_with_options(
-        bytes: &[u8],
-        stem: &str,
-        display_path: &str,
-        options: ReadDemoOptions,
-    ) -> Result<ParsedDemo> {
-        read_demo_bytes_with_options_and_cancel(bytes, stem, display_path, options, None)
-    }
-
-    pub fn read_demo_bytes_with_options_and_cancel(
+    fn read_demo_bytes_with_options_and_cancel(
         bytes: &[u8],
         stem: &str,
         display_path: &str,
@@ -1782,36 +1719,6 @@ mod demoparser_impl {
         } else {
             AvatarImageFormat::Binary
         }
-    }
-
-    pub fn read_demo_header_map_bytes(bytes: &[u8]) -> Result<Option<String>> {
-        let huf = create_huffman_lookup_table();
-        let settings = ParserInputs {
-            real_name_to_og_name: AHashMap::default(),
-            wanted_players: Vec::new(),
-            wanted_player_props: Vec::new(),
-            wanted_other_props: Vec::new(),
-            wanted_prop_states: AHashMap::default(),
-            wanted_ticks: Vec::new(),
-            wanted_events: Vec::new(),
-            parse_ents: false,
-            parse_projectiles: false,
-            collect_projectile_records: false,
-            parse_grenades: false,
-            only_header: true,
-            only_convars: false,
-            huffman_lookup_table: &huf,
-            order_by_steamid: false,
-            list_props: false,
-            fallback_bytes: None,
-            cancelled: None,
-        };
-        let mut parser = Parser::new(settings, ParsingMode::ForceSingleThreaded);
-        let output = parser
-            .parse_demo(bytes)
-            .map_err(|e| Error::Parser(format!("{e:?}")))?;
-        let header = output.header.unwrap_or_default();
-        Ok(header.get("map_name").cloned())
     }
 
     fn parse_projectile_records(
@@ -4242,12 +4149,4 @@ mod demoparser_impl {
     }
 }
 
-pub use demoparser_impl::read_demo;
-pub use demoparser_impl::read_demo_bytes;
-pub use demoparser_impl::read_demo_bytes_with_options;
-pub use demoparser_impl::read_demo_bytes_with_options_and_cancel;
-pub use demoparser_impl::read_demo_header_map_bytes;
-pub use demoparser_impl::read_demo_with_options;
-pub use demoparser_impl::read_demo_with_options_and_cancel;
-pub use demoparser_impl::read_loaded_demo_with_options;
-pub use demoparser_impl::read_loaded_demo_with_options_and_cancel;
+pub(crate) use demoparser_impl::read_demo_with_options_and_cancel;

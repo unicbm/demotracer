@@ -251,6 +251,8 @@ fn provider_migration_and_rollback_preserve_user_data_and_original_code() {
         "addons/counterstrikesharp/shared/DtrControllerApi/DtrControllerApi.dll",
     ];
     let mut previous = read_installed_receipt(&fixture.game()).unwrap().unwrap();
+    previous.compatibility.bot_controller.abi_major = 21;
+    previous.compatibility.bot_controller.min_abi_minor = 44;
     for path in retired {
         fixture.write(path, b"retired SDK");
         previous.files.push(ReceiptFileWire {
@@ -382,7 +384,6 @@ fn install_rejects_changed_event_semantics_even_when_tick_size_and_abi_match() {
         .as_object_mut()
         .unwrap();
     for key in [
-        "public_control_api",
         "movement_intent_version",
         "replay_tick_bytes",
         "replay_tick_event_tail",

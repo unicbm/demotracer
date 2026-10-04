@@ -119,12 +119,8 @@ public sealed partial class DemoTracerPlugin
                 continue;
             var state = activeStates[activeIndex];
 
-            var hasLoadedReplay = _session.LoadedReplays.TryGetValue(slot, out var replay);
-            if (hasLoadedReplay)
-            {
+            if (_session.LoadedReplays.TryGetValue(slot, out var replay))
                 ProcessReplayInventory(slot, replay, state.Cursor);
-                ProcessReplayUtilityGrants(slot, replay, state.Cursor);
-            }
 
             if (!_weaponAlignEnabled)
                 continue;
@@ -141,76 +137,6 @@ public sealed partial class DemoTracerPlugin
 
             ApplyReplayWeaponPreset(slot, weaponDefIndex, force: false);
         }
-    }
-
-    private void ProcessReplayUtilityGrants(int slot, LoadedReplay replay, int cursor)
-    {
-        if (cursor < 0 || replay.UtilityGrants.Length == 0)
-            return;
-
-        var next = _session.ReplayUtilityGrantNextBySlot.GetValueOrDefault(slot);
-        while (next < replay.UtilityGrants.Length && replay.UtilityGrants[next].TickIndex <= (uint)cursor)
-        {
-            QueueReplayUtilityGrant(slot, replay.UtilityGrants[next]);
-            next++;
-        }
-        _session.ReplayUtilityGrantNextBySlot[slot] = next;
-    }
-
-    private void QueueReplayUtilityGrant(int slot, ReplayUtilityGrant grant)
-    {
-        var player = Utilities.GetPlayerFromSlot(slot);
-        if (player is not { IsValid: true } ||
-            player.UserId is not int userId)
-        {
-            return;
-        }
-        var writeEpoch = CurrentReplayWriteEpoch(slot);
-
-        Server.NextFrame(() => EnsureReplayUtilityGrant(
-            slot,
-            userId,
-            writeEpoch,
-            grant.ClassName,
-            grant.TargetCount,
-            grant.SourceTick));
-    }
-
-    private void EnsureReplayUtilityGrant(
-        int slot,
-        int userId,
-        long writeEpoch,
-        string className,
-        int targetCount,
-        int sourceTick)
-    {
-        if (!IsReplaySlotStillSafe(slot) ||
-            !IsReplaySlotPlaying(slot) ||
-            !IsReplayWriteEpochCurrent(slot, writeEpoch))
-            return;
-
-        var player = Utilities.GetPlayerFromSlot(slot);
-        if (player is not { IsValid: true, PawnIsAlive: true } ||
-            player.UserId != userId)
-            return;
-
-        var currentCount = CountCurrentReplayItems(player, className);
-        if (currentCount >= targetCount)
-            return;
-
-        var missing = targetCount - currentCount;
-        for (var i = 0; i < missing; i++)
-        {
-            if (!TryGiveNamedItem(player, className))
-            {
-                Server.PrintToConsole(
-                    $"dtr: hifi utility grant failed slot={slot} item={className} tick={sourceTick}");
-                return;
-            }
-        }
-
-        _session.LastEnsuredWeaponDef.Remove(slot);
-        _session.LastReplayWeaponDef.Remove(slot);
     }
 
     private IEnumerable<CBasePlayerWeapon> GetReplayWeaponsByClass(CCSPlayerPawn pawn, string className)

@@ -273,18 +273,6 @@ public sealed partial class DemoTracerPlugin
         _ = SyncBotRandomizerCosmeticLease(announce: false);
     }
 
-    private void SetCosmeticAlignEnabled(bool enabled)
-    {
-        if (enabled)
-        {
-            ApplyCosmeticPreset(CosmeticPreset.Basic);
-            return;
-        }
-
-        ApplyCosmeticPreset(CosmeticPreset.Off);
-        ResetCosmeticAlignState();
-    }
-
     private void SetStickerAlignEnabled(bool enabled)
     {
         _stickerAlignEnabled = enabled;

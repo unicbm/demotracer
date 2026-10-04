@@ -4,7 +4,6 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 
@@ -31,14 +30,8 @@ internal static partial class DtrReplayReader
         for (var i = 0; i < replay.Subticks.Length; i++)
         {
             var subtick = replay.Subticks[i];
-            var validWhen = float.IsFinite(subtick.When) &&
-                subtick.When < 1.0f &&
-                (replay.Version >= 10 || subtick.When >= 0.0f);
-            if (!validWhen)
-            {
-                var range = replay.Version >= 10 ? "below 1" : "in [0, 1)";
-                throw new InvalidDataException($"subtick {i} when must be finite and {range}");
-            }
+            if (!float.IsFinite(subtick.When) || subtick.When >= 1.0f)
+                throw new InvalidDataException($"subtick {i} when must be finite and below 1");
             RequireFinite(
                 [subtick.Pressed, subtick.AnalogForward, subtick.AnalogLeft, subtick.PitchDelta, subtick.YawDelta],
                 "subtick", i);
@@ -170,16 +163,14 @@ internal static partial class DtrReplayReader
     {
         var metadata = JsonSerializer.Deserialize<ReplayHighFidelityMetadata>(metadataJson, HifiJsonOptions)
             ?? ReplayHighFidelityMetadata.Empty;
-        if (metadata.SchemaVersion is < 1 or > ReplayHighFidelityMetadata.CurrentSchemaVersion)
-            throw new InvalidDataException("unsupported replay metadata schema");
+        if (metadata.SchemaVersion != ReplayHighFidelityMetadata.CurrentSchemaVersion)
+            throw new InvalidDataException("unsupported replay metadata schema; reconvert the demo with the current GUI");
         metadata.Events ??= [];
         metadata.InventorySnapshots ??= [];
         metadata.Projectiles ??= [];
         ValidateInventorySnapshots(metadata.InventorySnapshots, tickCount);
         metadata.InventorySnapshots = metadata.InventorySnapshots.OrderBy(snapshot => snapshot.TickIndex)
             .ThenBy(snapshot => snapshot.Tick).ToArray();
-        if (metadata.SchemaVersion < 5)
-            CompileLegacyInventory(metadata.InventorySnapshots);
         metadata.Events = metadata.Events.OrderBy(item => item.TickIndex).ThenBy(item => item.Tick).ToArray();
         return metadata;
     }

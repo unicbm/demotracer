@@ -24,28 +24,6 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
-    [ConsoleCommand("dtr_weapon_align", "dtr_weapon_align <0|1>")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void WeaponAlignCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        if (command.ArgCount >= 2)
-            SetWeaponAlignEnabled(ParseOnOff(command.GetArg(1), _weaponAlignEnabled));
-
-        command.ReplyToCommand("[DTR WARN] legacy command: use dtr_align weapons <on|off>");
-        command.ReplyToCommand($"dtr: weapon_align={_weaponAlignEnabled}");
-    }
-
-    [ConsoleCommand("dtr_projectile_align", "dtr_projectile_align <0|1>")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void ProjectileAlignCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        if (command.ArgCount >= 2)
-            SetProjectileAlignEnabled(ParseOnOff(command.GetArg(1), _projectileAlignEnabled));
-
-        command.ReplyToCommand("[DTR WARN] legacy command: use dtr_align projectiles <on|off>");
-        command.ReplyToCommand($"dtr: projectile_align={_projectileAlignEnabled} mode=first_physics_pre hook={ProjectilePhysicsHookStatus}");
-    }
-
     [ConsoleCommand("dtr_projectile_align_log", "dtr_projectile_align_log [clear|all|molotov|fire]")]
     [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
     public void ProjectileAlignLogCommand(CCSPlayerController? player, CommandInfo command)
@@ -74,67 +52,6 @@ public sealed partial class DemoTracerPlugin
         command.ReplyToCommand($"dtr: projectile_align_log showing {lines.Length} recent event(s)");
         foreach (var line in lines)
             command.ReplyToCommand($"dtr: {line}");
-    }
-
-    [ConsoleCommand("dtr_cosmetic_align", "dtr_cosmetic_align <0|1>")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void CosmeticAlignCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        if (command.ArgCount >= 2)
-            SetCosmeticAlignEnabled(ParseOnOff(command.GetArg(1), _cosmeticAlignEnabled));
-
-        command.ReplyToCommand("[DTR WARN] legacy command: cosmetics moved out of align. Use dtr_cosmetics basic|full");
-        command.ReplyToCommand($"dtr: cosmetic_align={_cosmeticAlignEnabled}");
-        if (_cosmeticAlignEnabled)
-            command.ReplyToCommand(CosmeticRiskNotice);
-    }
-
-    [ConsoleCommand("dtr_sticker_align", "dtr_sticker_align <0|1>")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void StickerAlignCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        if (command.ArgCount >= 2)
-            SetStickerAlignEnabled(ParseOnOff(command.GetArg(1), _stickerAlignEnabled));
-
-        command.ReplyToCommand("[DTR WARN] legacy command: use dtr_cosmetics stickers <on|off>");
-        command.ReplyToCommand($"dtr: sticker_align={_stickerAlignEnabled}");
-        if (_stickerAlignEnabled)
-            command.ReplyToCommand(CosmeticRiskNotice);
-    }
-
-    [ConsoleCommand("dtr_charm_align", "dtr_charm_align <0|1>")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void CharmAlignCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        if (command.ArgCount >= 2)
-            SetCharmAlignEnabled(ParseOnOff(command.GetArg(1), _charmAlignEnabled));
-
-        command.ReplyToCommand("[DTR WARN] legacy command: use dtr_cosmetics charms <on|off>");
-        command.ReplyToCommand($"dtr: charm_align={_charmAlignEnabled}");
-        if (_charmAlignEnabled)
-            command.ReplyToCommand(CosmeticRiskNotice);
-    }
-
-    [ConsoleCommand("dtr_crosshair_align", "dtr_crosshair_align <0|1>")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void CrosshairAlignCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        if (command.ArgCount >= 2)
-            SetCrosshairAlignEnabled(ParseOnOff(command.GetArg(1), _crosshairAlignEnabled));
-
-        command.ReplyToCommand("[DTR WARN] legacy command: use dtr_align crosshair <on|off>");
-        command.ReplyToCommand($"dtr: crosshair_align={_crosshairAlignEnabled}");
-    }
-
-    [ConsoleCommand("dtr_left_hand_desired", "dtr_left_hand_desired <0|1>")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void LeftHandDesiredCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        if (command.ArgCount >= 2)
-            ApplyLeftHandDesiredMode(ParseOnOff(command.GetArg(1), _leftHandDesiredEnabled), command.ReplyToCommand);
-
-        command.ReplyToCommand("[DTR WARN] legacy command: use dtr_align left_hand <on|off>");
-        command.ReplyToCommand($"dtr: left_hand_desired={FormatOnOff(_leftHandDesiredEnabled)}");
     }
 
     [ConsoleCommand("dtr_align", "dtr_align [status|default|full|handoff_safe|off|weapons|projectiles|left_hand|crosshair|balance] [on|off]")]
@@ -202,88 +119,6 @@ public sealed partial class DemoTracerPlugin
         }
     }
 
-    private void SetAlignMode(CommandInfo command)
-    {
-        if (command.ArgCount < 4)
-        {
-            command.ReplyToCommand("usage: dtr_set align <weapons|loadout|active_weapon|slot_lock|projectiles|cosmetics|stickers|charms|crosshair|left_hand|scoreboard> <off|on>");
-            return;
-        }
-
-        var enabled = ParseOnOff(command.GetArg(3), false);
-        var target = command.GetArg(2);
-        switch (target.ToLowerInvariant())
-        {
-            case "weapons":
-            case "weapon":
-            case "loadout":
-            case "active_weapon":
-            case "active-weapon":
-            case "slot_lock":
-            case "slot-lock":
-                command.ReplyToCommand($"[DTR WARN] legacy command: use dtr_align {target} <on|off>");
-                SetAlignComponent(target, enabled, command.ReplyToCommand);
-                ReplyAlignStatus(command.ReplyToCommand);
-                return;
-            case "projectiles":
-            case "projectile":
-                command.ReplyToCommand("[DTR WARN] legacy command: use dtr_align projectiles <on|off>");
-                SetAlignComponent(target, enabled, command.ReplyToCommand);
-                ReplyAlignStatus(command.ReplyToCommand);
-                return;
-            case "cosmetics":
-            case "cosmetic":
-            case "skins":
-            case "skin":
-                command.ReplyToCommand("[DTR WARN] legacy command: cosmetics moved out of align. Use dtr_cosmetics basic|full");
-                SetCosmeticAlignEnabled(enabled);
-                ReplyCosmeticsStatus(command.ReplyToCommand);
-                if (_cosmeticAlignEnabled)
-                    command.ReplyToCommand(CosmeticRiskNotice);
-                return;
-            case "stickers":
-            case "sticker":
-            case "charms":
-            case "charm":
-            case "keychains":
-            case "keychain":
-                command.ReplyToCommand($"[DTR WARN] legacy command: use dtr_cosmetics {target} <on|off>");
-                SetCosmeticComponent(target, enabled, command.ReplyToCommand);
-                ReplyCosmeticsStatus(command.ReplyToCommand);
-                if (_cosmeticAlignEnabled)
-                    command.ReplyToCommand(CosmeticRiskNotice);
-                return;
-            case "crosshair":
-            case "crosshairs":
-            case "view":
-                command.ReplyToCommand("[DTR WARN] legacy command: use dtr_align crosshair <on|off>");
-                SetAlignComponent(target, enabled, command.ReplyToCommand);
-                ReplyAlignStatus(command.ReplyToCommand);
-                return;
-            case "left_hand":
-            case "left-hand":
-            case "lefthand":
-            case "left_hand_desired":
-            case "left-hand-desired":
-            case "lefthanddesired":
-                command.ReplyToCommand("[DTR WARN] legacy command: use dtr_align left_hand <on|off>");
-                SetAlignComponent(target, enabled, command.ReplyToCommand);
-                ReplyAlignStatus(command.ReplyToCommand);
-                return;
-            case "scoreboard":
-            case "scoreboards":
-            case "scores":
-            case "stats":
-                command.ReplyToCommand("[DTR WARN] legacy command: scoreboard moved out of align. Use dtr_match scoreboard <on|off>");
-                ApplyMatchPreset(scoreboard: enabled);
-                ReplyMatchStatus(command.ReplyToCommand);
-                return;
-            default:
-                command.ReplyToCommand("usage: dtr_set align <weapons|loadout|active_weapon|slot_lock|projectiles|cosmetics|stickers|charms|crosshair|left_hand|scoreboard> <off|on>");
-                return;
-        }
-    }
-
     private enum CosmeticPreset
     {
         Off,
@@ -296,7 +131,6 @@ public sealed partial class DemoTracerPlugin
     {
         reply($"[DTR ALIGN] preset={AlignPresetName()}");
         reply($"[DTR ALIGN] weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_mode=first_physics_pre projectile_hook={ProjectilePhysicsHookStatus} crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)}");
-        reply("[DTR ALIGN] note: cosmetics moved to dtr_cosmetics; scoreboard moved to dtr_match");
     }
 
     private static void ReplyAlignUsage(Action<string> reply)

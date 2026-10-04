@@ -13,9 +13,9 @@ namespace DemoTracer.Tests;
 public sealed class ManifestCompatibilityTests
 {
     [Theory]
-    [InlineData(0, 0, true)]
-    [InlineData(12, 3, true)]
-    [InlineData(18, 11, true)]
+    [InlineData(0, 0, false)]
+    [InlineData(12, 3, false)]
+    [InlineData(18, 11, false)]
     [InlineData(19, 12, true)]
     [InlineData(11, 3, false)]
     [InlineData(20, 12, false)]

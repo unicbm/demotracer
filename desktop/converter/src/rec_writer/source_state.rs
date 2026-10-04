@@ -82,18 +82,8 @@ pub(super) fn encode(changes: &[SourceStateChange]) -> Result<(usize, Vec<u8>)> 
     Ok((count, body))
 }
 
-pub(super) fn validate_header(format: u32, header: &SectionHeader) -> Result<()> {
-    if header.section_version == SECTION_VERSION_V1 {
-        return require_section_header_shape(
-            "source state",
-            header.section_version,
-            header.element_count,
-            header.element_count as usize,
-            header.uncompressed_len,
-            checked_product(header.element_count as usize, 16, "source state")?,
-        );
-    }
-    if format < 12 || header.section_version != SECTION_VERSION_V2 {
+pub(super) fn validate_header(header: &SectionHeader) -> Result<()> {
+    if header.section_version != SECTION_VERSION_V2 {
         return Err(Error::InvalidRec(
             "unsupported source state section version".into(),
         ));
@@ -114,27 +104,7 @@ pub(super) fn decode(
     body: &[u8],
     count: usize,
     tick_count: usize,
-    version: u32,
 ) -> Result<Vec<SourceStateChange>> {
-    if version == SECTION_VERSION_V1 {
-        let mut values = reserved_vec(count, "source state changes")?;
-        let mut reader = Cursor::new(body);
-        for _ in 0..count {
-            values.push(SourceStateChange {
-                tick_index: read_u32(&mut reader)?,
-                field_id: read_u32(&mut reader)?,
-                value_bits: read_u32(&mut reader)?,
-                present: read_u32(&mut reader)?,
-            });
-            if values.last().unwrap().present > 1 {
-                return Err(Error::InvalidRec(
-                    "invalid legacy source state presence".into(),
-                ));
-            }
-        }
-        validate_source_changes(&values, tick_count)?;
-        return Ok(values);
-    }
     let encoded_count = body.len() / 12;
     let column_bytes = encoded_count * 4;
     let mut ticks = Cursor::new(&body[..column_bytes]);
@@ -251,7 +221,7 @@ mod tests {
         let (count, body) = encode(&input).unwrap();
         assert_eq!(count, 9);
         assert_eq!(body.len(), 72);
-        let parsed = decode(&body, count, 8, 2).unwrap();
+        let parsed = decode(&body, count, 8).unwrap();
         assert_eq!(
             parsed,
             vec![
@@ -270,36 +240,25 @@ mod tests {
     #[test]
     fn compact_reader_rejects_bad_runs_and_counts() {
         let (count, body) = encode(&[change(0, 1, 10, 7), change(4, 1, 99, 1)]).unwrap();
-        assert!(decode(&body, count - 1, 5, 2).is_err());
-        assert!(decode(&body, count + 1, 5, 2).is_err());
-        assert!(decode(&body, count, 4, 2).is_err());
+        assert!(decode(&body, count - 1, 5).is_err());
+        assert!(decode(&body, count + 1, 5).is_err());
+        assert!(decode(&body, count, 4).is_err());
         let mut overlapping = body.clone();
         overlapping[4..8].copy_from_slice(&3_u32.to_le_bytes());
-        assert!(decode(&overlapping, count, 5, 2).is_err());
+        assert!(decode(&overlapping, count, 5).is_err());
         let mut invalid_field_run = body.clone();
         invalid_field_run[8..12].copy_from_slice(&0x0382_u32.to_le_bytes());
-        assert!(decode(&invalid_field_run, count, 5, 2).is_err());
+        assert!(decode(&invalid_field_run, count, 5).is_err());
         let mut absent_run = body.clone();
         absent_run[8..12].copy_from_slice(&0x0301_u32.to_le_bytes());
-        assert!(decode(&absent_run, count, 5, 2).is_err());
+        assert!(decode(&absent_run, count, 5).is_err());
         let mut overflow = body;
         overflow[0..4].copy_from_slice(&u32::MAX.to_le_bytes());
-        assert!(decode(&overflow, count, 5, 2).is_err());
+        assert!(decode(&overflow, count, 5).is_err());
     }
 
     #[test]
-    fn legacy_presence_cannot_smuggle_a_run() {
-        let mut body = Vec::new();
-        for value in [0, 1, 100, 3] {
-            write_u32(&mut body, value).unwrap();
-        }
-        assert!(decode(&body, 1, 2, 1).is_err());
-        body[12..16].copy_from_slice(&1_u32.to_le_bytes());
-        assert_eq!(decode(&body, 1, 2, 1).unwrap(), vec![change(0, 1, 100, 1)]);
-    }
-
-    #[test]
-    fn empty_and_legacy_sections_keep_version_and_shape_guards() {
+    fn empty_sections_keep_version_and_shape_guards() {
         let mut header = SectionHeader {
             section_id: 9,
             section_version: 2,
@@ -308,14 +267,16 @@ mod tests {
             uncompressed_len: 0,
             compressed_len: 0,
         };
-        assert!(validate_header(12, &header).is_ok());
-        assert!(validate_header(11, &header).is_err());
-        assert!(decode(&[], 0, 0, 2).unwrap().is_empty());
+        assert!(validate_header(&header).is_ok());
+        header.section_version = 1;
+        assert!(validate_header(&header).is_err());
+        header.section_version = 2;
+        assert!(decode(&[], 0, 0).unwrap().is_empty());
         header.element_count = 1;
-        assert!(validate_header(12, &header).is_err());
+        assert!(validate_header(&header).is_err());
         header.uncompressed_len = 13;
-        assert!(validate_header(12, &header).is_err());
+        assert!(validate_header(&header).is_err());
         header.uncompressed_len = 24;
-        assert!(validate_header(12, &header).is_err());
+        assert!(validate_header(&header).is_err());
     }
 }

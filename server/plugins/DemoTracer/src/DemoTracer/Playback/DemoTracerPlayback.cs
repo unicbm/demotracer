@@ -26,34 +26,6 @@ public sealed partial class DemoTracerPlugin
     public void ArmCommand(CCSPlayerController? player, CommandInfo command)
         => DispatchPlanCommand(command, "dtr_arm", restart: false);
 
-    [ConsoleCommand("dtr_seq_restart", "dtr_seq_restart <manifest.json> [from_source_round]")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void SequenceRestartCommand(CCSPlayerController? player, CommandInfo command)
-        => RunManifestSequence(command, "dtr_seq_restart", restart: true);
-
-    [ConsoleCommand("dtr_round_restart", "dtr_round_restart <manifest.json> <source_round>")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void RoundRestartCommand(CCSPlayerController? player, CommandInfo command)
-        => ArmSingleRound(command, "dtr_round_restart", restart: true);
-
-    [ConsoleCommand("dtr_run_manifest", "dtr_run_manifest <manifest.json> [from_source_round]")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void RunManifestCommand(CCSPlayerController? player, CommandInfo command)
-        => RunManifestSequence(command, "dtr_run_manifest", restart: false);
-
-    [ConsoleCommand("dtr_stop_sequence", "dtr_stop_sequence")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void StopSequenceCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        StopSequenceState();
-        command.ReplyToCommand("dtr: sequence stopped");
-    }
-
-    [ConsoleCommand("dtr_arm_round", "dtr_arm_round <manifest.json> <source_round> [loop:0|1]")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void ArmRoundCommand(CCSPlayerController? player, CommandInfo command)
-        => ArmSingleRound(command, "dtr_arm_round", restart: false);
-
     private void DispatchPlanCommand(CommandInfo command, string commandName, bool restart)
     {
         if (!CheckAbi(command))

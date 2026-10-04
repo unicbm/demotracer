@@ -3,9 +3,10 @@
 The maintained source repository is
 [`unicbm/demotracer`](https://github.com/unicbm/demotracer/tree/main/server/runtime/dtr-controller).
 It contains the native `dtr-controller.dll` runtime used directly by DemoTracer,
-with `DtrController_` exports. The separate managed recording provider, public
-SDK, and single-file binding are retired. Native ABI and replay layouts are
-unchanged. See [UPSTREAM.md](UPSTREAM.md) for attribution and maintained differences.
+with `DtrController_` exports. ABI 22 removes the retired recording and public
+control SDK, including its native buffers, request queue, and profile reader.
+Replay layouts and DTR formats are unchanged.
+See [UPSTREAM.md](UPSTREAM.md) for attribution and maintained differences.
 
 ## Standalone checks
 
@@ -28,15 +29,9 @@ The check script stages native installation files in `.build/native/package/`.
 
 ## Runtime
 
-CS2-Bot-Controller is a Metamod:Source plugin for Counter-Strike 2 that takes
-control of a bot's behaviour at the engine level. It can pin a bot's weapon,
-freeze its aim, or hand its movement over to external code —
-and it can **record** a human player's per-tick movement and **replay** it back
-through any bot.
-
-It exposes both in-game console commands and a C-ABI surface for
-CounterStrikeSharp, so a plugin can record, transfer, and replay motion with a
-few P/Invoke calls. The maintained DemoTracer runtime target is Win64. Linux
+This Metamod:Source plugin replays converted CS2 demos through bots using the
+engine's movement and input hooks. DemoTracer calls its native API directly;
+console commands expose locks and diagnostics. The supported target is Win64. Linux
 build scaffolding exists, but the bundled gamedata still has unresolved Linux
 signatures/offsets, so Linux runtime packages are not supported yet.
 
@@ -51,15 +46,10 @@ signatures/offsets, so Linux runtime packages are not supported yet.
 
 ------------------------------------------------------------------------
 
-## Record & Replay
+## Replay
 
-Capture a slot's movement tick by tick — origin, velocity, view angles, button
-states, duck/ladder state, active weapon and all subtick input steps — then load
-it onto another slot and play it back. Replay is driven through the engine's own
-movement path, so it reproduces the original motion subtick-accurate.
-
-Typical flow: lock the source slot if needed → `StartRecord` → move → `StopRecord`
-→ `TransferRecordingToReplay` into a bot slot → `StartReplay`. While replay
+The GUI converts demos into DTR files; the playback plugin loads their recorded
+movement, commands, and subticks into the native runtime. While replay
 owns the bot's injected command, movement, and view output, native AI update and
 upkeep continue in the background so perception and decision state are ready for
 handoff. Replay ownership still blocks native `EquipBestWeapon`, `EquipPistol`,
@@ -68,7 +58,6 @@ replay tick may pass through the hooked selection path. DemoTracer applies a
 scoped `Lock(All)` only during freeze-time pre-roll, where contact cannot occur,
 then releases it on `round_freeze_end`. Do not otherwise apply `Lock(All)` to a
 replay bot when that continuity is wanted.
-See the CounterStrikeSharp API section below.
 
 ------------------------------------------------------------------------
 
@@ -174,7 +163,7 @@ Command angles use recorded command data, or the tick pre view when absent.
 
 ## Demo-backed avatar publication
 
-DemoTracer's native avatar publisher requires ABI 21.41 and capability bit 18.
+DemoTracer's native avatar publisher uses ABI 22 and capability bit 18.
 `DtrController_PublishAvatarOverride(steamId, png, length)` synchronously writes
 and verifies a PNG of at most 16 KiB. A nonnegative result confirms server
 publication, not display on a remote client. `DtrController_ClearAvatarOverride`

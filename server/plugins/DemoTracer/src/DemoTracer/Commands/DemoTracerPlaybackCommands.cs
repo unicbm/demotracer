@@ -39,15 +39,13 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        var slotArg = mode == "slot" ? 2 : 1;
-        if (!TryParseSlotAt(command, slotArg, out var slot) || command.ArgCount <= slotArg + 1)
+        if (mode != "slot" || command.ArgCount < 4 || !TryParseSlotAt(command, 2, out var slot))
         {
             command.ReplyToCommand("usage: dtr_load slot <slot> <path.dtr>");
-            command.ReplyToCommand("legacy usage: dtr_load <slot> <path.dtr>");
             return;
         }
 
-        var path = command.GetArg(slotArg + 1);
+        var path = command.GetArg(3);
         if (!IsReplaySlotStillSafe(slot))
         {
             command.ReplyToCommand($"dtr: refused to load slot {slot}: not a safe bot target");
@@ -66,33 +64,6 @@ public sealed partial class DemoTracerPlugin
             : $"dtr: failed to load slot {slot}: {path} ({BotControllerNative.LastLoadError})");
     }
 
-    [ConsoleCommand("dtr_load_round", "dtr_load_round <manifest.json> <source_round>")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void LoadRoundCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        if (!CheckAbi(command))
-            return;
-        if (!TryParseRoundArgs(command, "dtr_load_round", out var manifestPath, out var round))
-            return;
-
-        ActivatePendingReplayRetentionPriority();
-        var result = LoadRound(manifestPath, round);
-        command.ReplyToCommand(result.Message);
-    }
-
-    [ConsoleCommand("dtr_play_loaded", "dtr_play_loaded [loop:0|1]")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void PlayLoadedCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        if (!CheckAbi(command))
-            return;
-        var loop = command.ArgCount >= 2 && command.GetArg(1) != "0";
-        if (!CheckReplayStartGates(message => command.ReplyToCommand(message), stopCurrentForOverride: false))
-            return;
-        command.ReplyToCommand("[DTR WARN] dtr_play loaded is manual/debug playback; it bypasses round_start/round_freeze_end lifecycle alignment.");
-        command.ReplyToCommand(PlayLoaded(loop));
-    }
-
     [ConsoleCommand("dtr_play", "dtr_play <loaded|slot> ...")]
     [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
     public void PlayCommand(CCSPlayerController? player, CommandInfo command)
@@ -102,7 +73,6 @@ public sealed partial class DemoTracerPlugin
         if (command.ArgCount < 2)
         {
             command.ReplyToCommand("usage: dtr_play loaded [loop:0|1] | dtr_play slot <slot> [loop:0|1]");
-            command.ReplyToCommand("legacy usage: dtr_play <slot> [loop:0|1]");
             return;
         }
 
@@ -117,9 +87,11 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        var slotArg = mode == "slot" ? 2 : 1;
-        if (!TryParseSlotAt(command, slotArg, out var slot))
+        if (mode != "slot" || !TryParseSlotAt(command, 2, out var slot))
+        {
+            command.ReplyToCommand("usage: dtr_play slot <slot> [loop:0|1]");
             return;
+        }
         if (!IsReplaySlotStillSafe(slot))
         {
             command.ReplyToCommand($"dtr: refused to play slot {slot}: not a safe bot target");
@@ -128,7 +100,7 @@ public sealed partial class DemoTracerPlugin
         if (!CheckReplayStartGates(message => command.ReplyToCommand(message), stopCurrentForOverride: false))
             return;
 
-        var loop = command.ArgCount > slotArg + 1 && command.GetArg(slotArg + 1) != "0";
+        var loop = command.ArgCount >= 4 && command.GetArg(3) != "0";
         _session.ReplaySlots.Claim(slot);
         if (_session.LoadedReplays.TryGetValue(slot, out var replay))
             PreloadReplayWeaponsForSlot(slot, replay);
@@ -158,7 +130,6 @@ public sealed partial class DemoTracerPlugin
         if (command.ArgCount < 2)
         {
             command.ReplyToCommand("usage: dtr_stop sequence|replay|slot <slot>|all");
-            command.ReplyToCommand("legacy usage: dtr_stop <slot>");
             return;
         }
 
@@ -184,9 +155,7 @@ public sealed partial class DemoTracerPlugin
                 StopOneSlot(command, namedSlot, "manual_stop");
                 return;
             default:
-                if (!TryParseSlotAt(command, 1, out var legacySlot))
-                    return;
-                StopOneSlot(command, legacySlot, "manual_stop");
+                command.ReplyToCommand("usage: dtr_stop sequence|replay|slot <slot>|all");
                 return;
         }
     }
@@ -400,14 +369,6 @@ public sealed partial class DemoTracerPlugin
             ? "unknown"
             : candidate.SteamId.ToString(CultureInfo.InvariantCulture);
         return $"userid={userId} sid={steamId} keep={candidate.RetentionRank} live=\"{EscapeConsoleString(candidate.LiveName)}\" loaded=\"{EscapeConsoleString(candidate.LoadedName)}\"";
-    }
-
-    [ConsoleCommand("dtr_stop_all", "dtr_stop_all")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void StopAllCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        StopAllState("manual_stop_all");
-        command.ReplyToCommand("[DTR OK] all DemoTracer replay state stopped");
     }
 
     [ConsoleCommand("dtr_unload", "dtr_unload <slot>")]

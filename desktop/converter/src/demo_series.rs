@@ -5,8 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 use crate::demo_reader::{
-    demo_content_sha256, is_supported_demo_path, read_demo_with_options,
-    read_demo_with_options_and_cancel, ReadDemoOptions,
+    demo_content_sha256, is_supported_demo_path, read_demo_with_options_and_cancel, ReadDemoOptions,
 };
 use crate::model::{
     ParsedAvatarOverride, ParsedDemo, ParsedEconItem, ParsedGameEvent, ParsedPlayerTick,
@@ -216,7 +215,7 @@ pub fn read_demo_source_with_options(
     let parts = source
         .parts
         .iter()
-        .map(|part| read_demo_with_options(&part.path, options))
+        .map(|part| read_demo_with_options_and_cancel(&part.path, options, None))
         .collect::<Result<Vec<_>>>()?;
     merge_parsed_demo_parts(source, parts)
 }

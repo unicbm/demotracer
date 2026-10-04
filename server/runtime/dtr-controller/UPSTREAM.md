@@ -14,8 +14,9 @@ not claim an unverifiable upstream commit hash.
 is the maintained source of truth, consolidated in DemoTracer's
 `server/runtime/dtr-controller`. The maintained derivative now uses the
 `dtr-controller` DLL/plugin identity and `DtrController_` native exports. The
-separate managed recording provider and SDK have been retired. It does
-not register aliases under the upstream identities.
+separate recording provider and SDK, including native recording, public input
+requests, and the profile adapter attributed to upstream `64f676c`, have been
+retired in ABI 22. It does not register aliases under the upstream identities.
 DemoTracer has added its versioned replay ABI, `.dtr` loading,
 subtick command replay, handoff safety, projectile and voice integration,
 runtime health reporting, and defensive buffer validation. Upstream changes

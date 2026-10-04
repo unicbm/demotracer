@@ -12,38 +12,12 @@ internal static partial class BotControllerNative
 {
     public static string LastLoadError { get; private set; } = string.Empty;
 
-    public static int AbiVersion
-    {
-        get
-        {
-            try
-            {
-                return DtrController_GetVersion();
-            }
-            catch
-            {
-                return -1;
-            }
-        }
-    }
+    public static int AbiVersion => AbiInfo.AbiMajor;
 
     public static BotControllerAbiInfo AbiInfo
         => TryGetAbiInfo(out var info) ? info : BotControllerAbiInfo.Unavailable;
 
-    public static ulong Capabilities
-    {
-        get
-        {
-            try
-            {
-                return DtrController_GetCapabilities();
-            }
-            catch
-            {
-                return 0;
-            }
-        }
-    }
+    public static ulong Capabilities => AbiInfo.Capabilities;
 
     public static string BuildId
     {
@@ -63,19 +37,10 @@ internal static partial class BotControllerNative
 
     public static bool IsCompatible => AbiVersion == ExpectedAbiVersion;
 
-    public static bool HasRequiredCapabilities
-        => (Capabilities & RequiredCapabilityMask) == RequiredCapabilityMask;
-
     public static ulong MissingRequiredCapabilities
         => RequiredCapabilityMask & ~Capabilities;
 
     public static bool WriteLeftHandDesired { get; set; } = true;
-
-    public static bool HasUsercmdMovementIntentCapability
-        => (Capabilities & CapabilityUsercmdMovementIntent) == CapabilityUsercmdMovementIntent;
-
-    public static bool HasButtonOnlyMovementIntentCapability
-        => (Capabilities & CapabilityButtonOnlyMovementIntent) == CapabilityButtonOnlyMovementIntent;
 
     public static bool HasVoiceSendCapability
         => (Capabilities & CapabilityVoiceSend) == CapabilityVoiceSend;
@@ -175,28 +140,6 @@ internal static partial class BotControllerNative
             _ => $"status_{VoiceStatus}",
         };
 
-    public static bool HasUsercmdMovementIntentExports => ProbeUsercmdMovementIntentExports();
-
-    public static bool HasLeftHandIntentAliasExports => ProbeLeftHandIntentAliasExports();
-
-    public static bool HasLeftHandDesiredLatchExports => ProbeLeftHandDesiredLatchExports();
-
-    public static string UsercmdMovementIntentStatus
-    {
-        get
-        {
-            var hasCapability = HasUsercmdMovementIntentCapability;
-            var hasExport = HasUsercmdMovementIntentExports;
-            if (hasCapability && hasExport)
-                return "available";
-            if (hasCapability)
-                return "missing_export";
-            if (hasExport)
-                return "export_without_cap";
-            return "missing";
-        }
-    }
-
     public static string RuntimeSummary
     {
         get
@@ -204,12 +147,11 @@ internal static partial class BotControllerNative
             var abiInfo = AbiInfo;
             return $"expected_abi={ExpectedAbiVersion} runtime_abi={AbiVersion} abi_minor={abiInfo.AbiMinor} " +
                    $"compatible={IsCompatible} caps=0x{Capabilities:X} missing=0x{MissingRequiredCapabilities:X} " +
-                   $"build={BuildId} usercmd_movement_intent={UsercmdMovementIntentStatus} " +
+                   $"build={BuildId} " +
                    $"voice_send={VoiceStatusText} " +
-                   $"left_hand_alias={HasLeftHandIntentAliasExports} left_hand_latch={HasLeftHandDesiredLatchExports} " +
                    $"release_replay_buffer={HasReleaseReplayBufferCapability} " +
                    $"replay_pawn_equipment={HasReplayPawnEquipmentCapability} " +
-                   $"dtr_reader={MinRecFormatVersion}..{RecFormatVersion} " +
+                   $"dtr_reader={RecFormatVersion} " +
                    $"platform={RuntimePlatformName} api={DemoTracerApiVersion}";
         }
     }
@@ -222,53 +164,6 @@ internal static partial class BotControllerNative
                 slot,
                 enabled ? 1 : 0,
                 leftHandDesired ? 1 : 0);
-        }
-        catch (EntryPointNotFoundException)
-        {
-            return -7;
-        }
-        catch
-        {
-            return -8;
-        }
-    }
-
-    public static int SendVoiceFrame(
-        int recipientSlot,
-        int senderClient,
-        ulong senderXuid,
-        byte[] audio,
-        int sampleRate,
-        float voiceLevel,
-        int sequenceBytes = -1,
-        int sectionNumber = -1,
-        int uncompressedSampleOffset = -1,
-        uint numPackets = 0,
-        uint[]? packetOffsets = null,
-        int tick = -1,
-        int audibleMask = 1)
-    {
-        if (!ValidSlot(recipientSlot) || senderClient < 0 || audio.Length == 0)
-            return -2;
-        packetOffsets ??= [];
-        try
-        {
-            return DtrController_SendVoiceFrame(
-                recipientSlot,
-                senderClient,
-                senderXuid,
-                audio,
-                audio.Length,
-                sampleRate,
-                voiceLevel,
-                sequenceBytes,
-                sectionNumber,
-                uncompressedSampleOffset,
-                numPackets,
-                packetOffsets,
-                packetOffsets.Length,
-                tick,
-                audibleMask);
         }
         catch (EntryPointNotFoundException)
         {
@@ -377,107 +272,6 @@ internal static partial class BotControllerNative
         }
     }
 
-    public static bool SetUsercmdMovementIntent(
-        int slot,
-        ulong buttonsSet,
-        ulong buttonsClear,
-        float analogForward,
-        float analogLeft,
-        int durationMs,
-        int flags = 0)
-    {
-        if (!ValidSlot(slot))
-            return false;
-        try
-        {
-            return DtrController_SetUsercmdMovementIntent(
-                slot, buttonsSet, buttonsClear, analogForward, analogLeft,
-                durationMs, flags) == 0;
-        }
-        catch (EntryPointNotFoundException)
-        {
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    public static bool ClearUsercmdMovementIntent(int slot)
-    {
-        if (!ValidSlot(slot))
-            return false;
-        try
-        {
-            return DtrController_ClearUsercmdMovementIntent(slot) == 0;
-        }
-        catch (EntryPointNotFoundException)
-        {
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static bool ProbeUsercmdMovementIntentExports()
-    {
-        try
-        {
-            _ = DtrController_ClearUsercmdMovementIntent(-1);
-            _ = DtrController_SetUsercmdMovementIntent(-1, 0, 0, 0.0f, 0.0f, 1, 0);
-            return true;
-        }
-        catch (EntryPointNotFoundException)
-        {
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static bool ProbeLeftHandIntentAliasExports()
-    {
-        try
-        {
-            _ = DtrController_ClearLeftHandIntent(-1);
-            _ = DtrController_SetLeftHandIntent(-1, 0, 0, 0.0f, 0.0f, 1, 0);
-            return true;
-        }
-        catch (EntryPointNotFoundException)
-        {
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static bool ProbeLeftHandDesiredLatchExports()
-    {
-        try
-        {
-            _ = DtrController_SetLeftHandDesiredLatch(-1, 0, 0);
-            return true;
-        }
-        catch (EntryPointNotFoundException)
-        {
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    public static bool LoadReplayFromFile(int slot, string path)
-        => LoadReplayFromFile(slot, path, out _);
-
     public static bool LoadReplayFromFile(int slot, string path, out ReplayFileMetadata metadata)
     {
         metadata = ReplayFileMetadata.Empty;
@@ -522,68 +316,33 @@ internal static partial class BotControllerNative
                 LastLoadError = "replay has no ticks";
                 return false;
             }
-            if (!HasNativePerceptionCapability)
+            if (!IsCompatible || !HasNativePerceptionCapability ||
+                (Capabilities & CapabilityExtendedReplay) == 0)
             {
-                LastLoadError = $"replay requires native perception capability; install the matched playback bundle; {RuntimeSummary}";
+                LastLoadError = $"replay requires the matched playback bundle; {RuntimeSummary}";
                 return false;
             }
 
-            var subticks = replay.Subticks.Length == 0
-                ? [new NativeSubtickMove()]
-                : replay.Subticks;
-            if (replay.Version >= 7)
+            // Input history stays in the DTR without mutating the engine-owned protobuf graph.
+            if (DtrController_LoadReplayExtended(
+                    slot, replay.Ticks, replay.Ticks.Length,
+                    replay.Subticks, replay.Subticks.Length,
+                    replay.CommandFrames, replay.CommandFrames.Length,
+                    replay.MovementExtras, replay.MovementExtras.Length) != 0)
             {
-                if (!IsCompatible)
-                {
-                    LastLoadError = $"v7+ replay requires BotController ABI {ExpectedAbiVersion}; {RuntimeSummary}";
-                    return false;
-                }
-                if ((Capabilities & CapabilityExtendedReplay) == 0)
-                {
-                    LastLoadError = $"v7+ replay requires extended replay capability; {RuntimeSummary}";
-                    return false;
-                }
-                var commandFrames = replay.CommandFrames.Length == 0
-                    ? [new NativeReplayCommandFrame()]
-                    : replay.CommandFrames;
-                var movementExtras = replay.MovementExtras.Length == 0
-                    ? [new NativeReplayMovementExtra()]
-                    : replay.MovementExtras;
-                // Input history is retained in the DTR for future use, but mutating
-                // the engine-owned protobuf graph is not safe from this module.
-                var extendedOk = DtrController_LoadReplayExtended(
-                    slot,
-                    replay.Ticks,
-                    replay.Ticks.Length,
-                    subticks,
-                    replay.Subticks.Length,
-                    commandFrames,
-                    replay.CommandFrames.Length,
-                    movementExtras,
-                    replay.MovementExtras.Length) == 0;
-                if (extendedOk && replay.Version >= 11)
-                {
-                    if ((Capabilities & CapabilityReplaySourceState) == 0 ||
-                        DtrController_LoadReplaySourceState(slot, replay.SourceState.Length == 0 ? [new NativeReplaySourceStateChange()] : replay.SourceState,
-                            replay.SourceState.Length, replay.TickRate, CounterStrikeSharp.API.Server.TickInterval) != 0)
-                    {
-                        DtrController_ReleaseReplayBuffer(slot);
-                        LastLoadError = "BotController source state load failed";
-                        return false;
-                    }
-                }
-                LastLoadError = extendedOk ? string.Empty : "DtrController_LoadReplayExtended failed";
-                return extendedOk;
+                LastLoadError = "DtrController_LoadReplayExtended failed";
+                return false;
             }
-
-            var ok = DtrController_LoadReplay(
-                slot,
-                replay.Ticks,
-                replay.Ticks.Length,
-                subticks,
-                replay.Subticks.Length) == 0;
-            LastLoadError = ok ? string.Empty : "DtrController_LoadReplay failed";
-            return ok;
+            if ((Capabilities & CapabilityReplaySourceState) == 0 ||
+                 DtrController_LoadReplaySourceState(slot, replay.SourceState,
+                     replay.SourceState.Length, replay.TickRate, CounterStrikeSharp.API.Server.TickInterval) != 0)
+            {
+                DtrController_ReleaseReplayBuffer(slot);
+                LastLoadError = "BotController source state load failed";
+                return false;
+            }
+            LastLoadError = string.Empty;
+            return true;
         }
         catch (Exception ex)
         {
@@ -622,37 +381,10 @@ internal static partial class BotControllerNative
     {
         if (!ValidSlot(slot))
             return false;
-
-        if (!HasReleaseReplayBufferCapability)
-        {
-            var stopped = StopReplay(slot);
-            LastLoadError = stopped
-                ? "native runtime can stop this replay but cannot release its buffer; update BotController"
-                : "native runtime cannot release replay buffers, and stopping the replay failed";
-            return stopped;
-        }
-
-        try
-        {
-            var released = DtrController_ReleaseReplayBuffer(slot) == 0;
-            LastLoadError = released ? string.Empty : "DtrController_ReleaseReplayBuffer failed";
-            return released;
-        }
-        catch (EntryPointNotFoundException)
-        {
-            _ = StopReplay(slot);
-            LastLoadError = "runtime advertises replay-buffer release without exporting it";
-            return false;
-        }
-        catch (Exception ex)
-        {
-            LastLoadError = ex.Message;
-            return false;
-        }
+        var released = DtrController_ReleaseReplayBuffer(slot) == 0;
+        LastLoadError = released ? string.Empty : "DtrController_ReleaseReplayBuffer failed";
+        return released;
     }
-
-    public static bool StartReplay(int slot, bool loop)
-        => StartReplayAt(slot, loop, 0);
 
     public static bool StartReplayAt(int slot, bool loop, uint startIndex)
     {
@@ -661,9 +393,7 @@ internal static partial class BotControllerNative
         // Replay injection owns movement/view output. Keep the native bot
         // state machine and perception running underneath for warm handoff.
         UnlockReplayControl(slot);
-        return startIndex == 0
-            ? DtrController_StartReplay(slot, loop ? 1 : 0) == 0
-            : DtrController_StartReplayAt(slot, loop ? 1 : 0, checked((int)startIndex)) == 0;
+        return DtrController_StartReplayAt(slot, loop ? 1 : 0, checked((int)startIndex)) == 0;
     }
 
     public static bool StartReplayUntil(
@@ -692,37 +422,10 @@ internal static partial class BotControllerNative
     }
 
     public static ReplayState GetReplayState(int slot)
-    {
-        if (!ValidSlot(slot))
-            return ReplayState.Empty;
-
-        try
-        {
-            if (DtrController_GetReplaySlotState(slot, out var state) == 0)
-            {
-                return new ReplayState(
-                    state.Cursor,
-                    state.Total,
-                    state.Playing != 0,
-                    state.CurrentTickIndex,
-                    state.WeaponDefIndex,
-                    state.NumSubtick);
-            }
-        }
-        catch
-        {
-        }
-
-        var cursor = DtrController_GetReplayCursor(slot);
-        var total = DtrController_GetReplayTotal(slot);
-        return new ReplayState(cursor, total, cursor >= 0, -1, -1, 0);
-    }
-
-    public static bool TryGetReplayTick(int slot, out NativeReplayTick tick)
-    {
-        tick = default;
-        return ValidSlot(slot) && DtrController_GetReplayTick(slot, out tick) == 0;
-    }
+        => ValidSlot(slot) && DtrController_GetReplaySlotState(slot, out var state) == 0
+            ? new ReplayState(state.Cursor, state.Total, state.Playing != 0,
+                state.CurrentTickIndex, state.WeaponDefIndex, state.NumSubtick)
+            : ReplayState.Empty;
 
     public static bool SwitchBotWeapon(int slot, int defIndex)
         => ValidSlot(slot) && DtrController_SwitchBotWeapon(slot, defIndex) == 0;
@@ -743,20 +446,6 @@ internal static partial class BotControllerNative
 
     public static int BotActiveWeaponDef(int slot)
         => ValidSlot(slot) ? DtrController_GetBotActiveWeaponDef(slot) : -1;
-
-    public static bool SetBuyPlan(int slot, string aliases)
-    {
-        if (!ValidSlot(slot))
-            return false;
-        try
-        {
-            return DtrController_SetBuyPlan(slot, aliases ?? string.Empty) == 0;
-        }
-        catch
-        {
-            return false;
-        }
-    }
 
     public static bool SetBuySkip(int slot)
     {
@@ -786,43 +475,11 @@ internal static partial class BotControllerNative
         }
     }
 
-    public static bool ClearAllBuyPlans()
-    {
-        try
-        {
-            return DtrController_ClearAllBuyPlans() == 0;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    public static int BuyPlanItemCount(int slot)
-    {
-        if (!ValidSlot(slot))
-            return -1;
-        try
-        {
-            return DtrController_GetBuyPlanItemCount(slot);
-        }
-        catch
-        {
-            return -1;
-        }
-    }
-
     public static bool LockWeaponSlot(int slot, int target)
         => ValidSlot(slot) && target is >= 1 and <= 5 && DtrController_Lock(slot, LockKindWeapon, target) == 0;
 
     public static bool UnlockWeaponSlot(int slot)
         => ValidSlot(slot) && DtrController_Unlock(slot, LockKindWeapon) == 0;
-
-    public static bool LockReplayBrain(int slot)
-        => ValidSlot(slot) && DtrController_Lock(slot, LockKindAll, 0) == 0;
-
-    public static bool UnlockReplayBrain(int slot)
-        => ValidSlot(slot) && DtrController_Unlock(slot, LockKindAll) == 0;
 
     public static void UnlockReplayControl(int slot)
     {

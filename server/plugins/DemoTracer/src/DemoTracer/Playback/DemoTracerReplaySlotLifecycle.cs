@@ -81,7 +81,6 @@ public sealed partial class DemoTracerPlugin
                 ? perception.UpdateSerial
                 : 0u;
         _session.ProjectileAlignNextBySlot[slot] = 0;
-        _session.ReplayUtilityGrantNextBySlot[slot] = 0;
     }
 
     private bool CanWriteReplaySlot(int slot)
@@ -127,16 +126,6 @@ public sealed partial class DemoTracerPlugin
         _ = SyncBotRandomizerCosmeticLease(announce: false);
         Server.PrintToConsole(
             $"dtr: released slot={slot} reason={reason} viewmodel={(retainedViewmodel ? "retained_round" : "released")}");
-    }
-
-    private bool HasActiveReplaySlots()
-    {
-        foreach (var slot in _session.LoadedSlots)
-        {
-            if (BotControllerNative.GetReplayState(slot).Playing)
-                return true;
-        }
-        return false;
     }
 
     private bool CheckReplayStartGates(

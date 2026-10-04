@@ -612,12 +612,6 @@ fn validate_config_value(value: &Value) -> ServerConfigValidationDto {
         &mut warnings,
         &mut unknown_paths,
     );
-    validate_align(
-        object_section(root, "align", "$.align", &mut errors),
-        &mut errors,
-        &mut warnings,
-        &mut unknown_paths,
-    );
     validate_fidelity(
         object_section(root, "fidelity", "$.fidelity", &mut errors),
         &mut errors,
@@ -637,16 +631,11 @@ fn validate_config_value(value: &Value) -> ServerConfigValidationDto {
         &mut unknown_paths,
     );
 
-    let has_legacy_align =
-        get_case_insensitive(root, "align").is_some_and(|value| !value.is_null());
-    let has_new_sections = ["fidelity", "match", "cosmetics"]
-        .iter()
-        .any(|name| get_case_insensitive(root, name).is_some_and(|value| !value.is_null()));
-    if has_legacy_align && has_new_sections {
-        warnings.push(issue(
-            "$",
-            "legacy_align_overridden",
-            "The config contains legacy align and new fidelity/match/cosmetics sections. The CSS plugin lets the new sections override matching legacy fields.",
+    if get_case_insensitive(root, "align").is_some_and(|value| !value.is_null()) {
+        errors.push(issue(
+            "$.align",
+            "align_unsupported",
+            "The align config is no longer supported. Use fidelity, match and cosmetics.",
         ));
     }
 
@@ -726,30 +715,6 @@ fn validate_handoff(
         errors,
         warnings,
     );
-}
-
-fn validate_align(
-    section: Option<&Map<String, Value>>,
-    errors: &mut Vec<ServerConfigIssueDto>,
-    warnings: &mut Vec<ServerConfigIssueDto>,
-    unknown: &mut BTreeSet<String>,
-) {
-    let Some(section) = section else { return };
-    check_duplicate_case_insensitive_keys("$.align", section, warnings);
-    let fields = [
-        "weapons",
-        "projectiles",
-        "crosshair",
-        "left_hand_desired",
-        "cosmetics",
-        "stickers",
-        "charms",
-        "scoreboard",
-    ];
-    collect_unknown_keys("$.align", section, &fields, unknown);
-    for field in fields {
-        validate_bool(section, field, &format!("$.align.{field}"), errors);
-    }
 }
 
 fn validate_fidelity(
@@ -1269,9 +1234,9 @@ mod tests {
             .unknown_paths
             .contains(&"$.handoff.threat_360_range".to_string()));
         assert!(validation
-            .warnings
+            .errors
             .iter()
-            .any(|issue| issue.code == "legacy_align_overridden"));
+            .any(|issue| issue.code == "align_unsupported"));
     }
 
     #[test]

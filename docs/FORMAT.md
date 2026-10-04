@@ -13,27 +13,16 @@ velocities from positions.
 
 - Magic: `CSDTRREC`
 - Current writer format: `.dtr` v12
-- Runtime reader support: v3 through v12
-- Current manifest ABI: 19
-- Current BotController native ABI: 21
+- Rust/Desktop and runtime readers: v12 only
+- Required manifest ABI: 19
+- Required high-fidelity metadata schema: 5
+- Current BotController native ABI: 22
 - Current DemoTracer companion API: 7
 
-Compatibility notes:
-
-- v3 files do not contain projectile metadata.
-- v3/v4 files use `play_start_tick_index = 0`.
-- v3-v5 files do not contain high-fidelity metadata JSON.
-- v7+ files require the matching playback bundle with BotController native ABI
-  16 and extended replay capability.
-- v8 keeps the v7 section container and changes only the snapshot and command
-  frame section payloads to bit-exact columnar delta-varint layouts.
-- v9 adds per-command `CSGOUserCmdPB.input_history` and attack start indexes.
-  These remain stored evidence; the Windows runtime does not advertise native
-  input-history injection. Command, movement, and subtick playback remain available.
-- v11 adds presence-aware source-state changes for native boundary restoration.
-- v12 stores source state in compact clock runs and field-local XOR byte planes;
-  it writes Zstandard sections and requires BotController ABI 21.40 to retain
-  clock runs during native lookup. Existing Brotli sections remain readable.
+Only current archives are supported. Older or unversioned manifests, DTR v3–v11,
+and metadata schemas 1–4 are rejected with a request to reconvert the original
+demo using the current GUI. Readers do not upgrade or infer missing versions.
+Playback requires the matching ABI 22 bundle.
 
 ## Reader Safety Limits
 
@@ -43,7 +32,7 @@ policy before allocating or decompressing file data:
 | Resource | Default ceiling |
 | --- | ---: |
 | File bytes | 64 MiB |
-| v7+ sections | 32 |
+| sections | 32 |
 | Compressed bytes per section | 48 MiB |
 | Total compressed section bytes | 64 MiB |
 | Decoded bytes per section | 48 MiB |
@@ -58,8 +47,8 @@ The tick ceiling still permits about 8.5 minutes at 64 tick or 4.25 minutes at
 128 tick for a single player-round replay.
 
 File-backed readers also compare every declared payload length with the bytes
-actually remaining in the opened file. Unknown v7+ sections count against the
-same byte budgets and are skipped through a fixed-size buffer. Brotli and Zstd
+actually remaining in the opened file. Unknown sections count against the
+same byte budgets and are skipped through a fixed-size buffer. Zstd
 output is bounded by the declared decoded length; shorter or larger output is
 rejected. Zstd readers allocate the validated section size, never an allocation
 size supplied by the compressed frame.
@@ -76,7 +65,7 @@ ID zero clears the clan. Tags preserve Unicode and are bounded to 127 UTF-8
 bytes with embedded NUL rejected; this is an application safety limit.
 The optional field is additive: manifest ABI 19 and `.dtr` v12 stay unchanged.
 Playback requires the matched BotHider managed API v3 to apply clan evidence.
-Older archives remain playable; re-export the source demo to add this evidence.
+Re-export a current archive without clan evidence to add it.
 
 ## Manifest Crosshair Evidence
 
@@ -98,7 +87,7 @@ instead of being interpreted as an older layout.
 
 ## Manifest Cosmetic Inspect Data
 
-Manifest ABI 17 cosmetics may include this additive, optional object on each
+Manifest cosmetics may include this optional object on each
 weapon, knife, or glove cosmetic:
 
 ```json
@@ -115,9 +104,7 @@ together when the cosmetic has a usable item definition, paint kit, seed, and
 wear. The URL is the command wrapped in Steam's CS2 launch URI. The uppercase
 payload is a deterministic CS2 `CEconItemPreviewDataBlock` protobuf with the
 native leading byte and xCRC trailer. It contains appearance evidence only and
-is not an inventory/market asset identifier. Because this is additive derived
-JSON that old readers ignore, it does not change the `.dtr` format or manifest
-ABI 17.
+is not an inventory/market asset identifier.
 
 Glove evidence is retained when the demo exposes an exact item definition,
 paint kit, and wear but omits the texture seed. Such entries carry
@@ -132,7 +119,7 @@ attributes. No inspect payload is generated for partial glove evidence.
 | Field | Type | Notes |
 | --- | --- | --- |
 | magic | 8 bytes | `CSDTRREC` |
-| version | `u32` | Current writer emits `11` |
+| version | `u32` | Must be `12` |
 | tick_rate | `f32` | Demo tickrate estimate |
 | round | `u32` | `total_rounds_played` window |
 | side | `u8` | `2=T`, `3=CT`, `0=unknown` |
@@ -141,31 +128,27 @@ attributes. No inspect payload is generated for partial glove evidence.
 | tick_count | `u32` | Number of replay ticks |
 | subtick_count | `u32` | Number of subtick moves |
 | projectile_count | `u32` | Number of replay projectile events |
-| play_start_tick_index | `u32` | First tick simulated at playback start; v5+ |
-| metadata_json_len | `u32` | Byte length of high-fidelity metadata JSON; v6+ |
+| play_start_tick_index | `u32` | First tick simulated at playback start |
+| metadata_json_len | `u32` | Byte length of high-fidelity metadata JSON |
 | map | `u16 len + utf8` | Map name |
 | player_name | `u16 len + utf8` | Demo player name |
-| section_count | `u32` | v7+ only; number of section records |
+| section_count | `u32` | Number of section records |
 
-For v3-v6 legacy files, the header continues after `player_name` with
-`codec: u8`, `body_uncompressed_len: u64`, `body_compressed_len: u64`, followed
-by one Brotli-compressed legacy body.
-
-Round replay v5+ files may store up to 10 seconds of same-round freeze-time
+Round replay files may store up to 10 seconds of same-round freeze-time
 context before `play_start_tick_index`. Playback still begins at
 `round_freeze_end`; the pre-start context preserves held grenade button state
 without replaying arbitrarily long paused freeze time.
 
-## v7+ Section Container
+## Section Container
 
-Each v7+ section is:
+Each section is:
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | section_id | `u32` | Known IDs listed below |
 | section_version | `u32` | Layout version for this section |
-| codec | `u8` | `0 = none`; `1 = Brotli`; `2 = Zstandard` (v12+) |
-| pad | 3 bytes | Ignored by readers |
+| codec | `u8` | `0 = none`; `2 = Zstandard` |
+| pad | 3 bytes | Must be zero |
 | flags | `u32` | Reserved |
 | element_count | `u32` | Logical item count |
 | uncompressed_len | `u64` | Expected decoded payload byte length |
@@ -176,11 +159,11 @@ Required sections:
 
 | ID | Section | Section version | Count | Decoded payload |
 | ---: | --- | ---: | ---: | --- |
-| 1 | `MovementSnapshotV3` chain | `1` in v7; `2` in v8+ | `0 if tick_count == 0, else tick_count + 1` | v1: 92 bytes each; v2: columnar delta-varint stream |
+| 1 | `MovementSnapshotV3` chain | `2` | `0 if tick_count == 0, else tick_count + 1` | Columnar delta-varint stream |
 | 2 | tick metadata | `1` | `tick_count` | 8 bytes each |
 | 5 | `SubtickMoveV3` | `1` | `subtick_count` | 28 bytes each |
-| 8 | input history (required in v9) | `1` | `tick_count` | Variable; 16-byte tick descriptor plus 128 bytes per entry |
-| 9 | source state (required in v11+) | `1` in v11; `2` in v12 | Logical change count | v1: 16 bytes each; v2: 12 bytes per compact record |
+| 8 | input history | `1` | `tick_count` | Variable; 16-byte tick descriptor plus 128 bytes per entry |
+| 9 | source state | `2` | Logical change count | 12 bytes per compact record |
 
 Optional sections:
 
@@ -188,7 +171,7 @@ Optional sections:
 | ---: | --- | ---: | ---: | --- |
 | 3 | `ProjectileEventV4` | `1` | `projectile_count` | 48 bytes each |
 | 4 | `HighFidelityMetadataV6` | `1` | `0 or 1` | UTF-8 JSON |
-| 6 | `CommandFrameV1` | `1` in v7; `2` in v8+ | `tick_count` | v1: 68 bytes each; v2: columnar delta-varint stream |
+| 6 | `CommandFrameV1` | `2` | `tick_count` | Columnar delta-varint stream |
 | 7 | `MovementExtraV1` | `1` | `tick_count` | 48 bytes each |
 
 Unknown section IDs must be skipped using `compressed_len`. Duplicate known
@@ -198,10 +181,10 @@ equal `tick_count`.
 
 The v12 writer uses Zstandard level 9 with independent, dictionary-free sections.
 It stores a section uncompressed when compression would not reduce its size,
-including empty sections. The maintained readers accept existing Brotli sections
-alongside Zstd sections. The section codec does not change any replay values.
+including empty sections. Brotli is unsupported. The section codec does not
+change any replay values.
 
-### v9 input-history section
+### Input-history section
 
 For each replay tick, the payload stores a 16-byte descriptor followed
 immediately by that tick's entries:
@@ -230,18 +213,18 @@ engine-owned injection path. `target_ent_index` additionally requires live
 identity remapping because demo entity indexes are not stable on the replay
 server.
 
-## v8 Columnar Delta-Varint Sections
+## Columnar Delta-Varint Sections
 
-Native BotController ABI 21 uses 228-byte replay ticks, including a reserved
+Native BotController ABI 22 uses 228-byte replay ticks, including a reserved
 36-byte event tail. Every tail field must be zero; native loading rejects nonzero
 payloads because native weapon-drop recording/replay is unsupported. This is an
 in-memory API layout, not the DTR disk layout.
 DTR gameplay events remain in high-fidelity metadata and are executed by the
 managed replay layer; DTR readers initialize the native event tail to zero to
-preserve this contract. Existing DTR files need no conversion.
+preserve this contract.
 
-Section version 2 is bit-exact and lossless. It changes storage only; decoded
-`MovementSnapshotV3` and `CommandFrameV1` values are identical to v7 values.
+Section version 2 stores `MovementSnapshotV3` and `CommandFrameV1` values
+bit-exactly.
 
 Each logical field is stored as one complete time-series column. Array fields
 use component order. Snapshot columns follow this order:
@@ -269,21 +252,11 @@ For every column:
 `f32` columns operate on the original IEEE-754 `to_bits()` value, not on a
 numeric approximation. Signed integer columns operate on their raw bit pattern.
 The five one-byte snapshot columns and `left_hand_desired` use the same rule at
-8-bit width. V1 alignment padding is not stored in v2 payloads and is restored
+8-bit width. Native alignment padding is not stored in columnar payloads and is restored
 as zero in native structs. For v2 sections, `uncompressed_len` is the exact
 column stream length rather than `element_count × struct_size`.
 
-## Legacy v3-v6 Body
-
-After legacy body decompression, the layout is:
-
-| Part | Count | Bytes Each |
-| --- | ---: | ---: |
-| `MovementSnapshotV3` | `0 if tick_count == 0, else tick_count + 1` | 92 |
-| tick metadata | `tick_count` | 8 |
-| `ProjectileEventV4` | `projectile_count` | 48 |
-| `HighFidelityMetadataV6` | `metadata_json_len` | UTF-8 JSON |
-| `SubtickMoveV3` | `subtick_count` | 28 |
+## Tick Metadata
 
 Tick metadata is:
 
@@ -332,10 +305,9 @@ This layout is 92 bytes with `Pack=4`.
 | desires_duck | `u8` |
 | actual_move_type | `u8` |
 
-The v11 converter writes `0xff` for unknown `actual_move_type`. Playback derives
-it through native `SetMoveType`; it never copies this compatibility byte into the
-pawn. Optional source-state presence, rather than legacy snapshot defaults, governs
-duck-state restoration in v11.
+The converter writes `0xff` for unknown `actual_move_type`. Playback derives
+it through native `SetMoveType`. Source-state presence governs duck-state
+restoration.
 
 `buttons`, `buttons1`, and `buttons2` store
 `CInButtonStatePB.buttonstate1`, `buttonstate2`, and `buttonstate3` respectively.
@@ -369,13 +341,12 @@ reconstruct the missing earlier input from a reload flag alone.
 | pitch_delta | `f32` |
 | yaw_delta | `f32` |
 
-Source order is preserved for accepted subtick moves. DTR v10 preserves every
+Source order is preserved for accepted subtick moves. DTR preserves every
 finite `when < 1` value, including negative engine-authored phases for buffered
 input events that predate the current command window. The file reader and
 native staging buffers retain those signed values unchanged. Live playback
 projects negative phases to `0` only when building CS2's `CSubtickMoveStepPB`,
 whose accepted `when` domain is `[0, 1)`; the stored evidence is not rewritten.
-Readers retain the historical `[0, 1)` validation for DTR v3 through v9.
 
 ### `ProjectileEventV4`
 
@@ -407,7 +378,7 @@ Readers retain the historical `[0, 1)` validation for DTR v3 through v9.
 
 ### `MovementExtraV1`
 
-Legacy movement extras remain readable and validated, but the current runtime
+Optional movement extras are validated, but the current runtime
 does not consume them. Playback discards the decoded values; native compatibility
 entry points validate these arguments without retaining a second copy.
 
@@ -426,9 +397,7 @@ entry points validate these arguments without retaining a second copy.
 
 ## High-Fidelity Metadata
 
-v6+ files may include a UTF-8 JSON blob. In v3-v6 legacy files it appears after
-projectile events and before subtick moves inside the Brotli body. In v7+ it is
-section ID `4`.
+Section ID `4` contains optional UTF-8 JSON metadata. Only schema `5` is accepted.
 
 The top-level object contains:
 
@@ -441,9 +410,7 @@ The top-level object contains:
   changes, including freeze time. Playback initializes from the snapshot at or
   before its actual start cursor, then grants only newly acquired equipment at
   its recorded time. Later snapshots do not refill unrelated utility, undo
-  damage, or remove human-introduced items. Archives without inventory snapshots
-  retain the legacy manifest loadout baseline. Regenerate older archives to
-  capture purchases that changed only armor, helmet or defuser state.
+  damage, or remove human-introduced items.
 - `projectiles`: player-scoped projectile effect metadata. This supplements
   the fixed-size `ProjectileEventV4` section without changing its binary
   layout.
@@ -462,9 +429,8 @@ snapshot. `gear_acquired` is a bit mask: armor increase `1`, helmet acquisition
 `2`, defuser acquisition `4`. Full counts and gear remain checkpoints for starting
 or seeking; normal playback consumes acquisition flags and cancels pending grants
 when later counts fall. It never repairs damage or refills unchanged utility.
-Schemas 1–4 are compiled once by the reader. Legacy pickup/transfer events without
-inventory snapshots are resolved once at load, not interpreted during playback.
-The binary DTR layout and native ABI are unchanged.
+Playback consumes this plan directly; it does not compile old observations or
+infer utility acquisitions from pickup events.
 
 Projectile metadata entries contain:
 
@@ -482,37 +448,26 @@ Projectile metadata entries contain:
 
 ## Parser Checklist
 
-1. Read and validate magic `CSDTRREC`.
-2. Require `version == 11` for current writer output, or accept `version == 3`
-   through `10` for backward compatibility.
-3. Read `tick_count`, `subtick_count`, `projectile_count`,
-   `play_start_tick_index`, `metadata_json_len`, `map`, and `player_name`. For
-   v3, treat `projectile_count` as `0`; for v3/v4, treat
-   `play_start_tick_index` as `0`; for v3-v5, treat `metadata_json_len` as `0`.
-4. For v7+, read `section_count`, parse known sections, and skip unknown
-   sections using `compressed_len`.
-5. For v7+, require snapshot, tick metadata, and subtick sections; require
-   projectile/high-fidelity sections when their header counts are non-zero.
-   Require snapshot/command section version 1 for v7 and version 2 for v8+.
-   For v9+, also require the input-history section and validate its per-tick
-   counts and attack indexes.
-   For v11+, require and validate source-state section 9.
-6. For v3-v6, require legacy `codec == 1`, verify legacy body length, then
-   Brotli-decompress exactly `body_compressed_len` bytes.
-7. Rebuild ticks from the snapshot chain and metadata.
-8. Sum all tick `num_subtick` values and verify it equals `subtick_count`.
-9. If `metadata_json_len > 0`, parse exactly that many bytes as UTF-8 JSON.
-10. For non-empty replays, require `play_start_tick_index < tick_count`.
+1. Validate magic `CSDTRREC` and require `version == 12`.
+2. Read all header fields, then `section_count`.
+3. Parse known sections and skip unknown sections using `compressed_len`.
+4. Require snapshots, tick metadata, subticks, input history, and source state.
+   Require projectile/high-fidelity sections when their header counts are non-zero.
+5. Require section version 2 for snapshots, command frames and source state;
+   all other known sections use version 1. Accept only raw or Zstd payloads.
+6. Rebuild ticks from snapshots and metadata; require their subtick sum to equal
+   `subtick_count`. Validate input-history counts and attack indexes.
+7. Parse metadata as schema 5 when present. For non-empty replays, require
+   `play_start_tick_index < tick_count`.
 
-## Source state changes (v11+)
+## Source State Changes
 
-Section 9, version 1, stores ordered 16-byte records: `tick_index`, `field_id`,
-`value_bits`, `present` (four little-endian u32 values). IDs and scalar types are
-specified in `server/runtime/common/contracts/replay-source-fields.v1.json`. Records sort by
-(tick_index, field_id), with no duplicate keys. The section is required even
-when empty. `present=0` removes a previously known value and requires zero bits;
-`present=1` preserves exact float/integer bits, including a real zero. Floats must
-be finite and booleans must be zero or one. All changes refer to a replay pre tick.
+Section 9, version 2, stores compact source-state records. Field IDs and scalar
+types are specified in `server/runtime/common/contracts/replay-source-fields.v1.json`.
+Records sort by `(tick_index, field_id)`, with no duplicate keys. The section is
+required even when empty. Absent values require zero bits; present values preserve
+exact float/integer bits, including a real zero. Floats must be finite and booleans
+must be zero or one. All changes refer to a replay pre tick.
 
 Native playback indexes these changes for start/seek/loop initialization and the
 first use of a newly created or acquired weapon. It does not write them on every
@@ -524,8 +479,8 @@ angles. Stop and handoff preserve native motion and weapon state.
 
 Boundary writes notify native entity replication once, including nested services.
 Weapons are selected through the native deploy path before restoring their attack
-deadlines. Legacy clip counts, reserve ammo and reload flags remain readable;
-v12 writers omit them and the unused ServerTick field. Playback never restores
+deadlines. Writers omit clip counts, reserve ammo, reload flags and the unused
+ServerTick field. Playback never restores
 ammunition, including during initial start or weapon replacement.
 The live server owns ammunition capacity, supply and reload rules. Source and
 live tick intervals must match; playback does not resample state clocks.
@@ -535,13 +490,12 @@ normal. When the demo omits it, start before mounting the ladder so native movem
 can establish contact. Playback rejects that unsupported start instead of using a
 zero or stale plane. The ladder surface index is not a substitute for its normal.
 
-Manifest ABI 19 requires the matching v12 reader and BotController ABI 21.40
-source-state capability (bit 17). Older archives remain readable but do not gain
-source evidence retroactively; reconvert the original demo to populate this section.
+Manifest ABI 19 requires the matching v12 reader and BotController ABI 22
+source-state capability (bit 17).
 
-### v12 compact source state (section 9, version 2)
+### Compact Source State (section 9, version 2)
 
-All other section layouts retain their v11 meanings. Source-state `element_count`
+Source-state `element_count`
 is the number of logical changes, including clock-run expansion; the number of
 stored records is `uncompressed_len / 12`. Empty sections have both counts zero.
 The body contains two little-endian u32 columns followed by value byte planes:
@@ -559,18 +513,15 @@ consecutive changes at `start_tick + i` with value `start_bits + i` modulo 2^32.
 Writers merge only observed consecutive increments; gaps, pauses, jumps and
 absence retain their exact meaning. Runs must fit inside the replay, must not
 overlap, and must sum to `element_count`. Stored records retain strict
-`(tick_index, field_id)` ordering. Each decoded initial value uses the same
-presence/type validation as v11. The final value of a run remains in force until
-the next change, as with the legacy change stream.
+`(tick_index, field_id)` ordering. Each decoded initial value obeys the presence
+and type rules above. The final value of a run remains in force until the next change.
 
 The converter and managed/native playback retain compact runs in memory. The
-16-byte native change structure is unchanged in size; ABI 21.40 assigns `present`
+16-byte native change structure assigns `present`
 bit 0 to presence and bits 1..24 to run length minus one (bits 25..31 must be zero).
 Non-clock fields retain 0/1. Native seek/start queries calculate only the requested
 clock value; neither loading nor continuous playback expands or rewrites it per
-tick. Existing callers using 0/1 remain valid. Readers continue to require plain
-0/1 presence in legacy section version 1.
+tick.
 
-Field IDs 0, 52, 53, 54, 65 and 66 are reserved for legacy archives and omitted
-from new exports. PlayerTick and all other source evidence remain available at
+Field IDs 0, 52, 53, 54, 65 and 66 are reserved and omitted from exports. PlayerTick and all other source evidence remain available at
 every recorded tick. No float quantization or snapshot/subtick decimation is used.

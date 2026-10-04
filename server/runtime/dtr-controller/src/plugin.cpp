@@ -47,7 +47,7 @@ public:
 
     const char *GetAuthor() override { return "XBribo(๑•.•๑)"; }
     const char *GetName() override { return "dtr-controller"; }
-    const char *GetDescription() override { return "Record and Replay CS2 bots."; }
+    const char *GetDescription() override { return "Replay CS2 demos through bots."; }
     const char *GetURL() override { return ""; }
     const char *GetLicense() override { return "AGPLv3"; }
     const char *GetVersion() override { return "0.4.5"; }

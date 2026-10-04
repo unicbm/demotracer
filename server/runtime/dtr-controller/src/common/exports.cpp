@@ -9,7 +9,6 @@
 #include "BuyController.h"
 #include "VoiceSender.h"
 #include "projectile_birth_align.h"
-#include "PublicBotProfile.h"
 #include "avatar_overrides.h"
 
 #include <cstdint>
@@ -23,8 +22,8 @@
 
 namespace
 {
-    constexpr int kBotControllerAbiMajor = 21;
-    constexpr int kBotControllerAbiMinor = 44;
+    constexpr int kBotControllerAbiMajor = 22;
+    constexpr int kBotControllerAbiMinor = 0;
     constexpr uint64_t kCapabilityAvatarPublication = 1ULL << 18;
     constexpr uint64_t kCapabilityReplaySlotState = 1ULL << 0;
     constexpr uint64_t kCapabilityStartReplayAt = 1ULL << 1;
@@ -118,33 +117,6 @@ extern "C" __declspec(dllexport) void DtrController_ClearAvatarOverrides()
 { BotController::Avatars::ClearAll(); }
 extern "C" __declspec(dllexport) const char *DtrController_GetAvatarOverrideStatus()
 { return BotController::Avatars::Status(); }
-
-// Distinguishes the maintained public controls from the upstream runtime.
-extern "C" __declspec(dllexport) int DtrController_GetPublicApiVersion() { return 20; }
-extern "C" __declspec(dllexport) int64_t DtrController_InjectUsercmd(int slot, uint64_t buttons, int durationMs)
-{ return BotController::InputInjector::InjectUsercmd(slot, buttons, durationMs); }
-extern "C" __declspec(dllexport) int DtrController_CancelUsercmdInjection(int slot, int64_t id)
-{ return BotController::InputInjector::CancelUsercmdInjection(slot, id) ? 0 : -1; }
-extern "C" __declspec(dllexport) int64_t DtrController_StartUsercmdMovement(int slot, float forward, float left)
-{ return BotController::InputInjector::StartUsercmdMovement(slot, forward, left); }
-extern "C" __declspec(dllexport) int DtrController_UpdateUsercmdMovement(int slot, int64_t id, float forward, float left)
-{ return BotController::InputInjector::UpdateUsercmdMovement(slot, id, forward, left) ? 0 : -1; }
-extern "C" __declspec(dllexport) int DtrController_CancelUsercmdMovement(int slot, int64_t id)
-{ return BotController::InputInjector::CancelUsercmdMovement(slot, id) ? 0 : -1; }
-extern "C" __declspec(dllexport) int DtrController_SuppressUsercmd(int slot, uint64_t buttons, int durationMs)
-{ return BotController::InputInjector::SuppressUsercmd(slot, buttons, durationMs) ? 0 : -1; }
-extern "C" __declspec(dllexport) int64_t DtrController_StartUsercmdSuppression(int slot, uint64_t buttons)
-{ return BotController::InputInjector::StartUsercmdSuppression(slot, buttons); }
-extern "C" __declspec(dllexport) int DtrController_CancelUsercmdSuppression(int slot, int64_t id)
-{ return BotController::InputInjector::CancelUsercmdSuppression(slot, id) ? 0 : -1; }
-extern "C" __declspec(dllexport) void DtrController_ClearUsercmdInjections(int slot)
-{ BotController::InputInjector::ClearUsercmdInjections(slot); }
-extern "C" __declspec(dllexport) int DtrController_GetRecordedCommandCount(int slot)
-{ return BotController::MotionRecorder::RecordedCommandCount(slot); }
-extern "C" __declspec(dllexport) int DtrController_CopyRecordedCommands(int slot, BotController::ReplayCommandFrameData *out, int count)
-{ return BotController::MotionRecorder::CopyCommands(slot, out, count); }
-extern "C" __declspec(dllexport) int DtrController_GetProfile(int slot, BotController::PublicBotProfile::Data *out)
-{ return out && BotController::PublicBotProfile::Read(slot, *out) ? 0 : -1; }
 
 extern "C" __declspec(dllexport) int DtrController_GetAbiInfo(BotControllerAbiInfo *out, int size)
 {
@@ -473,47 +445,7 @@ extern "C" __declspec(dllexport) int DtrController_GetBuyPlanItemCount(int slot)
     return BotController::BuyControllerState::ItemCount(slot);
 }
 
-// ---- Motion recording & replay ----
-
-// Begin/stop recording a human slot's per-tick movement. 0 ok / -1 fail.
-extern "C" __declspec(dllexport) int DtrController_StartRecord(int slot)
-{
-    return BotController::MotionRecorder::StartRecord(slot) ? 0 : -1;
-}
-
-extern "C" __declspec(dllexport) int DtrController_StopRecord(int slot)
-{
-    return BotController::MotionRecorder::StopRecord(slot) ? 0 : -1;
-}
-
-extern "C" __declspec(dllexport) int DtrController_ClearRecordedMotion(int slot)
-{
-    return BotController::MotionRecorder::ClearRecordedMotion(slot) ? 0 : -1;
-}
-
-// Recorded tick / subtick counts for a slot. <0 on bad slot.
-extern "C" __declspec(dllexport) int DtrController_GetRecordedTickCount(int slot)
-{
-    return BotController::MotionRecorder::RecordedTickCount(slot);
-}
-
-extern "C" __declspec(dllexport) int DtrController_GetRecordedSubtickCount(int slot)
-{
-    return BotController::MotionRecorder::RecordedSubtickCount(slot);
-}
-
-// Copy recorded ticks / subticks into caller buffers. Returns count written.
-extern "C" __declspec(dllexport) int DtrController_CopyRecordedTicks(int slot, BotController::ReplayTick *out, int maxTicks)
-{
-    return BotController::MotionRecorder::CopyTicks(slot, out, maxTicks);
-}
-
-extern "C" __declspec(dllexport) int DtrController_CopyRecordedSubticks(int slot, BotController::SubtickMove *out, int maxSubticks)
-{
-    return BotController::MotionRecorder::CopySubticks(slot, out, maxSubticks);
-}
-
-// Load parallel tick + subtick arrays into a slot's replay buffer. 0 ok.
+// ---- Demo-backed motion replay ----
 extern "C" __declspec(dllexport) int DtrController_LoadReplay(int slot,
                                                               const BotController::ReplayTick *ticks, int tickCount,
                                                               const BotController::SubtickMove *subs, int subCount) noexcept
@@ -568,39 +500,6 @@ extern "C" __declspec(dllexport) int DtrController_LoadReplayWithInputHistory(
                    commands, commandCount, movementExtras, movementExtraCount,
                    inputHistoryTicks, inputHistoryTickCount,
                    inputHistoryEntries, inputHistoryEntryCount)
-                   ? 0
-                   : -1;
-    }
-    catch (...)
-    {
-        return -1;
-    }
-}
-
-// Move a slot's just-recorded buffers into another slot's replay buffer
-extern "C" __declspec(dllexport) int DtrController_TransferRecordingToReplay(int srcSlot, int dstSlot) noexcept
-{
-    try
-    {
-        int nt = BotController::MotionRecorder::RecordedTickCount(srcSlot);
-        if (nt <= 0)
-            return -1;
-        int ns = BotController::MotionRecorder::RecordedSubtickCount(srcSlot);
-        if (ns < 0)
-            ns = 0;
-        std::vector<BotController::ReplayTick> ticks(nt);
-        std::vector<BotController::ReplayCommandFrameData> commands(nt);
-        std::vector<BotController::SubtickMove> subs(ns > 0 ? ns : 1);
-        int gotT = BotController::MotionRecorder::CopyTicks(srcSlot, ticks.data(), nt);
-        int gotS = ns > 0
-                       ? BotController::MotionRecorder::CopySubticks(srcSlot, subs.data(), ns)
-                       : 0;
-        if (gotT <= 0)
-            return -1;
-        int gotC = BotController::MotionRecorder::CopyCommands(srcSlot, commands.data(), gotT);
-        if (gotC != gotT) return -1;
-        return BotController::MotionRecorder::LoadReplayExtended(
-                   dstSlot, ticks.data(), gotT, subs.data(), gotS, commands.data(), gotC, nullptr, 0)
                    ? 0
                    : -1;
     }

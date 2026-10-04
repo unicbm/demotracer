@@ -249,21 +249,9 @@ plugin with `css_plugins reload DemoTracer`.
 | `dtr_controller_status` | Print native hooks and per-slot locks. |
 | `dtr_controller_perf [0|1|reset]` | Print, toggle, or reset native performance counters. |
 
-## Compatibility Aliases
-
-Kept for existing scripts; new tooling should use the commands above.
-
-| Alias | Preferred command |
-| --- | --- |
-| `dtr_seq_restart` | `dtr_go seq` |
-| `dtr_round_restart` | `dtr_go round` |
-| `dtr_run_manifest` | `dtr_arm seq` |
-| `dtr_arm_round` | `dtr_arm round` |
-| `dtr_stop_sequence`, `dtr_stop_all` | `dtr_stop ...` |
-| `dtr_load_round`, `dtr_play_loaded` | `dtr_load round`, `dtr_play loaded` |
-| `dtr_weapon_align`, `dtr_projectile_align`, `dtr_crosshair_align`, `dtr_left_hand_desired` | `dtr_align ...` |
-| `dtr_cosmetic_align`, `dtr_sticker_align`, `dtr_charm_align` | `dtr_cosmetics ...` |
-| `dtr_set ...` | Dedicated identity, alignment, handoff, or partial command |
+The legacy command aliases and `dtr_set` are no longer supported. Use the
+commands above. Runtime configuration uses `fidelity`, `match`, and `cosmetics`;
+the old `align` section is rejected.
 
 ## Known Boundaries
 

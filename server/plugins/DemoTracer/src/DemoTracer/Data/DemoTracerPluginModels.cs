@@ -95,7 +95,6 @@ public sealed partial class DemoTracerPlugin
         ReplayPlayerScoreboard Scoreboard,
         ReplayProjectileEvent[] Projectiles,
         ReplayHifiEvent[] HifiEvents,
-        ReplayUtilityGrant[] UtilityGrants,
         ReplayInventorySnapshot[] InventorySnapshots,
         uint? RoundStartBalance,
         int TickCount,

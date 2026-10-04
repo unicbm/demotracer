@@ -75,9 +75,9 @@ movement initializations without writing per-tick logs.
 
 | Contract | Required value |
 | --- | --- |
-| `.dtr` writer / reader | v12 / v3-v12 |
+| `.dtr` writer / reader | v12 / v12 only |
 | Manifest ABI | 19 |
-| dtr-controller native ABI | 21, minor 44+; 228-byte replay tick |
+| dtr-controller native ABI | 22, minor 0+; 228-byte replay tick |
 | dtr-hider / BotRandomizer API | 3 / 3 |
 | DemoTracer companion API | 7 |
 

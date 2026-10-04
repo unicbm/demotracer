@@ -9,7 +9,7 @@ use crate::model::{
     Cs2Rec, Cs2RecHeader, HighFidelityMetadata, MovementSnapshot, ProjectileKind,
     ReplayCommandFrame, ReplayInputHistoryEntry, ReplayInputHistoryTick, ReplayMovementExtra,
     ReplayProjectile, ReplayTick, SubtickMove, COMMAND_FIELDS_ALL, DTR_FORMAT_VERSION,
-    INPUT_HISTORY_FIELDS_ALL,
+    HIGH_FIDELITY_SCHEMA_VERSION, INPUT_HISTORY_FIELDS_ALL,
 };
 use crate::{io_error, Error, Result};
 use std::fs::File;
@@ -20,19 +20,11 @@ mod source_state;
 
 const MAGIC: &[u8; 8] = b"CSDTRREC";
 const CODEC_NONE: u8 = 0;
-const CODEC_BROTLI: u8 = 1;
 const CODEC_ZSTD: u8 = 2;
 const ZSTD_LEVEL: i32 = 9;
-const BROTLI_BUFFER_SIZE: usize = 4096;
-#[cfg(test)]
-const BROTLI_QUALITY: u32 = 6;
-#[cfg(test)]
-const BROTLI_LGWIN: u32 = 22;
-const SNAPSHOT_BYTE_SIZE: usize = 92;
 const TICK_METADATA_BYTE_SIZE: usize = 8;
 const PROJECTILE_BYTE_SIZE: usize = 48;
 const SUBTICK_BYTE_SIZE: usize = 28;
-const COMMAND_FRAME_BYTE_SIZE: usize = 68;
 const MOVEMENT_EXTRA_BYTE_SIZE: usize = 48;
 const INPUT_HISTORY_TICK_BYTE_SIZE: usize = 16;
 const INPUT_HISTORY_ENTRY_BYTE_SIZE: usize = 128;
@@ -189,7 +181,7 @@ pub fn read_rec_file_with_limits(path: &Path, limits: DtrReadLimits) -> Result<C
 }
 
 pub fn write_rec<W: Write>(writer: &mut W, rec: &Cs2Rec) -> Result<()> {
-    validate_rec_semantics(rec, DTR_FORMAT_VERSION)?;
+    validate_rec_semantics(rec)?;
     validate_subtick_count(rec)?;
     validate_play_start_tick(rec.ticks.len(), rec.header.play_start_tick_index)?;
     validate_snapshot_chain(rec)?;
@@ -258,8 +250,10 @@ fn read_rec_bounded<R: Read>(reader: &mut ReadBudget<R>, limits: DtrReadLimits) 
     }
 
     let version = read_u32(reader)?;
-    if !(3..=DTR_FORMAT_VERSION).contains(&version) {
-        return Err(Error::InvalidRec(format!("unsupported version {version}")));
+    if version != DTR_FORMAT_VERSION {
+        return Err(Error::InvalidRec(format!(
+            "unsupported version {version}; expected {DTR_FORMAT_VERSION}; reconvert the demo with the current GUI"
+        )));
     }
 
     let tick_rate = read_f32(reader)?;
@@ -269,9 +263,9 @@ fn read_rec_bounded<R: Read>(reader: &mut ReadBudget<R>, limits: DtrReadLimits) 
     let steam_id = read_u64(reader)?;
     let tick_count_raw = read_u32(reader)?;
     let subtick_count_raw = read_u32(reader)?;
-    let projectile_count_raw = if version >= 4 { read_u32(reader)? } else { 0 };
-    let play_start_tick_index = if version >= 5 { read_u32(reader)? } else { 0 };
-    let metadata_json_len_raw = if version >= 6 { read_u32(reader)? } else { 0 };
+    let projectile_count_raw = read_u32(reader)?;
+    let play_start_tick_index = read_u32(reader)?;
+    let metadata_json_len_raw = read_u32(reader)?;
     validate_header_counts(
         tick_count_raw,
         subtick_count_raw,
@@ -286,102 +280,23 @@ fn read_rec_bounded<R: Read>(reader: &mut ReadBudget<R>, limits: DtrReadLimits) 
     validate_play_start_tick(tick_count, play_start_tick_index)?;
     let map = read_bounded_string(reader, "map string")?;
     let player_name = read_bounded_string(reader, "player name string")?;
-    if version >= 7 {
-        let (
-            ticks,
-            projectiles,
-            high_fidelity,
-            subticks,
-            command_frames,
-            movement_extras,
-            input_history_ticks,
-            input_history_entries,
-            source_state_changes,
-        ) = read_sectioned_body(
-            reader,
-            version,
-            tick_count,
-            subtick_count,
-            projectile_count,
-            metadata_json_len,
-            limits,
-        )?;
-
-        let rec = Cs2Rec {
-            header: Cs2RecHeader {
-                version,
-                tick_rate,
-                map,
-                round,
-                side,
-                steam_id,
-                player_name,
-                flags,
-                play_start_tick_index,
-            },
-            ticks,
-            projectiles,
-            high_fidelity,
-            subticks,
-            command_frames,
-            movement_extras,
-            input_history_ticks,
-            input_history_entries,
-            source_state_changes,
-        };
-        return finish_read_rec(reader, rec);
-    }
-
-    let codec = read_u8(reader)?;
-    if codec != CODEC_BROTLI {
-        return Err(Error::InvalidRec(format!("unsupported codec {codec}")));
-    }
-
-    let body_uncompressed_len_raw = read_u64(reader)?;
-    let body_compressed_len_raw = read_u64(reader)?;
-    enforce_byte_limit(
-        "compressed body",
-        body_compressed_len_raw,
-        limits.max_compressed_section_bytes,
-    )?;
-    enforce_byte_limit(
-        "total compressed body",
-        body_compressed_len_raw,
-        limits.max_total_compressed_bytes,
-    )?;
-    enforce_byte_limit(
-        "decoded body",
-        body_uncompressed_len_raw,
-        limits.max_decoded_section_bytes,
-    )?;
-    enforce_byte_limit(
-        "total decoded body",
-        body_uncompressed_len_raw,
-        limits.max_total_decoded_bytes,
-    )?;
-    let body_uncompressed_len = checked_len(body_uncompressed_len_raw, "body_uncompressed_len")?;
-    let body_compressed_len = checked_len(body_compressed_len_raw, "body_compressed_len")?;
-    let expected_body_len = expected_body_len(
+    let (
+        ticks,
+        projectiles,
+        high_fidelity,
+        subticks,
+        command_frames,
+        movement_extras,
+        input_history_ticks,
+        input_history_entries,
+        source_state_changes,
+    ) = read_sectioned_body(
+        reader,
         tick_count,
         subtick_count,
         projectile_count,
         metadata_json_len,
-    )?;
-    if body_uncompressed_len != expected_body_len {
-        return Err(Error::InvalidRec(format!(
-            "body length {body_uncompressed_len} != expected {expected_body_len}"
-        )));
-    }
-
-    let compressed = read_exact_vec_bounded(reader, body_compressed_len, "compressed body")?;
-    let body = decompress_body(&compressed, body_uncompressed_len)?;
-    let (ticks, projectiles, high_fidelity, subticks) = read_body(
-        &body,
-        tick_count,
-        projectile_count,
-        metadata_json_len,
-        subtick_count,
-        limits.max_subticks_per_tick,
+        limits,
     )?;
 
     let rec = Cs2Rec {
@@ -400,22 +315,27 @@ fn read_rec_bounded<R: Read>(reader: &mut ReadBudget<R>, limits: DtrReadLimits) 
         projectiles,
         high_fidelity,
         subticks,
-        command_frames: Vec::new(),
-        movement_extras: Vec::new(),
-        input_history_ticks: Vec::new(),
-        input_history_entries: Vec::new(),
-        source_state_changes: Vec::new(),
+        command_frames,
+        movement_extras,
+        input_history_ticks,
+        input_history_entries,
+        source_state_changes,
     };
     finish_read_rec(reader, rec)
 }
 
 fn finish_read_rec<R: Read>(reader: &mut ReadBudget<R>, rec: Cs2Rec) -> Result<Cs2Rec> {
-    validate_rec_semantics(&rec, rec.header.version)?;
+    validate_rec_semantics(&rec)?;
     reader.require_eof()?;
     Ok(rec)
 }
 
-fn validate_rec_semantics(rec: &Cs2Rec, format_version: u32) -> Result<()> {
+fn validate_rec_semantics(rec: &Cs2Rec) -> Result<()> {
+    if rec.high_fidelity.schema_version != HIGH_FIDELITY_SCHEMA_VERSION {
+        return Err(Error::InvalidRec(
+            "unsupported replay metadata schema; reconvert the demo with the current GUI".into(),
+        ));
+    }
     validate_source_changes(&rec.source_state_changes, rec.ticks.len())?;
     if !rec.header.tick_rate.is_finite() || rec.header.tick_rate <= 0.0 {
         return Err(Error::InvalidRec(
@@ -441,17 +361,9 @@ fn validate_rec_semantics(rec: &Cs2Rec, format_version: u32) -> Result<()> {
     }
 
     for (index, subtick) in rec.subticks.iter().enumerate() {
-        let valid_when = subtick.when.is_finite()
-            && subtick.when < 1.0
-            && (format_version >= 10 || subtick.when >= 0.0);
-        if !valid_when {
+        if !subtick.when.is_finite() || subtick.when >= 1.0 {
             return Err(Error::InvalidRec(format!(
-                "subtick {index} when must be finite and {}",
-                if format_version >= 10 {
-                    "below 1"
-                } else {
-                    "in [0, 1)"
-                }
+                "subtick {index} when must be finite and below 1"
             )));
         }
         validate_finite_values(
@@ -861,8 +773,8 @@ fn write_section<W: Write>(
         version,
         count,
         payload,
-        CODEC_BROTLI,
-        &compress_body(payload)?,
+        CODEC_ZSTD,
+        &zstd::bulk::compress(payload, ZSTD_LEVEL).map_err(|e| Error::InvalidRec(e.to_string()))?,
     )
 }
 
@@ -871,23 +783,6 @@ fn build_tick_metadata_section(rec: &Cs2Rec) -> Result<Vec<u8>> {
     for tick in &rec.ticks {
         write_i32(&mut body, tick.weapon_def_index)?;
         write_u32(&mut body, tick.num_subtick)?;
-    }
-    Ok(body)
-}
-
-#[cfg(test)]
-fn build_snapshot_section_v1(rec: &Cs2Rec) -> Result<Vec<u8>> {
-    let snapshot_count = if rec.ticks.is_empty() {
-        0
-    } else {
-        rec.ticks.len() + 1
-    };
-    let mut body = Vec::with_capacity(snapshot_count * SNAPSHOT_BYTE_SIZE);
-    if let Some(first) = rec.ticks.first() {
-        write_snapshot(&mut body, &first.pre)?;
-        for tick in &rec.ticks {
-            write_snapshot(&mut body, &tick.post)?;
-        }
     }
     Ok(body)
 }
@@ -976,15 +871,6 @@ fn write_input_history_entry<W: Write>(
         }
     }
     Ok(())
-}
-
-#[cfg(test)]
-fn build_command_frame_section_v1(rec: &Cs2Rec) -> Result<Vec<u8>> {
-    let mut body = Vec::with_capacity(rec.command_frames.len() * COMMAND_FRAME_BYTE_SIZE);
-    for frame in &rec.command_frames {
-        write_command_frame(&mut body, frame)?;
-    }
-    Ok(body)
 }
 
 fn build_snapshot_section_v2(rec: &Cs2Rec) -> Result<Vec<u8>> {
@@ -1265,107 +1151,7 @@ fn build_movement_extra_section(rec: &Cs2Rec) -> Result<Vec<u8>> {
     Ok(body)
 }
 
-#[cfg(test)]
-fn build_body(rec: &Cs2Rec, metadata_json: &[u8]) -> Result<Vec<u8>> {
-    let mut body = Vec::with_capacity(expected_body_len(
-        rec.ticks.len(),
-        rec.subticks.len(),
-        rec.projectiles.len(),
-        metadata_json.len(),
-    )?);
-    if let Some(first) = rec.ticks.first() {
-        write_snapshot(&mut body, &first.pre)?;
-        for tick in &rec.ticks {
-            write_snapshot(&mut body, &tick.post)?;
-        }
-    }
-    for tick in &rec.ticks {
-        write_i32(&mut body, tick.weapon_def_index)?;
-        write_u32(&mut body, tick.num_subtick)?;
-    }
-    for projectile in &rec.projectiles {
-        write_projectile(&mut body, projectile)?;
-    }
-    body.write_all(metadata_json)
-        .map_err(|e| Error::InvalidRec(e.to_string()))?;
-    for subtick in &rec.subticks {
-        write_subtick(&mut body, subtick)?;
-    }
-    Ok(body)
-}
-
-fn read_body(
-    body: &[u8],
-    tick_count: usize,
-    projectile_count: usize,
-    metadata_json_len: usize,
-    subtick_count: usize,
-    max_subticks_per_tick: u32,
-) -> Result<(
-    Vec<ReplayTick>,
-    Vec<ReplayProjectile>,
-    HighFidelityMetadata,
-    Vec<SubtickMove>,
-)> {
-    let mut reader = Cursor::new(body);
-    let snapshot_count = snapshot_count(tick_count)?;
-    let mut snapshots = reserved_vec(snapshot_count, "snapshot count")?;
-    for _ in 0..snapshot_count {
-        snapshots.push(read_snapshot(&mut reader)?);
-    }
-
-    let mut ticks = reserved_vec(tick_count, "tick count")?;
-    let mut expected_subticks = 0_usize;
-    for i in 0..tick_count {
-        let weapon_def_index = read_i32(&mut reader)?;
-        let num_subtick = read_u32(&mut reader)?;
-        accumulate_tick_subticks(
-            &mut expected_subticks,
-            num_subtick,
-            i,
-            max_subticks_per_tick,
-        )?;
-        ticks.push(ReplayTick {
-            pre: snapshots[i].clone(),
-            post: snapshots[i + 1].clone(),
-            weapon_def_index,
-            num_subtick,
-        });
-    }
-
-    if expected_subticks != subtick_count {
-        return Err(Error::InvalidRec(format!(
-            "tick subtick sum {expected_subticks} != header subtick count {subtick_count}"
-        )));
-    }
-
-    let mut projectiles = reserved_vec(projectile_count, "projectile count")?;
-    for _ in 0..projectile_count {
-        projectiles.push(read_projectile(&mut reader)?);
-    }
-
-    let high_fidelity = if metadata_json_len > 0 {
-        let mut metadata_json = zeroed_vec(metadata_json_len, "metadata JSON")?;
-        reader
-            .read_exact(&mut metadata_json)
-            .map_err(|e| Error::InvalidRec(e.to_string()))?;
-        serde_json::from_slice(&metadata_json)
-            .map_err(|e| Error::InvalidRec(format!("invalid high_fidelity metadata JSON: {e}")))?
-    } else {
-        HighFidelityMetadata::default()
-    };
-
-    let mut subticks = reserved_vec(subtick_count, "subtick count")?;
-    for _ in 0..subtick_count {
-        subticks.push(read_subtick(&mut reader)?);
-    }
-    if reader.position() != body.len() as u64 {
-        return Err(Error::InvalidRec("trailing bytes in .dtr body".to_string()));
-    }
-    Ok((ticks, projectiles, high_fidelity, subticks))
-}
-
-type V7Sections = (
+type ReplaySections = (
     Vec<ReplayTick>,
     Vec<ReplayProjectile>,
     HighFidelityMetadata,
@@ -1379,13 +1165,12 @@ type V7Sections = (
 
 fn read_sectioned_body<R: Read>(
     reader: &mut ReadBudget<R>,
-    format_version: u32,
     tick_count: usize,
     subtick_count: usize,
     projectile_count: usize,
     metadata_json_len: usize,
     limits: DtrReadLimits,
-) -> Result<V7Sections> {
+) -> Result<ReplaySections> {
     let section_count_raw = read_u32(reader)?;
     enforce_count_limit("section count", section_count_raw, limits.max_section_count)?;
     let section_count = section_count_raw as usize;
@@ -1451,14 +1236,12 @@ fn read_sectioned_body<R: Read>(
         match header.section_id {
             SECTION_SNAPSHOTS => {
                 reject_duplicate(snapshots.is_some(), "snapshots")?;
-                require_versioned_section_header_shape(
+                require_column_section_header_shape(
                     "snapshots",
-                    format_version,
                     header.section_version,
                     header.element_count,
                     snapshot_count,
                     header.uncompressed_len,
-                    checked_product(snapshot_count, SNAPSHOT_BYTE_SIZE, "snapshot section")?,
                 )?;
             }
             SECTION_TICK_METADATA => {
@@ -1507,14 +1290,12 @@ fn read_sectioned_body<R: Read>(
             }
             SECTION_COMMAND_FRAMES => {
                 reject_duplicate(saw_command_frames, "command frames")?;
-                require_versioned_section_header_shape(
+                require_column_section_header_shape(
                     "command frames",
-                    format_version,
                     header.section_version,
                     header.element_count,
                     tick_count,
                     header.uncompressed_len,
-                    checked_product(tick_count, COMMAND_FRAME_BYTE_SIZE, "command frame section")?,
                 )?;
             }
             SECTION_MOVEMENT_EXTRAS => {
@@ -1534,9 +1315,6 @@ fn read_sectioned_body<R: Read>(
             }
             SECTION_SOURCE_STATE => {
                 reject_duplicate(source_state_changes.is_some(), "source state")?;
-                if format_version < 11 {
-                    return Err(Error::InvalidRec("source state requires DTR 11".into()));
-                }
                 if header.element_count as u64
                     > tick_count as u64 * crate::model::source_state::SOURCE_FIELDS.len() as u64
                 {
@@ -1544,12 +1322,8 @@ fn read_sectioned_body<R: Read>(
                         "source state count exceeds tick/field capacity".into(),
                     ));
                 }
-                source_state::validate_header(format_version, &header)?;
-                let records = if header.section_version == SECTION_VERSION_V2 {
-                    header.uncompressed_len / 12
-                } else {
-                    u64::from(header.element_count)
-                };
+                source_state::validate_header(&header)?;
+                let records = header.uncompressed_len / 12;
                 let indexed_bytes = records * 16;
                 enforce_byte_limit(
                     "indexed source state",
@@ -1575,9 +1349,7 @@ fn read_sectioned_body<R: Read>(
             _ => unreachable!(),
         }
 
-        if !matches!(header.codec, CODEC_NONE | CODEC_BROTLI | CODEC_ZSTD)
-            || (header.codec == CODEC_ZSTD && format_version < 12)
-        {
+        if !matches!(header.codec, CODEC_NONE | CODEC_ZSTD) {
             return Err(Error::InvalidRec(format!(
                 "unsupported section codec {}",
                 header.codec
@@ -1596,11 +1368,7 @@ fn read_sectioned_body<R: Read>(
 
         match header.section_id {
             SECTION_SNAPSHOTS => {
-                snapshots = Some(read_snapshots_from_section(
-                    &body,
-                    snapshot_count,
-                    header.section_version,
-                )?);
+                snapshots = Some(read_snapshots_from_section(&body, snapshot_count)?);
             }
             SECTION_TICK_METADATA => {
                 tick_metadata = Some(read_tick_metadata_from_section(&body, tick_count)?);
@@ -1618,8 +1386,7 @@ fn read_sectioned_body<R: Read>(
                 saw_high_fidelity = true;
             }
             SECTION_COMMAND_FRAMES => {
-                command_frames =
-                    read_command_frames_from_section(&body, tick_count, header.section_version)?;
+                command_frames = read_command_frames_from_section(&body, tick_count)?;
                 saw_command_frames = true;
             }
             SECTION_MOVEMENT_EXTRAS => {
@@ -1631,7 +1398,6 @@ fn read_sectioned_body<R: Read>(
                     &body,
                     header.element_count as usize,
                     tick_count,
-                    header.section_version,
                 )?);
             }
             SECTION_INPUT_HISTORY => {
@@ -1661,12 +1427,12 @@ fn read_sectioned_body<R: Read>(
             "missing high fidelity metadata section".to_string(),
         ));
     }
-    if format_version >= 11 && source_state_changes.is_none() {
+    if source_state_changes.is_none() {
         return Err(Error::InvalidRec(
             "missing required section source state".into(),
         ));
     }
-    if format_version >= 9 && !saw_input_history {
+    if !saw_input_history {
         return Err(Error::InvalidRec(
             "missing required section input history".to_string(),
         ));
@@ -1799,7 +1565,6 @@ fn decode_section_body(compressed: Vec<u8>, codec: u8, expected_len: usize) -> R
             }
             Ok(compressed)
         }
-        CODEC_BROTLI => decompress_body(&compressed, expected_len),
         CODEC_ZSTD => {
             let mut decoded = reserved_vec(expected_len, "zstd output")?;
             decoded.resize(expected_len, 0);
@@ -1844,40 +1609,27 @@ fn require_section_header_shape(
     Ok(())
 }
 
-fn require_versioned_section_header_shape(
+fn require_column_section_header_shape(
     name: &str,
-    format_version: u32,
     section_version: u32,
     element_count: u32,
     expected_elements: usize,
     byte_len: u64,
-    v1_byte_len: usize,
 ) -> Result<()> {
+    if section_version != SECTION_VERSION_V2 {
+        return Err(Error::InvalidRec(format!(
+            "unsupported {name} section version {section_version}"
+        )));
+    }
     if u64::from(element_count) != expected_elements as u64 {
         return Err(Error::InvalidRec(format!(
             "{name} element count {element_count} != expected {expected_elements}"
         )));
     }
-    match (format_version, section_version) {
-        (7, SECTION_VERSION_V1) => {
-            if byte_len != v1_byte_len as u64 {
-                return Err(Error::InvalidRec(format!(
-                    "{name} byte length {byte_len} != expected {v1_byte_len}"
-                )));
-            }
-        }
-        (8..=DTR_FORMAT_VERSION, SECTION_VERSION_V2) => {
-            if expected_elements == 0 && byte_len != 0 {
-                return Err(Error::InvalidRec(format!(
-                    "empty {name} section has non-zero byte length {byte_len}"
-                )));
-            }
-        }
-        _ => {
-            return Err(Error::InvalidRec(format!(
-                "unsupported {name} section version {section_version} for .dtr v{format_version}"
-            )));
-        }
+    if expected_elements == 0 && byte_len != 0 {
+        return Err(Error::InvalidRec(format!(
+            "empty {name} section has non-zero byte length {byte_len}"
+        )));
     }
     Ok(())
 }
@@ -1928,30 +1680,6 @@ fn reject_duplicate(duplicate: bool, name: &str) -> Result<()> {
     Ok(())
 }
 
-fn read_snapshots_from_section(
-    body: &[u8],
-    count: usize,
-    section_version: u32,
-) -> Result<Vec<MovementSnapshot>> {
-    match section_version {
-        SECTION_VERSION_V1 => read_snapshots_from_section_v1(body, count),
-        SECTION_VERSION_V2 => read_snapshots_from_section_v2(body, count),
-        _ => Err(Error::InvalidRec(format!(
-            "unsupported snapshots section version {section_version}"
-        ))),
-    }
-}
-
-fn read_snapshots_from_section_v1(body: &[u8], count: usize) -> Result<Vec<MovementSnapshot>> {
-    let mut reader = Cursor::new(body);
-    let mut snapshots = reserved_vec(count, "snapshot section elements")?;
-    for _ in 0..count {
-        snapshots.push(read_snapshot(&mut reader)?);
-    }
-    require_no_trailing(&reader, body, "snapshots")?;
-    Ok(snapshots)
-}
-
 fn read_tick_metadata_from_section(body: &[u8], count: usize) -> Result<Vec<(i32, u32)>> {
     let mut reader = Cursor::new(body);
     let mut metadata = reserved_vec(count, "tick metadata section elements")?;
@@ -1982,34 +1710,7 @@ fn read_subticks_from_section(body: &[u8], count: usize) -> Result<Vec<SubtickMo
     Ok(subticks)
 }
 
-fn read_command_frames_from_section(
-    body: &[u8],
-    count: usize,
-    section_version: u32,
-) -> Result<Vec<ReplayCommandFrame>> {
-    match section_version {
-        SECTION_VERSION_V1 => read_command_frames_from_section_v1(body, count),
-        SECTION_VERSION_V2 => read_command_frames_from_section_v2(body, count),
-        _ => Err(Error::InvalidRec(format!(
-            "unsupported command frames section version {section_version}"
-        ))),
-    }
-}
-
-fn read_command_frames_from_section_v1(
-    body: &[u8],
-    count: usize,
-) -> Result<Vec<ReplayCommandFrame>> {
-    let mut reader = Cursor::new(body);
-    let mut frames = reserved_vec(count, "command frame section elements")?;
-    for _ in 0..count {
-        frames.push(read_command_frame(&mut reader)?);
-    }
-    require_no_trailing(&reader, body, "command frames")?;
-    Ok(frames)
-}
-
-fn read_snapshots_from_section_v2(body: &[u8], count: usize) -> Result<Vec<MovementSnapshot>> {
+fn read_snapshots_from_section(body: &[u8], count: usize) -> Result<Vec<MovementSnapshot>> {
     let mut reader = Cursor::new(body);
     let mut snapshots = reserved_vec(count, "snapshot section elements")?;
     snapshots.resize_with(count, MovementSnapshot::default);
@@ -2098,10 +1799,7 @@ fn read_snapshots_from_section_v2(body: &[u8], count: usize) -> Result<Vec<Movem
     Ok(snapshots)
 }
 
-fn read_command_frames_from_section_v2(
-    body: &[u8],
-    count: usize,
-) -> Result<Vec<ReplayCommandFrame>> {
+fn read_command_frames_from_section(body: &[u8], count: usize) -> Result<Vec<ReplayCommandFrame>> {
     let mut reader = Cursor::new(body);
     let mut frames = reserved_vec(count, "command frame section elements")?;
     frames.resize_with(count, ReplayCommandFrame::default);
@@ -2416,72 +2114,6 @@ fn optional_metadata_json_bytes(metadata: &HighFidelityMetadata) -> Result<Vec<u
     }
 }
 
-#[cfg(test)]
-fn compress_body(body: &[u8]) -> Result<Vec<u8>> {
-    let mut compressed = Vec::new();
-    {
-        let mut compressor = brotli::CompressorWriter::new(
-            &mut compressed,
-            BROTLI_BUFFER_SIZE,
-            BROTLI_QUALITY,
-            BROTLI_LGWIN,
-        );
-        compressor
-            .write_all(body)
-            .map_err(|e| Error::InvalidRec(e.to_string()))?;
-        compressor
-            .flush()
-            .map_err(|e| Error::InvalidRec(e.to_string()))?;
-    }
-    Ok(compressed)
-}
-
-fn decompress_body(compressed: &[u8], expected_len: usize) -> Result<Vec<u8>> {
-    let mut decompressor = brotli::Decompressor::new(compressed, BROTLI_BUFFER_SIZE);
-    let mut body = zeroed_vec(expected_len, "decoded body")?;
-    decompressor
-        .read_exact(&mut body)
-        .map_err(|e| Error::InvalidRec(e.to_string()))?;
-    let mut probe = [0_u8; 1];
-    match decompressor.read(&mut probe) {
-        Ok(0) => {}
-        Ok(_) => {
-            return Err(Error::InvalidRec(format!(
-                "decompressed body exceeds expected length {expected_len}"
-            )));
-        }
-        Err(error) => return Err(Error::InvalidRec(error.to_string())),
-    }
-    Ok(body)
-}
-
-fn expected_body_len(
-    tick_count: usize,
-    subtick_count: usize,
-    projectile_count: usize,
-    metadata_json_len: usize,
-) -> Result<usize> {
-    let snapshot_count = snapshot_count(tick_count)?;
-    let snapshot_bytes = snapshot_count
-        .checked_mul(SNAPSHOT_BYTE_SIZE)
-        .ok_or_else(|| Error::InvalidRec("snapshot body too large".to_string()))?;
-    let tick_bytes = tick_count
-        .checked_mul(TICK_METADATA_BYTE_SIZE)
-        .ok_or_else(|| Error::InvalidRec("tick body too large".to_string()))?;
-    let subtick_bytes = subtick_count
-        .checked_mul(SUBTICK_BYTE_SIZE)
-        .ok_or_else(|| Error::InvalidRec("subtick body too large".to_string()))?;
-    let projectile_bytes = projectile_count
-        .checked_mul(PROJECTILE_BYTE_SIZE)
-        .ok_or_else(|| Error::InvalidRec("projectile body too large".to_string()))?;
-    snapshot_bytes
-        .checked_add(tick_bytes)
-        .and_then(|value| value.checked_add(projectile_bytes))
-        .and_then(|value| value.checked_add(metadata_json_len))
-        .and_then(|value| value.checked_add(subtick_bytes))
-        .ok_or_else(|| Error::InvalidRec("body too large".to_string()))
-}
-
 fn checked_len(value: u64, name: &str) -> Result<usize> {
     usize::try_from(value).map_err(|_| Error::InvalidRec(format!("{name} too large: {value}")))
 }
@@ -2594,93 +2226,6 @@ fn zeroed_vec(len: usize, name: &str) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-#[cfg(test)]
-fn write_snapshot<W: Write>(writer: &mut W, snapshot: &MovementSnapshot) -> Result<()> {
-    for value in snapshot.origin {
-        write_f32(writer, value)?;
-    }
-    for value in snapshot.velocity {
-        write_f32(writer, value)?;
-    }
-    for value in snapshot.angles {
-        write_f32(writer, value)?;
-    }
-    write_u32(writer, snapshot.entity_flags)?;
-    write_u8(writer, snapshot.move_type)?;
-    writer
-        .write_all(&[0, 0, 0])
-        .map_err(|e| Error::InvalidRec(e.to_string()))?;
-    write_u64(writer, snapshot.buttons)?;
-    write_u64(writer, snapshot.buttons1)?;
-    write_u64(writer, snapshot.buttons2)?;
-    write_f32(writer, snapshot.duck_amount)?;
-    write_f32(writer, snapshot.duck_speed)?;
-    for value in snapshot.ladder_normal {
-        write_f32(writer, value)?;
-    }
-    write_u8(writer, snapshot.ducked)?;
-    write_u8(writer, snapshot.ducking)?;
-    write_u8(writer, snapshot.desires_duck)?;
-    write_u8(writer, snapshot.actual_move_type)?;
-    Ok(())
-}
-
-fn read_snapshot<R: Read>(reader: &mut R) -> Result<MovementSnapshot> {
-    let mut origin = [0.0_f32; 3];
-    let mut velocity = [0.0_f32; 3];
-    let mut angles = [0.0_f32; 3];
-    for value in &mut origin {
-        *value = read_f32(reader)?;
-    }
-    for value in &mut velocity {
-        *value = read_f32(reader)?;
-    }
-    for value in &mut angles {
-        *value = read_f32(reader)?;
-    }
-    let entity_flags = read_u32(reader)?;
-    let move_type = read_u8(reader)?;
-    let mut pad = [0_u8; 3];
-    reader
-        .read_exact(&mut pad)
-        .map_err(|e| Error::InvalidRec(e.to_string()))?;
-    if pad != [0, 0, 0] {
-        return Err(Error::InvalidRec(
-            "snapshot padding must be zero".to_string(),
-        ));
-    }
-    let buttons = read_u64(reader)?;
-    let buttons1 = read_u64(reader)?;
-    let buttons2 = read_u64(reader)?;
-    let duck_amount = read_f32(reader)?;
-    let duck_speed = read_f32(reader)?;
-    let mut ladder_normal = [0.0_f32; 3];
-    for value in &mut ladder_normal {
-        *value = read_f32(reader)?;
-    }
-    let ducked = read_u8(reader)?;
-    let ducking = read_u8(reader)?;
-    let desires_duck = read_u8(reader)?;
-    let actual_move_type = read_u8(reader)?;
-    Ok(MovementSnapshot {
-        origin,
-        velocity,
-        angles,
-        entity_flags,
-        move_type,
-        buttons,
-        buttons1,
-        buttons2,
-        duck_amount,
-        duck_speed,
-        ladder_normal,
-        ducked,
-        ducking,
-        desires_duck,
-        actual_move_type,
-    })
-}
-
 fn write_subtick<W: Write>(writer: &mut W, subtick: &SubtickMove) -> Result<()> {
     write_f32(writer, subtick.when)?;
     write_u32(writer, subtick.button)?;
@@ -2701,70 +2246,6 @@ fn read_subtick<R: Read>(reader: &mut R) -> Result<SubtickMove> {
         analog_left: read_f32(reader)?,
         pitch_delta: read_f32(reader)?,
         yaw_delta: read_f32(reader)?,
-    })
-}
-
-#[cfg(test)]
-fn write_command_frame<W: Write>(writer: &mut W, frame: &ReplayCommandFrame) -> Result<()> {
-    write_f32(writer, frame.forward_move)?;
-    write_f32(writer, frame.left_move)?;
-    write_f32(writer, frame.up_move)?;
-    write_f32(writer, frame.pitch)?;
-    write_f32(writer, frame.yaw)?;
-    write_f32(writer, frame.roll)?;
-    write_u64(writer, frame.buttons)?;
-    write_u64(writer, frame.buttons1)?;
-    write_u64(writer, frame.buttons2)?;
-    write_i32(writer, frame.mouse_dx)?;
-    write_i32(writer, frame.mouse_dy)?;
-    write_i32(writer, frame.weapon_select)?;
-    write_u32(writer, frame.fields)?;
-    write_u8(writer, frame.left_hand_desired)?;
-    writer
-        .write_all(&[0, 0, 0])
-        .map_err(|e| Error::InvalidRec(e.to_string()))?;
-    Ok(())
-}
-
-fn read_command_frame<R: Read>(reader: &mut R) -> Result<ReplayCommandFrame> {
-    let forward_move = read_f32(reader)?;
-    let left_move = read_f32(reader)?;
-    let up_move = read_f32(reader)?;
-    let pitch = read_f32(reader)?;
-    let yaw = read_f32(reader)?;
-    let roll = read_f32(reader)?;
-    let buttons = read_u64(reader)?;
-    let buttons1 = read_u64(reader)?;
-    let buttons2 = read_u64(reader)?;
-    let mouse_dx = read_i32(reader)?;
-    let mouse_dy = read_i32(reader)?;
-    let weapon_select = read_i32(reader)?;
-    let fields = read_u32(reader)?;
-    let left_hand_desired = read_u8(reader)?;
-    let mut pad = [0_u8; 3];
-    reader
-        .read_exact(&mut pad)
-        .map_err(|e| Error::InvalidRec(e.to_string()))?;
-    if pad != [0, 0, 0] {
-        return Err(Error::InvalidRec(
-            "command frame padding must be zero".to_string(),
-        ));
-    }
-    Ok(ReplayCommandFrame {
-        forward_move,
-        left_move,
-        up_move,
-        pitch,
-        yaw,
-        roll,
-        buttons,
-        buttons1,
-        buttons2,
-        mouse_dx,
-        mouse_dy,
-        weapon_select,
-        fields,
-        left_hand_desired,
     })
 }
 
@@ -3059,28 +2540,6 @@ mod tests {
     }
 
     #[test]
-    fn rec_reader_rejects_mismatched_subtick_count() {
-        let rec = sample_rec();
-        let metadata_json = metadata_json_bytes(&rec.high_fidelity).unwrap();
-        let mut body = build_body(&rec, &metadata_json).unwrap();
-        let metadata_offset = SNAPSHOT_BYTE_SIZE * (rec.ticks.len() + 1);
-        body[metadata_offset + 4..metadata_offset + 8].copy_from_slice(&2_u32.to_le_bytes());
-        let bytes = test_file_bytes(
-            &body,
-            rec.ticks.len(),
-            rec.subticks.len(),
-            rec.projectiles.len(),
-            metadata_json.len(),
-            CODEC_BROTLI,
-            None,
-        );
-        let err = read_rec(&mut &bytes[..]).unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("tick subtick sum 2 != header subtick count 1"));
-    }
-
-    #[test]
     fn rec_roundtrip_is_bit_stable() {
         let mut rec = sample_rec();
         rec.header.play_start_tick_index = 1;
@@ -3118,7 +2577,7 @@ mod tests {
     }
 
     #[test]
-    fn rec_v10_roundtrips_backdated_subtick_when() {
+    fn rec_roundtrips_backdated_subtick_when() {
         let mut rec = sample_rec();
         rec.subticks[0].when = -1.671875;
 
@@ -3128,34 +2587,6 @@ mod tests {
 
         assert_eq!(parsed.header.version, DTR_FORMAT_VERSION);
         assert_eq!(parsed.subticks[0].when.to_bits(), (-1.671875_f32).to_bits());
-    }
-
-    #[test]
-    fn rec_v9_rejects_backdated_subtick_when() {
-        let mut rec = sample_rec();
-        rec.subticks[0].when = -1.0 / 128.0;
-
-        let mut bytes = Vec::new();
-        write_rec(&mut bytes, &rec).unwrap();
-        let mut bytes = sections_as_brotli(&bytes);
-        // The old file has no source-state section. Mark this additive section
-        // unknown when exercising the v9 subtick validator.
-        let mut offset = v7_section_count_offset(&bytes) + 4;
-        while offset < bytes.len() {
-            let id = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
-            let size =
-                u64::from_le_bytes(bytes[offset + 28..offset + 36].try_into().unwrap()) as usize;
-            if id == SECTION_SOURCE_STATE {
-                bytes[offset..offset + 4].copy_from_slice(&99_u32.to_le_bytes());
-            }
-            offset += 36 + size;
-        }
-        bytes[8..12].copy_from_slice(&9_u32.to_le_bytes());
-
-        let err = read_rec(&mut &bytes[..]).unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("when must be finite and in [0, 1)"));
     }
 
     #[test]
@@ -3199,44 +2630,6 @@ mod tests {
     }
 
     #[test]
-    fn reader_keeps_brotli_sections_and_gates_zstd_at_v12() {
-        let bytes = encoded_sample_rec();
-        let brotli = sections_as_brotli(&bytes);
-        assert_eq!(
-            read_rec(&mut &bytes[..]).unwrap(),
-            read_rec(&mut &brotli[..]).unwrap()
-        );
-        let mut old_version = bytes;
-        old_version[8..12].copy_from_slice(&11_u32.to_le_bytes());
-        assert!(read_rec(&mut &old_version[..])
-            .unwrap_err()
-            .to_string()
-            .contains("codec"));
-    }
-
-    fn sections_as_brotli(bytes: &[u8]) -> Vec<u8> {
-        let start = v7_section_count_offset(bytes) + 4;
-        let mut output = bytes[..start].to_vec();
-        let mut reader = Cursor::new(&bytes[start..]);
-        while (reader.position() as usize) < bytes.len() - start {
-            let header = read_section_header(&mut reader).unwrap();
-            let mut packed = vec![0; header.compressed_len as usize];
-            reader.read_exact(&mut packed).unwrap();
-            let body = decode_section_body(packed, header.codec, header.uncompressed_len as usize)
-                .unwrap();
-            write_section(
-                &mut output,
-                header.section_id,
-                header.section_version,
-                header.element_count as usize,
-                &body,
-            )
-            .unwrap();
-        }
-        output
-    }
-
-    #[test]
     fn rec_reader_rejects_top_level_trailing_bytes() {
         let mut bytes = encoded_sample_rec();
         bytes.push(0x42);
@@ -3246,34 +2639,6 @@ mod tests {
         assert!(err
             .to_string()
             .contains("trailing bytes after top-level .dtr payload"));
-    }
-
-    #[test]
-    fn rec_reader_rejects_non_finite_replay_values() {
-        let mut rec = sample_rec();
-        rec.ticks[0].pre.origin[0] = f32::INFINITY;
-        let bytes = encoded_v7_rec(&rec);
-
-        let err = read_rec(&mut &bytes[..]).unwrap_err();
-
-        assert!(err.to_string().contains("contains a non-finite float"));
-    }
-
-    #[test]
-    fn rec_reader_keeps_v7_section_layout_readable() {
-        let rec = sample_rec();
-        let bytes = encoded_v7_rec(&rec);
-
-        let parsed = read_rec(&mut &bytes[..]).unwrap();
-
-        assert_eq!(parsed.header.version, 7);
-        assert_eq!(parsed.projectiles, rec.projectiles);
-        assert_eq!(parsed.high_fidelity, rec.high_fidelity);
-        assert_eq!(parsed.command_frames, rec.command_frames);
-        for (parsed_tick, tick) in parsed.ticks.iter().zip(&rec.ticks) {
-            assert!(snapshot_bit_eq(&parsed_tick.pre, &tick.pre));
-            assert!(snapshot_bit_eq(&parsed_tick.post, &tick.post));
-        }
     }
 
     #[test]
@@ -3319,9 +2684,9 @@ mod tests {
     }
 
     #[test]
-    fn rec_v7_reader_skips_unknown_sections() {
+    fn rec_reader_skips_unknown_sections() {
         let mut bytes = encoded_sample_rec();
-        let section_count_offset = v7_section_count_offset(&bytes);
+        let section_count_offset = section_count_offset(&bytes);
         let section_count = u32::from_le_bytes(
             bytes[section_count_offset..section_count_offset + 4]
                 .try_into()
@@ -3351,9 +2716,9 @@ mod tests {
     }
 
     #[test]
-    fn rec_v7_reader_rejects_missing_required_section() {
+    fn rec_reader_rejects_missing_required_section() {
         let mut bytes = encoded_sample_rec();
-        let section_count_offset = v7_section_count_offset(&bytes);
+        let section_count_offset = section_count_offset(&bytes);
         bytes[section_count_offset..section_count_offset + 4].copy_from_slice(&0_u32.to_le_bytes());
 
         let err = read_rec(&mut &bytes[..]).unwrap_err();
@@ -3364,14 +2729,14 @@ mod tests {
     }
 
     #[test]
-    fn rec_v7_reader_rejects_duplicate_command_frames_section() {
+    fn rec_reader_rejects_duplicate_command_frames_section() {
         let rec = sample_rec();
         let mut bytes = encoded_sample_rec();
-        append_duplicate_v7_section(
+        append_duplicate_section(
             &mut bytes,
             SECTION_COMMAND_FRAMES,
             rec.command_frames.len(),
-            &build_command_frame_section_v1(&rec).unwrap(),
+            &build_command_frame_section_v2(&rec).unwrap(),
         );
 
         let err = read_rec(&mut &bytes[..]).unwrap_err();
@@ -3380,12 +2745,12 @@ mod tests {
     }
 
     #[test]
-    fn rec_v7_reader_rejects_duplicate_movement_extras_section() {
+    fn rec_reader_rejects_duplicate_movement_extras_section() {
         let mut rec = sample_rec();
         rec.movement_extras = vec![ReplayMovementExtra::default(); rec.ticks.len()];
         let mut bytes = Vec::new();
         write_rec(&mut bytes, &rec).unwrap();
-        append_duplicate_v7_section(
+        append_duplicate_section(
             &mut bytes,
             SECTION_MOVEMENT_EXTRAS,
             rec.movement_extras.len(),
@@ -3400,81 +2765,6 @@ mod tests {
     }
 
     #[test]
-    fn rec_reader_defaults_v4_play_start_to_zero() {
-        let rec = sample_rec();
-        let body = build_body(&rec, &[]).unwrap();
-        let bytes = test_file_bytes_for_version(
-            &body,
-            4,
-            0,
-            rec.ticks.len(),
-            rec.subticks.len(),
-            rec.projectiles.len(),
-            0,
-            CODEC_BROTLI,
-            None,
-        );
-
-        let parsed = read_rec(&mut &bytes[..]).unwrap();
-
-        assert_eq!(parsed.header.version, 4);
-        assert_eq!(parsed.header.play_start_tick_index, 0);
-        assert_eq!(parsed.projectiles.len(), rec.projectiles.len());
-    }
-
-    #[test]
-    fn rec_reader_keeps_v3_legacy_layout_readable() {
-        let mut rec = sample_rec();
-        rec.projectiles.clear();
-        let body = build_body(&rec, &[]).unwrap();
-        let bytes = test_file_bytes_for_version(
-            &body,
-            3,
-            0,
-            rec.ticks.len(),
-            rec.subticks.len(),
-            0,
-            0,
-            CODEC_BROTLI,
-            None,
-        );
-
-        let parsed = read_rec(&mut &bytes[..]).unwrap();
-
-        assert_eq!(parsed.header.version, 3);
-        assert_eq!(parsed.header.play_start_tick_index, 0);
-        assert_eq!(parsed.ticks.len(), rec.ticks.len());
-        assert_eq!(parsed.subticks.len(), rec.subticks.len());
-        assert!(parsed.projectiles.is_empty());
-    }
-
-    #[test]
-    fn rec_reader_keeps_v5_legacy_layout_readable() {
-        let mut rec = sample_rec();
-        rec.header.play_start_tick_index = 1;
-        let body = build_body(&rec, &[]).unwrap();
-        let bytes = test_file_bytes_for_version(
-            &body,
-            5,
-            rec.header.play_start_tick_index,
-            rec.ticks.len(),
-            rec.subticks.len(),
-            rec.projectiles.len(),
-            0,
-            CODEC_BROTLI,
-            None,
-        );
-
-        let parsed = read_rec(&mut &bytes[..]).unwrap();
-
-        assert_eq!(parsed.header.version, 5);
-        assert_eq!(parsed.header.play_start_tick_index, 1);
-        assert_eq!(parsed.ticks.len(), rec.ticks.len());
-        assert_eq!(parsed.subticks.len(), rec.subticks.len());
-        assert_eq!(parsed.projectiles.len(), rec.projectiles.len());
-    }
-
-    #[test]
     fn rec_reader_rejects_out_of_range_play_start() {
         let mut bytes = encoded_sample_rec();
         let offset = play_start_offset();
@@ -3485,31 +2775,6 @@ mod tests {
         assert!(err
             .to_string()
             .contains("play_start_tick_index 99 out of range for 2 ticks"));
-    }
-
-    #[test]
-    fn rec_v5_header_does_not_change_body_length() {
-        let rec = sample_rec();
-        let body = build_body(&rec, &metadata_json_bytes(&rec.high_fidelity).unwrap()).unwrap();
-        let bytes = encoded_legacy_sample_rec();
-        let (_, body_len_offset, _) = rec_header_offsets(&bytes);
-        let body_uncompressed_len = u64::from_le_bytes(
-            bytes[body_len_offset..body_len_offset + 8]
-                .try_into()
-                .unwrap(),
-        );
-
-        assert_eq!(body_uncompressed_len, body.len() as u64);
-        assert_eq!(
-            body.len(),
-            expected_body_len(
-                rec.ticks.len(),
-                rec.subticks.len(),
-                rec.projectiles.len(),
-                metadata_json_bytes(&rec.high_fidelity).unwrap().len(),
-            )
-            .unwrap()
-        );
     }
 
     #[test]
@@ -3545,28 +2810,21 @@ mod tests {
 
     #[test]
     fn rec_reader_rejects_unsupported_version() {
-        let mut bytes = encoded_sample_rec();
-        bytes[8..12].copy_from_slice(&2_u32.to_le_bytes());
-        let err = read_rec(&mut &bytes[..]).unwrap_err();
-        assert!(err.to_string().contains("unsupported version 2"));
+        for version in [3_u32, 11, DTR_FORMAT_VERSION + 1] {
+            let mut bytes = encoded_sample_rec();
+            bytes[8..12].copy_from_slice(&version.to_le_bytes());
+            let err = read_rec(&mut &bytes[..]).unwrap_err();
+            assert!(err.to_string().contains("reconvert the demo"));
+        }
     }
 
     #[test]
     fn rec_reader_rejects_unknown_codec() {
-        let mut bytes = encoded_legacy_sample_rec();
-        let (codec_offset, _, _) = rec_header_offsets(&bytes);
-        bytes[codec_offset] = 9;
+        let mut bytes = encoded_sample_rec();
+        let codec_offset = section_count_offset(&bytes) + 4 + 8;
+        bytes[codec_offset] = 1;
         let err = read_rec(&mut &bytes[..]).unwrap_err();
-        assert!(err.to_string().contains("unsupported codec 9"));
-    }
-
-    #[test]
-    fn rec_reader_rejects_body_length_mismatch() {
-        let mut bytes = encoded_legacy_sample_rec();
-        let (_, body_len_offset, _) = rec_header_offsets(&bytes);
-        bytes[body_len_offset..body_len_offset + 8].copy_from_slice(&999_u64.to_le_bytes());
-        let err = read_rec(&mut &bytes[..]).unwrap_err();
-        assert!(err.to_string().contains("body length 999 != expected"));
+        assert!(err.to_string().contains("unsupported section codec 1"));
     }
 
     #[test]
@@ -3598,51 +2856,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_reader_rejects_more_than_36_subticks_on_one_tick() {
-        let mut rec = sample_rec();
-        rec.ticks[0].num_subtick = 37;
-        rec.subticks = vec![rec.subticks[0].clone(); 37];
-        let metadata_json = metadata_json_bytes(&rec.high_fidelity).unwrap();
-        let body = build_body(&rec, &metadata_json).unwrap();
-        let bytes = test_file_bytes(
-            &body,
-            rec.ticks.len(),
-            rec.subticks.len(),
-            rec.projectiles.len(),
-            metadata_json.len(),
-            CODEC_BROTLI,
-            None,
-        );
-
-        let err = read_rec(&mut &bytes[..]).unwrap_err();
-
-        assert!(err
-            .to_string()
-            .contains("tick 0 subtick count 37 exceeds limit 36"));
-    }
-
-    #[test]
-    fn legacy_reader_enforces_decoded_and_compressed_budgets() {
-        let bytes = encoded_legacy_sample_rec();
-        let limits = DtrReadLimits {
-            max_decoded_section_bytes: 1,
-            ..DtrReadLimits::default()
-        };
-        let decoded_err = read_rec_with_limits(&mut &bytes[..], limits).unwrap_err();
-        assert!(decoded_err.to_string().contains("decoded body length"));
-
-        let limits = DtrReadLimits {
-            max_compressed_section_bytes: 1,
-            ..DtrReadLimits::default()
-        };
-        let compressed_err = read_rec_with_limits(&mut &bytes[..], limits).unwrap_err();
-        assert!(compressed_err
-            .to_string()
-            .contains("compressed body length"));
-    }
-
-    #[test]
-    fn v7_reader_enforces_section_count_and_total_budgets() {
+    fn reader_enforces_section_count_and_total_budgets() {
         let bytes = encoded_sample_rec();
         let limits = DtrReadLimits {
             max_section_count: 1,
@@ -3671,9 +2885,9 @@ mod tests {
     }
 
     #[test]
-    fn v7_unknown_section_claims_count_toward_decoded_budget() {
+    fn unknown_section_claims_count_toward_decoded_budget() {
         let mut bytes = encoded_sample_rec();
-        insert_unknown_v7_section(&mut bytes, 100, &[]);
+        insert_unknown_section(&mut bytes, 100, &[]);
         let limits = DtrReadLimits {
             max_decoded_section_bytes: 99,
             ..DtrReadLimits::default()
@@ -3687,24 +2901,9 @@ mod tests {
     }
 
     #[test]
-    fn v8_variable_section_length_is_enforced_during_decode() {
-        let mut bytes = sections_as_brotli(&encoded_sample_rec());
-        let first_section = v7_section_count_offset(&bytes) + 4;
-        let uncompressed_len_offset = first_section + 20;
-        bytes[uncompressed_len_offset..uncompressed_len_offset + 8]
-            .copy_from_slice(&1_u64.to_le_bytes());
-
-        let err = read_rec(&mut &bytes[..]).unwrap_err();
-
-        assert!(err
-            .to_string()
-            .contains("decompressed body exceeds expected length 1"));
-    }
-
-    #[test]
-    fn v7_uncompressed_section_length_mismatch_is_rejected_before_payload_read() {
+    fn uncompressed_section_length_mismatch_is_rejected_before_payload_read() {
         let mut bytes = encoded_sample_rec();
-        let first_section = v7_section_count_offset(&bytes) + 4;
+        let first_section = section_count_offset(&bytes) + 4;
         bytes[first_section + 8] = CODEC_NONE;
 
         let err = read_rec(&mut &bytes[..]).unwrap_err();
@@ -3712,17 +2911,6 @@ mod tests {
         assert!(err
             .to_string()
             .contains("uncompressed section compressed length"));
-    }
-
-    #[test]
-    fn bounded_brotli_rejects_output_beyond_declared_length() {
-        let compressed = compress_body(&[1, 2]).unwrap();
-
-        let err = decompress_body(&compressed, 1).unwrap_err();
-
-        assert!(err
-            .to_string()
-            .contains("decompressed body exceeds expected length 1"));
     }
 
     #[test]
@@ -3756,9 +2944,9 @@ mod tests {
     }
 
     #[test]
-    fn file_reader_reserves_bytes_for_remaining_v7_headers_before_allocation() {
+    fn file_reader_reserves_bytes_for_remaining_headers_before_allocation() {
         let mut bytes = encoded_sample_rec();
-        let first_section = v7_section_count_offset(&bytes) + 4;
+        let first_section = section_count_offset(&bytes) + 4;
         let first_payload = first_section + SECTION_HEADER_BYTE_SIZE as usize;
         let claimed_payload_len = (bytes.len() - first_payload) as u64;
         bytes[first_section + 28..first_section + 36]
@@ -3952,186 +3140,11 @@ mod tests {
         bytes
     }
 
-    fn encoded_v7_rec(rec: &Cs2Rec) -> Vec<u8> {
-        let metadata_json = metadata_json_bytes(&rec.high_fidelity).unwrap();
-        let mut sections = vec![
-            (
-                SECTION_SNAPSHOTS,
-                if rec.ticks.is_empty() {
-                    0
-                } else {
-                    rec.ticks.len() + 1
-                },
-                build_snapshot_section_v1(rec).unwrap(),
-            ),
-            (
-                SECTION_TICK_METADATA,
-                rec.ticks.len(),
-                build_tick_metadata_section(rec).unwrap(),
-            ),
-            (
-                SECTION_SUBTICKS,
-                rec.subticks.len(),
-                build_subtick_section(rec).unwrap(),
-            ),
-        ];
-        if !rec.projectiles.is_empty() {
-            sections.push((
-                SECTION_PROJECTILES,
-                rec.projectiles.len(),
-                build_projectile_section(rec).unwrap(),
-            ));
-        }
-        if !metadata_json.is_empty() {
-            sections.push((SECTION_HIGH_FIDELITY_JSON, 1, metadata_json.clone()));
-        }
-        if !rec.command_frames.is_empty() {
-            sections.push((
-                SECTION_COMMAND_FRAMES,
-                rec.command_frames.len(),
-                build_command_frame_section_v1(rec).unwrap(),
-            ));
-        }
-        if !rec.movement_extras.is_empty() {
-            sections.push((
-                SECTION_MOVEMENT_EXTRAS,
-                rec.movement_extras.len(),
-                build_movement_extra_section(rec).unwrap(),
-            ));
-        }
-
-        let mut bytes = Vec::new();
-        bytes.write_all(MAGIC).unwrap();
-        write_u32(&mut bytes, 7).unwrap();
-        write_f32(&mut bytes, rec.header.tick_rate).unwrap();
-        write_u32(&mut bytes, rec.header.round).unwrap();
-        write_u8(&mut bytes, rec.header.side).unwrap();
-        write_u32(&mut bytes, rec.header.flags).unwrap();
-        write_u64(&mut bytes, rec.header.steam_id).unwrap();
-        write_u32(&mut bytes, rec.ticks.len() as u32).unwrap();
-        write_u32(&mut bytes, rec.subticks.len() as u32).unwrap();
-        write_u32(&mut bytes, rec.projectiles.len() as u32).unwrap();
-        write_u32(&mut bytes, rec.header.play_start_tick_index).unwrap();
-        write_u32(&mut bytes, metadata_json.len() as u32).unwrap();
-        write_string(&mut bytes, &rec.header.map).unwrap();
-        write_string(&mut bytes, &rec.header.player_name).unwrap();
-        write_u32(&mut bytes, sections.len() as u32).unwrap();
-        for (section_id, element_count, payload) in sections {
-            write_section(
-                &mut bytes,
-                section_id,
-                SECTION_VERSION_V1,
-                element_count,
-                &payload,
-            )
-            .unwrap();
-        }
-        bytes
-    }
-
-    fn encoded_legacy_sample_rec() -> Vec<u8> {
-        let rec = sample_rec();
-        let metadata_json = metadata_json_bytes(&rec.high_fidelity).unwrap();
-        let body = build_body(&rec, &metadata_json).unwrap();
-        test_file_bytes_for_version(
-            &body,
-            6,
-            rec.header.play_start_tick_index,
-            rec.ticks.len(),
-            rec.subticks.len(),
-            rec.projectiles.len(),
-            metadata_json.len(),
-            CODEC_BROTLI,
-            None,
-        )
-    }
-
-    fn test_file_bytes(
-        body: &[u8],
-        tick_count: usize,
-        subtick_count: usize,
-        projectile_count: usize,
-        metadata_json_len: usize,
-        codec: u8,
-        body_len: Option<u64>,
-    ) -> Vec<u8> {
-        test_file_bytes_for_version(
-            body,
-            6,
-            0,
-            tick_count,
-            subtick_count,
-            projectile_count,
-            metadata_json_len,
-            codec,
-            body_len,
-        )
-    }
-
-    fn test_file_bytes_for_version(
-        body: &[u8],
-        version: u32,
-        play_start_tick_index: u32,
-        tick_count: usize,
-        subtick_count: usize,
-        projectile_count: usize,
-        metadata_json_len: usize,
-        codec: u8,
-        body_len: Option<u64>,
-    ) -> Vec<u8> {
-        let compressed = compress_body(body).unwrap();
-        let mut bytes = Vec::new();
-        bytes.write_all(MAGIC).unwrap();
-        write_u32(&mut bytes, version).unwrap();
-        write_f32(&mut bytes, 64.0).unwrap();
-        write_u32(&mut bytes, 7).unwrap();
-        write_u8(&mut bytes, 2).unwrap();
-        write_u32(&mut bytes, 0).unwrap();
-        write_u64(&mut bytes, 76561198000000000).unwrap();
-        write_u32(&mut bytes, tick_count as u32).unwrap();
-        write_u32(&mut bytes, subtick_count as u32).unwrap();
-        if version >= 4 {
-            write_u32(&mut bytes, projectile_count as u32).unwrap();
-        }
-        if version >= 5 {
-            write_u32(&mut bytes, play_start_tick_index).unwrap();
-        }
-        if version >= 6 {
-            write_u32(&mut bytes, metadata_json_len as u32).unwrap();
-        }
-        write_string(&mut bytes, "de_mirage").unwrap();
-        write_string(&mut bytes, "player").unwrap();
-        write_u8(&mut bytes, codec).unwrap();
-        write_u64(&mut bytes, body_len.unwrap_or(body.len() as u64)).unwrap();
-        write_u64(&mut bytes, compressed.len() as u64).unwrap();
-        bytes.write_all(&compressed).unwrap();
-        bytes
-    }
-
     fn play_start_offset() -> usize {
         8 + 4 + 4 + 4 + 1 + 4 + 8 + 4 + 4 + 4
     }
 
-    fn rec_header_offsets(bytes: &[u8]) -> (usize, usize, usize) {
-        let version = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
-        let mut offset = 8 + 4 + 4 + 4 + 1 + 4 + 8 + 4 + 4;
-        if version >= 4 {
-            offset += 4;
-        }
-        if version >= 5 {
-            offset += 4;
-        }
-        if version >= 6 {
-            offset += 4;
-        }
-        let map_len = u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap()) as usize;
-        offset += 2 + map_len;
-        let player_len = u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap()) as usize;
-        offset += 2 + player_len;
-        (offset, offset + 1, offset + 9)
-    }
-
-    fn v7_section_count_offset(bytes: &[u8]) -> usize {
+    fn section_count_offset(bytes: &[u8]) -> usize {
         let mut offset = 8 + 4 + 4 + 4 + 1 + 4 + 8 + 4 + 4 + 4 + 4 + 4;
         let map_len = u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap()) as usize;
         offset += 2 + map_len;
@@ -4140,13 +3153,13 @@ mod tests {
         offset
     }
 
-    fn append_duplicate_v7_section(
+    fn append_duplicate_section(
         bytes: &mut Vec<u8>,
         section_id: u32,
         element_count: usize,
         payload: &[u8],
     ) {
-        let section_count_offset = v7_section_count_offset(bytes);
+        let section_count_offset = section_count_offset(bytes);
         let section_count = u32::from_le_bytes(
             bytes[section_count_offset..section_count_offset + 4]
                 .try_into()
@@ -4164,8 +3177,8 @@ mod tests {
         .unwrap();
     }
 
-    fn insert_unknown_v7_section(bytes: &mut Vec<u8>, uncompressed_len: u64, payload: &[u8]) {
-        let section_count_offset = v7_section_count_offset(bytes);
+    fn insert_unknown_section(bytes: &mut Vec<u8>, uncompressed_len: u64, payload: &[u8]) {
+        let section_count_offset = section_count_offset(bytes);
         let section_count = u32::from_le_bytes(
             bytes[section_count_offset..section_count_offset + 4]
                 .try_into()

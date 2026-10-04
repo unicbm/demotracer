@@ -11,9 +11,9 @@ namespace DemoTracer;
 
 internal static partial class BotControllerNative
 {
-    public const int ExpectedAbiVersion = 21;
+    public const int ExpectedAbiVersion = 22;
     public const uint RecFormatVersion = 12;
-    public const uint MinRecFormatVersion = 3;
+    public const uint MinRecFormatVersion = 12;
     public const int MovementSnapshotByteSize = 92;
     public const int ReplayTickByteSize = 228;
     public const int SubtickMoveByteSize = 28;
@@ -248,10 +248,10 @@ internal readonly record struct ReplayProjectileEvent(
 internal sealed class ReplayHighFidelityMetadata
 {
     public const int CurrentSchemaVersion = 5;
-    public static ReplayHighFidelityMetadata Empty { get; } = new();
+    public static ReplayHighFidelityMetadata Empty { get; } = new() { SchemaVersion = CurrentSchemaVersion };
 
     [JsonPropertyName("schema_version")]
-    public int SchemaVersion { get; set; } = 4;
+    public int SchemaVersion { get; set; }
 
     [JsonPropertyName("round_start_balance")]
     public uint? RoundStartBalance { get; set; }
