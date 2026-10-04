@@ -9,7 +9,6 @@ class ISource2GameClients;
 
 namespace BotController
 {
-    // Mirror DtrControllerApi.LockKind on the C# side.
     enum class LockKind : int
     {
         All = 0,

@@ -44,7 +44,6 @@ pub struct VoiceClipSpeaker {
     pub frame_count: usize,
 }
 
-#[cfg(feature = "demoparser")]
 mod imp {
     use super::*;
     use ahash::AHashMap;
@@ -511,18 +510,6 @@ mod imp {
     fn write_svarint(out: &mut Vec<u8>, value: i64) {
         let encoded = ((value << 1) ^ (value >> 63)) as u64;
         write_uvarint(out, encoded);
-    }
-}
-
-#[cfg(not(feature = "demoparser"))]
-mod imp {
-    use super::*;
-
-    pub fn export_voice_clips_from_parsed(
-        _parsed_demo: &ParsedDemo,
-        _request: &VoiceParsedBatchExportRequest,
-    ) -> Result<Vec<VoiceClipExportReport>> {
-        Err(Error::FeatureDisabled("demoparser"))
     }
 }
 

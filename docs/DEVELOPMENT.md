@@ -87,13 +87,13 @@ The bundled DTR bot runtime uses independent component identities:
 
 | Component | Native DLL | Managed DLL | Shared API | Capability |
 | --- | --- | --- | --- | --- |
-| `dtr-controller` | `dtr-controller.dll` | `DtrController.dll` | `DtrControllerApi.dll` | `dtr-controller:api` |
+| `dtr-controller` | `dtr-controller.dll` | — | — | — |
 | `dtr-hider` | `dtr-hider.dll` | `DtrHider.dll` | `DtrHiderApi.dll` | `dtr-hider:api:v3` |
 
 Native directories and Metamod aliases use the component names. CSS provider
 directories match their assembly names. Native exports use `DtrController_`
-and `DtrHider_`; commands use `dtr_controller_` and `dtr_hider_` (CSS recording
-commands use `css_dtr_controller_`). No old-name aliases are registered.
+and `DtrHider_`; native commands use `dtr_controller_` and `dtr_hider_`.
+The former managed controller SDK and JSON recording commands are retired.
 BotRandomizer retains its current unified provider, API, name and packaging.
 
 The GUI retires old DTR files only when the previous receipt still owns them.

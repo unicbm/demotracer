@@ -1,11 +1,9 @@
 param(
-    [string]$Dotnet = 'dotnet',
     [string]$CMake = 'cmake',
     [string]$CTest = 'ctest',
     [string]$CommonDirectory,
     [string]$Generator,
-    [switch]$NativeBuild,
-    [switch]$SkipManagedBuild
+    [switch]$NativeBuild
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
@@ -24,9 +22,6 @@ $tests = Join-Path $repo '.build/tests'
 Invoke-Checked $CMake (@('-S', (Join-Path $repo 'tests'), '-B', $tests) + $configure)
 Invoke-Checked $CMake @('--build', $tests, '--config', 'Release')
 Invoke-Checked $CTest @('--test-dir', $tests, '-C', 'Release', '--output-on-failure')
-if (-not $SkipManagedBuild) {
-    Invoke-Checked $Dotnet @('build', (Join-Path $repo 'csharp/DtrController/DtrController.csproj'), '-c', 'Release', "-p:DtrCommonRoot=$common")
-}
 
 if ($NativeBuild) {
     $native = Join-Path $repo '.build/native'

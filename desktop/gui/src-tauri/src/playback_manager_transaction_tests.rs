@@ -8,7 +8,7 @@ use super::*;
 use crate::playback_installation::{embedded_playback_contract, ReceiptFileWire};
 use std::io::Write;
 
-const CONTROLLER: &str = "addons/counterstrikesharp/plugins/DtrController/DtrController.dll";
+const CONTROLLER: &str = "addons/dtr-controller/bin/win64/dtr-controller.dll";
 const OLD_HIDER: &str =
     "addons/counterstrikesharp/plugins/DemoTracerBotHider/DemoTracerBotHider.dll";
 const USER_CONFIG: &str = "addons/counterstrikesharp/plugins/DemoTracerBotHider/settings.json";
@@ -245,6 +245,25 @@ fn renamed_runtime_keeps_dependencies_of_an_externally_replaced_provider() {
 #[test]
 fn provider_migration_and_rollback_preserve_user_data_and_original_code() {
     let fixture = InstallFixture::new();
+    fixture.install("1.2.1").unwrap();
+    let retired = [
+        "addons/counterstrikesharp/plugins/DtrController/DtrController.dll",
+        "addons/counterstrikesharp/shared/DtrControllerApi/DtrControllerApi.dll",
+    ];
+    let mut previous = read_installed_receipt(&fixture.game()).unwrap().unwrap();
+    for path in retired {
+        fixture.write(path, b"retired SDK");
+        previous.files.push(ReceiptFileWire {
+            path: path.to_string(),
+            component: "bot_controller".to_string(),
+            size: 11,
+            sha256: sha256_hex(b"retired SDK"),
+        });
+    }
+    fixture.write(
+        INSTALL_RECEIPT_RELATIVE_PATH,
+        &serde_json::to_vec(&previous).unwrap(),
+    );
     fixture.write(CONTROLLER, b"upstream controller");
     fixture.write(OLD_HIDER, b"old DTR hider");
     fixture.write(USER_CONFIG, b"user settings");
@@ -255,6 +274,9 @@ fn provider_migration_and_rollback_preserve_user_data_and_original_code() {
     );
     let original = fixture.snapshot();
     fixture.install("1.2.2").unwrap();
+    for path in retired {
+        assert!(!fixture.game().join(path).exists());
+    }
     assert!(!fixture.game().join(OLD_HIDER).exists());
     assert_ne!(
         fs::read(fixture.game().join(CONTROLLER)).unwrap(),
@@ -364,7 +386,6 @@ fn install_rejects_changed_event_semantics_even_when_tick_size_and_abi_match() {
         "movement_intent_version",
         "replay_tick_bytes",
         "replay_tick_event_tail",
-        "managed_provider_version",
     ] {
         controller.remove(key);
     }

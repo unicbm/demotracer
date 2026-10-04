@@ -6,12 +6,10 @@ This library was extracted from `desktop/converter` in
 The root AGPL-3.0-only license is copied from that repository, and existing
 source copyright/license headers are preserved.
 
-Extraction changes repository-relative dependency and embedded-data paths, and
-completes the feature-disabled stubs for the existing cancellation-aware read
-entrypoints so `--no-default-features` can compile. It
-preserves package `cs2-demotracer`, library `cs2_demotracer`, the public Rust API,
-and the `.dtr`/manifest format behavior. This is a library dependency of the GUI,
-not a separately supported command-line application.
+The converter is maintained as the GUI's internal library, with one filesystem
+export entry point and the pinned parser always enabled. The former memory-export
+API and parser-disabled build are retired. The package and library identities,
+existing source notices, and supported .dtr/manifest formats are preserved.
 
 The maintained parser is sourced from the pinned `third_party/demoparser` checkout;
 its upstream MIT license, generated sources and maintenance notes remain with

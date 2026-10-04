@@ -22,6 +22,5 @@ try {
     Invoke-Cargo fmt '--' --check
     Invoke-Cargo check --all-targets --release --locked
     Invoke-Cargo test --release --locked
-    Invoke-Cargo test --release --locked --no-default-features
 }
 finally { Pop-Location }

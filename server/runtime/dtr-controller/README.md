@@ -2,12 +2,9 @@
 
 The maintained source repository is
 [`unicbm/demotracer`](https://github.com/unicbm/demotracer/tree/main/server/runtime/dtr-controller).
-It contains the native runtime, managed API, and provider shipped together
-with CS2 DemoTracer. The native library is `dtr-controller.dll` and the managed
-provider is `DtrController.dll`, keeping their loader identities distinct;
-the shared assembly is `DtrControllerApi` and the capability is
-`dtr-controller:api`. Native exports use `DtrController_`. These identities are
-separate from XBribo's upstream components; numeric ABI and replay layouts are
+It contains the native `dtr-controller.dll` runtime used directly by DemoTracer,
+with `DtrController_` exports. The separate managed recording provider, public
+SDK, and single-file binding are retired. Native ABI and replay layouts are
 unchanged. See [UPSTREAM.md](UPSTREAM.md) for attribution and maintained differences.
 
 ## Standalone checks
@@ -15,18 +12,18 @@ unchanged. See [UPSTREAM.md](UPSTREAM.md) for attribution and maintained differe
 Build from the DemoTracer working tree. Shared infrastructure is consumed
 directly from `server/runtime/common`.
 
-With PowerShell 7, CMake, a C++20 compiler, and .NET 10 installed:
+With PowerShell 7, CMake, and a C++20 compiler installed:
 
 ```powershell
 ./tools/check.ps1
-./tools/check.ps1 -Dotnet /path/to/dotnet -NativeBuild
+./tools/check.ps1 -NativeBuild
 ```
 
-The default check builds the provider and runs Release native tests without a
+The default check runs Release native tests without a
 CS2 SDK. `-NativeBuild` additionally builds the plugin and requires the SDK
 environment described below. For a local shared-code checkout, use
 `-CommonDirectory /path/to/common`; direct builds accept
-`-DDTR_COMMON_DIR=...` and MSBuild `-p:DtrCommonRoot=...`.
+`-DDTR_COMMON_DIR=...`.
 The check script stages native installation files in `.build/native/package/`.
 
 ## Runtime
@@ -172,119 +169,6 @@ Record / replay is driven through the C-ABI below, not console commands.
 Replay provides simulation-local angles and the final post-angle getter. The
 engine updates and networks `m_angEyeAngles` at its normal command boundary.
 Command angles use recorded command data, or the tick pre view when absent.
-
-------------------------------------------------------------------------
-
-## CounterStrikeSharp API
-
-Drop `scripts/BotController.NativeApi.cs` into your project when you are
-building a low-level BotController integration. This file is a typed C#
-P/Invoke binding over the native C ABI; it is not the public DemoTracer
-companion-plugin API.
-
-Companion plugins for DemoTracer should use the managed `demotracer:api`
-capability from `../common/csharp/DemoTracerApi/IDemoTracerApi.cs` instead of depending on
-BotController native exports or replay buffer structs.
-
-ABI 21 keeps the upstream 228-byte replay tick layout. Its 36-byte event tail is
-reserved: every field must be zero, and loads reject unsupported native drop
-payloads. Public motion recording and JSON replay remain available, but do not
-capture or replay weapon drops. DTR gameplay events use their managed executor.
-Projectile events in motion JSON are recording metadata; standalone replay uses
-engine throws without a separate projectile correction loop.
-
-```csharp
-using DtrControllerApi;
-
-if (!BotController.IsCompatible()) return;   // requires ABI 21
-BotController.TryGetAbiInfo(out var abiInfo);
-var capabilities = BotController.Capabilities();
-var buildId = BotController.BuildId();
-```
-
-Low-level movement integrations can probe
-`BotController.CapabilityUsercmdMovementIntent` and then call
-`SetUsercmdMovementIntent` / `ClearUsercmdMovementIntent`. The `SetLeftHandIntent`
-helpers are present only for compatibility with existing left-hand movement
-callers.
-
-ABI minor 32 adds the optional
-`BotController.CapabilityButtonOnlyMovementIntent` capability. When present,
-callers may pass `BotController.MovementIntentPreserveMoveAxes` in `flags` to
-apply `buttonsSet`/`buttonsClear` at `PlayerRunCommand` and `ProcessMovement`
-without replacing the engine-authored forward, left, or up movement axes. The
-movement-button mask includes `IN_SPEED`, allowing a caller to remove Walk
-while leaving native navigation in control.
-
-ABI minor 33 adds `BotController.CapabilityHandoffBestWeapon` and
-`RequestEquipBestWeapon`. The request is tied to the currently observed
-`CCSBot` incarnation and consumed once after its next native `Update`. It is
-discarded if replay control or a weapon lock resumes before execution.
-
-ABI minor 34 adds `BotController.CapabilityReplayInputHistory` and
-`LoadReplayWithInputHistory`. The export remains ABI-compatible, but the
-Windows runtime does not currently advertise the capability: mutating
-engine-owned `CSGOUserCmdPB` history entries across the module ABI boundary can
-corrupt the command ring. Matched callers fall back to `LoadReplayExtended`,
-preserving command, movement, and subtick playback while leaving native input
-history untouched.
-
-The input-history and movement-extra ABI parameters still receive validation
-for compatibility with older integrations. Their unsupported playback data is
-not retained in native replay buffers. Current replay state restoration uses
-the source-state timeline.
-
-Replay handoff integrations can probe `CapabilityNativePerception`, then read
-`TryGetNativePerceptionState`. During replay, the native vision detours disable
-only the `CCSBot::IsVisible` FOV test; LOS/smoke logic and native enemy/reaction
-state continue normally. `SetReplayNativeFovOverride` controls this replay-only
-behavior.
-
-### Locks
-
-```csharp
-BotController.Lock(slot, LockKind.Aim);
-BotController.Lock(slot, LockKind.All);
-BotController.Lock(slot, LockTarget.Slot3);   // weapon lock
-BotController.Unlock(slot, LockKind.Aim);
-BotController.UnlockAll(LockKind.Weapon);
-BotController.IsLocked(slot, LockKind.Aim);
-BotController.GetWeaponLock(slot);            // -> LockTarget
-```
-
-### Record & Replay
-
-```csharp
-// Record a slot's motion
-BotController.StartRecord(srcSlot);
-// ... player moves ...
-BotController.StopRecord(srcSlot);
-
-// Replay it on a bot
-BotController.TransferRecordingToReplay(srcSlot, botSlot);
-// Do not Lock(All): replay owns output while native AI shadow-runs for handoff.
-BotController.StartReplay(botSlot, loop: false);
-
-// Or pull the buffers out, persist them, and load later
-var (ticks, subs) = BotController.GetRecordedMotion(srcSlot);
-BotController.LoadReplay(botSlot, ticks, subs);
-
-// Drive weapon/fire from the tick being replayed
-if (BotController.TryGetReplayTick(botSlot, out var tick))
-    BotController.SwitchBotWeapon(botSlot, tick.WeaponDefIndex);
-
-BotController.ReplayCursor(botSlot);          // current tick, <0 if idle
-BotController.ReplayTotal(botSlot);           // loaded tick count
-BotController.StopReplay(botSlot);            // retain buffers for a warm restart
-
-// When this slot will not be reused soon, capability-probe and release its
-// native tick/subtick/command buffer capacity as well as stopping replay.
-if ((BotController.Capabilities() & BotController.CapabilityReleaseReplayBuffer) != 0)
-    BotController.ReleaseReplayBuffer(botSlot);
-```
-
-`ReplayTick` / `SubtickMove` mirror the C++ struct layout byte-for-byte, so the
-buffers can be serialized and reloaded across rounds. Main thread only.
 
 ------------------------------------------------------------------------
 

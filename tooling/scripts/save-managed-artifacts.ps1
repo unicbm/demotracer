@@ -7,8 +7,6 @@ $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 foreach ($relative in @(
     'server/plugins/DemoTracer/src/DemoTracer/bin/Release/net10.0',
     'server/runtime/common/csharp/DemoTracerApi/bin/Release/net10.0',
-    'server/runtime/dtr-controller/csharp/DtrController/bin/Release',
-    'server/runtime/dtr-controller/csharp/DtrControllerApi/bin/Release',
     'server/runtime/dtr-hider/csharp/DtrHider/bin/Release/net10.0',
     'server/runtime/dtr-hider/csharp/DtrHiderApi/bin/Release/net10.0'
 )) {

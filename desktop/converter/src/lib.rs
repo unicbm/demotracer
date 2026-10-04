@@ -69,8 +69,6 @@ pub enum Error {
     },
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("this build was compiled without the `{0}` feature")]
-    FeatureDisabled(&'static str),
 }
 
 pub fn io_error(path: impl AsRef<std::path::Path>, source: std::io::Error) -> Error {

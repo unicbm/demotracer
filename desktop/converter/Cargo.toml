@@ -5,16 +5,12 @@ edition = "2021"
 license-file = "LICENSE"
 publish = false
 
-[features]
-default = ["demoparser"]
-demoparser = ["dep:ahash", "dep:parser"]
-
 [lib]
 name = "cs2_demotracer"
 path = "src/lib.rs"
 
 [dependencies]
-ahash = { version = "0.8.12", optional = true, default-features = false, features = ["std", "no-rng"] }
+ahash = { version = "0.8.12", default-features = false, features = ["std", "no-rng"] }
 brotli = "8.0.4"
 rayon = "1.12"
 regex = "1.13.1"
@@ -26,7 +22,6 @@ zstd = { version = "0.14.0", default-features = false }
 
 [dependencies.parser]
 path = "../../third_party/demoparser/src/parser"
-optional = true
 
 [dev-dependencies]
 tempfile = "3.27.0"

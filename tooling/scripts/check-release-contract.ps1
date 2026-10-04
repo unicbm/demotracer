@@ -61,21 +61,18 @@ function Read-CargoPackageVersion([string]$RelativePath, [string]$PackageName) {
 $contract = (Read-Text "shared\contracts\playback-contract.v1.json") | ConvertFrom-Json
 Assert-Equal "inventory plan writer" (Read-RegexValue "desktop/converter/src/model/mod.rs" 'HIGH_FIDELITY_SCHEMA_VERSION:\s*u32\s*=\s*(\d+)' "metadata schema") ([string]$contract.inventory_plan_schema)
 Assert-Equal "inventory plan reader" (Read-RegexValue "server/plugins/DemoTracer/src/DemoTracer/Native/BotControllerNativeTypes.cs" 'CurrentSchemaVersion\s*=\s*(\d+)' "metadata schema") ([string]$contract.inventory_plan_schema)
-foreach ($component in @(
-    @{ Id = "dtr-controller"; Api = "DtrControllerApi"; Project = "DtrController"; Contract = $contract.bot_controller },
-    @{ Id = "dtr-hider"; Api = "DtrHiderApi"; Project = "DtrHider"; Contract = $contract.bot_hider }
-)) {
-    $id = $component.Id
+foreach ($id in @("dtr-controller", "dtr-hider")) {
     $root = "server/runtime/$id"
-    Assert-Equal "$id native identity" $component.Contract.native_library $id
-    Assert-Equal "$id managed identity" $component.Contract.managed_assembly $component.Project
-    Assert-Equal "$id API identity" $component.Contract.managed_api $component.Api
+    $componentContract = if ($id -eq "dtr-controller") { $contract.bot_controller } else { $contract.bot_hider }
+    Assert-Equal "$id native identity" $componentContract.native_library $id
     Assert-Equal "$id CMake output" (Read-RegexValue "$root/CMakeLists.txt" 'OUTPUT_NAME "([^"]+)"' "native output") $id
     Assert-Equal "$id Metamod alias" (Read-RegexValue "$root/cmake/$id.vdf.in" '"alias"\s+"([^"]+)"' "Metamod alias") $id
-    Assert-Equal "$id provider assembly" (Read-RegexValue "$root/csharp/$($component.Project)/$($component.Project).csproj" '<AssemblyName>([^<]+)</AssemblyName>' "provider assembly") $component.Project
-    Assert-Equal "$id shared assembly" (Read-RegexValue "$root/csharp/$($component.Api)/$($component.Api).csproj" '<AssemblyName>([^<]+)</AssemblyName>' "API assembly") $component.Api
 }
-Assert-Equal "controller capability" (Read-RegexValue "server/runtime/dtr-controller/csharp/DtrController/BotControllerCapability.cs" 'new\("([^"]+)"\)' "capability") $contract.bot_controller.capability
+Assert-Equal "hider managed identity" $contract.bot_hider.managed_assembly "DtrHider"
+Assert-Equal "hider API identity" $contract.bot_hider.managed_api "DtrHiderApi"
+foreach ($assembly in @("DtrHider", "DtrHiderApi")) {
+    Assert-Equal "hider $assembly output" (Read-RegexValue "server/runtime/dtr-hider/csharp/$assembly/$assembly.csproj" '<AssemblyName>([^<]+)</AssemblyName>' "assembly") $assembly
+}
 Assert-Equal "hider capability" (Read-RegexValue "server/runtime/dtr-hider/csharp/DtrHiderApi/IDtrHiderApi.cs" 'Capability = "([^"]+)"' "capability") $contract.bot_hider.capability
 $sourceRegistry = (Read-Text "server\runtime\common\contracts\replay-source-fields.v1.json") | ConvertFrom-Json
 $nativeSource = Read-Text "server\runtime\dtr-controller\src\BotRecorder\ReplaySourceState.h"
@@ -142,13 +139,10 @@ Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n
 Assert-Equal "CSS minimum DTR reader" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'MinRecFormatVersion\s*=\s*(\d+)' "minimum DTR reader") ([string]$contract.dtr_reader.min)
 Assert-Equal "CSS maximum DTR reader" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'RecFormatVersion\s*=\s*(\d+)' "maximum DTR reader") ([string]$contract.dtr_reader.max)
 Assert-Equal "CSS native ABI" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'ExpectedAbiVersion\s*=\s*(\d+)' "CSS native ABI") ([string]$contract.bot_controller.abi_major)
-Assert-Equal "managed provider native ABI" (Read-RegexValue "server\runtime\dtr-controller\csharp\DtrController\BotController.NativeApi.cs" 'ExpectedAbiVersion\s*=\s*(\d+)' "managed provider native ABI") ([string]$contract.bot_controller.abi_major)
-Assert-Equal "standalone binding native ABI" (Read-RegexValue "server\runtime\dtr-controller\scripts\BotController.NativeApi.cs" 'ExpectedAbiVersion\s*=\s*(\d+)' "standalone binding native ABI") ([string]$contract.bot_controller.abi_major)
 Assert-Equal "runtime native ABI" (Read-RegexValue "server\runtime\dtr-controller\src\common\exports.cpp" 'kBotControllerAbiMajor\s*=\s*(\d+)' "runtime native ABI") ([string]$contract.bot_controller.abi_major)
 Assert-Equal "minimum native ABI minor" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\DemoTracerRuntimeHealth.cs" 'MinimumBotControllerAbiMinor\s*=\s*(\d+)' "minimum native ABI minor") ([string]$contract.bot_controller.min_abi_minor)
 Assert-Equal "BotController public control API" (Read-RegexValue "server\runtime\dtr-controller\src\common\exports.cpp" 'DtrController_GetPublicApiVersion\(\)\s*\{\s*return\s+(\d+)' "public control API") ([string]$contract.bot_controller.public_control_api)
 Assert-Equal "BotController movement input contract" (Read-RegexValue "server\runtime\dtr-controller\src\common\exports.cpp" 'DtrController_GetMovementIntentContractVersion\(\)\s*\{\s*return\s+(\d+)' "movement input contract") ([string]$contract.bot_controller.movement_intent_version)
-Assert-Equal "BotController managed provider" (Read-RegexValue "server\runtime\dtr-controller\csharp\DtrController\DtrControllerPlugin.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "managed provider version") ([string]$contract.bot_controller.managed_provider_version)
 Assert-Equal "BotController replay tick size" (Read-RegexValue "server\runtime\dtr-controller\src\BotRecorder\MotionRecorder.h" 'sizeof\(ReplayTick\)\s*==\s*(\d+)' "native replay tick size") ([string]$contract.bot_controller.replay_tick_bytes)
 Assert-Equal "BotController replay event tail" ([string]$contract.bot_controller.replay_tick_event_tail) "reserved_zero"
 

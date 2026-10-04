@@ -167,7 +167,8 @@ impl<R: Read> ReadBudget<R> {
 pub fn write_rec_file(path: &Path, rec: &Cs2Rec) -> Result<()> {
     let file = File::create(path).map_err(|e| io_error(path, e))?;
     let mut writer = BufWriter::new(file);
-    write_rec(&mut writer, rec)
+    write_rec(&mut writer, rec)?;
+    writer.flush().map_err(|e| io_error(path, e))
 }
 
 pub fn read_rec_file(path: &Path) -> Result<Cs2Rec> {

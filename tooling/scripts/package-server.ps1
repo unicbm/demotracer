@@ -42,8 +42,6 @@ $commonRoot = Join-Path $repoRoot "server\runtime\common"
 $apiOut = Join-Path $commonRoot "csharp\DemoTracerApi\bin\$Configuration\net10.0"
 $botHiderCssOut = Join-Path $repoRoot "server\runtime\dtr-hider\csharp\DtrHider\bin\$Configuration\net10.0"
 $botHiderApiOut = Join-Path $repoRoot "server\runtime\dtr-hider\csharp\DtrHiderApi\bin\$Configuration\net10.0"
-$botControllerCssOut = Join-Path $repoRoot "server\runtime\dtr-controller\csharp\DtrController\bin\$Configuration"
-$botControllerApiOut = Join-Path $repoRoot "server\runtime\dtr-controller\csharp\DtrControllerApi\bin\$Configuration"
 $playbackContractPath = Join-Path $repoRoot "shared\contracts\playback-contract.v1.json"
 $nugetConfigPath = Join-Path $repoRoot "NuGet.Config"
 $componentArguments = @(
@@ -212,9 +210,6 @@ if (-not $SkipCssBuild) {
     $sourcePathMap = "-p:PathMap=$repoRoot=/_/demotracer"
     $demoTracerProject = Join-Path $repoRoot "server\plugins\DemoTracer\src\DemoTracer\DemoTracer.csproj"
     $botHiderProject = Join-Path $repoRoot "server\runtime\dtr-hider\csharp\DtrHider\DtrHider.csproj"
-    $botControllerProject = Join-Path $repoRoot "server\runtime\dtr-controller\csharp\DtrController\DtrController.csproj"
-    Invoke-Checked $resolvedDotnetPath (@("restore", $botControllerProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false") + $componentArguments)
-    Invoke-Checked $resolvedDotnetPath (@("build", $botControllerProject, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false", $sourcePathMap) + $componentArguments)
     Invoke-Checked $resolvedDotnetPath (@("restore", $demoTracerProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false") + $componentArguments)
     Invoke-Checked $resolvedDotnetPath (@("restore", $botHiderProject, "--configfile", $nugetConfigPath, "-m:1", "-nodeReuse:false", "-p:NuGetAudit=false") + $componentArguments)
     Invoke-Checked $resolvedDotnetPath (@("build", $demoTracerProject, "-c", $Configuration, "--no-restore", "-m:1", "-nodeReuse:false", "-p:UseSharedCompilation=false", "-p:NuGetAudit=false", $sourcePathMap) + $componentArguments)
@@ -273,8 +268,6 @@ $runtimeDll = Join-Path $runtimeRoot "addons\dtr-controller\bin\win64\dtr-contro
 Require-Path $runtimeDll "BotController runtime DLL"
 Assert-BinaryContainsExport $runtimeDll "DtrController_GetAbiInfo"
 Assert-BinaryContainsExport $runtimeDll "DtrController_GetPublicApiVersion"
-Require-Path (Join-Path $botControllerCssOut "DtrController.dll") "BotController managed provider"
-Require-Path (Join-Path $botControllerApiOut "DtrControllerApi.dll") "BotController shared API"
 Assert-BinaryContainsExport $runtimeDll "DtrController_GetCapabilities"
 Assert-BinaryContainsExport $runtimeDll "DtrController_GetBuyStatus"
 Assert-BinaryContainsExport $runtimeDll "DtrController_RequestEquipBestWeapon"
@@ -328,12 +321,6 @@ Copy-RequiredFile (Join-Path $botHiderRuntimeRoot "addons\metamod\dtr-hider.vdf"
     (Join-Path $addonsOut "metamod\dtr-hider.vdf")
 
 $pluginOut = Join-Path $stageRoot "addons\counterstrikesharp\plugins\DemoTracer"
-$botControllerPluginOut = Join-Path $stageRoot "addons\counterstrikesharp\plugins\DtrController"
-Copy-RequiredFile (Join-Path $botControllerCssOut "DtrController.dll") (Join-Path $botControllerPluginOut "DtrController.dll")
-Copy-RequiredFile (Join-Path $botControllerCssOut "DtrController.deps.json") (Join-Path $botControllerPluginOut "DtrController.deps.json")
-Copy-RequiredFile (Join-Path $botControllerApiOut "DtrControllerApi.dll") (Join-Path $stageRoot "addons\counterstrikesharp\shared\DtrControllerApi\DtrControllerApi.dll")
-Copy-RequiredFile (Join-Path $repoRoot "server\runtime\dtr-controller\csharp\UPSTREAM.md") (Join-Path $botControllerPluginOut "UPSTREAM.md")
-Copy-RequiredFile (Join-Path $repoRoot "server\runtime\dtr-controller\csharp\LICENSE.AGPL3") (Join-Path $botControllerPluginOut "LICENSE.AGPL3")
 Copy-RequiredFile (Join-Path $cssOut "DemoTracer.deps.json") (Join-Path $pluginOut "DemoTracer.deps.json")
 Copy-RequiredFile (Join-Path $cssOut "DemoTracer.dll") (Join-Path $pluginOut "DemoTracer.dll")
 Copy-RequiredFile (Join-Path $cssOut "ZstdSharp.dll") (Join-Path $pluginOut "ZstdSharp.dll")
@@ -385,9 +372,7 @@ $receiptFiles = @(
         Sort-Object FullName |
         ForEach-Object {
             $relativePath = [System.IO.Path]::GetRelativePath($stageRoot, $_.FullName).Replace('\', '/')
-            $component = if ($relativePath -like "addons/dtr-controller/*" -or $relativePath -eq "addons/metamod/dtr-controller.vdf" -or
-                             $relativePath -like "addons/counterstrikesharp/plugins/DtrController/*" -or
-                             $relativePath -like "addons/counterstrikesharp/shared/DtrControllerApi/*") {
+            $component = if ($relativePath -like "addons/dtr-controller/*" -or $relativePath -eq "addons/metamod/dtr-controller.vdf") {
                 "bot_controller"
             } elseif ($relativePath -like "addons/dtr-hider/*" -or $relativePath -eq "addons/metamod/dtr-hider.vdf") {
                 "bot_hider_native"
@@ -535,8 +520,7 @@ Required external server prerequisites:
 
 Included in this bundle:
 
-- `dtr-controller` Metamod runtime and CounterStrikeSharp provider
-- `DtrControllerApi.dll`
+- `dtr-controller` Metamod runtime
 - `dtr-hider` Metamod runtime maintained by DemoTracer
 - `DemoTracer` CounterStrikeSharp plugin
 - `dtr-hider` CounterStrikeSharp plugin

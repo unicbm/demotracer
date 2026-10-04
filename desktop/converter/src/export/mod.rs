@@ -4,6 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+#[cfg(test)]
 use crate::analysis::quality::{analyze_demo, AnalysisOptions};
 #[cfg(test)]
 use crate::cosmetics::catalog::weapon_cosmetic_rarity;
@@ -23,7 +24,6 @@ use crate::cosmetics::{
     KEYCHAIN_SLOT_0_OFFSET_Y_ATTR, KEYCHAIN_SLOT_0_OFFSET_Z_ATTR, KEYCHAIN_SLOT_0_SEED_ATTR,
     KEYCHAIN_SLOT_0_STICKER_ATTR, STEAM_ID64_BASE,
 };
-use crate::demo_id::output_demo_id;
 use crate::model::{
     public_demo_path, ConversionManifest, ConvertedFile, ConvertedRound, DemoAnalysis,
     EconomyClass, HighFidelityMetadata, ManifestAvatarOverride, ParsedAvatarOverride, ParsedDemo,
@@ -32,7 +32,7 @@ use crate::model::{
     ReplayProjectileMetadata, ReplayRoundScoreboard, ReplayView, ReplayViewmodel, RoundSummary,
     Side, TeamEconomy, DEMOTRACER_ABI, DTR_FORMAT_VERSION,
 };
-use crate::rec_writer::write_rec;
+use crate::rec_writer::write_rec_file;
 use crate::replay::context::{
     first_weapon_def_index_from_play_start, preload_weapon_def_indices_from_refs_from_play_start,
     replay_loadout,
@@ -55,8 +55,7 @@ pub const MAX_FREEZE_PREROLL_SECONDS: f32 = 120.0;
 
 #[derive(Clone, Debug)]
 pub struct ConvertOptions {
-    pub output_dir: PathBuf,
-    pub output_stem: Option<String>,
+    pub demo_id: String,
     pub side: Side,
     pub selected_rounds: Option<BTreeSet<u32>>,
     pub include_suspicious: bool,
@@ -64,36 +63,6 @@ pub struct ConvertOptions {
     pub export_cosmetics: bool,
     pub export_stickers: bool,
     pub export_charms: bool,
-    pub analysis: AnalysisOptions,
-}
-
-#[derive(Clone, Debug)]
-pub struct ConvertMemoryOptions {
-    pub output_stem: Option<String>,
-    pub side: Side,
-    pub selected_rounds: Option<BTreeSet<u32>>,
-    pub include_suspicious: bool,
-    pub cut_before_bomb_plant: bool,
-    pub export_cosmetics: bool,
-    pub export_stickers: bool,
-    pub export_charms: bool,
-    pub analysis: AnalysisOptions,
-}
-
-impl From<&ConvertOptions> for ConvertMemoryOptions {
-    fn from(options: &ConvertOptions) -> Self {
-        Self {
-            output_stem: options.output_stem.clone(),
-            side: options.side,
-            selected_rounds: options.selected_rounds.clone(),
-            include_suspicious: options.include_suspicious,
-            cut_before_bomb_plant: options.cut_before_bomb_plant,
-            export_cosmetics: options.export_cosmetics,
-            export_stickers: options.export_stickers,
-            export_charms: options.export_charms,
-            analysis: options.analysis,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -113,15 +82,6 @@ pub enum ConversionArtifactKind {
     Log,
 }
 
-#[derive(Clone, Debug)]
-pub struct ConversionArtifact {
-    pub path: String,
-    pub bytes: Vec<u8>,
-    pub kind: ConversionArtifactKind,
-    pub round: Option<u32>,
-    pub steam_id: Option<u64>,
-}
-
 enum PlayerExportOutcome {
     Skipped {
         steam_id: u64,
@@ -129,18 +89,8 @@ enum PlayerExportOutcome {
     },
     Written {
         file: ConvertedFile,
-        artifact: ConversionArtifact,
         stats: SynthesisStats,
     },
-}
-
-#[derive(Clone, Debug)]
-pub struct MemoryConversionReport {
-    pub demo_id: String,
-    pub files_written: usize,
-    pub manifest: ConversionManifest,
-    pub log: String,
-    pub artifacts: Vec<ConversionArtifact>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -193,47 +143,20 @@ pub enum ConversionProgress {
     },
 }
 
-pub fn export_demo_to_memory(
+/// Writes the caller's validated analysis into its staging directory.
+pub fn export_demo<F>(
     parsed: &ParsedDemo,
-    options: &ConvertMemoryOptions,
-) -> Result<MemoryConversionReport> {
-    export_demo_to_memory_inner(parsed, options, None, None)
-}
-
-pub fn export_demo_to_memory_with_progress<F>(
-    parsed: &ParsedDemo,
-    options: &ConvertMemoryOptions,
+    analysis: &DemoAnalysis,
+    options: &ConvertOptions,
+    root: &Path,
     mut progress: F,
-) -> Result<MemoryConversionReport>
+) -> Result<ConversionReport>
 where
     F: FnMut(ConversionProgress),
 {
-    export_demo_to_memory_inner(parsed, options, None, Some(&mut progress))
-}
-
-fn export_demo_to_memory_inner(
-    parsed: &ParsedDemo,
-    options: &ConvertMemoryOptions,
-    preanalyzed: Option<&DemoAnalysis>,
-    mut progress: Option<&mut dyn FnMut(ConversionProgress)>,
-) -> Result<MemoryConversionReport> {
-    let owned_analysis;
-    let analysis = if let Some(analysis) = preanalyzed {
-        analysis
-    } else {
-        emit_conversion_progress(&mut progress, ConversionProgress::AnalysisStarted);
-        owned_analysis = analyze_demo(parsed, options.analysis);
-        &owned_analysis
-    };
-    let output_stem = output_demo_id(
-        &parsed.stem,
-        &parsed.demo_sha256,
-        options.output_stem.as_deref(),
-    )?;
-
     let mut manifest = ConversionManifest {
         demo_path: public_demo_path(&parsed.path),
-        demo_id: output_stem.clone(),
+        demo_id: options.demo_id.clone(),
         demo_sha256: parsed.demo_sha256.clone(),
         map: parsed.map.clone(),
         tick_rate: parsed.tick_rate,
@@ -244,24 +167,20 @@ fn export_demo_to_memory_inner(
         files: Vec::new(),
     };
     let mut log = Vec::new();
-    let mut artifacts = Vec::new();
     let mut subtick_stats = SynthesisStats::default();
     let rows_by_round = rows_by_round(&parsed.rows);
     let projectiles_by_steam_id = projectiles_by_steam_id(&parsed.projectiles);
     let (selected_rounds, estimated_files) =
         selected_round_summary(parsed, &rows_by_round, &analysis.rounds, options);
-    emit_conversion_progress(
-        &mut progress,
-        ConversionProgress::AnalysisFinished {
-            rounds: analysis.rounds.len(),
-            selected_rounds,
-            estimated_files,
-        },
-    );
+    progress(ConversionProgress::AnalysisFinished {
+        rounds: analysis.rounds.len(),
+        selected_rounds,
+        estimated_files,
+    });
     log.push(format!(
         "demo={} id={} sha256={} map={} tick_rate={:.3}",
         public_demo_path(&parsed.path),
-        output_stem,
+        options.demo_id,
         parsed.demo_sha256,
         parsed.map,
         parsed.tick_rate
@@ -280,13 +199,10 @@ fn export_demo_to_memory_inner(
     for round in &analysis.rounds {
         if let Some(reason) = round_skip_reason(round, options) {
             log.push(format!("skip round {}: {reason}", round.round));
-            emit_conversion_progress(
-                &mut progress,
-                ConversionProgress::RoundSkipped {
-                    round: round.round,
-                    reason,
-                },
-            );
+            progress(ConversionProgress::RoundSkipped {
+                round: round.round,
+                reason,
+            });
             continue;
         }
 
@@ -302,13 +218,10 @@ fn export_demo_to_memory_inner(
         if end_tick <= round.start_tick {
             let reason = format!("cut window empty after {cut_reason:?}");
             log.push(format!("skip round {}: {reason}", round.round));
-            emit_conversion_progress(
-                &mut progress,
-                ConversionProgress::RoundSkipped {
-                    round: round.round,
-                    reason,
-                },
-            );
+            progress(ConversionProgress::RoundSkipped {
+                round: round.round,
+                reason,
+            });
             continue;
         }
         let round_rows: &[&ParsedPlayerTick] = rows_by_round
@@ -339,13 +252,10 @@ fn export_demo_to_memory_inner(
             }
             players.entry(row.steam_id).or_default().push(row);
         }
-        emit_conversion_progress(
-            &mut progress,
-            ConversionProgress::RoundStarted {
-                round: round.round,
-                estimated_players: players.len(),
-            },
-        );
+        progress(ConversionProgress::RoundStarted {
+            round: round.round,
+            estimated_players: players.len(),
+        });
         let cosmetic_players = cosmetic_rows_by_player(round_rows, end_tick, options.side);
 
         let player_exports = players
@@ -399,8 +309,10 @@ fn export_demo_to_memory_inner(
                 let rel_path = Path::new(&format!("round{:02}", round.round))
                     .join(team_dir)
                     .join(format!("{}_{}.dtr", steam_id, slugify(&player_name)));
-                let mut bytes = Vec::new();
-                write_rec(&mut bytes, &rec)?;
+                let destination = root.join(&rel_path);
+                fs::create_dir_all(destination.parent().unwrap())
+                    .map_err(|e| io_error(&destination, e))?;
+                write_rec_file(&destination, &rec)?;
                 let path = rel_path.to_string_lossy().replace('\\', "/");
                 let ticks = rec.ticks.len();
                 let subticks = rec.subticks.len();
@@ -449,18 +361,7 @@ fn export_demo_to_memory_inner(
                     view: replay_view(&player_rows),
                     scoreboard: replay_player_scoreboard(cosmetic_player_rows),
                 };
-                let artifact = ConversionArtifact {
-                    path,
-                    bytes,
-                    kind: ConversionArtifactKind::Dtr,
-                    round: Some(round.round),
-                    steam_id: Some(steam_id),
-                };
-                Ok(PlayerExportOutcome::Written {
-                    file,
-                    artifact,
-                    stats,
-                })
+                Ok(PlayerExportOutcome::Written { file, stats })
             })
             .collect::<Vec<Result<PlayerExportOutcome>>>();
 
@@ -472,35 +373,24 @@ fn export_demo_to_memory_inner(
                         "skip round {} player {steam_id}: {reason}",
                         round.round
                     ));
-                    emit_conversion_progress(
-                        &mut progress,
-                        ConversionProgress::PlayerSkipped {
-                            round: round.round,
-                            steam_id,
-                            reason,
-                        },
-                    );
+                    progress(ConversionProgress::PlayerSkipped {
+                        round: round.round,
+                        steam_id,
+                        reason,
+                    });
                 }
-                PlayerExportOutcome::Written {
-                    file,
-                    artifact,
-                    stats,
-                } => {
+                PlayerExportOutcome::Written { file, stats } => {
                     subtick_stats.add_assign(&stats);
-                    emit_conversion_progress(
-                        &mut progress,
-                        ConversionProgress::PlayerWritten {
-                            round: file.round,
-                            steam_id: file.steam_id,
-                            player_name: file.player_name.clone(),
-                            side: file.side.clone(),
-                            path: file.path.clone(),
-                            ticks: file.ticks,
-                            subticks: file.subticks,
-                        },
-                    );
+                    progress(ConversionProgress::PlayerWritten {
+                        round: file.round,
+                        steam_id: file.steam_id,
+                        player_name: file.player_name.clone(),
+                        side: file.side.clone(),
+                        path: file.path.clone(),
+                        ticks: file.ticks,
+                        subticks: file.subticks,
+                    });
                     manifest.files.push(file);
-                    artifacts.push(artifact);
                 }
             }
         }
@@ -531,18 +421,52 @@ fn export_demo_to_memory_inner(
                 files,
             });
         }
-        emit_conversion_progress(
-            &mut progress,
-            ConversionProgress::RoundFinished {
-                round: round.round,
-                files,
-            },
-        );
+        progress(ConversionProgress::RoundFinished {
+            round: round.round,
+            files,
+        });
     }
 
-    append_avatar_override_artifacts(parsed, &mut manifest, &mut artifacts, &mut log);
-    let manifest_json = serde_json::to_string_pretty(&manifest)?;
-
+    let mut avatar_paths = parsed
+        .avatar_overrides
+        .iter()
+        .map(avatar_override_path)
+        .collect::<BTreeSet<_>>();
+    let avatar_count = avatar_paths.len();
+    progress(ConversionProgress::ArtifactsWritingStarted {
+        root: root.display().to_string(),
+        artifacts: avatar_count + 2,
+    });
+    if !avatar_paths.is_empty() {
+        let directory = root.join("avatars");
+        fs::create_dir_all(&directory).map_err(|e| io_error(&directory, e))?;
+    }
+    for avatar in &parsed.avatar_overrides {
+        let path = avatar_override_path(avatar);
+        manifest.avatar_overrides.push(ManifestAvatarOverride {
+            steam_id: avatar.steam_id,
+            format: avatar.format,
+            sha256: avatar.sha256.clone(),
+            path: path.clone(),
+            source: avatar.source.clone(),
+            bytes: avatar.bytes.len(),
+        });
+        if avatar_paths.remove(&path) {
+            let destination = root.join(&path);
+            fs::write(&destination, &avatar.bytes).map_err(|e| io_error(&destination, e))?;
+            progress(ConversionProgress::ArtifactWritten {
+                path,
+                kind: ConversionArtifactKind::Avatar,
+            });
+        }
+    }
+    if !parsed.avatar_overrides.is_empty() {
+        log.push(format!(
+            "avatar_overrides={} avatar_assets={}",
+            manifest.avatar_overrides.len(),
+            avatar_count
+        ));
+    }
     log.push(format!("files_written={}", manifest.files.len()));
     log.push(format!(
         "subticks source={} written={} ticks_with_source={} ticks_with_written={} dropped_invalid={} dropped_overflow={} truncated_buttons={}",
@@ -554,202 +478,48 @@ fn export_demo_to_memory_inner(
         subtick_stats.dropped_overflow_subticks,
         subtick_stats.truncated_button_subticks
     ));
-    let log = log.join("\n");
-    artifacts.push(ConversionArtifact {
-        path: "manifest.json".to_string(),
-        bytes: manifest_json.into_bytes(),
-        kind: ConversionArtifactKind::Manifest,
-        round: None,
-        steam_id: None,
-    });
-    artifacts.push(ConversionArtifact {
-        path: "conversion.log".to_string(),
-        bytes: log.as_bytes().to_vec(),
-        kind: ConversionArtifactKind::Log,
-        round: None,
-        steam_id: None,
-    });
-
-    Ok(MemoryConversionReport {
-        demo_id: output_stem,
+    for (path, bytes, kind) in [
+        (
+            "manifest.json",
+            serde_json::to_vec_pretty(&manifest)?,
+            ConversionArtifactKind::Manifest,
+        ),
+        (
+            "conversion.log",
+            log.join("\n").into_bytes(),
+            ConversionArtifactKind::Log,
+        ),
+    ] {
+        let destination = root.join(path);
+        fs::write(&destination, bytes).map_err(|e| io_error(&destination, e))?;
+        progress(ConversionProgress::ArtifactWritten {
+            path: path.to_string(),
+            kind,
+        });
+    }
+    let report = ConversionReport {
+        root: root.to_path_buf(),
+        manifest_path: root.join("manifest.json"),
         files_written: manifest.files.len(),
         manifest,
-        log,
-        artifacts,
-    })
-}
-
-fn append_avatar_override_artifacts(
-    parsed: &ParsedDemo,
-    manifest: &mut ConversionManifest,
-    artifacts: &mut Vec<ConversionArtifact>,
-    log: &mut Vec<String>,
-) {
-    if parsed.avatar_overrides.is_empty() {
-        return;
-    }
-
-    let mut written_paths = BTreeSet::new();
-    for avatar in &parsed.avatar_overrides {
-        let path = avatar_override_path(avatar);
-        manifest.avatar_overrides.push(ManifestAvatarOverride {
-            steam_id: avatar.steam_id,
-            format: avatar.format,
-            sha256: avatar.sha256.clone(),
-            path: path.clone(),
-            source: avatar.source.clone(),
-            bytes: avatar.bytes.len(),
-        });
-
-        if written_paths.insert(path.clone()) {
-            artifacts.push(ConversionArtifact {
-                path,
-                bytes: avatar.bytes.clone(),
-                kind: ConversionArtifactKind::Avatar,
-                round: None,
-                steam_id: Some(avatar.steam_id),
-            });
-        }
-    }
-
-    log.push(format!(
-        "avatar_overrides={} avatar_assets={}",
-        manifest.avatar_overrides.len(),
-        written_paths.len()
-    ));
+    };
+    progress(ConversionProgress::Finished {
+        root: report.root.display().to_string(),
+        manifest_path: report.manifest_path.display().to_string(),
+        files_written: report.files_written,
+    });
+    Ok(report)
 }
 
 fn avatar_override_path(avatar: &ParsedAvatarOverride) -> String {
     format!("avatars/{}.{}", avatar.sha256, avatar.format.extension())
 }
 
-pub fn export_demo(parsed: &ParsedDemo, options: &ConvertOptions) -> Result<ConversionReport> {
-    export_demo_with_progress(parsed, options, |_| {})
-}
-
-pub fn export_demo_with_progress<F>(
-    parsed: &ParsedDemo,
-    options: &ConvertOptions,
-    progress: F,
-) -> Result<ConversionReport>
-where
-    F: FnMut(ConversionProgress),
-{
-    let demo_id = output_demo_id(
-        &parsed.stem,
-        &parsed.demo_sha256,
-        options.output_stem.as_deref(),
-    )?;
-    let root = options.output_dir.join(demo_id);
-    export_demo_to_root_with_progress(parsed, options, &root, progress)
-}
-
-pub fn export_demo_to_root_with_progress<F>(
-    parsed: &ParsedDemo,
-    options: &ConvertOptions,
-    root: &Path,
-    mut progress: F,
-) -> Result<ConversionReport>
-where
-    F: FnMut(ConversionProgress),
-{
-    let mut progress_ref = Some(&mut progress as &mut dyn FnMut(ConversionProgress));
-    let memory = export_demo_to_memory_inner(
-        parsed,
-        &ConvertMemoryOptions::from(options),
-        None,
-        progress_ref,
-    )?;
-    fs::create_dir_all(root).map_err(|e| io_error(root, e))?;
-    progress_ref = Some(&mut progress as &mut dyn FnMut(ConversionProgress));
-    write_memory_conversion(memory, root, &mut progress_ref)
-}
-
-fn write_memory_conversion(
-    memory: MemoryConversionReport,
-    root: &Path,
-    progress: &mut Option<&mut dyn FnMut(ConversionProgress)>,
-) -> Result<ConversionReport> {
-    emit_conversion_progress(
-        progress,
-        ConversionProgress::ArtifactsWritingStarted {
-            root: root.display().to_string(),
-            artifacts: memory.artifacts.len(),
-        },
-    );
-
-    for artifact in &memory.artifacts {
-        let path = root.join(&artifact.path);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|e| io_error(parent, e))?;
-        }
-        fs::write(&path, &artifact.bytes).map_err(|e| io_error(&path, e))?;
-        emit_conversion_progress(
-            progress,
-            ConversionProgress::ArtifactWritten {
-                path: artifact.path.clone(),
-                kind: artifact.kind.clone(),
-            },
-        );
-    }
-
-    let report = ConversionReport {
-        root: root.to_path_buf(),
-        manifest_path: root.join("manifest.json"),
-        files_written: memory.files_written,
-        manifest: memory.manifest,
-    };
-    emit_conversion_progress(
-        progress,
-        ConversionProgress::Finished {
-            root: report.root.display().to_string(),
-            manifest_path: report.manifest_path.display().to_string(),
-            files_written: report.files_written,
-        },
-    );
-    Ok(report)
-}
-
-/// Exports a demo using an analysis snapshot that was already validated by the
-/// caller. The snapshot must have been produced from `parsed` with
-/// `options.analysis`; desktop workflows use this to keep round validation and
-/// export on one immutable analysis result.
-pub fn export_demo_to_root_with_analysis_and_progress<F>(
-    parsed: &ParsedDemo,
-    analysis: &DemoAnalysis,
-    options: &ConvertOptions,
-    root: &Path,
-    mut progress: F,
-) -> Result<ConversionReport>
-where
-    F: FnMut(ConversionProgress),
-{
-    let mut progress_ref = Some(&mut progress as &mut dyn FnMut(ConversionProgress));
-    let memory = export_demo_to_memory_inner(
-        parsed,
-        &ConvertMemoryOptions::from(options),
-        Some(analysis),
-        progress_ref,
-    )?;
-    fs::create_dir_all(root).map_err(|e| io_error(root, e))?;
-    progress_ref = Some(&mut progress as &mut dyn FnMut(ConversionProgress));
-    write_memory_conversion(memory, root, &mut progress_ref)
-}
-
-fn emit_conversion_progress(
-    progress: &mut Option<&mut dyn FnMut(ConversionProgress)>,
-    event: ConversionProgress,
-) {
-    if let Some(callback) = progress.as_deref_mut() {
-        callback(event);
-    }
-}
-
 fn selected_round_summary(
     parsed: &ParsedDemo,
     rows_by_round: &BTreeMap<u32, Vec<&ParsedPlayerTick>>,
     rounds: &[RoundSummary],
-    options: &ConvertMemoryOptions,
+    options: &ConvertOptions,
 ) -> (usize, usize) {
     let mut selected_rounds = 0_usize;
     let mut estimated_files = 0_usize;
@@ -767,7 +537,7 @@ fn estimate_round_files(
     parsed: &ParsedDemo,
     rows_by_round: &BTreeMap<u32, Vec<&ParsedPlayerTick>>,
     round: &RoundSummary,
-    options: &ConvertMemoryOptions,
+    options: &ConvertOptions,
 ) -> usize {
     let (end_tick, _) = if options.cut_before_bomb_plant {
         cut_before_bomb_plant(parsed, round.start_tick, round.end_tick)
@@ -805,7 +575,7 @@ fn estimate_round_files(
         .count()
 }
 
-fn round_skip_reason(round: &RoundSummary, options: &ConvertMemoryOptions) -> Option<String> {
+fn round_skip_reason(round: &RoundSummary, options: &ConvertOptions) -> Option<String> {
     let selected = match &options.selected_rounds {
         Some(rounds) => rounds.contains(&round.round),
         None => round.selected_by_default() || options.include_suspicious,
@@ -1940,7 +1710,7 @@ mod tests {
         ParsedGameEvent, ParsedInventoryWeaponCosmetic, ParsedScoreboardFlair, ParsedWeaponSticker,
         ReplayTick,
     };
-    use crate::rec_writer::read_rec;
+    use crate::rec_writer::read_rec_file;
     use crate::replay::context::{
         first_weapon_def_index, preload_weapon_def_indices_from_refs,
         preload_weapon_def_indices_from_refs_from_play_start,
@@ -2114,8 +1884,8 @@ mod tests {
             },
         ];
 
-        let memory = export_memory_with_cosmetics(parsed);
-        let cosmetics = memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_cosmetics(parsed);
+        let cosmetics = report.manifest.files[0]
             .cosmetics
             .as_ref()
             .expect("expected cosmetic evidence");
@@ -2192,9 +1962,9 @@ mod tests {
                 },
             ];
 
-            let memory = export_memory(parsed);
+            let (_directory, report) = export_sample(parsed);
 
-            assert_eq!(memory.manifest.files[0].music_kit_id, Some(music_kit_id));
+            assert_eq!(report.manifest.files[0].music_kit_id, Some(music_kit_id));
         }
     }
 
@@ -2216,10 +1986,10 @@ mod tests {
             },
         ];
 
-        let memory = export_memory(parsed);
+        let (_directory, report) = export_sample(parsed);
 
         assert_eq!(
-            memory.manifest.files[0]
+            report.manifest.files[0]
                 .scoreboard_flair
                 .as_ref()
                 .map(|flair| flair.item_def_index),
@@ -2242,8 +2012,8 @@ mod tests {
                 row.clan_tag = tag.map(str::to_owned);
                 row.clan_id = id;
             }
-            let memory = export_memory(parsed);
-            let file = &memory.manifest.files[0];
+            let (_directory, report) = export_sample(parsed);
+            let file = &report.manifest.files[0];
             let value = serde_json::to_value(file).unwrap();
             if let (Some(tag), Some(id)) = (tag.filter(|tag| !tag.contains('\0')), id) {
                 assert_eq!(value["clan"], serde_json::json!({"tag": tag, "id": id}));
@@ -2274,10 +2044,10 @@ mod tests {
             },
         ];
 
-        let memory = export_memory(parsed);
+        let (_directory, report) = export_sample(parsed);
 
         assert_eq!(
-            memory.manifest.files[0]
+            report.manifest.files[0]
                 .scoreboard_flair
                 .as_ref()
                 .map(|flair| flair.item_def_index),
@@ -2301,8 +2071,8 @@ mod tests {
             },
         ];
 
-        let memory = export_memory_with_cosmetics(parsed);
-        let agent = memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_cosmetics(parsed);
+        let agent = report.manifest.files[0]
             .cosmetics
             .as_ref()
             .and_then(|cosmetics| cosmetics.agent.as_ref())
@@ -2369,8 +2139,8 @@ mod tests {
             },
         ];
 
-        let memory = export_memory_with_cosmetics(parsed);
-        let weapon = &memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_cosmetics(parsed);
+        let weapon = &report.manifest.files[0]
             .cosmetics
             .as_ref()
             .expect("expected cosmetic evidence")
@@ -2431,8 +2201,8 @@ mod tests {
             skin_name: Some("Crimson Kimono".to_string()),
         }];
 
-        let memory = export_memory_with_cosmetics(parsed);
-        let glove = memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_cosmetics(parsed);
+        let glove = report.manifest.files[0]
             .cosmetics
             .as_ref()
             .and_then(|cosmetics| cosmetics.glove.as_ref())
@@ -2473,8 +2243,8 @@ mod tests {
             ..ParsedEconItem::default()
         }];
 
-        let memory = export_memory_with_cosmetics(parsed);
-        let glove = memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_cosmetics(parsed);
+        let glove = report.manifest.files[0]
             .cosmetics
             .as_ref()
             .and_then(|cosmetics| cosmetics.glove.as_ref())
@@ -2517,19 +2287,19 @@ mod tests {
             },
         ];
 
-        let memory = export_memory(parsed);
+        let (_directory, report) = export_sample(parsed);
 
-        assert!(memory.manifest.files[0].cosmetics.is_none());
-        let json = serde_json::to_string(&memory.manifest.files[0]).unwrap();
+        assert!(report.manifest.files[0].cosmetics.is_none());
+        let json = serde_json::to_string(&report.manifest.files[0]).unwrap();
         assert!(!json.contains("cosmetics"));
     }
 
     #[test]
     fn manifest_omits_cosmetics_without_complete_evidence() {
-        let memory = export_memory(sample_demo());
+        let (_directory, report) = export_sample(sample_demo());
 
-        assert!(memory.manifest.files[0].cosmetics.is_none());
-        let json = serde_json::to_string(&memory.manifest.files[0]).unwrap();
+        assert!(report.manifest.files[0].cosmetics.is_none());
+        let json = serde_json::to_string(&report.manifest.files[0]).unwrap();
         assert!(!json.contains("cosmetics"));
     }
 
@@ -2562,8 +2332,8 @@ mod tests {
             },
         ];
 
-        let memory = export_memory(parsed);
-        let chat = &memory.manifest.rounds[0].chat_messages;
+        let (_directory, report) = export_sample(parsed);
+        let chat = &report.manifest.rounds[0].chat_messages;
 
         assert_eq!(chat.len(), 2);
         assert_eq!(chat[0].tick, 120);
@@ -2606,9 +2376,9 @@ mod tests {
             },
         ];
 
-        let memory = export_memory(parsed);
+        let (_directory, report) = export_sample(parsed);
 
-        assert!(memory.manifest.rounds[0].chat_messages.is_empty());
+        assert!(report.manifest.rounds[0].chat_messages.is_empty());
     }
 
     #[test]
@@ -2633,34 +2403,28 @@ mod tests {
             },
         ];
 
-        let memory = export_memory(parsed);
+        let (_directory, report) = export_sample(parsed);
         let expected_path = format!("avatars/{sha256}.png");
 
-        assert_eq!(memory.manifest.avatar_overrides.len(), 2);
+        assert_eq!(report.manifest.avatar_overrides.len(), 2);
         assert_eq!(
-            memory.manifest.avatar_overrides[0].steam_id,
+            report.manifest.avatar_overrides[0].steam_id,
             76561198000000001
         );
         assert_eq!(
-            memory.manifest.avatar_overrides[0].path.as_str(),
+            report.manifest.avatar_overrides[0].path.as_str(),
             expected_path.as_str()
         );
-        assert!(memory.log.contains("avatar_overrides=2 avatar_assets=1"));
+        assert!(fs::read_to_string(report.root.join("conversion.log"))
+            .unwrap()
+            .contains("avatar_overrides=2 avatar_assets=1"));
 
-        let avatar_artifacts = memory
-            .artifacts
-            .iter()
-            .filter(|artifact| artifact.kind == ConversionArtifactKind::Avatar)
-            .collect::<Vec<_>>();
-        assert_eq!(avatar_artifacts.len(), 1);
-        assert_eq!(avatar_artifacts[0].bytes.as_slice(), bytes.as_slice());
-
-        let manifest_artifact = memory
-            .artifacts
-            .iter()
-            .find(|artifact| artifact.kind == ConversionArtifactKind::Manifest)
-            .unwrap();
-        let manifest_json = std::str::from_utf8(&manifest_artifact.bytes).unwrap();
+        assert_eq!(
+            fs::read_dir(report.root.join("avatars")).unwrap().count(),
+            1
+        );
+        assert_eq!(fs::read(report.root.join(&expected_path)).unwrap(), bytes);
+        let manifest_json = fs::read_to_string(&report.manifest_path).unwrap();
         assert!(manifest_json.contains("\"avatar_overrides\""));
         assert!(manifest_json.contains(&format!("\"path\": \"{expected_path}\"")));
     }
@@ -2686,8 +2450,8 @@ mod tests {
         ];
 
         let repeated_parsed = parsed.clone();
-        let memory = export_memory_with_cosmetics(parsed);
-        let glove = memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_cosmetics(parsed);
+        let glove = report.manifest.files[0]
             .cosmetics
             .as_ref()
             .and_then(|cosmetics| cosmetics.glove.as_ref())
@@ -2700,7 +2464,7 @@ mod tests {
         assert_eq!(glove.wear.to_bits(), 0.382_f32.to_bits());
         assert!(glove.inspect.is_none());
 
-        let repeated = export_memory_with_cosmetics(repeated_parsed);
+        let (_repeated_directory, repeated) = export_sample_with_cosmetics(repeated_parsed);
         assert_eq!(
             repeated.manifest.files[0]
                 .cosmetics
@@ -2732,9 +2496,9 @@ mod tests {
             },
         ];
 
-        let memory = export_memory_with_cosmetics(parsed);
+        let (_directory, report) = export_sample_with_cosmetics(parsed);
 
-        assert!(memory.manifest.files[0].cosmetics.is_none());
+        assert!(report.manifest.files[0].cosmetics.is_none());
     }
 
     #[test]
@@ -2751,8 +2515,8 @@ mod tests {
             },
         ];
 
-        let memory = export_memory_with_cosmetics(parsed);
-        let view = memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_cosmetics(parsed);
+        let view = report.manifest.files[0]
             .view
             .as_ref()
             .expect("expected view metadata");
@@ -2779,8 +2543,8 @@ mod tests {
             },
         ];
 
-        let memory = export_memory_with_cosmetics(parsed);
-        let view = memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_cosmetics(parsed);
+        let view = report.manifest.files[0]
             .view
             .as_ref()
             .expect("expected view metadata");
@@ -2805,9 +2569,9 @@ mod tests {
             },
         ];
 
-        let memory = export_memory(parsed);
+        let (_directory, report) = export_sample(parsed);
 
-        assert!(memory.manifest.files[0].view.is_none());
+        assert!(report.manifest.files[0].view.is_none());
     }
 
     #[test]
@@ -2832,8 +2596,8 @@ mod tests {
             },
         ];
 
-        let memory = export_memory(parsed);
-        let viewmodel = memory.manifest.files[0]
+        let (_directory, report) = export_sample(parsed);
+        let viewmodel = report.manifest.files[0]
             .view
             .as_ref()
             .and_then(|view| view.viewmodel.as_ref())
@@ -2877,8 +2641,8 @@ mod tests {
             },
         ];
 
-        let memory = export_memory(parsed);
-        let viewmodel = memory.manifest.files[0]
+        let (_directory, report) = export_sample(parsed);
+        let viewmodel = report.manifest.files[0]
             .view
             .as_ref()
             .and_then(|view| view.viewmodel.as_ref())
@@ -2917,9 +2681,9 @@ mod tests {
             },
         ];
 
-        let memory = export_memory(parsed);
+        let (_directory, report) = export_sample(parsed);
 
-        assert!(memory.manifest.files[0].cosmetics.is_none());
+        assert!(report.manifest.files[0].cosmetics.is_none());
     }
 
     #[test]
@@ -2946,8 +2710,8 @@ mod tests {
             }),
         ];
 
-        let memory = export_memory_with_cosmetics(parsed);
-        let weapon = &memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_cosmetics(parsed);
+        let weapon = &report.manifest.files[0]
             .cosmetics
             .as_ref()
             .expect("expected cosmetic evidence")
@@ -2979,8 +2743,8 @@ mod tests {
             }),
         ];
 
-        let memory = export_memory_with_cosmetics(parsed);
-        let weapon = &memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_cosmetics(parsed);
+        let weapon = &report.manifest.files[0]
             .cosmetics
             .as_ref()
             .expect("expected cosmetic evidence")
@@ -3019,8 +2783,8 @@ mod tests {
             }),
         ];
 
-        let memory = export_memory_with_stickers(parsed);
-        let stickers = &memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_stickers(parsed);
+        let stickers = &report.manifest.files[0]
             .cosmetics
             .as_ref()
             .expect("expected cosmetic evidence")
@@ -3044,8 +2808,8 @@ mod tests {
         let mut parsed = sample_demo();
         parsed.rows = vec![charm_weapon_row(100, true), charm_weapon_row(164, true)];
 
-        let memory = export_memory_with_charms(parsed);
-        let charms = &memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_charms(parsed);
+        let charms = &report.manifest.files[0]
             .cosmetics
             .as_ref()
             .expect("expected cosmetic evidence")
@@ -3067,8 +2831,8 @@ mod tests {
         let mut parsed = sample_demo();
         parsed.rows = vec![charm_weapon_row(100, false), charm_weapon_row(164, false)];
 
-        let memory = export_memory_with_cosmetics(parsed);
-        let weapon = &memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_cosmetics(parsed);
+        let weapon = &report.manifest.files[0]
             .cosmetics
             .as_ref()
             .expect("expected cosmetic evidence")
@@ -3116,8 +2880,8 @@ mod tests {
             },
         ];
 
-        let memory = export_memory_with_stickers(parsed);
-        let weapon = &memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_stickers(parsed);
+        let weapon = &report.manifest.files[0]
             .cosmetics
             .as_ref()
             .expect("expected cosmetic evidence")
@@ -3174,8 +2938,8 @@ mod tests {
             },
         ];
 
-        let memory = export_memory_with_cosmetics(parsed);
-        let cosmetics = memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_cosmetics(parsed);
+        let cosmetics = report.manifest.files[0]
             .cosmetics
             .as_ref()
             .expect("expected cosmetic evidence");
@@ -3503,8 +3267,8 @@ mod tests {
             }),
         ];
 
-        let memory = export_memory_with_stickers(parsed);
-        let weapon = &memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_stickers(parsed);
+        let weapon = &report.manifest.files[0]
             .cosmetics
             .as_ref()
             .expect("expected cosmetic evidence")
@@ -3539,8 +3303,8 @@ mod tests {
             }),
         ];
 
-        let memory = export_memory_with_stickers(parsed);
-        let weapon = &memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_stickers(parsed);
+        let weapon = &report.manifest.files[0]
             .cosmetics
             .as_ref()
             .expect("expected cosmetic evidence")
@@ -3571,8 +3335,8 @@ mod tests {
             }),
         ];
 
-        let memory = export_memory_with_stickers(parsed);
-        let weapon = &memory.manifest.files[0]
+        let (_directory, report) = export_sample_with_stickers(parsed);
+        let weapon = &report.manifest.files[0]
             .cosmetics
             .as_ref()
             .expect("expected cosmetic evidence")
@@ -3598,88 +3362,18 @@ mod tests {
             },
         ];
 
-        let memory = export_memory_with_stickers(parsed);
+        let (_directory, report) = export_sample_with_stickers(parsed);
 
-        assert!(memory.manifest.files[0].cosmetics.is_none());
-    }
-
-    #[test]
-    fn memory_export_matches_filesystem_export_surface() {
-        let parsed = sample_demo();
-        let selected_rounds = Some(BTreeSet::from([1]));
-        let memory_options = ConvertMemoryOptions {
-            output_stem: Some("sample-demo".to_string()),
-            side: Side::Both,
-            selected_rounds: selected_rounds.clone(),
-            include_suspicious: true,
-            cut_before_bomb_plant: true,
-            export_cosmetics: false,
-            export_stickers: false,
-            export_charms: false,
-            analysis: AnalysisOptions::default(),
-        };
-
-        let memory = export_demo_to_memory(&parsed, &memory_options).unwrap();
-
-        assert_eq!(memory.demo_id, "sample-demo");
-        assert_eq!(memory.files_written, 1);
-        assert!(memory
-            .artifacts
-            .iter()
-            .any(|artifact| artifact.path == "manifest.json"));
-        assert!(memory
-            .artifacts
-            .iter()
-            .any(|artifact| artifact.path == "conversion.log"));
-        assert!(memory.log.contains("files_written=1"));
-
-        let dtr = memory
-            .artifacts
-            .iter()
-            .find(|artifact| artifact.kind == ConversionArtifactKind::Dtr)
-            .unwrap();
-        assert_eq!(dtr.path, "round01/t/76561198000000001_alpha.dtr");
-        let parsed_rec = read_rec(&mut &dtr.bytes[..]).unwrap();
-        assert_eq!(parsed_rec.header.round, 1);
-        assert_eq!(parsed_rec.ticks.len(), 64);
-
-        let temp = tempfile::tempdir().unwrap();
-        let filesystem = export_demo(
-            &parsed,
-            &ConvertOptions {
-                output_dir: temp.path().to_path_buf(),
-                output_stem: Some("sample-demo".to_string()),
-                side: Side::Both,
-                selected_rounds,
-                include_suspicious: true,
-                cut_before_bomb_plant: true,
-                export_cosmetics: false,
-                export_stickers: false,
-                export_charms: false,
-                analysis: AnalysisOptions::default(),
-            },
-        )
-        .unwrap();
-
-        assert_eq!(
-            serde_json::to_value(&filesystem.manifest).unwrap(),
-            serde_json::to_value(&memory.manifest).unwrap()
-        );
-        let disk_dtr = std::fs::read(filesystem.root.join(&dtr.path)).unwrap();
-        assert_eq!(disk_dtr, dtr.bytes);
-        assert!(filesystem.manifest_path.exists());
-        assert!(filesystem.root.join("conversion.log").exists());
+        assert!(report.manifest.files[0].cosmetics.is_none());
     }
 
     #[test]
     fn filesystem_export_can_write_to_an_explicit_demo_root() {
         let parsed = sample_demo();
         let temp = tempfile::tempdir().unwrap();
-        let default_root = temp.path().join("default-output");
         let explicit_root = temp.path().join(".sample-demo.tmp.test");
         let options = ConvertOptions {
-            output_dir: default_root.clone(),
-            output_stem: Some("sample-demo".to_string()),
+            demo_id: "hifi-demo".to_string(),
             side: Side::Both,
             selected_rounds: Some(BTreeSet::from([1])),
             include_suspicious: true,
@@ -3687,25 +3381,28 @@ mod tests {
             export_cosmetics: false,
             export_stickers: false,
             export_charms: false,
-            analysis: AnalysisOptions::default(),
         };
 
-        let report =
-            export_demo_to_root_with_progress(&parsed, &options, &explicit_root, |_| {}).unwrap();
+        let report = export_demo(
+            &parsed,
+            &analyze_demo(&parsed, AnalysisOptions::default()),
+            &options,
+            &explicit_root,
+            |_| {},
+        )
+        .unwrap();
 
         assert_eq!(report.root, explicit_root);
         assert_eq!(report.manifest_path, report.root.join("manifest.json"));
         assert!(report.manifest_path.exists());
         assert!(report.root.join("conversion.log").exists());
-        assert!(!default_root.exists());
     }
 
     #[test]
     fn explicit_root_export_reports_every_artifact_write_failure() {
         let parsed = sample_demo();
         let options = ConvertOptions {
-            output_dir: PathBuf::from("unused-default-output"),
-            output_stem: Some("sample-demo".to_string()),
+            demo_id: "hifi-demo".to_string(),
             side: Side::Both,
             selected_rounds: Some(BTreeSet::from([1])),
             include_suspicious: true,
@@ -3713,26 +3410,31 @@ mod tests {
             export_cosmetics: false,
             export_stickers: false,
             export_charms: false,
-            analysis: AnalysisOptions::default(),
         };
-        let memory = export_demo_to_memory(&parsed, &ConvertMemoryOptions::from(&options)).unwrap();
-        assert!(memory
-            .artifacts
+        let (_directory, report) = export_to_temp(&parsed, &options).unwrap();
+        for path in report
+            .manifest
+            .files
             .iter()
-            .any(|artifact| artifact.path == "manifest.json"));
-
-        for artifact in &memory.artifacts {
+            .map(|file| file.path.as_str())
+            .chain(["manifest.json", "conversion.log"])
+        {
             let temp = tempfile::tempdir().unwrap();
             let staging_root = temp.path().join(".sample-demo.tmp.test");
-            fs::create_dir_all(staging_root.join(&artifact.path)).unwrap();
+            fs::create_dir_all(staging_root.join(path)).unwrap();
 
-            let result =
-                export_demo_to_root_with_progress(&parsed, &options, &staging_root, |_| {});
+            let result = export_demo(
+                &parsed,
+                &analyze_demo(&parsed, AnalysisOptions::default()),
+                &options,
+                &staging_root,
+                |_| {},
+            );
 
             assert!(
                 result.is_err(),
                 "expected write failure for artifact {}",
-                artifact.path
+                path
             );
         }
     }
@@ -3740,8 +3442,8 @@ mod tests {
     #[test]
     fn export_progress_reports_ordered_round_and_player_events() {
         let parsed = sample_demo();
-        let options = ConvertMemoryOptions {
-            output_stem: Some("progress-demo".to_string()),
+        let options = ConvertOptions {
+            demo_id: "hifi-demo".to_string(),
             side: Side::Both,
             selected_rounds: Some(BTreeSet::from([1])),
             include_suspicious: true,
@@ -3749,11 +3451,12 @@ mod tests {
             export_cosmetics: false,
             export_stickers: false,
             export_charms: false,
-            analysis: AnalysisOptions::default(),
         };
         let mut events = Vec::new();
 
-        let report = export_demo_to_memory_with_progress(&parsed, &options, |event| {
+        let directory = tempfile::tempdir().unwrap();
+        let analysis = analyze_demo(&parsed, AnalysisOptions::default());
+        let report = export_demo(&parsed, &analysis, &options, directory.path(), |event| {
             events.push(event);
         })
         .unwrap();
@@ -3761,10 +3464,6 @@ mod tests {
         assert_eq!(report.files_written, 1);
         assert!(matches!(
             events.first(),
-            Some(ConversionProgress::AnalysisStarted)
-        ));
-        assert!(matches!(
-            events.get(1),
             Some(ConversionProgress::AnalysisFinished {
                 selected_rounds: 1,
                 estimated_files: 1,
@@ -3784,15 +3483,18 @@ mod tests {
         )));
         assert!(matches!(
             events.last(),
-            Some(ConversionProgress::RoundFinished { round: 1, files: 1 })
+            Some(ConversionProgress::Finished {
+                files_written: 1,
+                ..
+            })
         ));
     }
 
     #[test]
     fn export_progress_reports_round_skip_reason() {
         let parsed = sample_demo();
-        let options = ConvertMemoryOptions {
-            output_stem: Some("skip-demo".to_string()),
+        let options = ConvertOptions {
+            demo_id: "hifi-demo".to_string(),
             side: Side::Both,
             selected_rounds: Some(BTreeSet::from([2])),
             include_suspicious: true,
@@ -3800,11 +3502,12 @@ mod tests {
             export_cosmetics: false,
             export_stickers: false,
             export_charms: false,
-            analysis: AnalysisOptions::default(),
         };
         let mut events = Vec::new();
 
-        let report = export_demo_to_memory_with_progress(&parsed, &options, |event| {
+        let directory = tempfile::tempdir().unwrap();
+        let analysis = analyze_demo(&parsed, AnalysisOptions::default());
+        let report = export_demo(&parsed, &analysis, &options, directory.path(), |event| {
             events.push(event);
         })
         .unwrap();
@@ -3815,29 +3518,9 @@ mod tests {
             ConversionProgress::RoundSkipped { round: 1, reason }
                 if reason == "not selected"
         )));
-        assert!(report.log.contains("skip round 1: not selected"));
-    }
-
-    #[test]
-    fn export_rejects_escaping_output_stem() {
-        let parsed = sample_demo();
-        let err = export_demo_to_memory(
-            &parsed,
-            &ConvertMemoryOptions {
-                output_stem: Some("../escape".to_string()),
-                side: Side::Both,
-                selected_rounds: Some(BTreeSet::from([1])),
-                include_suspicious: true,
-                cut_before_bomb_plant: true,
-                export_cosmetics: false,
-                export_stickers: false,
-                export_charms: false,
-                analysis: AnalysisOptions::default(),
-            },
-        )
-        .unwrap_err();
-
-        assert!(err.to_string().contains("output_stem"));
+        assert!(fs::read_to_string(report.root.join("conversion.log"))
+            .unwrap()
+            .contains("skip round 1: not selected"));
     }
 
     #[test]
@@ -3845,10 +3528,10 @@ mod tests {
         let mut parsed = sample_demo();
         parsed.rows = vec![sample_row(100), sample_row(102)];
 
-        let error = export_demo_to_memory(
+        let error = export_to_temp(
             &parsed,
-            &ConvertMemoryOptions {
-                output_stem: Some("gap-demo".to_string()),
+            &ConvertOptions {
+                demo_id: "hifi-demo".to_string(),
                 side: Side::Both,
                 selected_rounds: Some(BTreeSet::from([1])),
                 include_suspicious: true,
@@ -3856,7 +3539,6 @@ mod tests {
                 export_cosmetics: false,
                 export_stickers: false,
                 export_charms: false,
-                analysis: AnalysisOptions::default(),
             },
         )
         .unwrap_err();
@@ -3891,10 +3573,10 @@ mod tests {
         }];
         densify_test_demo_rows(&mut parsed);
 
-        let memory = export_demo_to_memory(
+        let (_directory, report) = export_to_temp(
             &parsed,
-            &ConvertMemoryOptions {
-                output_stem: Some("freeze-demo".to_string()),
+            &ConvertOptions {
+                demo_id: "hifi-demo".to_string(),
                 side: Side::Both,
                 selected_rounds: Some(BTreeSet::from([1])),
                 include_suspicious: true,
@@ -3902,22 +3584,16 @@ mod tests {
                 export_cosmetics: false,
                 export_stickers: false,
                 export_charms: false,
-                analysis: AnalysisOptions::default(),
             },
         )
         .unwrap();
 
-        assert_eq!(memory.manifest.rounds[0].recording_start_tick, 20);
-        assert_eq!(memory.manifest.rounds[0].start_tick, 100);
-        assert_eq!(memory.manifest.rounds[0].freeze_preroll_ticks, 80);
-        assert_eq!(memory.manifest.files[0].play_start_tick_index, 80);
+        assert_eq!(report.manifest.rounds[0].recording_start_tick, 20);
+        assert_eq!(report.manifest.rounds[0].start_tick, 100);
+        assert_eq!(report.manifest.rounds[0].freeze_preroll_ticks, 80);
+        assert_eq!(report.manifest.files[0].play_start_tick_index, 80);
 
-        let dtr = memory
-            .artifacts
-            .iter()
-            .find(|artifact| artifact.kind == ConversionArtifactKind::Dtr)
-            .unwrap();
-        let rec = read_rec(&mut &dtr.bytes[..]).unwrap();
+        let rec = read_rec_file(&report.root.join(&report.manifest.files[0].path)).unwrap();
         assert_eq!(rec.header.play_start_tick_index, 80);
         assert_eq!(rec.ticks.len(), 208);
         assert_eq!(rec.ticks[0].pre.origin[0], 20.0);
@@ -3964,10 +3640,10 @@ mod tests {
             }
         }
         for side in [Side::Both, Side::T, Side::Ct] {
-            let memory = export_demo_to_memory(
+            let (_directory, report) = export_to_temp(
                 &parsed,
-                &ConvertMemoryOptions {
-                    output_stem: None,
+                &ConvertOptions {
+                    demo_id: "hifi-demo".to_string(),
                     side,
                     selected_rounds: Some(BTreeSet::from([0])),
                     include_suspicious: true,
@@ -3975,11 +3651,10 @@ mod tests {
                     export_cosmetics: false,
                     export_stickers: false,
                     export_charms: false,
-                    analysis: AnalysisOptions::default(),
                 },
             )
             .unwrap();
-            let round = &memory.manifest.rounds[0];
+            let round = &report.manifest.rounds[0];
             assert_eq!(round.recording_start_tick, 60);
             assert_eq!(round.start_tick, 100);
             assert_eq!(round.freeze_preroll_ticks, 40);
@@ -3987,16 +3662,16 @@ mod tests {
             assert_eq!(scoreboard.t_team_name.as_deref(), Some("alpha"));
             assert_eq!(scoreboard.ct_team_name.as_deref(), Some("bravo"));
             assert_eq!(
-                memory.manifest.files.len(),
+                report.manifest.files.len(),
                 if side == Side::Both { 2 } else { 1 }
             );
-            for file in &memory.manifest.files {
+            for file in &report.manifest.files {
                 let expected_side = if file.steam_id == 1 { 2 } else { 3 };
                 assert!(side.matches_team(expected_side));
                 assert_eq!(file.side, Side::team_dir(expected_side));
                 assert!(file.path.contains(&format!("/{}/", file.side)));
                 assert_eq!(file.play_start_tick_index, 40);
-                let rec = rec_for_steam(&memory, file.steam_id);
+                let rec = rec_for_steam(&report, file.steam_id);
                 assert_eq!(rec.header.side, expected_side);
                 assert_eq!(rec.header.play_start_tick_index, 40);
                 assert_eq!(rec.ticks.len(), 168);
@@ -4051,10 +3726,10 @@ mod tests {
         ];
         densify_test_demo_rows(&mut parsed);
 
-        let memory = export_demo_to_memory(
+        let (_directory, report) = export_to_temp(
             &parsed,
-            &ConvertMemoryOptions {
-                output_stem: Some("cap-demo".to_string()),
+            &ConvertOptions {
+                demo_id: "hifi-demo".to_string(),
                 side: Side::Both,
                 selected_rounds: Some(BTreeSet::from([1])),
                 include_suspicious: true,
@@ -4062,21 +3737,15 @@ mod tests {
                 export_cosmetics: false,
                 export_stickers: false,
                 export_charms: false,
-                analysis: AnalysisOptions::default(),
             },
         )
         .unwrap();
 
-        assert_eq!(memory.manifest.rounds[0].recording_start_tick, 60);
-        assert_eq!(memory.manifest.rounds[0].freeze_preroll_ticks, 40);
-        assert_eq!(memory.manifest.files[0].play_start_tick_index, 40);
+        assert_eq!(report.manifest.rounds[0].recording_start_tick, 60);
+        assert_eq!(report.manifest.rounds[0].freeze_preroll_ticks, 40);
+        assert_eq!(report.manifest.files[0].play_start_tick_index, 40);
 
-        let dtr = memory
-            .artifacts
-            .iter()
-            .find(|artifact| artifact.kind == ConversionArtifactKind::Dtr)
-            .unwrap();
-        let rec = read_rec(&mut &dtr.bytes[..]).unwrap();
+        let rec = read_rec_file(&report.root.join(&report.manifest.files[0].path)).unwrap();
         assert_eq!(rec.ticks[0].pre.origin[0], 60.0);
     }
 
@@ -4103,7 +3772,7 @@ mod tests {
             effect_confidence: 0.0,
         }];
 
-        let rec = rec_for_steam(&export_memory(parsed), 76561198000000001);
+        let rec = rec_for_steam(&export_sample(parsed).1, 76561198000000001);
 
         assert!(rec.high_fidelity.events.iter().all(|event| {
             !matches!(
@@ -4124,7 +3793,7 @@ mod tests {
             row_with_inventory(116, steam_id, "alpha", vec![45]),
         ];
 
-        let rec = rec_for_steam(&export_memory(parsed), steam_id);
+        let rec = rec_for_steam(&export_sample(parsed).1, steam_id);
 
         assert!(rec
             .high_fidelity
@@ -4153,9 +3822,9 @@ mod tests {
             ..ParsedGameEvent::default()
         }];
 
-        let memory = export_memory(parsed);
-        let source_rec = rec_for_steam(&memory, source);
-        let target_rec = rec_for_steam(&memory, target);
+        let (_directory, report) = export_sample(parsed);
+        let source_rec = rec_for_steam(&report, source);
+        let target_rec = rec_for_steam(&report, target);
 
         let drop = source_rec
             .high_fidelity
@@ -4203,7 +3872,7 @@ mod tests {
             },
         ];
 
-        let rec = rec_for_steam(&export_memory(parsed), steam_id);
+        let rec = rec_for_steam(&export_sample(parsed).1, steam_id);
 
         assert!(rec
             .high_fidelity
@@ -4231,8 +3900,8 @@ mod tests {
             row_with_inventory(164, other, "other", vec![7]),
         ];
 
-        let owner_rec = rec_for_steam(&export_memory(parsed.clone()), owner);
-        let other_rec = rec_for_steam(&export_memory(parsed), other);
+        let owner_rec = rec_for_steam(&export_sample(parsed.clone()).1, owner);
+        let other_rec = rec_for_steam(&export_sample(parsed).1, other);
 
         assert!(owner_rec
             .high_fidelity
@@ -4263,7 +3932,7 @@ mod tests {
             ..ParsedGameEvent::default()
         }];
 
-        let rec = rec_for_steam(&export_memory(parsed), owner);
+        let rec = rec_for_steam(&export_sample(parsed).1, owner);
 
         assert!(rec
             .high_fidelity
@@ -4286,7 +3955,7 @@ mod tests {
             row_with_inventory(121, steam_id, "alpha", vec![7, 45, 44]),
         ];
 
-        let rec = rec_for_steam(&export_memory(parsed), steam_id);
+        let rec = rec_for_steam(&export_sample(parsed).1, steam_id);
 
         assert_eq!(rec.high_fidelity.inventory_snapshots.len(), 2);
         assert_eq!(rec.high_fidelity.inventory_snapshots[0].tick, 100);
@@ -4339,7 +4008,7 @@ mod tests {
         let mut end = parsed.rows.last().unwrap().clone();
         end.tick += 1;
         parsed.rows.push(end);
-        let rec = rec_for_steam(&export_memory(parsed), steam_id);
+        let rec = rec_for_steam(&export_sample(parsed).1, steam_id);
         let snapshots = &rec.high_fidelity.inventory_snapshots;
         assert_eq!(snapshots.len(), 4);
         assert_eq!(snapshots[1].tick, 110);
@@ -4374,7 +4043,7 @@ mod tests {
             },
         ];
 
-        let rec = rec_for_steam(&export_memory(parsed), steam_id);
+        let rec = rec_for_steam(&export_sample(parsed).1, steam_id);
 
         assert_eq!(
             rec.high_fidelity.schema_version,
@@ -4395,7 +4064,7 @@ mod tests {
             },
         ];
 
-        let rec = rec_for_steam(&export_memory(parsed), steam_id);
+        let rec = rec_for_steam(&export_sample(parsed).1, steam_id);
 
         assert_eq!(rec.high_fidelity.round_start_balance, None);
     }
@@ -4542,20 +4211,20 @@ mod tests {
         }
     }
 
-    fn export_memory(parsed: ParsedDemo) -> MemoryConversionReport {
-        export_memory_with_options(parsed, false, false, false)
+    fn export_sample(parsed: ParsedDemo) -> (tempfile::TempDir, ConversionReport) {
+        export_sample_with_options(parsed, false, false, false)
     }
 
-    fn export_memory_with_cosmetics(parsed: ParsedDemo) -> MemoryConversionReport {
-        export_memory_with_options(parsed, true, false, false)
+    fn export_sample_with_cosmetics(parsed: ParsedDemo) -> (tempfile::TempDir, ConversionReport) {
+        export_sample_with_options(parsed, true, false, false)
     }
 
-    fn export_memory_with_stickers(parsed: ParsedDemo) -> MemoryConversionReport {
-        export_memory_with_options(parsed, true, true, false)
+    fn export_sample_with_stickers(parsed: ParsedDemo) -> (tempfile::TempDir, ConversionReport) {
+        export_sample_with_options(parsed, true, true, false)
     }
 
-    fn export_memory_with_charms(parsed: ParsedDemo) -> MemoryConversionReport {
-        export_memory_with_options(parsed, true, false, true)
+    fn export_sample_with_charms(parsed: ParsedDemo) -> (tempfile::TempDir, ConversionReport) {
+        export_sample_with_options(parsed, true, false, true)
     }
 
     fn active_weapon_identity(mut row: ParsedPlayerTick) -> ParsedPlayerTick {
@@ -4565,17 +4234,17 @@ mod tests {
         row
     }
 
-    fn export_memory_with_options(
+    fn export_sample_with_options(
         mut parsed: ParsedDemo,
         export_cosmetics: bool,
         export_stickers: bool,
         export_charms: bool,
-    ) -> MemoryConversionReport {
+    ) -> (tempfile::TempDir, ConversionReport) {
         densify_test_demo_rows(&mut parsed);
-        export_demo_to_memory(
+        export_to_temp(
             &parsed,
-            &ConvertMemoryOptions {
-                output_stem: Some("hifi-demo".to_string()),
+            &ConvertOptions {
+                demo_id: "hifi-demo".to_string(),
                 side: Side::Both,
                 selected_rounds: Some(BTreeSet::from([1])),
                 include_suspicious: true,
@@ -4583,19 +4252,29 @@ mod tests {
                 export_cosmetics,
                 export_stickers,
                 export_charms,
-                analysis: AnalysisOptions::default(),
             },
         )
         .unwrap()
     }
 
-    fn rec_for_steam(memory: &MemoryConversionReport, steam_id: u64) -> Cs2Rec {
-        let dtr = memory
-            .artifacts
+    fn export_to_temp(
+        parsed: &ParsedDemo,
+        options: &ConvertOptions,
+    ) -> Result<(tempfile::TempDir, ConversionReport)> {
+        let directory = tempfile::tempdir().unwrap();
+        let analysis = analyze_demo(parsed, AnalysisOptions::default());
+        let report = export_demo(parsed, &analysis, options, directory.path(), |_| {})?;
+        Ok((directory, report))
+    }
+
+    fn rec_for_steam(report: &ConversionReport, steam_id: u64) -> Cs2Rec {
+        let file = report
+            .manifest
+            .files
             .iter()
-            .find(|artifact| artifact.steam_id == Some(steam_id))
+            .find(|file| file.steam_id == steam_id)
             .unwrap();
-        read_rec(&mut &dtr.bytes[..]).unwrap()
+        read_rec_file(&report.root.join(&file.path)).unwrap()
     }
 
     fn sample_demo() -> ParsedDemo {

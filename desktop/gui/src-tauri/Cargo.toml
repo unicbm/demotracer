@@ -18,7 +18,7 @@ path = "src/main.rs"
 tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
-cs2-demotracer = { path = "../../converter", default-features = false, features = ["demoparser"] }
+cs2-demotracer = { path = "../../converter" }
 base64 = "=0.23.1"
 minisign-verify = "=0.3.0"
 rfd = "=0.17.2"

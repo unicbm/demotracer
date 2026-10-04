@@ -4,8 +4,6 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-#![cfg(feature = "demoparser")]
-
 use parser::first_pass::parser_settings::{FirstPassParser, ParserInputs};
 
 fn server_info_packet(host: &str) -> Vec<u8> {

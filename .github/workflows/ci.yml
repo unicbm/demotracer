@@ -450,7 +450,7 @@ jobs:
           MMSOURCE_DEV: ${{ github.workspace }}/.external/metamod-khook
           HL2SDKCS2: ${{ github.workspace }}/.external/hl2sdk
           PROTOC: ${{ github.workspace }}/.external/hl2sdk/devtools/bin/protoc.exe
-        run: server/runtime/${{ matrix.component }}/tools/check.ps1 -NativeBuild -SkipManagedBuild
+        run: server/runtime/${{ matrix.component }}/tools/check.ps1 -NativeBuild ${{ matrix.component == 'dtr-hider' && '-SkipManagedBuild' || '' }}
 
       - name: Save native package for product integration
         uses: actions/upload-artifact@v7

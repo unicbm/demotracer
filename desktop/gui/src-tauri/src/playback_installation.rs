@@ -19,8 +19,6 @@ pub(crate) const REQUIRED_RECEIPT_PATHS: &[&str] = &[
     "addons/dtr-controller/bin/win64/dtr-controller.dll",
     "addons/dtr-controller/gamedata.json",
     "addons/metamod/dtr-controller.vdf",
-    "addons/counterstrikesharp/plugins/dtrcontroller/dtrcontroller.dll",
-    "addons/counterstrikesharp/shared/dtrcontrollerapi/dtrcontrollerapi.dll",
     "addons/dtr-hider/bin/win64/dtr-hider.dll",
     "addons/dtr-hider/gamedata.json",
     "addons/metamod/dtr-hider.vdf",
@@ -108,12 +106,6 @@ pub(crate) struct DtrReaderContractWire {
 pub(crate) struct BotControllerContractWire {
     #[serde(default)]
     pub(crate) native_library: String,
-    #[serde(default)]
-    pub(crate) managed_assembly: String,
-    #[serde(default)]
-    pub(crate) managed_api: String,
-    #[serde(default)]
-    pub(crate) capability: String,
     pub(crate) abi_major: i32,
     pub(crate) min_abi_minor: i32,
     #[serde(default)]
@@ -124,8 +116,6 @@ pub(crate) struct BotControllerContractWire {
     pub(crate) replay_tick_bytes: u32,
     #[serde(default)]
     pub(crate) replay_tick_event_tail: String,
-    #[serde(default)]
-    pub(crate) managed_provider_version: String,
     pub(crate) required_capabilities_hex: String,
 }
 

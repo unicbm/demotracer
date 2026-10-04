@@ -44,8 +44,8 @@ use cs2_demotracer::demo_series::{
 };
 use cs2_demotracer::dtr::read_rec_file;
 use cs2_demotracer::export::{
-    export_demo_to_root_with_analysis_and_progress, ConversionArtifactKind, ConversionProgress,
-    ConversionReport, ConvertOptions, MAX_FREEZE_PREROLL_SECONDS,
+    export_demo, ConversionArtifactKind, ConversionProgress, ConversionReport, ConvertOptions,
+    MAX_FREEZE_PREROLL_SECONDS,
 };
 use cs2_demotracer::model::{
     public_demo_path, ConvertedFile, DemoAnalysis, ParsedDemo, RoundStatus, Side, DEMOTRACER_ABI,
@@ -4006,8 +4006,7 @@ fn prepare_conversion_with_cosmetics(
     )?;
     let resolved = resolve_output_paths(&request.output_dir, cached)?;
     let options = ConvertOptions {
-        output_dir: resolved.output_dir.clone(),
-        output_stem: Some(resolved.demo_id),
+        demo_id: resolved.demo_id,
         side: request.side,
         selected_rounds: Some(selected_rounds),
         include_suspicious: request.include_suspicious,
@@ -4015,7 +4014,6 @@ fn prepare_conversion_with_cosmetics(
         export_cosmetics: cosmetics.cosmetics,
         export_stickers: cosmetics.stickers,
         export_charms: cosmetics.charms,
-        analysis: cached.analysis_options,
     };
     Ok(PreparedConversion {
         output_dir: resolved.output_dir,
@@ -4535,11 +4533,7 @@ fn run_conversion_with_sink(
     let final_root = prepared.root.clone();
     let output_dir = prepared.output_dir.clone();
     let mut demo_info = archive_info::DemoArchiveInfo::from_analysis(
-        prepared
-            .options
-            .output_stem
-            .clone()
-            .unwrap_or_else(|| cached.archive_id.clone()),
+        prepared.options.demo_id.clone(),
         &cached.parsed,
         &cached.browser,
         cached.source_modified_at_ms,
@@ -4583,7 +4577,7 @@ fn run_conversion_with_sink(
             emit_phase_to_sink(&events, TaskPhase::Exporting);
             let progress_events = events.clone();
             let progress_final_root = final_root.clone();
-            let report = export_demo_to_root_with_analysis_and_progress(
+            let report = export_demo(
                 &cached.parsed,
                 &cached.browser.analysis,
                 &prepared.options,

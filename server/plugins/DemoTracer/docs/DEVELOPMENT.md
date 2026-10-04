@@ -64,8 +64,8 @@ on `PATH`. `tools/check.ps1` builds Release and runs the
 does not require a live CS2 server. Actual engine hooks, playback, takeover,
 and live cosmetic publication still need matched-server smoke tests.
 
-Product integration can pass absolute `DtrCommonRoot`, `DtrHiderRoot`,
-`DtrRandomizerRoot`, and (for tests) `DtrControllerRoot` MSBuild properties to
+Product integration can pass absolute `DtrCommonRoot`, `DtrHiderRoot`, and
+`DtrRandomizerRoot` MSBuild properties to
 select alternative source directories. Defaults use the product's runtime modules.
 The check script supplies the same common checkout to the provider test graph.
 Release plugin output is under `src/DemoTracer/bin/Release/net10.0/`.

@@ -21,8 +21,7 @@ $componentArguments = @(
     "-p:PathMap=$repoRoot=/_/demotracer",
     "-p:DtrCommonRoot=$(Join-Path $repoRoot 'server/runtime/common')",
     "-p:DtrHiderRoot=$(Join-Path $repoRoot 'server/runtime/dtr-hider')",
-    "-p:DtrRandomizerRoot=$(Join-Path $repoRoot 'server/runtime/BotRandomizer')",
-    "-p:DtrControllerRoot=$(Join-Path $repoRoot 'server/runtime/dtr-controller')"
+    "-p:DtrRandomizerRoot=$(Join-Path $repoRoot 'server/runtime/BotRandomizer')"
 )
 $nugetConfigPath = Join-Path $repoRoot "NuGet.Config"
 

@@ -267,10 +267,8 @@ Kept for existing scripts; new tooling should use the commands above.
 
 ## Known Boundaries
 
-- The bundled BotController `!dtr_controller_record` / `!dtr_controller_replay` commands capture and replay
-  public motion recordings. They do not capture or execute weapon-drop events.
-  Older JSON recordings with a nonzero native event tail are rejected with an
-  unsupported-event message. DTR gameplay events keep their existing executor.
+- The former `!dtr_controller_record` / `!dtr_controller_replay` JSON recording
+  commands and controller SDK are retired. Use the GUI demo-to-.dtr workflow.
 - Playback targets local Windows x64 servers with the source map and enough safe
   bot slots; it is not intended for matchmaking.
 - `.dtr` preserves its recorded evidence but is not a complete reconstruction

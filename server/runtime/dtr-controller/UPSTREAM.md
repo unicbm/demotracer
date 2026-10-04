@@ -13,8 +13,8 @@ not claim an unverifiable upstream commit hash.
 [`unicbm/demotracer`](https://github.com/unicbm/demotracer/tree/main/server/runtime/dtr-controller)
 is the maintained source of truth, consolidated in DemoTracer's
 `server/runtime/dtr-controller`. The maintained derivative now uses the
-`dtr-controller` DLL/plugin identity, `DtrControllerApi` assembly,
-`dtr-controller:api` capability, and `DtrController_` native exports. It does
+`dtr-controller` DLL/plugin identity and `DtrController_` native exports. The
+separate managed recording provider and SDK have been retired. It does
 not register aliases under the upstream identities.
 DemoTracer has added its versioned replay ABI, `.dtr` loading,
 subtick command replay, handoff safety, projectile and voice integration,
