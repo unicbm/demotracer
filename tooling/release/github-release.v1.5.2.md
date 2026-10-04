@@ -1,0 +1,23 @@
+# CS2 DemoTracer v1.5.2
+
+## 更新内容
+
+- 适配 CS2 Bot Improver 1.4.5：修复共用环境下的昵称、头像和 TAB 显示冲突；启动 DTR 时切换 Hider，换图后恢复原 BotHider。
+- 新增准星编辑器，支持从选手准星继续编辑、预览和导入／分享。
+- 改进日志与诊断界面，归档不可播放时显示具体原因和重新转换入口。
+- 精简转换器、GUI 与回放代码，减少重复处理；修复非网络字段导致的警告刷屏。
+- 保留 .dtr v12 归档兼容；更早的归档需要用当前 GUI 重新转换。
+
+请先更新 GUI，再在 GUI 中更新整套 Playback 组件，重启 CS2 后使用。
+
+---
+
+## Changes
+
+- Improve compatibility with CS2 Bot Improver 1.4.5: fix name, avatar and scoreboard conflicts when both are installed. Starting DTR switches Hider providers; the original BotHider is restored after a map change.
+- Add a crosshair editor with player crosshair editing, previews, import and sharing.
+- Improve logs and diagnostics, with specific reasons and a reconversion action for unplayable archives.
+- Simplify converter, GUI and playback code, reduce duplicate processing, and stop warning spam caused by notifying non-networked fields.
+- Retain .dtr v12 archive support. Older archives need to be reconverted with the current GUI.
+
+Update the GUI first, then update the complete Playback bundle through the GUI and restart CS2.
