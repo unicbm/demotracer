@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  csgo-sharecode@7.0.0: 23dfbadfc8f328cd88305dc888b28d1fb3ca57daca49c51878a4329ac1d9d9b6
+
 importers:
 
   .:
@@ -28,7 +31,7 @@ importers:
         version: 2.12.0
       csgo-sharecode:
         specifier: 7.0.0
-        version: 7.0.0
+        version: 7.0.0(patch_hash=23dfbadfc8f328cd88305dc888b28d1fb3ca57daca49c51878a4329ac1d9d9b6)
       flag-icons:
         specifier: 7.5.0
         version: 7.5.0
@@ -815,7 +818,7 @@ snapshots:
 
   clsx@2.1.1: {}
 
-  csgo-sharecode@7.0.0: {}
+  csgo-sharecode@7.0.0(patch_hash=23dfbadfc8f328cd88305dc888b28d1fb3ca57daca49c51878a4329ac1d9d9b6): {}
 
   csstype@3.2.3: {}
 

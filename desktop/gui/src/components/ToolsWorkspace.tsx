@@ -127,10 +127,10 @@ export function ToolsWorkspace({ words, session, onChange, copiedTarget, onCopy 
             alpha={c.outlineAlpha} onAlphaChange={(outlineAlpha) => patch({ outlineAlpha })}
             onChange={(outlineRed, outlineGreen, outlineBlue) => patch({ outlineRed, outlineGreen, outlineBlue })} /> : null}
           {outlined && legacy ? <NumericSetting label={words.chOutlineThickness} value={c.outline} max={3} step={0.5} onChange={(outline) => patch({ outline })} /> : null}
-          {numeric("thickness", words.chThickness, 0, legacy ? 25.5 : current ? 255 : 31, legacy ? 0.1 : 1, 0, legacy ? 6 : current ? 32 : 31)}
+          {numeric("thickness", words.chThickness, 0, legacy ? 25.5 : current ? 32 : 31, legacy ? 0.1 : 1, 0, legacy ? 6 : current ? 32 : 31)}
           {legacy || c.style !== 6 ? toggle(words.chCenterDot, c.centerDotEnabled, (centerDotEnabled) => patch({ centerDotEnabled })) : null}
           {cross ? numeric("length", words.chLength, 0, legacy ? 25.5 : 255, legacy ? 0.1 : 1) : null}
-          {legacy || ![1, 6].includes(c.style) ? numeric("gap", words.chGap, legacy ? -12.8 : current ? -128 : 0, legacy ? 12.7 : current ? 127 : 255,
+          {legacy || ![1, 6].includes(c.style) ? numeric("gap", words.chGap, legacy ? -12.8 : current ? -3840 : 0, legacy ? 12.7 : current ? 3840 : 255,
             legacy ? 0.1 : 1, legacy ? -12.8 : current && c.style === 2 ? -10 : 0, legacy ? 12.7 : 127) : null}
           {!legacy && [0, 1, 7].includes(c.style) ? <NumericSetting label={words.chSpreadLimit} value={c.dynamicSpreadLimit} max={255} onChange={(dynamicSpreadLimit) => patch({ dynamicSpreadLimit })} /> : null}
           {split ? <>
@@ -147,7 +147,7 @@ export function ToolsWorkspace({ words, session, onChange, copiedTarget, onCopy 
           {toggle(words.chRecoil, c.followRecoil, (followRecoil) => patch({ followRecoil }))}
           <details className="crosshair-extra"><summary>{words.chAdditional}</summary>
             {!legacy ? <div className="crosshair-setting-row"><span>{words.chScreenHeight}</span>
-              <NumberInput aria-label={words.chScreenHeight} value={c.screenHeight} min={0} max={65535} allowDecimal={false} clampBehavior="strict" size="xs"
+              <NumberInput aria-label={words.chScreenHeight} value={c.screenHeight} min={current ? 240 : 0} max={65535} allowDecimal={false} clampBehavior="strict" size="xs"
                 onChange={(next) => { if (typeof next === "number") patch({ screenHeight: next }); }} /></div> : null}
             {legacy ? <>
               <NumericSetting label={words.chFixedGap} value={c.fixedCrosshairGap} min={-12.8} max={12.7} step={0.1} onChange={(fixedCrosshairGap) => patch({ fixedCrosshairGap })} />

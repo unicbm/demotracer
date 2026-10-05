@@ -5,9 +5,13 @@
  *--------------------------------------------------------------------------------------------*/
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { crosshairToConVars, encodeCrosshair } from "csgo-sharecode";
+import { importCrosshair } from "./crosshairEditor.ts";
 import { decodePreviewCrosshair, rasterizeCrosshair } from "./crosshairPreviewModel.ts";
+import { buildCrosshairFrame } from "./crosshairRenderer.ts";
 
-const CODE = "CSYu7YAbXx3kUn2OtU2Xvw8zmBcvMWXEB6HtAPihTs4hoM";
+const CODE = "CSG4pWURDBtO7JeYvrNjoewqFQ9rGdZuDRmzyy5QLDFNrh";
+const ZERO_CODE = "CSjiGndQBvco46M6hcaQvNm9AWnCmfPqA2t9FBybqCsycS";
 function currentCrosshair() {
   const value = decodePreviewCrosshair(CODE);
   assert.equal(value.format, "cs2-v1");
@@ -30,6 +34,40 @@ describe("CS2 crosshair previews", () => {
       scopeDotUseCrosshairColor: true, scopeDotScale: 1.35,
     });
     assert.equal(decodePreviewCrosshair("CSGO-GA9km-msST6-yyjrG-PYKNi-DeCcO").format, "legacy-v1");
+  });
+  it("renders the supplied small cross using native-decoded gap and outline fields", () => {
+    const crosshair = decodePreviewCrosshair(ZERO_CODE);
+    assert.equal(crosshair.format, "cs2-v1");
+    if (crosshair.format !== "cs2-v1") assert.fail("Expected current CS2 code");
+    assert.equal(crosshair.style, 4);
+    assert.equal(crosshair.gap, 1);
+    assert.equal(crosshair.outlineMode, 0);
+    assert.equal(crosshair.length, 1);
+    assert.equal(crosshair.thickness, 2);
+    // Independently recorded from CS2 1.41.8.8's decoder and geometry functions.
+    assert.deepEqual(buildCrosshairFrame(crosshair, { width: 128, height: 128 }).map((shape) => shape.geometry), [
+      [63, 63, 64, 64], [62, 63, 62, 64], [65, 63, 65, 64], [63, 62, 64, 62], [63, 65, 64, 65],
+    ]);
+    const image = rasterizeCrosshair(crosshair);
+    for (const [x, y] of [[22, 23], [25, 23], [23, 22], [23, 25], [23, 23]]) {
+      assert.deepEqual(pixel(image, x, y), [0, 255, 255, 255]);
+    }
+    for (const [x, y] of [[22, 22], [25, 22], [22, 25], [25, 25]]) assert.equal(pixel(image, x, y)[3], 0);
+  });
+  it("shares decoding and validation between analysis and Tools and preserves native codes on export", () => {
+    for (const code of [ZERO_CODE, CODE, "CSGO-GA9km-msST6-yyjrG-PYKNi-DeCcO", "CSGO-F5x8c-aqWRz-PK48S-f35jY-EGV4M"]) {
+      const session = importCrosshair(` ${code}\n`);
+      assert.deepEqual(session.draft, decodePreviewCrosshair(` ${code}\n`));
+      assert.equal(session.input, code);
+      assert.equal(encodeCrosshair(session.draft), code);
+    }
+    for (const code of ["invalid", ZERO_CODE.slice(0, -1), "CSGO-KmKaX-d9yce-vGu2r-xe7Sn-oVyjN"]) {
+      assert.throws(() => importCrosshair(code));
+      assert.throws(() => decodePreviewCrosshair(code));
+    }
+    const convars = crosshairToConVars(importCrosshair(ZERO_CODE).draft);
+    assert.match(convars, /cl_crosshair_gap "1"/);
+    assert.match(convars, /cl_crosshair_drawoutline "0"/);
   });
   it("renders independent outline color and opacity, including half outlines", () => {
     const dot = { ...currentCrosshair(), style: 6, centerDotEnabled: false };

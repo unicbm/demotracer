@@ -4,7 +4,8 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { decodeCrosshairShareCode, type Crosshair, type CrosshairV1 } from "csgo-sharecode";
+import type { Crosshair, CrosshairV1 } from "csgo-sharecode";
+import { decodePreviewCrosshair } from "./crosshairPreviewModel.ts";
 
 export const INITIAL_CROSSHAIR: CrosshairV1 = {
   format: "cs2-v1", style: 4, followRecoil: false, centerDotEnabled: false, tStyleEnabled: false,
@@ -22,6 +23,6 @@ export interface CrosshairEditorSession {
 }
 
 export function importCrosshair(input: string): CrosshairEditorSession {
-  const original = decodeCrosshairShareCode(input.trim());
+  const original = decodePreviewCrosshair(input);
   return { original, draft: original, input: input.trim() };
 }

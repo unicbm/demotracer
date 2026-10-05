@@ -10,7 +10,7 @@ import { buildCrosshairFrame, rasterizeCrosshairFrame, type PixelCrosshair } fro
 export { CROSSHAIR_REFERENCE_HEIGHT } from "./crosshairRenderer.ts";
 
 export function decodePreviewCrosshair(code: string): Crosshair {
-  const crosshair = decodeCrosshairShareCode(code);
+  const crosshair = decodeCrosshairShareCode(code.trim());
   const maxStyle = crosshair.format === "legacy-v1" ? 5 : crosshair.format === "legacy-v3" ? 7 : crosshair.format === "legacy-v4" ? 8 : 9;
   if (crosshair.style > maxStyle || ((crosshair.format === "legacy-v4" || crosshair.format === "cs2-v1") && crosshair.outlineMode > 2)) {
     throw new Error("Unsupported crosshair settings");
