@@ -8,7 +8,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import packageMetadata from "../../package.json";
 import {
   parseCommandError,
@@ -50,7 +50,7 @@ export function useUpdateController({
     currentVersion: packageMetadata.version,
   });
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [promptDismissed, setPromptDismissed] = useState(false);
+  const [online, setOnline] = useState(navigator.onLine);
   const [ignoredVersions, setIgnoredVersions] = useState<IgnoredUpdateVersions>(() => (
     normalizeIgnoredUpdateVersions(localStorage.getItem(IGNORED_UPDATE_VERSIONS_STORAGE_KEY))
   ));
@@ -63,6 +63,7 @@ export function useUpdateController({
   const [playbackInstallProgress, setPlaybackInstallProgress] = useState<PlaybackInstallProgress | null>(null);
   const [releaseNotice, setReleaseNotice] = useState("");
   const pendingGuiUpdateRef = useRef<Update | null>(null);
+  const guiCheckInFlightRef = useRef(false);
   const playbackContinuationStartedRef = useRef(false);
   const playbackCheckRef = useRef(0);
   const playbackPathRef = useRef(cs2Path.trim());
@@ -74,7 +75,9 @@ export function useUpdateController({
 
   async function checkGuiApplicationUpdate(manual = true, knownCurrentVersion?: string) {
     if (!("__TAURI_INTERNALS__" in window)) return;
+    if (guiCheckInFlightRef.current) return;
     if (guiUpdate.phase === "checking" || guiUpdate.phase === "downloading" || guiUpdate.phase === "installing") return;
+    guiCheckInFlightRef.current = true;
     setReleaseNotice("");
     const currentVersion = knownCurrentVersion
       ?? await getVersion().catch(() => guiUpdate.currentVersion || appVersion || packageMetadata.version);
@@ -98,6 +101,8 @@ export function useUpdateController({
       });
     } catch {
       setGuiUpdate({ phase: "error", currentVersion });
+    } finally {
+      guiCheckInFlightRef.current = false;
     }
   }
 
@@ -236,6 +241,26 @@ export function useUpdateController({
     }
   }
 
+  const recheckOnReconnect = useEffectEvent(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    void checkGuiApplicationUpdate(false);
+    void checkPlaybackUpdate();
+  });
+
+  useEffect(() => {
+    const onOnline = () => {
+      setOnline(true);
+      recheckOnReconnect();
+    };
+    const onOffline = () => setOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
     let disposed = false;
@@ -309,21 +334,10 @@ export function useUpdateController({
     && !updateVersionIsIgnored(ignoredVersions, "gui", guiUpdate.availableVersion);
   const actionablePlaybackUpdate = playbackUpdateAvailable
     && !updateVersionIsIgnored(ignoredVersions, "playback", playbackUpdate.latestVersion);
-  const guiUpdateOffered = actionableGuiUpdate || guiUpdateRetryRequired;
+  const guiUpdateOffered = actionableGuiUpdate || guiUpdateRetryRequired
+    || guiUpdate.phase === "downloading" || guiUpdate.phase === "installing";
   const playbackUpdateOffered = actionablePlaybackUpdate;
-  const actionableUpdateAvailable = actionableGuiUpdate || actionablePlaybackUpdate;
   const availableUpdateCount = Number(guiUpdateOffered) + Number(playbackUpdateOffered);
-  const promptTitle = guiUpdateOffered
-    ? words.releaseUpdateBannerTitle
-    : words.releasePlaybackUpdateBannerTitle;
-  const promptSummary = [
-    actionableGuiUpdate
-      ? `DemoTracer v${guiUpdate.currentVersion || appVersion} → v${guiUpdate.availableVersion}`
-      : "",
-    actionablePlaybackUpdate
-      ? `Playback ${playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy} → v${playbackUpdate.latestVersion}`
-      : "",
-  ].filter(Boolean).join(" · ");
   const dialogBusy = guiUpdate.phase === "checking"
     || guiUpdate.phase === "downloading"
     || guiUpdate.phase === "installing"
@@ -348,7 +362,6 @@ export function useUpdateController({
       : null;
 
   function dismissPrompt() {
-    setPromptDismissed(true);
     setDialogOpen(false);
   }
 
@@ -396,7 +409,6 @@ export function useUpdateController({
     guiUpdate,
     dialogOpen,
     setDialogOpen,
-    promptDismissed,
     ignoredVersions,
     playbackRelease,
     playbackUpdate,
@@ -405,14 +417,12 @@ export function useUpdateController({
     releaseAction,
     playbackInstallProgress,
     releaseNotice,
-    actionableUpdateAvailable,
+    sidebarUpdateVisible: dialogProgressActive || (online && availableUpdateCount > 0),
     guiUpdateAvailable,
     guiUpdateRetryRequired,
     guiUpdateOffered,
     playbackUpdateOffered,
     availableUpdateCount,
-    promptTitle,
-    promptSummary,
     dialogBusy,
     dialogStatus,
     dialogProgressActive,

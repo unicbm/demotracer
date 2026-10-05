@@ -89,7 +89,7 @@ import {
   ResultView,
   ValidationFailedView,
 } from "./components/TaskViews";
-import { AlertIcon, ArrowIcon, CloseIcon, FolderIcon } from "./icons";
+import { AlertIcon, CloseIcon, FolderIcon } from "./icons";
 import { COSMETIC_PHRASE, TEXT } from "./i18n";
 import { useActivityLogController } from "./hooks/useActivityLogController";
 import { useAppearanceRuntime } from "./hooks/useAppearanceRuntime";
@@ -330,7 +330,6 @@ function App() {
     guiUpdate,
     dialogOpen: updateDialogOpen,
     setDialogOpen: setUpdateDialogOpen,
-    promptDismissed: updatePromptDismissed,
     ignoredVersions: ignoredUpdateVersions,
     playbackRelease,
     playbackUpdate,
@@ -339,14 +338,12 @@ function App() {
     releaseAction,
     playbackInstallProgress,
     releaseNotice,
-    actionableUpdateAvailable,
+    sidebarUpdateVisible,
     guiUpdateAvailable,
     guiUpdateRetryRequired,
     guiUpdateOffered,
     playbackUpdateOffered,
     availableUpdateCount,
-    promptTitle: updatePromptTitle,
-    promptSummary: updatePromptSummary,
     dialogBusy: updateDialogBusy,
     dialogStatus: updateDialogStatus,
     dialogProgressActive: updateDialogProgressActive,
@@ -2647,7 +2644,9 @@ function App() {
           toolsActive={activeSection === "tools"}
           logsActive={activeSection === "logs"}
           settingsActive={activeSection === "settings"}
-          updateAvailable={actionableUpdateAvailable}
+          updateAvailable={sidebarUpdateVisible}
+          updateLabel={updateDialogProgressActive ? updateDialogStatus : words.releaseDownloadUpdate}
+          onOpenUpdate={() => setUpdateDialogOpen(true)}
           collapsed={sidebarCollapsed}
           onOpenImport={() => {
             if (batchInvocationActive || canResumeBatch || hasRetryableBatchJobs) {
@@ -2664,21 +2663,6 @@ function App() {
           onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
         />
         <main className="app-workspace">
-        {actionableUpdateAvailable && !updatePromptDismissed ? (
-          <aside className="update-discovery-banner" aria-labelledby="update-banner-title">
-            <span className="update-discovery-mark" aria-hidden="true"><ArrowIcon size={16} /></span>
-            <div className="update-discovery-copy">
-              <strong id="update-banner-title">{updatePromptTitle}</strong>
-              <span>{updatePromptSummary}</span>
-            </div>
-            <button className="secondary-button update-discovery-action" type="button" onClick={() => setUpdateDialogOpen(true)}>
-              {words.releaseReviewUpdate}
-            </button>
-            <button className="icon-button update-discovery-dismiss" type="button" onClick={dismissUpdatePrompt} aria-label={words.releaseLater} title={words.releaseLater}>
-              <CloseIcon size={14} />
-            </button>
-          </aside>
-        ) : null}
         {globalError ? (
           <div className="error-strip system-feedback-toast" role="alert" aria-live="assertive">
             <AlertIcon size={17} />

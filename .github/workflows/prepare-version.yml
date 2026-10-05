@@ -34,6 +34,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -51,14 +52,15 @@ jobs:
         run: tooling/scripts/check-release-contract.ps1
       - run: git diff --check
       - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        id: version-pr
         with:
           branch: codex/prepare-version
           title: 'chore: prepare product versions'
           commit-message: 'chore: prepare product versions'
           body: |
             Updates the selected GUI, Playback and converter versions.
-            Review the supplied release notes and run CI before merging.
-            Publishing remains a separate manual step.
+            Review the supplied release notes and CI before merging.
+            After merging, run Release NSIS on main with publish enabled.
           add-paths: |
             desktop/gui/package.json
             desktop/gui/src-tauri/Cargo.toml
@@ -70,3 +72,9 @@ jobs:
             server/plugins/DemoTracer/src/DemoTracer/Lifecycle/DemoTracerPlugin.cs
             tooling/release/release-notes.v*.json
             tooling/release/github-release.v*.md
+      # PRs created with GITHUB_TOKEN do not automatically trigger pull_request CI.
+      - name: Validate the bot version branch
+        if: steps.version-pr.outputs.pull-request-operation == 'created' || steps.version-pr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref codex/prepare-version

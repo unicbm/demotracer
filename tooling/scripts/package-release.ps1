@@ -21,6 +21,8 @@ param(
     [string]$BotHiderRuntimePackage = "server\runtime\dtr-hider\build\package",
     [switch]$SkipGuiBuild,
     [switch]$SkipCssBuild,
+    # Reuse the matched bundle produced by this commit's full CI validation.
+    [switch]$SkipPlaybackPackage,
     [switch]$IncludeSymbols
 )
 
@@ -72,6 +74,20 @@ foreach ($manifest in @("desktop/converter/Cargo.toml", "desktop/gui/src-tauri/C
     if ($LASTEXITCODE -ne 0) { throw "Rust formatting check failed: $manifest" }
 }
 
+if ($SkipPlaybackPackage -and $PlaybackVersion -eq $Version) {
+    $bundle = [IO.Compression.ZipFile]::OpenRead((Join-Path $outputRootPath $cssName))
+    try {
+        $entry = $bundle.GetEntry("demotracer-css-v$PlaybackVersion/addons/demotracer-install.v1.json")
+        if (-not $entry) { throw 'Prebuilt Playback is missing its install receipt.' }
+        $reader = [IO.StreamReader]::new($entry.Open())
+        try { $receipt = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
+        $commit = (& git -C $repoRoot rev-parse --short=12 HEAD).Trim()
+        if ($LASTEXITCODE -ne 0 -or $receipt.bundle_version -ne $PlaybackVersion -or $receipt.git_commit -ne $commit) {
+            throw 'Prebuilt Playback must match the release version and current commit.'
+        }
+    } finally { $bundle.Dispose() }
+}
+
 $guiArgs = @{
     Version = $Version
     PlaybackVersion = $PlaybackVersion
@@ -88,7 +104,7 @@ if ($SkipGuiBuild) {
 }
 & (Join-Path $PSScriptRoot "package-converter.ps1") @guiArgs
 
-if ($PlaybackVersion -eq $Version) {
+if ($PlaybackVersion -eq $Version -and -not $SkipPlaybackPackage) {
     $cssArgs = @{
         Version = $PlaybackVersion
         Configuration = $Configuration
@@ -104,7 +120,7 @@ if ($PlaybackVersion -eq $Version) {
         $cssArgs.IncludeSymbols = $true
     }
     & (Join-Path $PSScriptRoot "package-server.ps1") @cssArgs
-} else {
+} elseif ($PlaybackVersion -ne $Version) {
     Write-Host "Reusing immutable Playback v$PlaybackVersion for GUI-only release v$Version."
 }
 

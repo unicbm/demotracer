@@ -2,6 +2,15 @@ name: Release NSIS
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Sign and publish the version on main to GitHub and the stable updater
+        type: boolean
+        default: false
+      allow_unsigned_installer:
+        description: Publish without Windows Authenticode (updater signing remains mandatory)
+        type: boolean
+        default: false
   push:
     tags:
       - "v*"
@@ -10,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-nsis-${{ github.ref }}
+  group: release-nsis
   cancel-in-progress: false
 
 env:
@@ -25,14 +34,74 @@ jobs:
 
   build-windows-nsis:
     needs: full-validation
+    if: github.repository == 'unicbm/demotracer' && (!inputs.publish || github.ref == 'refs/heads/main')
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
+    environment: release
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           submodules: recursive
+          fetch-depth: 0
+
+      - name: Validate publication and read component versions
+        if: inputs.publish
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          R2_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          R2_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WINDOWS_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
+          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned_installer }}
+        run: |
+          foreach ($value in @($env:UPDATER_KEY, $env:R2_TOKEN, $env:R2_ACCOUNT)) {
+            if ([string]::IsNullOrWhiteSpace($value)) { throw 'Configure the release environment signing and R2 secrets first.' }
+          }
+          if ($env:ALLOW_UNSIGNED -ne 'true' -and -not $env:WINDOWS_PFX) { throw 'Windows signing certificate is required unless explicitly disabled.' }
+          $version = (Get-Content desktop/gui/package.json -Raw | ConvertFrom-Json).version
+          $plugin = Get-Content server/plugins/DemoTracer/src/DemoTracer/Lifecycle/DemoTracerPlugin.cs -Raw
+          $playback = [regex]::Match($plugin, 'ModuleVersion\s*=>\s*"([^"]+)"').Groups[1].Value
+          tooling/scripts/check-release-contract.ps1 -Version $version -PlaybackVersion $playback
+          foreach ($path in @("tooling/release/release-notes.v$version.json", "tooling/release/github-release.v$version.md")) {
+            if (-not (Test-Path -LiteralPath $path)) { throw "Missing release notes: $path" }
+          }
+          $stable = Invoke-RestMethod "https://releases.detr.site/channels/stable/latest.json?check=$env:GITHUB_RUN_ID"
+          if ([version]$version -le [version]$stable.version) { throw 'Publication requires a GUI version newer than stable.' }
+          $releaseTags = gh api "repos/$env:GITHUB_REPOSITORY/releases" --paginate --jq '.[].tag_name'
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect existing GitHub releases.' }
+          if ($releaseTags -contains "v$version") { throw 'Release already exists; inspect it before retrying publication.' }
+          $tag = git tag --list "v$version"
+          if ($tag) {
+            $commit = git rev-list -n 1 "v$version"
+            if ($LASTEXITCODE -ne 0 -or $commit -ne $env:GITHUB_SHA) { throw 'Release tag belongs to another commit.' }
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "playback=$playback" >> $env:GITHUB_OUTPUT
+
+      - name: Download validated Playback bundle
+        if: inputs.publish && steps.release.outputs.version == steps.release.outputs.playback
+        uses: actions/download-artifact@v8
+        with:
+          name: demotracer-playback-windows-x64
+          path: dist
+
+      - name: Reuse published Playback for a GUI hotfix
+        if: inputs.publish && steps.release.outputs.version != steps.release.outputs.playback
+        shell: pwsh
+        env:
+          PLAYBACK_VERSION: ${{ steps.release.outputs.playback }}
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $name = "demotracer-css-v$env:PLAYBACK_VERSION.zip"
+          foreach ($asset in @($name, "$name.sig")) {
+            Invoke-WebRequest "https://releases.detr.site/releases/v$env:PLAYBACK_VERSION/$asset" -OutFile "dist/$asset"
+          }
 
       - name: Read professional identity source pin
         id: pro-steamid-source
@@ -78,8 +147,45 @@ jobs:
         run: node desktop\gui\scripts\import-pro-steamid-catalog.mjs .external\CS2-pro-steamid-lib
 
       - name: Build Windows NSIS installer
+        if: '!inputs.publish'
         working-directory: desktop/gui
         run: pnpm run tauri:build --target x86_64-pc-windows-msvc -- --locked
+
+      - name: Build and sign release assets
+        if: inputs.publish
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          PLAYBACK_VERSION: ${{ steps.release.outputs.playback }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          WINDOWS_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
+          WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned_installer }}
+        run: |
+          $releaseArgs = @{
+            Version = $env:RELEASE_VERSION
+            PlaybackVersion = $env:PLAYBACK_VERSION
+            SkipPlaybackPackage = $true
+          }
+          $certificate = $null
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'demotracer-signing.pfx'
+          try {
+            if ($env:ALLOW_UNSIGNED -eq 'true') {
+              $releaseArgs.AllowUnsignedInstaller = $true
+            } else {
+              [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_PFX))
+              $password = if ($env:WINDOWS_PFX_PASSWORD) { ConvertTo-SecureString $env:WINDOWS_PFX_PASSWORD -AsPlainText -Force } else { [Security.SecureString]::new() }
+              $certificate = Import-PfxCertificate -FilePath $pfxPath -Password $password -CertStoreLocation Cert:\CurrentUser\My
+              $signer = @($certificate | Where-Object HasPrivateKey)
+              if ($signer.Count -ne 1) { throw 'Expected one Windows signing certificate with a private key.' }
+              $releaseArgs.CertificateThumbprint = $signer[0].Thumbprint
+            }
+            tooling/scripts/package-release.ps1 @releaseArgs
+          } finally {
+            if (Test-Path -LiteralPath $pfxPath) { Remove-Item -LiteralPath $pfxPath -Force }
+            foreach ($cert in $certificate) { Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($cert.Thumbprint)" -Force }
+          }
 
       - name: Record exact component sources
         shell: pwsh
@@ -90,7 +196,7 @@ jobs:
           }
           tooling/scripts/write-component-manifest.ps1 -OutputPath "$installerDir/component-sources.json"
 
-      - name: Upload unsigned NSIS installer
+      - name: Upload NSIS installer
         uses: actions/upload-artifact@v7
         with:
           name: demotracer-gui-${{ github.sha }}-windows-x64
@@ -100,3 +206,35 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
+
+      - name: Preserve signed release payloads
+        if: inputs.publish
+        uses: actions/upload-artifact@v7
+        with:
+          name: demotracer-release-${{ steps.release.outputs.version }}
+          path: dist/updater-v${{ steps.release.outputs.version }}/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - name: Publish GitHub release and stable updater
+        if: inputs.publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          PLAYBACK_VERSION: ${{ steps.release.outputs.playback }}
+          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned_installer }}
+        run: |
+          $version = $env:RELEASE_VERSION
+          $playback = $env:PLAYBACK_VERSION
+          $assets = @("dist/release-v$version/demotracer-gui-v$version.exe", "dist/release-v$version/demotracer-css-v$playback.zip")
+          gh release create "v$version" @assets --target $env:GITHUB_SHA --title "CS2 DemoTracer v$version" --notes-file "tooling/release/github-release.v$version.md" --draft
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create draft release.' }
+          $publishArgs = @{ Version = $version; PlaybackVersion = $playback }
+          if ($env:ALLOW_UNSIGNED -eq 'true') { $publishArgs.AllowUnsignedInstaller = $true }
+          tooling/scripts/publish-r2.ps1 @publishArgs
+          gh release edit "v$version" --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Stable updater is published; finish publishing the GitHub draft release.' }

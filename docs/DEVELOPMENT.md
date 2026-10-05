@@ -117,7 +117,47 @@ CounterStrikeSharp, the Zstd decoder and ABI/API contracts are updated together 
 
 `Prepare version PR` accepts independent GUI, Playback and converter versions.
 A GUI bump requires Chinese and English release notes. It updates the pending
-`codex/prepare-version` PR; publishing remains manual.
+`codex/prepare-version` PR and explicitly dispatches full CI for that branch.
+GitHub does not trigger `pull_request` workflows for PRs created with
+`GITHUB_TOKEN`; the explicit dispatch covers the bot's commit.
+
+## GitHub bot releases
+
+After merging the version PR, run **Release NSIS** on `main` with `publish`
+enabled. The bot runs full CI, builds and signs the installer, creates a GitHub
+draft, publishes and verifies the stable R2 updater, then publishes the GitHub
+release. It reads component versions and bilingual notes from the checkout;
+there is no separate version to type or local build to upload. Normal tag builds
+and dispatches without `publish` only produce build artifacts.
+
+For a GUI hotfix, change only `gui_version` in **Prepare version PR**. Leave
+Playback unchanged: the release workflow downloads its existing immutable ZIP
+and signature. When GUI and Playback versions match, it reuses the bundle
+already assembled by full CI instead of rebuilding the native runtimes.
+
+Configure the `release` GitHub environment once, with deployment branches limited
+to `main` and release tags, and these Secrets:
+
+| Secret | Purpose |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | Existing updater private key matching the public key shipped in the app |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Updater key password, if set |
+| `CLOUDFLARE_API_TOKEN` | Token authorized to upload to the existing release R2 bucket |
+| `CLOUDFLARE_ACCOUNT_ID` | Account owning the release bucket |
+| `WINDOWS_CERTIFICATE_PFX_BASE64` | Base64 Windows code-signing PFX |
+| `WINDOWS_CERTIFICATE_PASSWORD` | PFX password |
+
+The `allow_unsigned_installer` input explicitly permits releases without Windows
+Authenticode when a certificate is unavailable. Updater signing is always
+required. Keep the existing updater key so installed clients can verify updates.
+The bot uses `GITHUB_TOKEN` for GitHub releases; no personal access token is needed.
+
+Publication is serialized and refuses versions at or below stable or an existing
+GitHub release. If publication fails after creating a draft, inspect the retained
+`demotracer-release-<version>` artifact and draft before retrying. If R2 is already
+published, publish the existing GitHub draft; do not rebuild or overwrite the
+immutable version. If R2 is not published, finish publishing the retained signed
+payloads with `publish-r2.ps1`, then publish that draft.
 
 ## Packaging
 

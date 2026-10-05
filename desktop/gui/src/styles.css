@@ -248,62 +248,6 @@ input[type="radio"] {
   background-clip: padding-box;
 }
 
-.update-discovery-banner {
-  position: relative;
-  z-index: 36;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  flex: none;
-  align-items: center;
-  min-height: 52px;
-  padding: 8px 14px;
-  gap: 10px;
-  color: var(--text-primary);
-  background: color-mix(in srgb, var(--surface-raised) 94%, var(--trace) 6%);
-  border-bottom: 1px solid color-mix(in srgb, var(--trace) 22%, var(--divider));
-}
-
-.update-discovery-mark {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  color: var(--trace);
-  background: color-mix(in srgb, var(--trace) 12%, transparent);
-  border-radius: var(--radius-circle);
-}
-
-.update-discovery-mark svg {
-  transform: rotate(90deg);
-}
-
-.update-discovery-copy {
-  display: grid;
-  min-width: 0;
-  gap: 1px;
-}
-
-.update-discovery-copy strong {
-  font-size: var(--type-micro);
-  font-weight: var(--weight-semibold);
-}
-
-.update-discovery-copy span {
-  overflow: hidden;
-  color: var(--text-secondary);
-  font: var(--weight-medium) var(--type-tiny)/var(--type-body) var(--mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.update-discovery-action {
-  min-height: 32px;
-}
-
-.update-discovery-dismiss {
-  color: var(--text-tertiary);
-}
-
 .inventory-simulator-panel {
   position: relative;
   display: flex;
@@ -1160,7 +1104,7 @@ input[type="radio"] {
 .gui-update-dialog {
   display: flex;
   flex-direction: column;
-  width: min(720px, calc(100vw - 48px));
+  width: min(580px, calc(100vw - 48px));
   padding: 0;
   overflow: hidden;
 }
@@ -1180,12 +1124,6 @@ input[type="radio"] {
   min-width: 0;
 }
 
-.update-dialog-heading > div {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-
 .update-dialog-heading h2 {
   font-size: var(--type-page-title);
   font-weight: var(--weight-bold);
@@ -1202,14 +1140,6 @@ input[type="radio"] {
   color: var(--text-tertiary);
 }
 
-.update-dialog-state-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  background: currentColor;
-  border-radius: var(--radius-circle);
-}
-
 .update-dialog-content {
   min-height: 0;
   overflow-y: auto;
@@ -1222,8 +1152,8 @@ input[type="radio"] {
 }
 
 .update-dialog-component {
-  background: var(--surface-raised);
-  border-color: var(--divider);
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--divider);
 }
 
 .update-dialog-component-header {
@@ -1275,11 +1205,6 @@ input[type="radio"] {
   line-height: 1.5;
 }
 
-.update-dialog-progress {
-  background: var(--surface-subtle);
-  border-color: var(--divider);
-}
-
 .update-dialog-error {
   display: flex;
   align-items: center;
@@ -1294,23 +1219,14 @@ input[type="radio"] {
   margin-top: 20px;
   padding: 16px 24px;
   gap: 16px;
-  background: var(--surface-subtle);
   border-top: 1px solid var(--divider);
 }
 
 .update-dialog-footer .mantine-Button-root {
-  min-width: 120px;
+  min-width: 0;
 }
 
 @media (max-width: 560px) {
-  .update-discovery-banner {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-  }
-
-  .update-discovery-action {
-    display: none;
-  }
-
   .update-dialog-header {
     padding: 16px 18px;
   }
@@ -1699,23 +1615,20 @@ input[type="radio"] {
   font-style: normal;
 }
 
-.sidebar-update-dot {
-  display: block;
+.sidebar-nav-item.sidebar-update-action {
   flex: none;
-  width: 7px;
-  height: 7px;
-  margin-left: auto;
-  background: var(--trace);
-  border: 1px solid color-mix(in srgb, var(--surface-raised) 80%, transparent);
-  border-radius: var(--radius-circle);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--trace) 10%, transparent);
+  width: auto;
+  margin: 0 var(--space-2) var(--space-2);
+  color: var(--trace);
+  background: color-mix(in srgb, var(--trace) 10%, transparent);
 }
 
-.app-shell.is-sidebar-collapsed .sidebar-update-dot {
-  position: absolute;
-  top: 7px;
-  right: 7px;
-  margin: 0;
+.sidebar-update-action svg {
+  transform: rotate(90deg);
+}
+
+.app-shell.is-sidebar-collapsed .sidebar-update-action {
+  margin-inline: 0;
 }
 
 .sidebar-footer {

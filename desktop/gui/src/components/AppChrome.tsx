@@ -7,6 +7,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useState } from "react";
 import {
+  ArrowIcon,
   CloseIcon,
   GithubIcon,
   LibraryIcon,
@@ -43,6 +44,8 @@ interface AppSidebarProps {
   logsActive: boolean;
   settingsActive: boolean;
   updateAvailable: boolean;
+  updateLabel: string;
+  onOpenUpdate: () => void;
   collapsed: boolean;
   onOpenImport: () => void;
   onOpenLibrary: () => void;
@@ -147,6 +150,8 @@ export function AppSidebar({
   logsActive,
   settingsActive,
   updateAvailable,
+  updateLabel,
+  onOpenUpdate,
   collapsed,
   onOpenImport,
   onOpenLibrary,
@@ -192,19 +197,24 @@ export function AppSidebar({
 
         <span className="sidebar-section-divider" />
         <button
-          className={`${itemClass(settingsActive)}${updateAvailable ? " has-update" : ""}`}
+          className={itemClass(settingsActive)}
           type="button"
           onClick={onOpenSettings}
           aria-current={settingsActive ? "page" : undefined}
-          aria-label={updateAvailable ? `${words.navSettings} · ${words.releaseUpdateAvailable}` : words.navSettings}
-          title={updateAvailable ? `${words.navSettings} · ${words.releaseUpdateAvailable}` : words.navSettings}
+          aria-label={words.navSettings}
+          title={words.navSettings}
         >
           <SlidersIcon size={17} />
           <span>{words.navSettings}</span>
-          {updateAvailable ? <i className="sidebar-update-dot" aria-hidden="true" /> : null}
         </button>
       </nav>
 
+      {updateAvailable ? (
+        <button className="sidebar-nav-item sidebar-update-action" type="button" disabled={busy} onClick={onOpenUpdate} title={updateLabel} aria-label={updateLabel}>
+          <ArrowIcon size={17} aria-hidden="true" />
+          <span>{updateLabel}</span>
+        </button>
+      ) : null}
       <div className="sidebar-footer">
         <button
           className="sidebar-collapse-button"

@@ -4,7 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Badge, Button, Group, Paper, Progress, Stack, Text } from "@mantine/core";
+import { Button, Group, Progress, Stack, Text } from "@mantine/core";
 import type { RefObject } from "react";
 import {
   consentIsValid,
@@ -86,24 +86,10 @@ export function UpdateDialog({
     >
       <header className="update-dialog-header">
         <div className="update-dialog-heading">
-          <div>
-            <span className="dialog-eyebrow">{words.releaseUpdateStatus}</span>
-            <h2 id="update-dialog-title">{words.releaseUpdateTitle}</h2>
-          </div>
+          <h2 id="update-dialog-title">{words.releaseUpdateTitle}</h2>
         </div>
         <Group className="update-dialog-header-actions" gap="sm" wrap="nowrap">
-          <Badge
-            className="update-dialog-state"
-            color={playbackInstallBlockedByCs2 ? "orange" : "blue"}
-            variant="light"
-            size="lg"
-            radius="xl"
-            leftSection={<span className="update-dialog-state-dot" aria-hidden="true" />}
-          >
-            <span role="status">
-              {busy ? status : words.releaseUpdateComponentsCount.replace("{count}", String(availableUpdateCount))}
-            </span>
-          </Badge>
+          {busy && !progressActive ? <Text size="xs" c="dimmed" role="status">{status}</Text> : null}
           <button className="icon-button" type="button" disabled={busy} onClick={onDismiss} aria-label={words.close}>
             <CloseIcon size={16} />
           </button>
@@ -112,11 +98,10 @@ export function UpdateDialog({
 
       <Stack className="update-dialog-content" gap="md">
         {guiUpdateOffered ? (
-          <Paper className="update-dialog-component" component="section" withBorder radius="md" p="lg" aria-labelledby="gui-update-component-title">
+          <section className="update-dialog-component" aria-labelledby="gui-update-component-title">
             <div className="update-dialog-component-header">
               <div>
                 <Text id="gui-update-component-title" fw={700}>DemoTracer</Text>
-                <Text c="dimmed" size="xs">{words.releaseDesktopApp}</Text>
               </div>
               <div className="update-dialog-version-route" aria-label={words.releaseUpdateStatus}>
                 <code>v{guiUpdate.currentVersion || "—"}</code>
@@ -127,11 +112,11 @@ export function UpdateDialog({
             <Text className="update-dialog-component-notes" component="p" mt="md" size="sm">
               {releaseNotesForLanguage(guiUpdate.notes, language) || words.releaseGenericNotes}
             </Text>
-          </Paper>
+          </section>
         ) : null}
 
         {playbackUpdateOffered ? (
-          <Paper className="update-dialog-component" component="section" withBorder radius="md" p="lg" aria-labelledby="playback-update-component-title">
+          <section className="update-dialog-component" aria-labelledby="playback-update-component-title">
             <div className="update-dialog-component-header">
               <div>
                 <Text id="playback-update-component-title" fw={700}>{words.releasePlayback}</Text>
@@ -145,7 +130,7 @@ export function UpdateDialog({
             <Text className="update-dialog-component-notes" component="p" mt="md" size="sm">
               {releaseNotesForLanguage(playbackUpdate.notes, language) || words.releasePlaybackGenericNotes}
             </Text>
-          </Paper>
+          </section>
         ) : null}
 
         <div id="update-dialog-description" className="update-dialog-guidance">
@@ -156,7 +141,7 @@ export function UpdateDialog({
         </div>
 
         {progressActive ? (
-          <Paper className="update-dialog-progress" withBorder radius="md" p="sm" role="status" aria-live="polite">
+          <div className="update-dialog-progress" role="status" aria-live="polite">
             <Group justify="space-between" mb={7}>
               <Text c="dimmed" size="xs">
                 {guiUpdate.phase === "installing"
@@ -166,7 +151,7 @@ export function UpdateDialog({
               <Text className="update-dialog-progress-value" size="xs" fw={700}>{progress != null ? `${progress}%` : "…"}</Text>
             </Group>
             <Progress value={progress ?? 36} animated={progress == null} size="sm" radius="xl" />
-          </Paper>
+          </div>
         ) : null}
 
         {guiUpdate.phase === "installing" ? (
