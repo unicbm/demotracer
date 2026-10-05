@@ -5,6 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 using System.Text;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using DtrHider;
 
@@ -33,6 +34,53 @@ public sealed class BotHiderNativeEncodingTests
         Assert.False(client.SetDisguise(true));
         Assert.False(client.SetNameSource(true));
     }
+    [Fact]
+    public void MissingNativeBackendRetriesOnlyOnExplicitConnect()
+    {
+        // The managed test host has no CS2 native runtime. Count first-chance
+        // exceptions because the transport intentionally catches loader errors.
+        int thread = Environment.CurrentManagedThreadId;
+        int loaderFailures = 0;
+        void OnException(object? sender, FirstChanceExceptionEventArgs args)
+        {
+            if (Environment.CurrentManagedThreadId == thread &&
+                args.Exception is DllNotFoundException &&
+                args.Exception.Message.Contains("dtr-hider", StringComparison.Ordinal))
+                loaderFailures++;
+        }
+
+        AppDomain.CurrentDomain.FirstChanceException += OnException;
+        try
+        {
+            using var client = new NativePresentationClient();
+            var service = new BotHiderPresentationService(client);
+            Assert.False(client.TryConnect());
+            Assert.Equal(1, loaderFailures);
+            for (int i = 0; i < 256; i++)
+            {
+                Assert.Equal(0UL, client.Session);
+                Assert.False(client.IsConnected());
+                Assert.False(client.IsManagedBot(1));
+                Assert.False(service.IsManagedBot(1));
+                Assert.False(service.GetProviderInfo().Connected);
+            }
+            Assert.Equal(1, loaderFailures);
+
+            // Models the later native-ready lifecycle notification. A failed
+            // retry is cached again; disposing must never reopen the backend.
+            Assert.False(client.TryConnect());
+            Assert.Equal(2, loaderFailures);
+            Assert.Equal(0UL, client.Session);
+            client.Dispose();
+            Assert.False(client.TryConnect());
+            Assert.Equal(2, loaderFailures);
+        }
+        finally
+        {
+            AppDomain.CurrentDomain.FirstChanceException -= OnException;
+        }
+    }
+
     [Theory]
     [InlineData("abc", 4)]
     [InlineData("😀", 5)]

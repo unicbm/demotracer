@@ -10,6 +10,7 @@ public sealed unsafe class NativePresentationClient : IDisposable
     public const int NativeAbi = 3;
     public const int SlotByteSize = 172;
     private bool _disposed;
+    private bool _nativeUnavailable;
     private ulong _listeningSession;
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void ChangeListener(uint reason, int slot);
@@ -65,21 +66,34 @@ public sealed unsafe class NativePresentationClient : IDisposable
     {
         get
         {
-            if (_disposed) return 0;
+            if (_disposed || _nativeUnavailable) return 0;
             try
             {
-                var session = DtrHider_GetNativeAbi() == NativeAbi ? DtrHider_GetSession() : 0;
+                if (DtrHider_GetNativeAbi() != NativeAbi)
+                {
+                    _nativeUnavailable = true;
+                    return 0;
+                }
+                var session = DtrHider_GetSession();
                 if (session != 0 && session != _listeningSession && _listener != null &&
                     DtrHider_Listen(session, _listener) == 0)
                     _listeningSession = session;
                 return session;
             }
-            catch (DllNotFoundException) { return 0; }
-            catch (EntryPointNotFoundException) { return 0; }
-            catch (BadImageFormatException) { return 0; }
+            catch (DllNotFoundException) { _nativeUnavailable = true; return 0; }
+            catch (EntryPointNotFoundException) { _nativeUnavailable = true; return 0; }
+            catch (BadImageFormatException) { _nativeUnavailable = true; return 0; }
         }
     }
-    public bool TryConnect() => Session != 0;
+    // Only lifecycle entry points retry a missing/incompatible backend. IsBot
+    // and provider-status reads must not repeatedly run the native DLL loader.
+    // Native load announces dtr_hider_native_ready, which calls TryConnect.
+    public bool TryConnect()
+    {
+        if (_disposed) return false;
+        _nativeUnavailable = false;
+        return Session != 0;
+    }
     public bool IsConnected() => Session != 0;
     internal bool TryGetSlot(int slot, out Slot state)
         => TryGetSlot(slot, Session, out state);
