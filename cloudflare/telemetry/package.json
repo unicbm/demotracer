@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.2.0",
   "type": "module",
-  "packageManager": "pnpm@11.9.0",
+  "packageManager": "pnpm@11.28.1",
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "deploy": "wrangler deploy",
@@ -11,6 +11,6 @@
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
   },
   "devDependencies": {
-    "wrangler": "4.118.0"
+    "wrangler": "4.142.0"
   }
 }
