@@ -2,7 +2,7 @@
   "name": "cs2-demotracer-desktop",
   "private": true,
   "version": "1.5.4",
-  "packageManager": "pnpm@11.9.0",
+  "packageManager": "pnpm@11.28.1",
   "type": "module",
   "scripts": {
     "dev": "pnpm run dev:acceptance",
@@ -23,24 +23,24 @@
   },
   "dependencies": {
     "@fontsource-variable/noto-sans": "5.3.0",
-    "@mantine/core": "9.5.1",
-    "@mantine/hooks": "9.5.1",
+    "@mantine/core": "9.6.3",
+    "@mantine/hooks": "9.6.3",
     "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-process": "2.3.1",
     "@tauri-apps/plugin-updater": "2.12.0",
     "csgo-sharecode": "7.0.0",
     "flag-icons": "7.5.0",
-    "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.5",
-    "@types/node": "^22.0.0",
-    "@types/react": "19.2.17",
-    "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "6.0.2",
+    "@types/node": "^22.20.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
     "i18n-iso-countries": "7.14.0",
     "typescript": "6.0.3",
-    "vite": "8.0.16"
+    "vite": "8.3.1"
   }
 }
