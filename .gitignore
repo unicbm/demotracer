@@ -23,6 +23,10 @@
 /desktop/gui/src-tauri/target-*/
 /.wrangler/
 /.release-secrets/
+.env
+.env.*
+*.pfx
+*.p12
 /tooling/release/*.key
 /tooling/release/*.pem
 /desktop/gui/src-tauri/icons/android/

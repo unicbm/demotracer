@@ -40,6 +40,11 @@ if (updater.windows?.installMode !== "passive") {
 if (config.bundle?.active !== true || !config.bundle.targets?.includes("nsis")) {
   throw new Error("tauri.conf.json must build the supported NSIS installer");
 }
+if (config.build?.frontendDist !== "../dist"
+    || Object.keys(config.bundle?.resources ?? {}).length
+    || (config.bundle?.externalBin?.length ?? 0)) {
+  throw new Error("NSIS must embed only the checked frontend dist and application executable");
+}
 if (config.bundle?.windows?.nsis?.installMode !== "currentUser") {
   throw new Error("tauri.conf.json NSIS install mode must remain currentUser");
 }

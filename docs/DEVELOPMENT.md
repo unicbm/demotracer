@@ -118,17 +118,22 @@ CounterStrikeSharp, the Zstd decoder and ABI/API contracts are updated together 
 `Prepare version PR` accepts independent GUI, Playback and converter versions.
 A GUI bump requires Chinese and English release notes. It updates the pending
 `codex/prepare-version` PR and explicitly dispatches full CI for that branch.
-GitHub does not trigger `pull_request` workflows for PRs created with
-`GITHUB_TOKEN`; the explicit dispatch covers the bot's commit.
+The explicit dispatch covers the bot's commit without a separate workflow-run
+approval for a PR created with `GITHUB_TOKEN`.
 
 ## GitHub bot releases
 
-After merging the version PR, run **Release NSIS** on `main` with `publish`
-enabled. The bot runs full CI, builds and signs the installer, creates a GitHub
+Merging the bot's GUI version PR into `main` automatically starts **Release NSIS**.
+Only merged PRs authored by `github-actions[bot]` from this repository's
+`codex/prepare-version` branch with a GUI package change qualify. Closing an
+unmerged PR, merging an ordinary code PR, or changing only Playback/converter
+does not publish. Merge the version PR yourself after reviewing CI and notes.
+The bot runs full CI, builds and signs the installer, creates a GitHub
 draft, publishes and verifies the stable R2 updater, then publishes the GitHub
 release. It reads component versions and bilingual notes from the checkout;
 there is no separate version to type or local build to upload. Normal tag builds
-and dispatches without `publish` only produce build artifacts.
+and dispatches without `publish` only produce build artifacts. Manual publication
+remains available on `main` through the `publish` input.
 
 For a GUI hotfix, change only `gui_version` in **Prepare version PR**. Leave
 Playback unchanged: the release workflow downloads its existing immutable ZIP
@@ -147,8 +152,9 @@ to `main` and release tags, and these Secrets:
 | `WINDOWS_CERTIFICATE_PFX_BASE64` | Base64 Windows code-signing PFX |
 | `WINDOWS_CERTIFICATE_PASSWORD` | PFX password |
 
-The `allow_unsigned_installer` input explicitly permits releases without Windows
-Authenticode when a certificate is unavailable. Updater signing is always
+For automatic releases without Windows Authenticode, explicitly set the `release`
+environment variable `RELEASE_ALLOW_UNSIGNED_INSTALLER` to `true`. Manual runs use
+the `allow_unsigned_installer` input instead. Updater signing is always
 required. Keep the existing updater key so installed clients can verify updates.
 The bot uses `GITHUB_TOKEN` for GitHub releases; no personal access token is needed.
 
@@ -158,6 +164,17 @@ GitHub release. If publication fails after creating a draft, inspect the retaine
 published, publish the existing GitHub draft; do not rebuild or overwrite the
 immutable version. If R2 is not published, finish publishing the retained signed
 payloads with `publish-r2.ps1`, then publish that draft.
+
+Release builds use a fresh GitHub-hosted checkout of the exact merged commit;
+local workspaces and local installers are never uploaded as build inputs. CI
+rejects tracked demo/replay files, logs, environment files, private keys and
+certificate containers. Vite disables local `.env` loading, environment-variable
+exposure and automatic `public/` copying, clears its output directory, then checks
+the frontend file allowlist before Tauri embeds it. Extra Tauri resources and
+sidecar executables are rejected. Release uploads name each installer, signature,
+Playback bundle and manifest explicitly rather than uploading whole directories.
+These checks guard against accidental inclusion; additions to product assets or
+build scripts still require source review.
 
 ## Packaging
 

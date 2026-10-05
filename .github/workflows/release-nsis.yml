@@ -1,6 +1,10 @@
 name: Release NSIS
 
 on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+    paths: [desktop/gui/package.json]
   workflow_dispatch:
     inputs:
       publish:
@@ -25,9 +29,16 @@ concurrency:
 env:
   CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
+  PUBLISH_RELEASE: ${{ inputs.publish || github.event_name == 'pull_request' }}
 
 jobs:
   full-validation:
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.head.ref == 'codex/prepare-version' &&
+       github.event.pull_request.user.login == 'github-actions[bot]')
     uses: ./.github/workflows/ci.yml
     with:
       full: true
@@ -47,9 +58,17 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+
+      - name: Check clean release source
+        shell: pwsh
+        run: |
+          tooling/scripts/assert-clean-worktree.ps1
+          $commit = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $commit -ne $env:GITHUB_SHA) { throw 'Build checkout must match the commit validated by CI.' }
 
       - name: Validate publication and read component versions
-        if: inputs.publish
+        if: env.PUBLISH_RELEASE == 'true'
         id: release
         shell: pwsh
         env:
@@ -58,7 +77,7 @@ jobs:
           R2_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           R2_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           WINDOWS_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
-          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned_installer }}
+          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned_installer || (github.event_name == 'pull_request' && vars.RELEASE_ALLOW_UNSIGNED_INSTALLER == 'true') }}
         run: |
           foreach ($value in @($env:UPDATER_KEY, $env:R2_TOKEN, $env:R2_ACCOUNT)) {
             if ([string]::IsNullOrWhiteSpace($value)) { throw 'Configure the release environment signing and R2 secrets first.' }
@@ -85,14 +104,14 @@ jobs:
           "playback=$playback" >> $env:GITHUB_OUTPUT
 
       - name: Download validated Playback bundle
-        if: inputs.publish && steps.release.outputs.version == steps.release.outputs.playback
+        if: env.PUBLISH_RELEASE == 'true' && steps.release.outputs.version == steps.release.outputs.playback
         uses: actions/download-artifact@v8
         with:
           name: demotracer-playback-windows-x64
           path: dist
 
       - name: Reuse published Playback for a GUI hotfix
-        if: inputs.publish && steps.release.outputs.version != steps.release.outputs.playback
+        if: env.PUBLISH_RELEASE == 'true' && steps.release.outputs.version != steps.release.outputs.playback
         shell: pwsh
         env:
           PLAYBACK_VERSION: ${{ steps.release.outputs.playback }}
@@ -147,12 +166,12 @@ jobs:
         run: node desktop\gui\scripts\import-pro-steamid-catalog.mjs .external\CS2-pro-steamid-lib
 
       - name: Build Windows NSIS installer
-        if: '!inputs.publish'
+        if: env.PUBLISH_RELEASE != 'true'
         working-directory: desktop/gui
         run: pnpm run tauri:build --target x86_64-pc-windows-msvc -- --locked
 
       - name: Build and sign release assets
-        if: inputs.publish
+        if: env.PUBLISH_RELEASE == 'true'
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
@@ -161,7 +180,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           WINDOWS_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
           WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned_installer }}
+          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned_installer || (github.event_name == 'pull_request' && vars.RELEASE_ALLOW_UNSIGNED_INSTALLER == 'true') }}
         run: |
           $releaseArgs = @{
             Version = $env:RELEASE_VERSION
@@ -188,12 +207,14 @@ jobs:
           }
 
       - name: Record exact component sources
+        id: installer
         shell: pwsh
         run: |
           $installerDir = 'desktop/gui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis'
-          if (-not @(Get-ChildItem -LiteralPath $installerDir -Filter '*.exe' -File).Count) {
-            throw 'NSIS installer not found'
-          }
+          $version = (Get-Content desktop/gui/package.json -Raw | ConvertFrom-Json).version
+          $installer = "$installerDir/CS2 DemoTracer_$($version)_x64-setup.exe"
+          if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw 'Expected NSIS installer not found' }
+          "path=$installer" >> $env:GITHUB_OUTPUT
           tooling/scripts/write-component-manifest.ps1 -OutputPath "$installerDir/component-sources.json"
 
       - name: Upload NSIS installer
@@ -201,24 +222,30 @@ jobs:
         with:
           name: demotracer-gui-${{ github.sha }}-windows-x64
           path: |
-            desktop/gui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            ${{ steps.installer.outputs.path }}
             desktop/gui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/component-sources.json
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
 
       - name: Preserve signed release payloads
-        if: inputs.publish
+        if: env.PUBLISH_RELEASE == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: demotracer-release-${{ steps.release.outputs.version }}
-          path: dist/updater-v${{ steps.release.outputs.version }}/*
+          path: |
+            dist/updater-v${{ steps.release.outputs.version }}/demotracer-gui-v${{ steps.release.outputs.version }}.exe
+            dist/updater-v${{ steps.release.outputs.version }}/demotracer-gui-v${{ steps.release.outputs.version }}.exe.sig
+            dist/updater-v${{ steps.release.outputs.version }}/demotracer-css-v${{ steps.release.outputs.playback }}.zip
+            dist/updater-v${{ steps.release.outputs.version }}/demotracer-css-v${{ steps.release.outputs.playback }}.zip.sig
+            dist/updater-v${{ steps.release.outputs.version }}/latest.json
+            dist/updater-v${{ steps.release.outputs.version }}/SHA256SUMS.txt
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
 
       - name: Publish GitHub release and stable updater
-        if: inputs.publish
+        if: env.PUBLISH_RELEASE == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -226,7 +253,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
           PLAYBACK_VERSION: ${{ steps.release.outputs.playback }}
-          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned_installer }}
+          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned_installer || (github.event_name == 'pull_request' && vars.RELEASE_ALLOW_UNSIGNED_INSTALLER == 'true') }}
         run: |
           $version = $env:RELEASE_VERSION
           $playback = $env:PLAYBACK_VERSION

@@ -60,7 +60,8 @@ jobs:
           body: |
             Updates the selected GUI, Playback and converter versions.
             Review the supplied release notes and CI before merging.
-            After merging, run Release NSIS on main with publish enabled.
+            Merging a GUI version change starts Release NSIS and publishes the stable update after validation.
+            Configure the release environment secrets before merging.
           add-paths: |
             desktop/gui/package.json
             desktop/gui/src-tauri/Cargo.toml
@@ -72,7 +73,7 @@ jobs:
             server/plugins/DemoTracer/src/DemoTracer/Lifecycle/DemoTracerPlugin.cs
             tooling/release/release-notes.v*.json
             tooling/release/github-release.v*.md
-      # PRs created with GITHUB_TOKEN do not automatically trigger pull_request CI.
+      # Dispatch CI explicitly so the bot PR needs no separate workflow-run approval.
       - name: Validate the bot version branch
         if: steps.version-pr.outputs.pull-request-operation == 'created' || steps.version-pr.outputs.pull-request-operation == 'updated'
         env:

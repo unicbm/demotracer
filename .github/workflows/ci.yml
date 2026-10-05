@@ -50,7 +50,7 @@ jobs:
         run: node tooling/scripts/ci-scope.mjs
 
       - name: Test CI and version tooling
-        run: node --test tooling/scripts/ci-scope.test.mjs tooling/scripts/prepare-version.test.mjs
+        run: node --test tooling/scripts/ci-scope.test.mjs tooling/scripts/prepare-version.test.mjs tooling/scripts/release-safety.test.mjs
 
       - name: Install Rust formatter
         uses: dtolnay/rust-toolchain@stable
@@ -78,7 +78,8 @@ jobs:
           $forbiddenTracked = git ls-files --recurse-submodules |
             Where-Object {
               $_ -match '(^|/)(target|bin|obj|tmp|output)(/|$)' -or
-              $_ -match '\.(dem|dtr|cs2rec|log)$'
+              $_ -match '\.(dem|dtr|cs2rec|log|pfx|p12|pem|key)$' -or
+              $_ -match '(^|/)\.env($|\.)'
             }
           if ($forbiddenTracked) {
             Write-Error "tracked generated/private artifacts are not allowed:`n$($forbiddenTracked -join "`n")"
