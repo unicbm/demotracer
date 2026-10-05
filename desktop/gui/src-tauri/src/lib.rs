@@ -1128,7 +1128,6 @@ fn read_workspace_background(app: AppHandle) -> CommandResult<Option<WorkspaceBa
 
 #[tauri::command]
 async fn choose_workspace_background(
-    app: AppHandle,
     request: WorkspaceBackgroundDialogRequestDto,
 ) -> CommandResult<Option<WorkspaceBackgroundDto>> {
     let selected = tauri::async_runtime::spawn_blocking(move || {
@@ -1142,31 +1141,38 @@ async fn choose_workspace_background(
     let Some(selected) = selected else {
         return Ok(None);
     };
-    let metadata = fs::symlink_metadata(&selected).map_err(|error| {
-        CommandErrorDto::at_path(
-            "workspace_background_read_failed",
-            error.to_string(),
-            &selected,
-        )
-    })?;
-    if !metadata.file_type().is_file()
-        || metadata.file_type().is_symlink()
-        || metadata.len() > MAX_WORKSPACE_BACKGROUND_BYTES as u64
-    {
-        return Err(CommandErrorDto::at_path(
+    read_workspace_background_for(&selected)
+}
+
+fn decode_workspace_background(data_url: &str) -> CommandResult<Vec<u8>> {
+    let invalid = || {
+        CommandErrorDto::new(
             "workspace_background_invalid",
-            "Choose a regular PNG no larger than 16 MiB.",
-            &selected,
-        ));
-    }
-    let bytes = fs::read(&selected).map_err(|error| {
-        CommandErrorDto::at_path(
-            "workspace_background_read_failed",
-            error.to_string(),
-            &selected,
+            "Choose a valid PNG no larger than 16 MiB.",
         )
-    })?;
+    };
+    let encoded = data_url
+        .strip_prefix("data:image/png;base64,")
+        .ok_or_else(invalid)?;
+    if encoded.len() > MAX_WORKSPACE_BACKGROUND_BYTES.div_ceil(3) * 4 {
+        return Err(invalid());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|_| invalid())?;
+    if bytes.len() > MAX_WORKSPACE_BACKGROUND_BYTES {
+        return Err(invalid());
+    }
     png_dimensions(&bytes)?;
+    Ok(bytes)
+}
+
+#[tauri::command]
+fn save_workspace_background(
+    app: AppHandle,
+    data_url: String,
+) -> CommandResult<Option<WorkspaceBackgroundDto>> {
+    let bytes = decode_workspace_background(&data_url)?;
     let destination = workspace_background_path(&app)?;
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|error| {
@@ -1195,7 +1201,7 @@ async fn choose_workspace_background(
             ));
         }
     }
-    fs::write(&destination, bytes).map_err(|error| {
+    atomic_file::write(&destination, &bytes).map_err(|error| {
         CommandErrorDto::at_path(
             "workspace_background_write_failed",
             error.to_string(),
@@ -5692,6 +5698,7 @@ pub fn run() {
             choose_manifest,
             read_workspace_background,
             choose_workspace_background,
+            save_workspace_background,
             clear_workspace_background,
             load_gui_preferences,
             save_gui_preferences,
@@ -5769,6 +5776,12 @@ mod tests {
         png[16..20].copy_from_slice(&1920_u32.to_be_bytes());
         png[20..24].copy_from_slice(&1080_u32.to_be_bytes());
         assert_eq!(png_dimensions(&png).unwrap(), (1920, 1080));
+        assert_eq!(
+            decode_workspace_background(&image_data_url(&png, "image/png")).unwrap(),
+            png
+        );
+        assert!(decode_workspace_background("data:image/png;base64,invalid!").is_err());
+        assert!(decode_workspace_background(&image_data_url(&png, "image/jpeg")).is_err());
 
         png[16..20].copy_from_slice(&0_u32.to_be_bytes());
         assert_eq!(

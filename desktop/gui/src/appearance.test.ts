@@ -9,6 +9,8 @@ import { describe, it } from "node:test";
 import {
   isThemeColor,
   normalizeSidebarOpacity,
+  normalizePanelOpacity,
+  normalizeBackgroundFilter,
   normalizeCustomCss,
   normalizeCustomCssProfiles,
   normalizeActiveCustomCssProfileId,
@@ -22,14 +24,42 @@ import {
 } from "./appearance.ts";
 
 describe("appearance preferences", () => {
-  it("keeps the background sidebar opacity within the readable range", () => {
+  it("persists bounded translucent panel settings without changing the default theme", () => {
+    assert.equal(normalizePanelOpacity(undefined), 0.5);
+    assert.equal(normalizePanelOpacity(-1), 0);
+    assert.equal(normalizePanelOpacity(2), 1);
+    const customization = normalizeThemeCustomization({ panelOpacity: 0.35, backgroundMaterial: "transparent" });
+    assert.equal(customization.panelOpacity, 0.35);
+    assert.equal(customization.backgroundMaterial, "transparent");
+    assert.match(themeCustomizationCss(customization), /--background-panel-opacity: 35%/);
+    assert.match(themeCustomizationCss(customization), /--background-blur: 0px/);
+    assert.match(themeCustomizationCss({ backgroundMaterial: "glass" }), /--background-blur: 4px/);
+    assert.deepEqual(normalizeThemeCustomization({ backgroundMaterial: "invalid" }), {});
+    assert.equal(themeCustomizationCss({}), "");
+  });
+  it("follows panel transparency for older preferences and allows an independent clear sidebar", () => {
     assert.equal(normalizeSidebarOpacity(0.72), 0.72);
-    assert.equal(normalizeSidebarOpacity(0), 0.2);
+    assert.equal(normalizeSidebarOpacity(0), 0);
     assert.equal(normalizeSidebarOpacity(4), 1);
-    assert.equal(normalizeSidebarOpacity("invalid"), 0.86);
+    assert.equal(normalizeSidebarOpacity("invalid"), 0.5);
     const customization = normalizeThemeCustomization({ sidebarOpacity: 0.73 });
     assert.equal(customization.sidebarOpacity, 0.73);
-    assert.match(themeCustomizationCss(customization), /--sidebar-background-opacity: 73%/);
+    assert.match(themeCustomizationCss(customization), /--sidebar-background-opacity: var\(--background-panel-opacity, 50%\)/);
+    assert.match(themeCustomizationCss({ ...customization, sidebarFollowPanels: false }), /--sidebar-background-opacity: 73%/);
+    assert.match(themeCustomizationCss({ sidebarOpacity: 0, sidebarFollowPanels: false }), /--sidebar-background-opacity: 0%/);
+  });
+  it("bounds wallpaper filters and preserves the glass strength while transparent mode is active", () => {
+    const customization = normalizeThemeCustomization({ backgroundBlur: 7, backgroundBrightness: 1000,
+      backgroundSaturation: -20, backgroundContrast: NaN, backgroundMaterial: "transparent" });
+    assert.equal(customization.backgroundBrightness, 150);
+    assert.equal(customization.backgroundSaturation, 0);
+    assert.equal(customization.backgroundContrast, 100);
+    assert.equal(customization.backgroundBlur, 7);
+    assert.equal(normalizeBackgroundFilter("backgroundBlur", 1000), 30);
+    assert.match(themeCustomizationCss(customization), /--background-blur: 0px/);
+    assert.match(themeCustomizationCss({ ...customization, backgroundMaterial: "glass" }), /--background-blur: 7px/);
+    assert.match(themeCustomizationCss(customization), /--background-brightness: 150%/);
+    assert.match(themeCustomizationCss(customization), /--background-saturation: 0%/);
   });
 
   it("normalizes editable UI font sizes without blocking intermediate input", () => {

@@ -14,8 +14,18 @@ export const UI_FONT_SIZE_STORAGE_KEY = "demotracer.ui-font-size.v1";
 export const UI_FONT_SIZE_MIN = 13;
 export const UI_FONT_SIZE_MAX = 20;
 export const UI_FONT_SIZE_DEFAULT = 15;
-export const SIDEBAR_OPACITY_DEFAULT = 0.86;
-export const SIDEBAR_OPACITY_MIN = 0.2;
+export const SIDEBAR_OPACITY_DEFAULT = 0.5;
+export const SIDEBAR_OPACITY_MIN = 0;
+export const PANEL_OPACITY_DEFAULT = 0.5;
+export type BackgroundMaterial = "glass" | "transparent";
+export const BACKGROUND_FILTERS = {
+  backgroundBlur: { min: 0, max: 30, initial: 4, unit: "px", variable: "--background-blur" },
+  backgroundBrightness: { min: 50, max: 150, initial: 100, unit: "%", variable: "--background-brightness" },
+  backgroundSaturation: { min: 0, max: 200, initial: 100, unit: "%", variable: "--background-saturation" },
+  backgroundContrast: { min: 50, max: 150, initial: 100, unit: "%", variable: "--background-contrast" },
+} as const;
+export type BackgroundFilterKey = keyof typeof BACKGROUND_FILTERS;
+export const BACKGROUND_FILTER_KEYS = Object.keys(BACKGROUND_FILTERS) as BackgroundFilterKey[];
 export const THEME_CUSTOMIZATION_STYLE_ID = "demotracer-theme-customization";
 export const CUSTOM_CSS_STYLE_ID = "demotracer-custom-css";
 export const CUSTOM_CSS_PROFILES_STORAGE_KEY = "demotracer.custom-css-profiles.v1";
@@ -36,12 +46,15 @@ export interface ThemePalette {
   success: string;
 }
 
-export interface ThemeCustomization {
+export interface ThemeCustomization extends Partial<Record<BackgroundFilterKey, number>> {
   light?: ThemePalette;
   dark?: ThemePalette;
   fontFamily?: string;
   monoFontFamily?: string;
   sidebarOpacity?: number;
+  sidebarFollowPanels?: boolean;
+  panelOpacity?: number;
+  backgroundMaterial?: BackgroundMaterial;
 }
 
 export interface CustomCssProfile {
@@ -115,6 +128,18 @@ export function normalizeSidebarOpacity(value: unknown): number {
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric)) return SIDEBAR_OPACITY_DEFAULT;
   return Math.min(1, Math.max(SIDEBAR_OPACITY_MIN, Math.round(numeric * 100) / 100));
+}
+
+export function normalizePanelOpacity(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(1, Math.max(0, Math.round(value * 100) / 100))
+    : PANEL_OPACITY_DEFAULT;
+}
+
+export function normalizeBackgroundFilter(key: BackgroundFilterKey, value: unknown): number {
+  const range = BACKGROUND_FILTERS[key];
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(range.max, Math.max(range.min, Math.round(value))) : range.initial;
 }
 
 export function stepUiFontSize(current: number, direction: 1 | -1): number {
@@ -223,6 +248,14 @@ export function normalizeThemeCustomization(value: unknown): ThemeCustomization 
   if (record.sidebarOpacity !== undefined) {
     customization.sidebarOpacity = normalizeSidebarOpacity(record.sidebarOpacity);
   }
+  if (record.panelOpacity !== undefined) customization.panelOpacity = normalizePanelOpacity(record.panelOpacity);
+  if (typeof record.sidebarFollowPanels === "boolean") customization.sidebarFollowPanels = record.sidebarFollowPanels;
+  for (const key of BACKGROUND_FILTER_KEYS) {
+    if (record[key] !== undefined) customization[key] = normalizeBackgroundFilter(key, record[key]);
+  }
+  if (record.backgroundMaterial === "glass" || record.backgroundMaterial === "transparent") {
+    customization.backgroundMaterial = record.backgroundMaterial;
+  }
   return customization;
 }
 
@@ -259,8 +292,20 @@ export function themeCustomizationCss(customization: ThemeCustomization): string
   const rules: string[] = [];
   if (customization.fontFamily) rules.push(`:root { --font-ui: ${customization.fontFamily}; }`);
   if (customization.monoFontFamily) rules.push(`:root { --mono: ${customization.monoFontFamily}; }`);
-  if (customization.sidebarOpacity !== undefined) {
-    rules.push(`:root { --sidebar-background-opacity: ${customization.sidebarOpacity * 100}%; }`);
+  if (customization.sidebarOpacity !== undefined || customization.sidebarFollowPanels !== undefined) {
+    const opacity = customization.sidebarFollowPanels === false
+      ? `${normalizeSidebarOpacity(customization.sidebarOpacity ?? SIDEBAR_OPACITY_DEFAULT) * 100}%`
+      : "var(--background-panel-opacity, 50%)";
+    rules.push(`:root { --sidebar-background-opacity: ${opacity}; }`);
+  }
+  if (customization.panelOpacity !== undefined) {
+    rules.push(`:root { --background-panel-opacity: ${normalizePanelOpacity(customization.panelOpacity) * 100}%; }`);
+  }
+  for (const key of BACKGROUND_FILTER_KEYS) {
+    if (customization[key] === undefined && !(key === "backgroundBlur" && customization.backgroundMaterial !== undefined)) continue;
+    const value = key === "backgroundBlur" && customization.backgroundMaterial === "transparent"
+      ? 0 : normalizeBackgroundFilter(key, customization[key]);
+    rules.push(`:root { ${BACKGROUND_FILTERS[key].variable}: ${value}${BACKGROUND_FILTERS[key].unit}; }`);
   }
   if (customization.light) {
     rules.push(`:root[data-color-mode="light"] {\n  ${paletteCss(customization.light)};\n}`);

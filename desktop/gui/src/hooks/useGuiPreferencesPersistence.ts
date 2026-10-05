@@ -7,6 +7,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { CustomCssProfile, ThemeCustomization } from "../appearance";
+import type { BackgroundCrop } from "../workspaceBackground";
 import { parseCommandError } from "../appSupport";
 import {
   createGuiPreferences,
@@ -24,6 +25,8 @@ interface GuiPreferencesPersistenceOptions {
   setUiFontSize: Dispatch<SetStateAction<number>>;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: Dispatch<SetStateAction<boolean>>;
+  backgroundCrop: BackgroundCrop;
+  setBackgroundCrop: Dispatch<SetStateAction<BackgroundCrop>>;
   themeCustomization: ThemeCustomization;
   setThemeCustomization: Dispatch<SetStateAction<ThemeCustomization>>;
   customCssProfiles: CustomCssProfile[];
@@ -42,6 +45,8 @@ export function useGuiPreferencesPersistence({
   setUiFontSize,
   sidebarCollapsed,
   setSidebarCollapsed,
+  backgroundCrop,
+  setBackgroundCrop,
   themeCustomization,
   setThemeCustomization,
   customCssProfiles,
@@ -74,6 +79,7 @@ export function useGuiPreferencesPersistence({
         setTheme(preferences.appearance.theme);
         setUiFontSize(preferences.appearance.uiFontSize);
         setSidebarCollapsed(preferences.appearance.sidebarCollapsed);
+        setBackgroundCrop(preferences.appearance.backgroundCrop);
         setThemeCustomization(preferences.appearance.themeCustomization);
         setCustomCssProfiles(preferences.appearance.customCssProfiles);
         setActiveCustomCssProfileId(preferences.appearance.activeCustomCssProfileId);
@@ -91,6 +97,7 @@ export function useGuiPreferencesPersistence({
     setCustomCssProfiles,
     setLanguage,
     setSidebarCollapsed,
+    setBackgroundCrop,
     setTheme,
     setThemeCustomization,
     setUiFontSize,
@@ -103,6 +110,7 @@ export function useGuiPreferencesPersistence({
       theme,
       uiFontSize,
       sidebarCollapsed,
+      backgroundCrop,
       themeCustomization,
       customCssProfiles,
       activeCustomCssProfileId,
@@ -123,6 +131,7 @@ export function useGuiPreferencesPersistence({
     language,
     onError,
     sidebarCollapsed,
+    backgroundCrop,
     theme,
     themeCustomization,
     uiFontSize,

@@ -15,6 +15,7 @@ import {
   type ThemeCustomization,
 } from "./appearance.ts";
 import type { Language, Theme } from "./types";
+import { normalizeBackgroundCrop, type BackgroundCrop } from "./workspaceBackground.ts";
 
 export const GUI_PREFERENCES_SCHEMA_VERSION = 1 as const;
 
@@ -22,6 +23,7 @@ export interface GuiAppearancePreferencesV1 {
   theme: Theme;
   uiFontSize: number;
   sidebarCollapsed: boolean;
+  backgroundCrop: BackgroundCrop;
   themeCustomization: ThemeCustomization;
   customCssProfiles: CustomCssProfile[];
   activeCustomCssProfileId: string | null;
@@ -53,6 +55,7 @@ export function normalizeGuiPreferences(value: unknown): GuiPreferencesV1 | null
       theme: normalizeTheme(appearance.theme),
       uiFontSize: normalizeUiFontSize(appearance.uiFontSize),
       sidebarCollapsed: normalizeSidebarCollapsed(appearance.sidebarCollapsed),
+      backgroundCrop: normalizeBackgroundCrop(appearance.backgroundCrop),
       themeCustomization: normalizeThemeCustomization(appearance.themeCustomization),
       customCssProfiles: profiles,
       activeCustomCssProfileId: normalizeActiveCustomCssProfileId(

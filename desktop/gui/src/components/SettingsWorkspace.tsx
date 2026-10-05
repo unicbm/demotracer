@@ -23,8 +23,13 @@ import {
   isThemeColor,
   isThemeFontFamily,
   normalizeSidebarOpacity,
+  normalizePanelOpacity,
+  BACKGROUND_FILTERS,
+  BACKGROUND_FILTER_KEYS,
+  normalizeBackgroundFilter,
+  type BackgroundFilterKey,
+  type BackgroundMaterial,
   SIDEBAR_OPACITY_DEFAULT,
-  SIDEBAR_OPACITY_MIN,
   themePalette,
   UI_FONT_SIZE_MAX,
   UI_FONT_SIZE_MIN,
@@ -51,18 +56,23 @@ import type {
 } from "../types";
 import type { PlaybackHandoffMode, PlaybackPresetOptions } from "../playbackCommand";
 import { DialogPrimitive } from "./Dialog";
+import { WorkspaceBackgroundEditor } from "./WorkspaceBackground";
+import { DEFAULT_BACKGROUND_CROP, type BackgroundCrop } from "../workspaceBackground";
 import { SelectControl, type SelectControlOption } from "./SelectControl";
 import { SwitchControl } from "./SwitchControl";
 import "./settings-workspace.css";
 
-type SettingsModal = "theme" | "customCss" | "serverConfig" | "credits" | null;
+type SettingsModal = "theme" | "background" | "customCss" | "serverConfig" | "credits" | null;
 
 type ThemeColorKey = keyof ThemePalette;
 
-interface ThemeEditorDraft extends ThemePalette {
+interface ThemeEditorDraft extends ThemePalette, Record<BackgroundFilterKey, number> {
   fontFamily: string;
   monoFontFamily: string;
   sidebarOpacity: number;
+  sidebarFollowPanels: boolean;
+  panelOpacity: number;
+  backgroundMaterial: BackgroundMaterial;
 }
 
 const THEME_COLOR_KEYS: readonly ThemeColorKey[] = [
@@ -82,6 +92,13 @@ function themeEditorDraft(customization: ThemeCustomization, theme: ResolvedThem
     fontFamily: customization.fontFamily ?? "",
     monoFontFamily: customization.monoFontFamily ?? "",
     sidebarOpacity: normalizeSidebarOpacity(customization.sidebarOpacity ?? SIDEBAR_OPACITY_DEFAULT),
+    sidebarFollowPanels: customization.sidebarFollowPanels ?? true,
+    panelOpacity: normalizePanelOpacity(customization.panelOpacity),
+    backgroundMaterial: customization.backgroundMaterial ?? "glass",
+    backgroundBlur: normalizeBackgroundFilter("backgroundBlur", customization.backgroundBlur),
+    backgroundBrightness: normalizeBackgroundFilter("backgroundBrightness", customization.backgroundBrightness),
+    backgroundSaturation: normalizeBackgroundFilter("backgroundSaturation", customization.backgroundSaturation),
+    backgroundContrast: normalizeBackgroundFilter("backgroundContrast", customization.backgroundContrast),
   };
 }
 
@@ -98,6 +115,8 @@ interface SettingsWorkspaceProps {
   uiFontSize: number;
   themeCustomization: ThemeCustomization;
   workspaceBackground: WorkspaceBackground | null;
+  backgroundCrop: BackgroundCrop;
+  onSaveWorkspaceBackground: (image: WorkspaceBackground, crop: BackgroundCrop) => Promise<void>;
   customCssProfiles: readonly CustomCssProfile[];
   activeCustomCssProfileId: string | null;
   environment: LocalEnvironmentSettings;
@@ -125,7 +144,7 @@ interface SettingsWorkspaceProps {
   releaseNotice: string;
   onUiFontSizeChange: (fontSize: number) => void;
   onThemeCustomizationChange: (customization: ThemeCustomization) => void;
-  onChooseWorkspaceBackground: () => void;
+  onChooseWorkspaceBackground: () => Promise<WorkspaceBackground | null>;
   onClearWorkspaceBackground: () => void;
   onSaveCustomCssProfile: (profile: CustomCssProfile) => void;
   onActivateCustomCssProfile: (profileId: string | null) => void;
@@ -312,6 +331,8 @@ export function SettingsWorkspace({
   uiFontSize,
   themeCustomization,
   workspaceBackground,
+  backgroundCrop,
+  onSaveWorkspaceBackground,
   customCssProfiles,
   activeCustomCssProfileId,
   environment,
@@ -375,6 +396,14 @@ export function SettingsWorkspace({
   onPlaybackChange,
 }: SettingsWorkspaceProps) {
   const [settingsModal, setSettingsModal] = useState<SettingsModal>(null);
+  const [backgroundDraft, setBackgroundDraft] = useState<{ image: WorkspaceBackground; crop: BackgroundCrop } | null>(null);
+  const chooseBackground = async () => {
+    const image = await onChooseWorkspaceBackground();
+    if (image) {
+      setBackgroundDraft({ image, crop: DEFAULT_BACKGROUND_CROP });
+      setSettingsModal("background");
+    }
+  };
   const [themeDraft, setThemeDraft] = useState<ThemeEditorDraft>(() => themeEditorDraft(themeCustomization, resolvedTheme));
   const [customCssDraft, setCustomCssDraft] = useState("");
   const [customCssNameDraft, setCustomCssNameDraft] = useState("");
@@ -486,6 +515,10 @@ export function SettingsWorkspace({
     if (monoFontFamily) next.monoFontFamily = monoFontFamily;
     else delete next.monoFontFamily;
     next.sidebarOpacity = normalizeSidebarOpacity(themeDraft.sidebarOpacity);
+    next.sidebarFollowPanels = themeDraft.sidebarFollowPanels;
+    for (const key of BACKGROUND_FILTER_KEYS) next[key] = normalizeBackgroundFilter(key, themeDraft[key]);
+    next.panelOpacity = normalizePanelOpacity(themeDraft.panelOpacity);
+    next.backgroundMaterial = themeDraft.backgroundMaterial;
     onThemeCustomizationChange(next);
     setSettingsModal(null);
   };
@@ -1147,27 +1180,75 @@ export function SettingsWorkspace({
         </span>
         <span className="settings-theme-css-actions">
           {workspaceBackground ? <button className="secondary-button" type="button" onClick={onClearWorkspaceBackground}>{words.workspaceBackgroundRemove}</button> : null}
-          <button className="secondary-button" type="button" onClick={onChooseWorkspaceBackground}>{words.workspaceBackgroundChoose}</button>
+          {workspaceBackground ? <button className="secondary-button" type="button" onClick={() => {
+            setBackgroundDraft({ image: workspaceBackground, crop: backgroundCrop });
+            setSettingsModal("background");
+          }}>{words.workspaceBackgroundEdit}</button> : null}
+          <button className="secondary-button" type="button" onClick={() => void chooseBackground()}>{words.workspaceBackgroundChoose}</button>
         </span>
+      </div>
+      <div className="settings-theme-material-row">
+        <span><strong>{words.backgroundMaterial}</strong><small>{words.backgroundMaterialHelp}</small></span>
+        <div className="segmented-control" role="group" aria-label={words.backgroundMaterial}>
+          {(["glass", "transparent"] as const).map((material) => <button key={material} type="button"
+            className={themeDraft.backgroundMaterial === material ? "is-selected" : ""}
+            aria-pressed={themeDraft.backgroundMaterial === material}
+            onClick={() => setThemeDraft((current) => ({ ...current, backgroundMaterial: material }))}
+          >{material === "glass" ? words.backgroundMaterialGlass : words.backgroundMaterialTransparent}</button>)}
+        </div>
+      </div>
+      <label className="settings-theme-opacity-row">
+        <span><strong>{words.panelTransparency}</strong><small>{words.panelTransparencyHelp}</small></span>
+        <input type="range" min={0} max={100} step={1} value={Math.round((1 - themeDraft.panelOpacity) * 100)}
+          onChange={(event) => setThemeDraft((current) => ({ ...current, panelOpacity: normalizePanelOpacity(1 - Number(event.target.value) / 100) }))} />
+        <output>{Math.round((1 - themeDraft.panelOpacity) * 100)}%</output>
+      </label>
+      <div className="settings-theme-material-row">
+        <span><strong>{words.sidebarAppearance}</strong><small>{words.sidebarOpacityHelp}</small></span>
+        <div className="segmented-control" role="group" aria-label={words.sidebarOpacity}>
+          {[true, false].map((follow) => <button key={String(follow)} type="button"
+            className={themeDraft.sidebarFollowPanels === follow ? "is-selected" : ""}
+            aria-pressed={themeDraft.sidebarFollowPanels === follow}
+            onClick={() => setThemeDraft((current) => ({ ...current, sidebarFollowPanels: follow }))}
+          >{follow ? words.sidebarFollowPanels : words.sidebarIndependent}</button>)}
+        </div>
       </div>
       <label className="settings-theme-opacity-row">
         <span>
           <strong>{words.sidebarOpacity}</strong>
-          <small>{words.sidebarOpacityHelp}</small>
         </span>
         <input
           type="range"
-          min={SIDEBAR_OPACITY_MIN * 100}
+          min={0}
           max={100}
           step={1}
-          value={Math.round(themeDraft.sidebarOpacity * 100)}
+          disabled={themeDraft.sidebarFollowPanels}
+          value={Math.round((1 - (themeDraft.sidebarFollowPanels ? themeDraft.panelOpacity : themeDraft.sidebarOpacity)) * 100)}
           onChange={(event) => setThemeDraft((current) => ({
             ...current,
-            sidebarOpacity: normalizeSidebarOpacity(Number(event.target.value) / 100),
+            sidebarOpacity: normalizeSidebarOpacity(1 - Number(event.target.value) / 100),
           }))}
         />
-        <output>{Math.round(themeDraft.sidebarOpacity * 100)}%</output>
+        <output>{Math.round((1 - (themeDraft.sidebarFollowPanels ? themeDraft.panelOpacity : themeDraft.sidebarOpacity)) * 100)}%</output>
       </label>
+      {BACKGROUND_FILTER_KEYS.map((key) => {
+        const range = BACKGROUND_FILTERS[key];
+        const disabled = key === "backgroundBlur" && themeDraft.backgroundMaterial === "transparent";
+        return <label className="settings-theme-opacity-row" key={key}>
+          <span><strong>{words[key]}</strong>{key === "backgroundBlur" ? <small>{words.backgroundBlurHelp}</small> : null}</span>
+          <input type="range" min={range.min} max={range.max} step={1} disabled={disabled} value={disabled ? 0 : themeDraft[key]}
+            onChange={(event) => setThemeDraft((current) => ({ ...current, [key]: normalizeBackgroundFilter(key, Number(event.target.value)) }))} />
+          <output>{disabled ? 0 : themeDraft[key]}{range.unit}</output>
+        </label>;
+      })}
+      <div className="settings-theme-css-row">
+        <strong>{words.backgroundAdjustmentsReset}</strong>
+        <button className="secondary-button" type="button" onClick={() => setThemeDraft((current) => ({
+          ...current, sidebarFollowPanels: true, sidebarOpacity: SIDEBAR_OPACITY_DEFAULT, panelOpacity: 0.5,
+          backgroundMaterial: "glass", backgroundBlur: BACKGROUND_FILTERS.backgroundBlur.initial,
+          backgroundBrightness: 100, backgroundSaturation: 100, backgroundContrast: 100,
+        }))}>{words.backgroundAdjustmentsResetButton}</button>
+      </div>
       <div className="settings-theme-css-row">
         <strong>{words.themeCssInjection}</strong>
         <span className="settings-theme-css-actions">
@@ -1237,6 +1318,16 @@ export function SettingsWorkspace({
           <div className="settings-detail-body">{settingsModal === "serverConfig" ? serverConfigView : aboutView}</div>
         </DialogPrimitive>
       ) : null}
+
+      {settingsModal === "background" && backgroundDraft ? <WorkspaceBackgroundEditor
+        image={backgroundDraft.image} initialCrop={backgroundDraft.crop} words={words}
+        onCancel={() => { setBackgroundDraft(null); setSettingsModal("theme"); }}
+        onSave={async (crop) => {
+          await onSaveWorkspaceBackground(backgroundDraft.image, crop);
+          setBackgroundDraft(null);
+          setSettingsModal("theme");
+        }}
+      /> : null}
 
       {settingsModal === "theme" ? (
         <DialogPrimitive labelledBy="theme-settings-modal-title" onDismiss={() => setSettingsModal(null)} className="dialog-surface settings-modal settings-theme-modal">

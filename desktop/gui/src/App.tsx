@@ -8,7 +8,9 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview, type DragDropEvent } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { exit as exitApp } from "@tauri-apps/plugin-process";
-import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState } from "react";
+import { WorkspaceBackgroundImage } from "./components/WorkspaceBackground";
+import { DEFAULT_BACKGROUND_CROP, type BackgroundCrop } from "./workspaceBackground";
 import {
   DEFAULT_SETTINGS,
   INITIAL_LIBRARY_PREFERENCES,
@@ -183,6 +185,7 @@ function App() {
     normalizeThemeCustomization(localStorage.getItem(THEME_CUSTOMIZATION_STORAGE_KEY))
   ));
   const [workspaceBackground, setWorkspaceBackground] = useState<WorkspaceBackground | null>(null);
+  const [backgroundCrop, setBackgroundCrop] = useState(DEFAULT_BACKGROUND_CROP);
   const [customCssProfiles, setCustomCssProfiles] = useState<CustomCssProfile[]>(loadCustomCssProfiles);
   const [activeCustomCssProfileId, setActiveCustomCssProfileId] = useState<string | null>(() => (
     normalizeActiveCustomCssProfileId(localStorage.getItem(ACTIVE_CUSTOM_CSS_PROFILE_STORAGE_KEY), customCssProfiles)
@@ -372,6 +375,8 @@ function App() {
     setUiFontSize,
     sidebarCollapsed,
     setSidebarCollapsed,
+    backgroundCrop,
+    setBackgroundCrop,
     themeCustomization,
     setThemeCustomization,
     customCssProfiles,
@@ -404,7 +409,7 @@ function App() {
 
   const words = TEXT[language];
   const chooseWorkspaceBackground = useCallback(async () => {
-    if (!("__TAURI_INTERNALS__" in window)) return;
+    if (!("__TAURI_INTERNALS__" in window)) return null;
     try {
       const selected = await invoke<WorkspaceBackground | null>("choose_workspace_background", {
         request: {
@@ -412,11 +417,17 @@ function App() {
           filterLabel: TEXT[language].workspaceBackgroundPngFilter,
         },
       });
-      if (selected) setWorkspaceBackground(selected);
+      return selected;
     } catch (reason) {
       setGlobalError(parseCommandError(reason));
+      return null;
     }
   }, [language]);
+  const saveWorkspaceBackground = useCallback(async (image: WorkspaceBackground, crop: BackgroundCrop) => {
+    const saved = await invoke<WorkspaceBackground>("save_workspace_background", { dataUrl: image.dataUrl });
+    setBackgroundCrop(crop);
+    setWorkspaceBackground(saved);
+  }, []);
   const clearWorkspaceBackground = useCallback(async () => {
     if (!("__TAURI_INTERNALS__" in window)) return;
     try {
@@ -2617,7 +2628,8 @@ function App() {
 
 
   return (
-    <div className={`app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
+    <div className={`app-shell${sidebarCollapsed ? " is-sidebar-collapsed" : ""}`} data-has-workspace-background={workspaceBackground ? "true" : undefined}>
+      {workspaceBackground ? <WorkspaceBackgroundImage image={workspaceBackground} crop={backgroundCrop} /> : null}
       <AppChrome
         words={words}
         sessionTitle={sessionTitle}
@@ -2628,10 +2640,6 @@ function App() {
 
       <div
         className="app-body"
-        data-has-workspace-background={workspaceBackground ? "true" : undefined}
-        style={workspaceBackground
-          ? ({ "--workspace-background-image": `url(${workspaceBackground.dataUrl})` } as CSSProperties)
-          : undefined}
       >
         <AppSidebar
           words={words}
@@ -2725,6 +2733,8 @@ function App() {
             uiFontSize={uiFontSize}
             themeCustomization={themeCustomization}
             workspaceBackground={workspaceBackground}
+            backgroundCrop={backgroundCrop}
+            onSaveWorkspaceBackground={saveWorkspaceBackground}
             customCssProfiles={customCssProfiles}
             activeCustomCssProfileId={activeCustomCssProfileId}
             environment={localEnvironment}
@@ -2752,7 +2762,7 @@ function App() {
             releaseNotice={releaseNotice}
             onUiFontSizeChange={setUiFontSize}
             onThemeCustomizationChange={setThemeCustomization}
-            onChooseWorkspaceBackground={() => void chooseWorkspaceBackground()}
+            onChooseWorkspaceBackground={chooseWorkspaceBackground}
             onClearWorkspaceBackground={() => void clearWorkspaceBackground()}
             onSaveCustomCssProfile={(profile) => {
               const normalized = normalizeCustomCssProfiles([profile])[0];
