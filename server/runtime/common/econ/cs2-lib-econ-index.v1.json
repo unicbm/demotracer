@@ -4,8 +4,8 @@
   "description": "Generated runtime projection of the pinned @ianlucas/cs2-lib item catalog for CS2 DemoTracer.",
   "source": {
     "package": "@ianlucas/cs2-lib",
-    "version": "9.3.0",
-    "integrity": "sha512-Y/5EbYAPYj/DIakivLIscOlpoaNBowU/5p4Y6uFiZloEn6eoXHZSjFhQwXVmAinYDAzq27XahIEUXObbY+gyCw==",
+    "version": "9.4.0",
+    "integrity": "sha512-zpXzT1JK/fwFJgISFj8SfVo2EH6467UV5XFloUepmBIxdmttN4kNPb3oHb4JBE25blQOY9om1qjfE8CMp9vcjg==",
     "repository": "https://github.com/ianlucas/cs2-lib"
   },
   "generation_policy": "Generated exclusively from @ianlucas/cs2-lib exports; do not hand-edit or add local item identifiers.",
