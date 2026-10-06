@@ -41,7 +41,6 @@ public sealed partial class DemoTracerPlugin
         public Dictionary<int, PendingBulletHit> PendingBulletHits { get; } = [];
         public Dictionary<int, PendingBulletDamage> PendingBulletDamages { get; } = [];
         public HashSet<int> CosmeticSyncedSlots { get; } = [];
-        public HashSet<int> ScoreboardSyncedSlots { get; } = [];
         public Dictionary<int, ReplayPawnViewState> ReplayViewmodels { get; } = [];
         public ReplayPlanState Plan { get; } = new();
 
@@ -53,7 +52,6 @@ public sealed partial class DemoTracerPlugin
 
         public int FreezePrerollToken { get; set; }
         public bool FreezePrerollStarted { get; set; }
-        public ReplayRoundScoreboard? LoadedRoundScoreboard { get; set; }
 
         public long NextReplayIdentityGeneration { get; set; }
 
@@ -115,7 +113,6 @@ public sealed partial class DemoTracerPlugin
             PawnEquipmentSync.Clear();
             BalanceSyncedSlots.Clear();
             CosmeticSyncedSlots.Clear();
-            LoadedRoundScoreboard = null;
         }
     }
 }

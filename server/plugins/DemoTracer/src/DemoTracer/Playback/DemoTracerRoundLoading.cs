@@ -77,12 +77,12 @@ public sealed partial class DemoTracerPlugin
             var avatarOverrides = BuildAvatarOverrideMap(manifest.AvatarOverrides);
             var allTFiles = tRound < 0
                 ? []
-                : SortReplayFilesForScoreboard(
+                : SortReplayFilesForAssignment(
                     manifest.Files.Where(file => file.Round == tRound),
                     "t");
             var allCtFiles = ctRound < 0
                 ? []
-                : SortReplayFilesForScoreboard(
+                : SortReplayFilesForAssignment(
                     manifest.Files.Where(file => file.Round == ctRound),
                     "ct");
             if (allTFiles.Count == 0 && allCtFiles.Count == 0)
@@ -93,7 +93,6 @@ public sealed partial class DemoTracerPlugin
             var roundMetadata = !steamIdMatch && tRound == ctRound
                 ? manifest.Rounds.FirstOrDefault(item => item.Round == tRound)
                 : null;
-            var roundScoreboard = roundMetadata?.Scoreboard;
 
             var targets = FindReplayTargets();
             var tBots = targets
@@ -143,13 +142,11 @@ public sealed partial class DemoTracerPlugin
             StopAndUnloadLoaded(clearArmedPlan: true, releaseBuffers: false);
             timing.Mark("stop");
             replayStateReplaced = true;
-            _session.LoadedRoundScoreboard = roundScoreboard;
             var loaded = new List<string>();
             if (!LoadSide(
                     tAssignments,
                     manifestDir,
                     avatarOverrides,
-                    includeScoreboardEvidence: !steamIdMatch,
                     loaded,
                     timing,
                     out var loadError))
@@ -158,7 +155,6 @@ public sealed partial class DemoTracerPlugin
                     ctAssignments,
                     manifestDir,
                     avatarOverrides,
-                    includeScoreboardEvidence: !steamIdMatch,
                     loaded,
                     timing,
                     out loadError))
@@ -227,7 +223,6 @@ public sealed partial class DemoTracerPlugin
         IReadOnlyList<ReplayAssignment> assignments,
         string manifestDir,
         IReadOnlyDictionary<ulong, ManifestAvatarOverride> avatarOverrides,
-        bool includeScoreboardEvidence,
         List<string> loaded,
         ReplayPhaseTimer timing,
         out string error)
@@ -298,7 +293,7 @@ public sealed partial class DemoTracerPlugin
                 file.ScoreboardFlair,
                 file.Cosmetics,
                 file.View,
-                SelectReplayScoreboardEvidence(file.Scoreboard, includeScoreboardEvidence),
+                file.PlayerIdentity?.PlayerColor,
                 manifestTeam: ReplayTeamFromManifestSide(file.Side),
                 replayMetadata: replayMetadata,
                 retentionRank: assignment.RetentionRank,
@@ -407,15 +402,15 @@ public sealed partial class DemoTracerPlugin
                 ? CsTeam.CounterTerrorist
                 : null;
 
-    private static List<ManifestFile> SortReplayFilesForScoreboard(
+    private static List<ManifestFile> SortReplayFilesForAssignment(
         IEnumerable<ManifestFile> files,
         string side)
     {
         return files
             .Where(file => file.Side.Equals(side, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(file => ReplayPlayerColorSortOrder(file.Scoreboard?.PlayerColor))
-            .ThenBy(file => file.Scoreboard?.PlayerUserId ?? int.MaxValue)
-            .ThenBy(file => file.Scoreboard?.PlayerEntityId ?? int.MaxValue)
+            .OrderBy(file => ReplayPlayerColorSortOrder(file.PlayerIdentity?.PlayerColor))
+            .ThenBy(file => file.PlayerIdentity?.PlayerUserId ?? int.MaxValue)
+            .ThenBy(file => file.PlayerIdentity?.PlayerEntityId ?? int.MaxValue)
             .ThenBy(file => file.SteamId)
             .ToList();
     }

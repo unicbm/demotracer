@@ -36,4 +36,12 @@ describe("playback command friendly fire", () => {
       "mp_friendlyfire 1; dtr_preset 0x01; dtr_go 3",
     );
   });
+
+  it("ignores match presentation left in an older saved preset", () => {
+    const saved = { ...preset("off"), matchPresentation: "scoreboard" };
+    assert.equal(
+      buildPlaybackCommand("dtr_go 3", 1, saved),
+      "mp_friendlyfire 0; dtr_preset 0x01; dtr_go 3",
+    );
+  });
 });

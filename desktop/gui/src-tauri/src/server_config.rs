@@ -36,9 +36,6 @@ const BUILTIN_DEFAULT_CONFIG: &str = r#"{
     "crosshair": true,
     "balance": false
   },
-  "match": {
-    "preset": "off"
-  },
   "cosmetics": {
     "preset": "off",
     "agents": false,
@@ -572,7 +569,6 @@ fn validate_config_value(value: &Value) -> ServerConfigValidationDto {
             "handoff",
             "align",
             "fidelity",
-            "match",
             "cosmetics",
         ],
         &mut unknown_paths,
@@ -618,12 +614,6 @@ fn validate_config_value(value: &Value) -> ServerConfigValidationDto {
         &mut warnings,
         &mut unknown_paths,
     );
-    validate_match(
-        object_section(root, "match", "$.match", &mut errors),
-        &mut errors,
-        &mut warnings,
-        &mut unknown_paths,
-    );
     validate_cosmetics(
         object_section(root, "cosmetics", "$.cosmetics", &mut errors),
         &mut errors,
@@ -635,7 +625,7 @@ fn validate_config_value(value: &Value) -> ServerConfigValidationDto {
         errors.push(issue(
             "$.align",
             "align_unsupported",
-            "The align config is no longer supported. Use fidelity, match and cosmetics.",
+            "The align config is no longer supported. Use fidelity and cosmetics.",
         ));
     }
 
@@ -759,26 +749,6 @@ fn validate_fidelity(
     ] {
         validate_bool(section, field, &format!("$.fidelity.{field}"), errors);
     }
-}
-
-fn validate_match(
-    section: Option<&Map<String, Value>>,
-    errors: &mut Vec<ServerConfigIssueDto>,
-    warnings: &mut Vec<ServerConfigIssueDto>,
-    unknown: &mut BTreeSet<String>,
-) {
-    let Some(section) = section else { return };
-    check_duplicate_case_insensitive_keys("$.match", section, warnings);
-    collect_unknown_keys("$.match", section, &["preset", "scoreboard"], unknown);
-    validate_string_enum(
-        section,
-        "preset",
-        "$.match.preset",
-        &["off", "none", "scoreboard", "full", "all"],
-        errors,
-        warnings,
-    );
-    validate_bool(section, "scoreboard", "$.match.scoreboard", errors);
 }
 
 fn validate_cosmetics(
@@ -980,7 +950,6 @@ fn canonicalize_known_field_names(value: &mut Value) {
             "handoff",
             "align",
             "fidelity",
-            "match",
             "cosmetics",
         ],
     );
@@ -988,20 +957,6 @@ fn canonicalize_known_field_names(value: &mut Value) {
         root,
         "handoff",
         &["mode", "scope", "threat_360", "viewmodel_continuity"],
-    );
-    canonicalize_section(
-        root,
-        "align",
-        &[
-            "weapons",
-            "projectiles",
-            "crosshair",
-            "left_hand_desired",
-            "cosmetics",
-            "stickers",
-            "charms",
-            "scoreboard",
-        ],
     );
     canonicalize_section(
         root,
@@ -1015,7 +970,6 @@ fn canonicalize_known_field_names(value: &mut Value) {
             "balance",
         ],
     );
-    canonicalize_section(root, "match", &["preset", "scoreboard"]);
     canonicalize_section(
         root,
         "cosmetics",
@@ -1237,6 +1191,33 @@ mod tests {
             .errors
             .iter()
             .any(|issue| issue.code == "align_unsupported"));
+    }
+
+    #[test]
+    fn retired_match_config_is_unknown_and_preserved_on_save() {
+        let tree = TempTree::new("retired-match");
+        fs::write(
+            tree.config(),
+            br#"{"identity":"name","match":{"preset":"full","scoreboard":true}}"#,
+        )
+        .expect("write config");
+        let loaded = load_server_config_for(tree.root().to_str().unwrap()).unwrap();
+        assert!(loaded.validation.valid);
+        assert!(loaded.validation.unknown_paths.contains(&"$.match".into()));
+
+        let saved = save_server_config_for(&SaveServerConfigRequestDto {
+            cs2_path: tree.root().display().to_string(),
+            json: loaded.json,
+            expected_fingerprint: loaded.fingerprint,
+        })
+        .expect("preserve unknown user config");
+        let value = parse_config_text(&saved.json).unwrap();
+        assert_eq!(value["identity"], "name");
+        assert_eq!(value["match"]["scoreboard"], true);
+        assert!(parse_config_text(BUILTIN_DEFAULT_CONFIG)
+            .unwrap()
+            .get("match")
+            .is_none());
     }
 
     #[test]

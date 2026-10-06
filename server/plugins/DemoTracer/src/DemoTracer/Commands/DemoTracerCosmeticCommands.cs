@@ -71,12 +71,6 @@ public sealed partial class DemoTracerPlugin
         reply($"[DTR COSMETICS] {FormatCosmeticStatusCounts()}");
     }
 
-    private void ReplyMatchStatus(Action<string> reply)
-    {
-        reply($"[DTR MATCH] preset={(_scoreboardAlignEnabled ? "scoreboard" : "off")}");
-        reply($"[DTR MATCH] scoreboard={FormatOnOff(_scoreboardAlignEnabled)} {FormatScoreboardStatusCounts()}");
-    }
-
     private void ApplyCosmeticPreset(CosmeticPreset preset)
     {
         _cosmeticWeaponsEnabled = _cosmeticNamesEnabled = preset != CosmeticPreset.Off;
@@ -208,13 +202,6 @@ public sealed partial class DemoTracerPlugin
         _crosshairAlignEnabled = true;
         if (_session.LoadedSlots.Count > 0)
             _ = RefreshReplayCrosshairPresentation();
-    }
-
-    private void SetScoreboardAlignEnabled(bool enabled)
-    {
-        _scoreboardAlignEnabled = enabled;
-        if (!_scoreboardAlignEnabled)
-            ResetScoreboardAlignState();
     }
 
 }

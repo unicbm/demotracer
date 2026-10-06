@@ -28,7 +28,7 @@ uses the same plan without restarting.
 | `dtr_stop sequence|replay|slot <slot>|all` | Stop the selected scheduler or replay state. |
 
 `from_source_round` is a demo round index. Mixed playoff rounds do not replay
-match statistics, chat, or voice metadata because they can draw the two sides
+chat or voice metadata because they can draw the two sides
 from different source rounds. Recorded teammate colors remain available.
 
 Playoff continuation draws from live-start inventories where every recorded
@@ -52,7 +52,7 @@ dtr_preset [status|0x00..0x3F]
 
 The normal GUI preset is `0x15`: weapons, Steam identity, and voice. Avatar
 requires Steam identity; cosmetics require weapon alignment. The mask does not
-change projectiles, handoff, crosshair, match presentation, partial replay, or
+change projectiles, handoff, crosshair, partial replay, or
 chat settings.
 
 ## Replay Behavior
@@ -85,8 +85,6 @@ effect positions are diagnostics only. `dtr_runtime` reports hook availability.
 | Command | Purpose |
 | --- | --- |
 | `dtr_replay_identity <off|name|steam|avatar>` | Select the bot identity lease. `full` aliases `avatar`. |
-| `dtr_match <status|off|scoreboard|full>` | Control default-off local scoreboard/team presentation. |
-| `dtr_match scoreboard <on|off>` | Toggle scoreboard presentation only. |
 | `dtr_partial <0|1>` | Allow fewer replay bots than manifest players. |
 
 Use identity `name` or `off` when the original demo player is also connected to
@@ -170,15 +168,19 @@ A complete round loop restarts chat and voice; individual slot loops do not.
 ## Configuration
 
 Optional defaults live in `demotracer.config.json` next to `DemoTracer.dll`.
-Start from the packaged `demotracer.config.example.json`, using `fidelity`,
-`match` and `cosmetics` sections. JSON comments and trailing commas are accepted.
+Start from the packaged `demotracer.config.example.json`, using `fidelity` and
+`cosmetics` sections. JSON comments and trailing commas are accepted.
+
+The former `match` section is ignored and `dtr_match` is no longer registered.
+Playback does not synchronize K/D/A, MVPs, individual scores, team scores or
+team names. CS2 owns match statistics and round settlement. Archive statistics
+remain available in the GUI for analysis.
 
 | Setting | Default |
 | --- | --- |
 | Identity | `steam` |
 | Fidelity | weapons, projectiles, crosshair, and left-hand on |
 | Round-start balance | off |
-| Match presentation | off |
 | Cosmetics | off |
 | Partial replay | on |
 | Handoff | `death_contact_c4 slot` |
@@ -208,6 +210,6 @@ plugin with `css_plugins reload DemoTracer`.
 - Archived evidence does not reconstruct every CS2 physics interaction.
   Boosts, handoff transitions and grenade effects can differ.
 - Other plugins writing bot movement, inventory or presentation may conflict.
-- Scoreboard and cosmetic alignment default off. Missing/incompatible cosmetic
+- Cosmetic alignment defaults off. Missing/incompatible cosmetic
   providers disable cosmetic writes while playback continues.
 - Voice requires usable netmessages; some demos contain team/default avatars.

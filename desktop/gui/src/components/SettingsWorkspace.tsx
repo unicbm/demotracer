@@ -883,7 +883,6 @@ export function SettingsWorkspace({
         <SettingLine title={words.projectileAlignment} description={words.projectileAlignmentHelp} checked={playback.projectileAlignment === "on"} onChange={(checked) => onPlaybackChange({ projectileAlignment: checked ? "on" : "off" })} />
         <SettingLine title={words.crosshairAlignment} description={words.crosshairAlignmentHelp} checked={playback.crosshairAlignment === "on"} onChange={(checked) => onPlaybackChange({ crosshairAlignment: checked ? "on" : "off" })} />
         <SettingLine title={words.leftHandAlignment} description={words.leftHandAlignmentHelp} checked={playback.leftHandAlignment === "on"} onChange={(checked) => onPlaybackChange({ leftHandAlignment: checked ? "on" : "off" })} />
-        <SettingLine title={words.matchPresentation} description={words.matchPresentationHelp} checked={playback.matchPresentation === "scoreboard"} onChange={(checked) => onPlaybackChange({ matchPresentation: checked ? "scoreboard" : "off" })} />
         <SettingLine title={words.partialReplay} description={words.partialReplayHelp} checked={playback.allowPartial === "on"} onChange={(checked) => onPlaybackChange({ allowPartial: checked ? "on" : "off" })} />
         <SettingSelectLine
           title={words.handoffMode}

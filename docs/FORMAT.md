@@ -54,6 +54,14 @@ output is bounded by the declared decoded length; shorter or larger output is
 rejected. Zstd readers allocate the validated section size, never an allocation
 size supplied by the compressed frame.
 
+## Manifest Statistics and Player Identity
+
+Round and player `scoreboard` snapshots remain archive data for GUI analysis.
+Playback reads only `files[].scoreboard.player_color`, `player_user_id` and
+`player_entity_id` for player assignment and missing teammate colors. It ignores
+all match totals and round scoreboards; statistics and settlement remain owned
+by CS2. This does not change the manifest ABI or the `.dtr` format.
+
 ## Manifest Player Clan
 
 Each `files[]` entry may carry `"clan": { "tag": "example", "id": 12345 }`.

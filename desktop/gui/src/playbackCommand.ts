@@ -5,7 +5,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 export type PlaybackToggleOverride = "on" | "off";
-export type PlaybackMatchOverride = "off" | "scoreboard";
 export type PlaybackHandoffMode = "off" | "death" | "contact" | "death_or_contact" | "death_contact_c4";
 
 export interface PlaybackPresetOptions {
@@ -18,7 +17,6 @@ export interface PlaybackPresetOptions {
   projectileAlignment: PlaybackToggleOverride;
   crosshairAlignment: PlaybackToggleOverride;
   leftHandAlignment: PlaybackToggleOverride;
-  matchPresentation: PlaybackMatchOverride;
   allowPartial: PlaybackToggleOverride;
   handoffMode: PlaybackHandoffMode;
   handoffScope: "slot" | "all";
@@ -32,7 +30,6 @@ export const DEFAULT_PLAYBACK_ADVANCED_OPTIONS: PlaybackAdvancedOptions = {
   projectileAlignment: "on",
   crosshairAlignment: "on",
   leftHandAlignment: "on",
-  matchPresentation: "off",
   allowPartial: "on",
   handoffMode: "death_contact_c4",
   handoffScope: "slot",
@@ -58,7 +55,6 @@ export function buildPlaybackCommand(
   if (options.projectileAlignment !== defaults.projectileAlignment) commands.push(`dtr_align projectiles ${options.projectileAlignment}`);
   if (options.crosshairAlignment !== defaults.crosshairAlignment) commands.push(`dtr_align crosshair ${options.crosshairAlignment}`);
   if (options.leftHandAlignment !== defaults.leftHandAlignment) commands.push(`dtr_align left_hand ${options.leftHandAlignment}`);
-  if (options.matchPresentation !== defaults.matchPresentation) commands.push(`dtr_match ${options.matchPresentation}`);
   if (options.allowPartial !== defaults.allowPartial) commands.push(`dtr_partial ${options.allowPartial === "on" ? 1 : 0}`);
   if (options.handoffMode !== defaults.handoffMode || options.handoffScope !== defaults.handoffScope) {
     commands.push(`dtr_handoff ${options.handoffMode} ${options.handoffScope}`);

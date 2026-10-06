@@ -46,8 +46,9 @@ a pinned Git submodule. Keep product contracts and packaging aligned.
   injected input, pending alignments, ownership, and transient bot state.
 - Movement playback must use maintained movement and input hooks; teleport is
   not the primary replay mechanism.
-- Cosmetic and scoreboard behavior must remain demo-backed, defensive, and
-  default-off where documented.
+- Cosmetic behavior must remain demo-backed, defensive, and default-off where
+  documented. Match statistics and team scores are engine-owned; do not restore
+  scoreboard synchronization.
 - Preserve user configuration and unrelated worktree changes.
 - Publish only maintained product, contributor, contract, and provenance
   documentation. Keep research notes, binary investigations, compatibility

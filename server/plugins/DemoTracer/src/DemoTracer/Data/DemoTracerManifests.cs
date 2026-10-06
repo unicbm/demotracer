@@ -37,7 +37,6 @@ public sealed partial class DemoTracerPlugin
         public bool PistolRound { get; set; }
         public ManifestTeamEconomy? TEconomy { get; set; }
         public ManifestTeamEconomy? CtEconomy { get; set; }
-        public ReplayRoundScoreboard? Scoreboard { get; set; }
         public List<ReplayChatMessage> ChatMessages { get; set; } = new();
     }
 
@@ -61,7 +60,10 @@ public sealed partial class DemoTracerPlugin
         public ReplayScoreboardFlair? ScoreboardFlair { get; set; }
         public ReplayCosmetics? Cosmetics { get; set; }
         public ReplayView? View { get; set; }
-        public ReplayPlayerScoreboard? Scoreboard { get; set; }
+        // The archive groups identity and analysis fields under scoreboard.
+        // Playback only consumes identity; match totals remain engine-owned.
+        [JsonPropertyName("scoreboard")]
+        public ReplayPlayerIdentity? PlayerIdentity { get; set; }
     }
 
     private sealed class ManifestAvatarOverride
@@ -108,25 +110,11 @@ public sealed partial class DemoTracerPlugin
         public uint ItemDefIndex { get; set; }
     }
 
-    private sealed class ReplayRoundScoreboard
-    {
-        public int TScore { get; set; }
-        public int CtScore { get; set; }
-        public string? TTeamName { get; set; }
-        public string? CtTeamName { get; set; }
-    }
-
-    private sealed class ReplayPlayerScoreboard
+    private sealed class ReplayPlayerIdentity
     {
         public int? PlayerUserId { get; set; }
         public int? PlayerEntityId { get; set; }
         public string? PlayerColor { get; set; }
-        public int? Score { get; set; }
-        public int? Kills { get; set; }
-        public int? Deaths { get; set; }
-        public int? Assists { get; set; }
-        [JsonPropertyName("mvps")]
-        public int? MVPs { get; set; }
     }
 
     private sealed class ReplayChatMessage

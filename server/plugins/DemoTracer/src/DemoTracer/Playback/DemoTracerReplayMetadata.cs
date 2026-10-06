@@ -73,7 +73,6 @@ public sealed partial class DemoTracerPlugin
         _session.ClearSlotExecution(slot);
         _session.InvalidateEquipment(slot);
         InvalidateLoadedReplayCosmeticAlignmentForSlot(slot);
-        _session.ScoreboardSyncedSlots.Remove(slot);
         _ = SyncBotHiderPresentationLease(announce: false);
         _ = SyncBotRandomizerCosmeticLease(announce: false);
     }
@@ -90,7 +89,7 @@ public sealed partial class DemoTracerPlugin
         ReplayScoreboardFlair? scoreboardFlair = null,
         ReplayCosmetics? cosmetics = null,
         ReplayView? view = null,
-        ReplayPlayerScoreboard? scoreboard = null,
+        string? playerColor = null,
         CsTeam? manifestTeam = null,
         ReplayFileMetadata? replayMetadata = null,
         int retentionRank = ReplayRetentionPriorityParser.MaxPlayersPerTeam,
@@ -117,7 +116,6 @@ public sealed partial class DemoTracerPlugin
             .ToArray();
         var normalizedCosmetics = NormalizeReplayCosmetics(cosmetics);
         var normalizedView = NormalizeReplayView(view);
-        var normalizedScoreboard = NormalizeReplayScoreboard(scoreboard);
         var normalizedMusicKitId = NormalizeMusicKitId(musicKitId);
         _session.LoadedReplays[slot] = new LoadedReplay(
             path,
@@ -132,7 +130,7 @@ public sealed partial class DemoTracerPlugin
             NormalizeReplayScoreboardFlair(scoreboardFlair),
             normalizedCosmetics,
             normalizedView,
-            normalizedScoreboard,
+            NormalizeReplayPlayerColor(playerColor),
             metadata.Projectiles ?? [],
             hifiEvents,
             inventorySnapshots,
@@ -148,7 +146,6 @@ public sealed partial class DemoTracerPlugin
         _session.ClearSlotExecution(slot);
         _session.InvalidateEquipment(slot);
         InvalidateLoadedReplayCosmeticAlignmentForSlot(slot);
-        _session.ScoreboardSyncedSlots.Remove(slot);
         _session.SafeC4Aligned = false;
         _ = SyncBotHiderPresentationLease(announce: false);
         _ = SyncBotRandomizerCosmeticLease(announce: false);

@@ -80,45 +80,6 @@ public sealed partial class DemoTracerPlugin
             ReplyUnknownAlignTarget(command.GetArg(1), command.ReplyToCommand);
     }
 
-    [ConsoleCommand("dtr_match", "dtr_match [status|off|scoreboard|scoreboard <on|off>|full]")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void MatchCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        if (command.ArgCount < 2 ||
-            command.GetArg(1).Equals("status", StringComparison.OrdinalIgnoreCase))
-        {
-            ReplyMatchStatus(command.ReplyToCommand);
-            return;
-        }
-
-        var mode = command.GetArg(1).ToLowerInvariant();
-        switch (mode)
-        {
-            case "off":
-            case "none":
-                SetScoreboardAlignEnabled(false);
-                ReplyMatchStatus(command.ReplyToCommand);
-                return;
-            case "full":
-            case "all":
-            case "scoreboard":
-            case "scoreboards":
-            case "scores":
-            case "stats":
-                var enabled = command.ArgCount >= 3
-                    ? ParseOnOff(command.GetArg(2), _scoreboardAlignEnabled)
-                    : true;
-                SetScoreboardAlignEnabled(enabled);
-                ReplyMatchStatus(command.ReplyToCommand);
-                return;
-            default:
-                command.ReplyToCommand($"[DTR ERR] unknown dtr_match target: {mode}");
-                command.ReplyToCommand("usage: dtr_match [status|off|scoreboard|scoreboard <on|off>|full]");
-                command.ReplyToCommand("hint: replay fidelity settings moved to dtr_align");
-                return;
-        }
-    }
-
     private enum CosmeticPreset
     {
         Off,
@@ -143,8 +104,6 @@ public sealed partial class DemoTracerPlugin
     {
         reply($"[DTR ERR] unknown dtr_align target: {target}");
         ReplyAlignUsage(reply);
-        if (target.Equals("scoreboard", StringComparison.OrdinalIgnoreCase))
-            reply("hint: scoreboard is match presentation: dtr_match scoreboard on");
         if (target.Equals("cosmetics", StringComparison.OrdinalIgnoreCase) ||
             target.Equals("skins", StringComparison.OrdinalIgnoreCase) ||
             target.Equals("stickers", StringComparison.OrdinalIgnoreCase) ||

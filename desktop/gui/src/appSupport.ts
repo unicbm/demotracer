@@ -223,9 +223,6 @@ export function storedPlaybackPreset(): PlaybackPresetOptions {
       projectileAlignment: readToggle("projectileAlignment"),
       crosshairAlignment: readToggle("crosshairAlignment"),
       leftHandAlignment: readToggle("leftHandAlignment"),
-      matchPresentation: saved.matchPresentation === "off" || saved.matchPresentation === "scoreboard"
-        ? saved.matchPresentation
-        : DEFAULT_PLAYBACK_PRESET.matchPresentation,
       allowPartial: readToggle("allowPartial"),
       handoffMode: ["off", "death", "contact", "death_or_contact", "death_contact_c4"].includes(saved.handoffMode ?? "")
         ? saved.handoffMode as PlaybackPresetOptions["handoffMode"]

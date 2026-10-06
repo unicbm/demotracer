@@ -185,7 +185,6 @@ public sealed partial class DemoTracerPlugin
         ClearAllPendingWeaponSlotReplacements("replay_execution_stopped");
         ClearReplayCrosshairPresentation();
         RestoreAllReplayBotViewmodels();
-        ResetScoreboardAlignState(resetCounters: true);
     }
 
     private void ReleaseUnusedWarmReplayBuffers()

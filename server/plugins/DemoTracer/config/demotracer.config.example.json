@@ -23,9 +23,6 @@
     // corresponding DTR round starts. Missing demo evidence is never zeroed.
     "balance": false
   },
-  "match": {
-    "preset": "off"
-  },
   "cosmetics": {
     "preset": "off",
     "agents": false,

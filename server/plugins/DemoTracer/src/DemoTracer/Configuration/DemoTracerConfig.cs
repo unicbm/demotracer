@@ -64,7 +64,7 @@ public sealed partial class DemoTracerPlugin
             var json = File.ReadAllText(path);
             config = JsonSerializer.Deserialize<DemoTracerRuntimeConfig>(json, RuntimeConfigJsonOptions);
             if (config?.UnsupportedAlign != null)
-                throw new JsonException("The align config is no longer supported. Use fidelity, match and cosmetics.");
+                throw new JsonException("The align config is no longer supported. Use fidelity and cosmetics.");
         }
         catch (Exception ex)
         {
@@ -105,7 +105,6 @@ public sealed partial class DemoTracerPlugin
             _roundBannerEnabled = config.RoundBanner.Value;
 
         ApplyRuntimeFidelityConfig(config.Fidelity, reply);
-        ApplyRuntimeMatchConfig(config.Match, reply);
         ApplyRuntimeCosmeticsConfig(config.Cosmetics, reply);
         ApplyRuntimeHandoffConfig(config.Handoff, reply);
         ApplyRuntimeConfigSideEffects();
@@ -130,7 +129,6 @@ public sealed partial class DemoTracerPlugin
         _balanceAlignEnabled = false;
         ApplyCosmeticPreset(CosmeticPreset.Off);
         _preserveNativeBotCosmetics = false;
-        SetScoreboardAlignEnabled(false);
     }
 
     private void ApplyRuntimeFidelityConfig(DemoTracerFidelityConfig? fidelity, Action<string> reply)
@@ -164,34 +162,6 @@ public sealed partial class DemoTracerPlugin
         }
         if (fidelity.Balance.HasValue)
             _balanceAlignEnabled = fidelity.Balance.Value;
-    }
-
-    private void ApplyRuntimeMatchConfig(DemoTracerMatchConfig? match, Action<string> reply)
-    {
-        if (match == null)
-            return;
-
-        if (!string.IsNullOrWhiteSpace(match.Preset))
-        {
-            switch (match.Preset.Trim().ToLowerInvariant())
-            {
-                case "off":
-                case "none":
-                    SetScoreboardAlignEnabled(false);
-                    break;
-                case "scoreboard":
-                case "full":
-                case "all":
-                    SetScoreboardAlignEnabled(true);
-                    break;
-                default:
-                    reply($"[DTR WARN] ignored config match.preset=\"{match.Preset}\"");
-                    break;
-            }
-        }
-
-        if (match.Scoreboard.HasValue)
-            SetScoreboardAlignEnabled(match.Scoreboard.Value);
     }
 
     private void ApplyRuntimeCosmeticsConfig(DemoTracerCosmeticsConfig? cosmetics, Action<string> reply)
@@ -296,7 +266,6 @@ public sealed partial class DemoTracerPlugin
     {
         reply($"{prefix} playback identity={ReplayIdentityModeName()} allow_partial={FormatOnOff(_partialReplayEnabled)} playoff={FormatOnOff(_playoffEnabled)} chat_auto={FormatOnOff(_chatAutoEnabled)} round_banner={FormatOnOff(_roundBannerEnabled)} handoff={FormatHandoffMode(_handoffMode)}:{(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} handoff_360={FormatOnOff(_handoffThreat360Enabled)}");
         reply($"{prefix} fidelity preset={AlignPresetName()} weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_mode=birth_once crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)}");
-        reply($"{prefix} match preset={(_scoreboardAlignEnabled ? "scoreboard" : "off")} scoreboard={FormatOnOff(_scoreboardAlignEnabled)}");
         reply($"{prefix} cosmetics preset={CosmeticPresetName()} risk={FormatOnOff(_cosmeticAlignEnabled)} weapons={FormatOnOff(_cosmeticWeaponsEnabled)} knives={FormatOnOff(_cosmeticKnivesEnabled)} gloves={FormatOnOff(_cosmeticGlovesEnabled)} names={FormatOnOff(_cosmeticNamesEnabled)} agents={FormatOnOff(_cosmeticAgentsEnabled)} stickers={FormatOnOff(_stickerAlignEnabled)} charms={FormatOnOff(_charmAlignEnabled)} preserve_native={FormatOnOff(_preserveNativeBotCosmetics)}");
     }
 
@@ -334,8 +303,6 @@ public sealed partial class DemoTracerPlugin
 
         public DemoTracerFidelityConfig? Fidelity { get; set; }
 
-        public DemoTracerMatchConfig? Match { get; set; }
-
         public DemoTracerCosmeticsConfig? Cosmetics { get; set; }
     }
 
@@ -364,13 +331,6 @@ public sealed partial class DemoTracerPlugin
         public bool? LeftHandDesired { get; set; }
 
         public bool? Balance { get; set; }
-    }
-
-    public sealed class DemoTracerMatchConfig
-    {
-        public string? Preset { get; set; }
-
-        public bool? Scoreboard { get; set; }
     }
 
     public sealed class DemoTracerCosmeticsConfig

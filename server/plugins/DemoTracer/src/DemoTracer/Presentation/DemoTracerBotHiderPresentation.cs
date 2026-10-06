@@ -14,6 +14,17 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
+    private ReplayScoreboardFlair? NormalizeReplayScoreboardFlair(ReplayScoreboardFlair? flair)
+    {
+        if (flair == null)
+            return null;
+
+        return new ReplayScoreboardFlair
+        {
+            ItemDefIndex = IsKnownScoreboardFlairItemDefIndex(flair.ItemDefIndex) ? flair.ItemDefIndex : 0
+        };
+    }
+
     private readonly Dictionary<int, BotHiderPresentationEvidence> _retainedBotHiderPresentation = new();
     private readonly Dictionary<int, ulong> _activeBotHiderReplaySteamIds = new();
     private string _botHiderPresentationLeaseToken = string.Empty;

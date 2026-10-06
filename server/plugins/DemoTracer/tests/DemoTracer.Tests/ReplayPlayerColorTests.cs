@@ -52,27 +52,26 @@ public sealed class ReplayPlayerColorTests
     public void FullPaletteDoesNotRecolorAnotherPlayerOrCreateADuplicate()
         => Assert.Null(ReplayPlayerColorPolicy.ChooseMissingColor(-1, 2, new HashSet<int> { 0, 1, 2, 3, 4 }));
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ContinuationRetainsColorWithoutImportingAnotherRoundsMatchStatistics(bool includeMatchStats)
+    [Fact]
+    public void ManifestRetainsPlayerIdentityWithoutReadingMatchStatistics()
     {
-        var type = typeof(DemoTracerPlugin).GetNestedType("ReplayPlayerScoreboard", BindingFlags.NonPublic)!;
-        var evidence = JsonSerializer.Deserialize("""
-            { "player_color": " Yellow ", "player_user_id": 12, "player_entity_id": 15,
-              "score": 20, "kills": 8, "deaths": 4, "assists": 2, "mvps": 1 }
-            """, type, DemoTracerPlugin.ManifestJsonOptions)!;
-        var result = typeof(DemoTracerPlugin).GetMethod("SelectReplayScoreboardEvidence",
-            BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [evidence, includeMatchStats])!;
-
-        Assert.Equal("yellow", type.GetProperty("PlayerColor")!.GetValue(result));
-        foreach (var field in new[] { "PlayerUserId", "PlayerEntityId", "Score", "Kills", "Deaths", "Assists", "MVPs" })
-        {
-            var actual = type.GetProperty(field)!.GetValue(result);
-            if (includeMatchStats)
-                Assert.Equal(type.GetProperty(field)!.GetValue(evidence), actual);
-            else
-                Assert.Null(actual);
-        }
+        var manifestType = typeof(DemoTracerPlugin).GetNestedType("ConversionManifest", BindingFlags.NonPublic)!;
+        var manifest = JsonSerializer.Deserialize("""
+            { "rounds": [{ "round": 1, "scoreboard": { "t_score": "ignored", "ct_score": {} } }],
+              "files": [{ "round": 1, "side": "t", "scoreboard": {
+                "player_color": " Yellow ", "player_user_id": 12, "player_entity_id": 15,
+                "score": "ignored", "kills": {}, "deaths": [], "assists": true, "mvps": -1
+              } }] }
+            """, manifestType, DemoTracerPlugin.ManifestJsonOptions)!;
+        var files = (System.Collections.IList)manifestType.GetProperty("Files")!.GetValue(manifest)!;
+        var file = files[0]!;
+        var identity = file.GetType().GetProperty("PlayerIdentity")!.GetValue(file)!;
+        var identityType = identity.GetType();
+        Assert.Equal(12, identityType.GetProperty("PlayerUserId")!.GetValue(identity));
+        Assert.Equal(15, identityType.GetProperty("PlayerEntityId")!.GetValue(identity));
+        var color = typeof(DemoTracerPlugin).GetMethod("NormalizeReplayPlayerColor",
+            BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null,
+                [identityType.GetProperty("PlayerColor")!.GetValue(identity)]);
+        Assert.Equal("yellow", color);
     }
 }

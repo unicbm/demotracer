@@ -91,7 +91,7 @@ public sealed partial class DemoTracerPlugin
         ReplayScoreboardFlair? ScoreboardFlair,
         ReplayCosmetics Cosmetics,
         ReplayView View,
-        ReplayPlayerScoreboard Scoreboard,
+        string? PlayerColor,
         ReplayProjectileEvent[] Projectiles,
         ReplayHifiEvent[] HifiEvents,
         ReplayInventorySnapshot[] InventorySnapshots,

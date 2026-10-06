@@ -52,10 +52,10 @@ public sealed partial class DemoTracerPlugin
 
         var manifestDir = Path.GetDirectoryName(resolvedManifestPath) ?? ".";
         var roundFiles = manifest.Files.Where(file => file.Round == round).ToList();
-        var tFiles = SortReplayFilesForScoreboard(roundFiles, "t")
+        var tFiles = SortReplayFilesForAssignment(roundFiles, "t")
             .Take(StandardTeamSize)
             .ToList();
-        var ctFiles = SortReplayFilesForScoreboard(roundFiles, "ct")
+        var ctFiles = SortReplayFilesForAssignment(roundFiles, "ct")
             .Take(StandardTeamSize)
             .ToList();
         var paths = new List<string>(StandardTeamSize * 2);

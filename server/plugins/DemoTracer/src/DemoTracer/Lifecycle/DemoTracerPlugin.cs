@@ -25,7 +25,7 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin : BasePlugin
 {
     public override string ModuleName => "CS2 DemoTracer";
-    public override string ModuleVersion => "1.5.5";
+    public override string ModuleVersion => "1.5.6";
     public override string ModuleAuthor => "unicbm";
     public override string ModuleDescription => "Trace CS2 demos into bot-executable route replays.";
 
@@ -76,11 +76,8 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private bool _stickerAlignEnabled;
     private bool _charmAlignEnabled;
     private bool _crosshairAlignEnabled = true;
-    private bool _scoreboardAlignEnabled;
     private bool _leftHandDesiredEnabled = true;
     private bool _balanceAlignEnabled;
-    private int _scoreboardAppliedCount;
-    private int _scoreboardSkippedCount;
     private HandoffMode _handoffMode = HandoffMode.DeathContactC4;
     private bool _handoffAllSlots;
     private bool _handoffThreat360Enabled = true;

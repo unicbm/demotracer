@@ -98,7 +98,8 @@ Use Release builds for performance measurements. Enable diagnostics only when ne
 - Reuse one complete `ParsedDemo` across analysis and export; round selection
   happens after parsing. Stored replay evidence must remain bit-exact.
 - BotRandomizer owns cosmetic entity writes. DemoTracer submits demo-backed
-  plans; cosmetics and scoreboard alignment stay opt-in.
+  plans; cosmetics stay opt-in. Match statistics and team scores are engine-owned;
+  playback must not write archive totals into live match state.
 - `ReplaySlotRegistry` owns loaded, claimed and playing slots. Delayed work must
   match the current ownership epoch and identity generation. Stop, finish,
   handoff, failure and unload release control; human players are never targets.
