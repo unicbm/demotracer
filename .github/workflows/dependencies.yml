@@ -1,14 +1,12 @@
 name: Update dependencies
 
 on:
-  schedule:
-    - cron: '23 2 * * 1'
   workflow_dispatch:
     inputs:
       dry_run:
         description: Inspect updates without creating branches or PRs
         type: boolean
-        default: false
+        default: true
       debug:
         description: Include dependency resolution and GitHub API diagnostics
         type: boolean

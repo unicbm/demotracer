@@ -111,9 +111,11 @@ Use Release builds for performance measurements. Enable diagnostics only when ne
 
 ## Automated updates
 
-`Update dependencies` runs weekly or manually. Renovate handles npm/pnpm,
-Cargo, NuGet and the parser pin; Dependabot handles Actions. Bot PRs require
-review and workflow approval. Native SDK/KHook pins, engine profiles,
+`Update dependencies` is disabled and has no schedule. Enable it only on explicit
+user request; manual runs default to inspection without creating branches or PRs.
+Renovate handles npm/pnpm, Cargo, NuGet and the parser pin; Dependabot handles
+Actions. Creating dependency branches or PRs requires explicit authorization,
+followed by review and workflow approval. Native SDK/KHook pins, engine profiles,
 CounterStrikeSharp, the Zstd decoder and ABI/API contracts are updated together manually.
 
 `Prepare version PR` aligns GUI and Playback. Set either version input to bump

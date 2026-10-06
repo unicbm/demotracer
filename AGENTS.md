@@ -22,6 +22,10 @@ a pinned Git submodule. Keep product contracts and packaging aligned.
 
 ## Engineering Workflow
 
+- Use `main` for routine work. Do not create `codex/*` or automated dependency/version
+  branches unless the user explicitly requests a branch or PR. Keep automated
+  dependency updates disabled; do not re-enable them without a direct request.
+
 - Initialize the pinned parser with `git submodule update --init --recursive`.
   Keep the parser gitlink; do not introduce submodules for product modules.
 - Change product modules and all affected consumers in one coherent change.
