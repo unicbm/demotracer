@@ -27,6 +27,9 @@ public sealed class DtrHiderPlugin : BasePlugin
     private readonly Dictionary<int, TakeoverLink> _takeovers = new();
     private bool _unloaded;
     private int _mapGeneration;
+    private bool _isDedicatedServer = Environment.GetCommandLineArgs().Any(argument =>
+        argument.Equals("-dedicated", StringComparison.OrdinalIgnoreCase) ||
+        argument.StartsWith("-dedicated=", StringComparison.OrdinalIgnoreCase));
     private Harmony? _harmony;
 
     public override void Load(bool hotReload)
@@ -88,10 +91,34 @@ public sealed class DtrHiderPlugin : BasePlugin
     }
 
     [ConsoleCommand("dtr_hider_native_ready", "Rebind the native BotHider presentation lifecycle")]
-    [CommandHelper(0, "", CommandUsage.SERVER_ONLY)]
+    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
     public void OnNativeReady(CCSPlayerController? player, CommandInfo command)
     {
-        if (_client?.TryConnect() == true) OnNativePresentationChanged(1, -1);
+        // CS2 routes ServerCommand through the local host on listen servers.
+        // SERVER_ONLY rejects that notification after native DH adopts the bots,
+        // leaving the cached missing-backend state and IsBot bridge disconnected.
+        try
+        {
+            if (!CanAcceptNativeReady(player == null, _isDedicatedServer,
+                    player?.IsValid == true, player?.Slot ?? -1, player?.IsBot == true))
+                return;
+            if (_client?.TryConnect() == true) OnNativePresentationChanged(1, -1);
+        }
+        catch (Exception ex)
+        {
+            Server.PrintToConsole($"[dtr-hider] native-ready reconnect failed: {ex.Message}");
+        }
+    }
+
+    internal static bool CanAcceptNativeReady(bool serverConsole, bool dedicated,
+        bool validPlayer, int slot, bool isBot)
+        => serverConsole || (!dedicated && validPlayer && slot == 0 && !isBot);
+
+    [GameEventHandler]
+    public HookResult OnServerSpawn(EventServerSpawn @event, GameEventInfo info)
+    {
+        _isDedicatedServer = @event.Dedicated;
+        return HookResult.Continue;
     }
 
     private void OnNativePresentationChanged(uint reason, int slot)

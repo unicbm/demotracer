@@ -1,15 +1,15 @@
 {
   "formatVersion": 1,
   "algorithm": "pe-image-v1",
-  "imageSha256": "02BAA9A28F3B251DFEC8EA25427AF454727DD6619A2856958D3FD63DDD2A7FF6",
+  "imageSha256": "D20601ADF5F420B81A10906DA050CE997277C36323B1DD7E7C8ED3C0501658A0",
   "projectilePhysics": {
     "entryRva": 10245744,
     "bodyLength": 2765,
-    "bodySha256": "13a4168494b5d2c843177b2598709f3ed9d8c521756558ecc192ddf51bbcd05b",
+    "bodySha256": "fd08f0be1734acdca7b7cc5a8f5392fd082140148d132b6709f124e757f17bab",
     "vtableSlotRvas": [
-      24922912,
-      24928552,
-      24925544,
+      24922880,
+      24928520,
+      24925512,
       26109400,
       26102608,
       26096768

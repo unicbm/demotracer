@@ -46,7 +46,7 @@ public sealed class CommandPolicyTests
     }
 
     [Fact]
-    public void BotHiderCommandsRemainServerOnly()
+    public void BotHiderCommandsRemainServerOnlyExceptHostAuthorizedNativeReady()
     {
         var unsafeCommands = new List<string>();
         var commandCount = 0;
@@ -60,17 +60,26 @@ public sealed class CommandPolicyTests
 
             var helper = method.CustomAttributes.SingleOrDefault(attribute =>
                 attribute.AttributeType == typeof(CommandHelperAttribute));
-            var serverOnly = helper is { ConstructorArguments.Count: >= 3 } &&
+            // The native-ready notification is emitted by ServerCommand, but
+            // CS2 attributes it to slot 0 on a listen server. Its handler applies
+            // an explicit host-only policy; all other Hider commands stay server-only.
+            var isNativeReady = method.Name == nameof(DtrHiderPlugin.OnNativeReady);
+            if (isNativeReady)
+                Assert.Equal("dtr_hider_native_ready", Assert.Single(commands).Command);
+            var expected = isNativeReady
+                ? CommandUsage.CLIENT_AND_SERVER
+                : CommandUsage.SERVER_ONLY;
+            var correctDispatch = helper is { ConstructorArguments.Count: >= 3 } &&
                 helper.ConstructorArguments[2].Value is int value &&
-                (CommandUsage)value == CommandUsage.SERVER_ONLY;
-            if (!serverOnly)
+                (CommandUsage)value == expected;
+            if (!correctDispatch)
                 unsafeCommands.AddRange(commands.Select(command => command.Command));
         }
 
         Assert.True(commandCount > 0, "No BotHider commands were discovered.");
         Assert.True(
             unsafeCommands.Count == 0,
-            $"BotHider commands without an explicit server-only policy: {string.Join(", ", unsafeCommands)}");
+            $"BotHider commands with an incorrect dispatch policy: {string.Join(", ", unsafeCommands)}");
     }
 
     [Theory]
