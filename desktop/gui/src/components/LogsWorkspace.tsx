@@ -33,26 +33,14 @@ function formatLogTime(timestampMs: number): string {
   return `${part(date.getMonth() + 1)}-${part(date.getDate())} ${part(date.getHours())}:${part(date.getMinutes())}:${part(date.getSeconds())}`;
 }
 
-export function LogsWorkspace({ words, entries, diagnostics, transportError, loading, range,
-  onRangeChange, onRefresh, onOpenFolder, onClear }: LogsWorkspaceProps) {
-  const [level, setLevel] = useState<LogFilter>("all");
-  const [source, setSource] = useState("all");
-  const [query, setQuery] = useState("");
-  const [following, setFollowing] = useState(true);
+function RuntimeStatus({ words, diagnostics, transportError }: Pick<LogsWorkspaceProps, "words" | "diagnostics" | "transportError">) {
   const [now, setNow] = useState(Date.now);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const filtered = useMemo(() => entries.filter((entry) => {
-    if (level !== "all" && entry.level !== level) return false;
-    if (source !== "all" && entry.source.startsWith("server:") !== (source === "server")) return false;
-    return `${entry.source} ${entry.message}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
-  }), [entries, level, query, source]);
   useEffect(() => {
-    if (following && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [filtered, following]);
-  useEffect(() => {
+    if (!diagnostics?.health?.running) return;
+    setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [diagnostics?.health?.running]);
 
   const health = diagnostics?.health;
   const fresh = !!health && now - health.writtenAtMs >= -5000 && now - health.writtenAtMs < 30000;
@@ -67,24 +55,45 @@ export function LogsWorkspace({ words, entries, diagnostics, transportError, loa
   const errors = [transportError, diagnostics?.healthError, diagnostics?.logError].filter(Boolean);
 
   return (
+    <section className="runtime-status" aria-label={words.runtimeTitle}>
+      <div className="runtime-status-heading">
+        <span>{words.runtimeTitle}</span>
+        <small title={words.runtimeCadence}>{health ? words.runtimeLastUpdate.replace("{time}", formatLogTime(health.writtenAtMs)) : words.runtimeWaiting}</small>
+      </div>
+      <div className="runtime-modules">
+        {modules.map((module) => (
+          <div className="runtime-module" key={module.name}>
+            <strong>{module.name}</strong>
+            <span className={unavailable ? "" : module.available ? "is-ready" : "is-error"}>
+              {unavailable || (module.available ? module.label : words.runtimeUnavailable)}
+            </span>
+          </div>
+        ))}
+      </div>
+      {errors.map((error, index) => <pre className="logs-transport-error" role="alert" key={index}>{error}</pre>)}
+    </section>
+  );
+}
+
+export function LogsWorkspace({ words, entries, diagnostics, transportError, loading, range,
+  onRangeChange, onRefresh, onOpenFolder, onClear }: LogsWorkspaceProps) {
+  const [level, setLevel] = useState<LogFilter>("all");
+  const [source, setSource] = useState("all");
+  const [query, setQuery] = useState("");
+  const [following, setFollowing] = useState(true);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const filtered = useMemo(() => entries.filter((entry) => {
+    if (level !== "all" && entry.level !== level) return false;
+    if (source !== "all" && entry.source.startsWith("server:") !== (source === "server")) return false;
+    return `${entry.source} ${entry.message}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+  }), [entries, level, query, source]);
+  useEffect(() => {
+    if (following && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [filtered, following]);
+
+  return (
     <section className="logs-workspace" aria-label={words.logsTitle}>
-      <section className="runtime-status" aria-label={words.runtimeTitle}>
-        <div className="runtime-status-heading">
-          <span>{words.runtimeTitle}</span>
-          <small title={words.runtimeCadence}>{health ? words.runtimeLastUpdate.replace("{time}", formatLogTime(health.writtenAtMs)) : words.runtimeWaiting}</small>
-        </div>
-        <div className="runtime-modules">
-          {modules.map((module) => (
-            <div className="runtime-module" key={module.name}>
-              <strong>{module.name}</strong>
-              <span className={unavailable ? "" : module.available ? "is-ready" : "is-error"}>
-                {unavailable || (module.available ? module.label : words.runtimeUnavailable)}
-              </span>
-            </div>
-          ))}
-        </div>
-        {errors.map((error, index) => <pre className="logs-transport-error" role="alert" key={index}>{error}</pre>)}
-      </section>
+      <RuntimeStatus words={words} diagnostics={diagnostics} transportError={transportError} />
 
       <div className="logs-toolbar">
         <SelectControl value={range} label={words.logsRange} options={[

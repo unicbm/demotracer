@@ -43,11 +43,11 @@ ${darkVariables}
 
 html, body, #root { background: var(--app-bg) !important; }
 
-.app-chrome, .application-toolbar, .app-sidebar, .product-lockup {
+.app-chrome, .application-toolbar, .app-sidebar {
   background-color: var(--preset-chrome);
 }
 .app-sidebar { background-image: var(--preset-sidebar-art); }
-.primary-button, .sidebar-import-action {
+.primary-button {
   color: var(--on-accent);
   background: var(--preset-primary);
   border-color: var(--preset-primary-border);

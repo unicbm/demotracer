@@ -1013,7 +1013,6 @@ export function LibraryWorkspace({
 
       {!exportRoot ? (
         <div className="library-first-run">
-          <div className="library-empty-mark"><TraceMark size={58} /></div>
           <div>
             <span>{words.libraryFolder}</span>
             <h2>{words.libraryEmptyTitle}</h2>
@@ -1104,9 +1103,7 @@ export function LibraryWorkspace({
             </>
           ) : searchingPlayers && (professionals.loading || professionals.error) ? null : (
             <div className={`library-no-results${libraryIsEmpty ? " is-blank-slate" : ""}`}>
-              <span className="library-blank-mark" aria-hidden="true">
-                {libraryIsEmpty ? <TraceMark size={36} /> : <SearchIcon size={22} />}
-              </span>
+              {!libraryIsEmpty ? <span className="library-blank-mark" aria-hidden="true"><SearchIcon size={22} /></span> : null}
               <strong>{libraryIsEmpty ? words.libraryDirectoryEmptyTitle : words.libraryNoResultsTitle}</strong>
               <p>{libraryIsEmpty ? words.libraryDirectoryEmptyBody : words.libraryNoResultsBody}</p>
               {libraryIsEmpty ? <button className="primary-button" type="button" onClick={onConvert}><PlusIcon size={15} />{words.convertDemo}</button> : null}

@@ -490,7 +490,7 @@ textarea {
 
 /* Window shell and primary navigation */
 .app-shell {
-  --sidebar-expanded-width: 168px;
+  --sidebar-expanded-width: 152px;
   --sidebar-collapsed-width: 56px;
   --sidebar-current-width: var(--sidebar-expanded-width);
   background: var(--workspace);
@@ -513,26 +513,6 @@ textarea {
     var(--chrome-content-bg) calc(var(--sidebar-current-width) + var(--chrome-blend-width)),
     var(--chrome-content-bg) 100%
   );
-}
-
-.product-lockup {
-  width: var(--sidebar-expanded-width);
-  height: 38px;
-  padding: 0 var(--space-4);
-  gap: 10px;
-}
-
-.product-lockup > svg {
-  width: 22px;
-  height: 22px;
-  color: var(--accent);
-  filter: none;
-}
-
-.product-lockup strong {
-  font-size: var(--type-label);
-  font-weight: var(--weight-bold);
-  letter-spacing: -0.01em;
 }
 
 .titlebar-context {
@@ -706,7 +686,6 @@ textarea {
   background: var(--workspace);
 }
 
-.app-shell.is-sidebar-collapsed .product-lockup,
 .app-shell.is-sidebar-collapsed .app-sidebar {
   width: var(--sidebar-collapsed-width);
 }
@@ -719,12 +698,6 @@ textarea {
   padding-inline: 8px;
 }
 
-.app-shell.is-sidebar-collapsed .product-lockup {
-  justify-content: center;
-  padding-inline: 0;
-}
-
-.app-shell.is-sidebar-collapsed .product-lockup-copy,
 .app-shell.is-sidebar-collapsed .sidebar-nav-item > span {
   display: none;
 }
@@ -963,7 +936,6 @@ textarea {
   padding: 28px;
 }
 
-.library-empty-mark,
 .library-blank-mark {
   border-radius: var(--radius-lg);
 }
@@ -1156,7 +1128,6 @@ textarea {
 }
 
 .safe-defaults-note,
-.release-notes-panel,
 .server-config-path,
 .server-config-editor,
 .server-config-issues li {
@@ -1417,22 +1388,12 @@ textarea {
   animation: feedback-toast-in var(--duration-slow) ease-out both;
 }
 
-@media (max-width: 1120px) {
-  .app-shell {
-    --sidebar-expanded-width: 190px;
-  }
-}
-
 @media (max-width: 1060px) {
   .library-command-bar { grid-template-columns: repeat(3, minmax(0, 1fr)) 36px; }
   .library-search { grid-column: 1 / -1; }
 }
 
 @media (max-width: 900px) {
-  .app-shell {
-    --sidebar-expanded-width: 180px;
-  }
-
   .library-heading p,
   .titlebar-context span {
     display: none;

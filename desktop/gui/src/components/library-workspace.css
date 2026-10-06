@@ -945,7 +945,7 @@
 
 .library-first-run {
   display: grid;
-  grid-template-columns: auto minmax(0, 520px) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   width: min(920px, 100%);
   min-height: 220px;
@@ -959,18 +959,7 @@
   border-radius: var(--radius-lg);
 }
 
-.library-empty-mark {
-  display: grid;
-  width: 96px;
-  height: 96px;
-  place-items: center;
-  color: var(--trace);
-  background: var(--trace-soft);
-  border: 1px solid color-mix(in srgb, var(--trace) 18%, transparent);
-  border-radius: var(--radius-xl);
-}
-
-.library-first-run > div:nth-child(2) > span {
+.library-first-run > div > span {
   color: var(--trace);
   font-family: var(--library-display);
   font-size: var(--type-tiny);
@@ -991,12 +980,6 @@
   color: var(--text-secondary);
   font-size: var(--type-support);
   line-height: 1.6;
-}
-
-.library-first-run > small {
-  grid-column: 2 / 4;
-  color: var(--text-tertiary);
-  font-size: var(--type-tiny);
 }
 
 .library-no-results {

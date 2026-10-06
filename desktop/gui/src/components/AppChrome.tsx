@@ -19,7 +19,6 @@ import {
   RestoreIcon,
   SidebarIcon,
   SlidersIcon,
-  TraceMark,
   ToolsIcon,
 } from "../icons";
 import type { TextDictionary } from "../i18n";
@@ -102,14 +101,6 @@ export function AppChrome({
   return (
     <header className="app-chrome">
       <div className="application-toolbar">
-        <div
-          className="product-lockup"
-          aria-label={words.appName}
-          data-tauri-drag-region="deep"
-        >
-          <TraceMark size={24} />
-          <span className="product-lockup-copy"><strong>{words.appName}</strong></span>
-        </div>
         {sessionTitle ? (
           <div className="titlebar-context" data-tauri-drag-region="deep">
             <strong title={sessionTitle}>{sessionTitle}</strong>

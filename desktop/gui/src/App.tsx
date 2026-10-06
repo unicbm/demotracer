@@ -355,10 +355,8 @@ function App() {
     dismissPrompt: dismissUpdatePrompt,
     ignoreAvailableVersions: ignoreAvailableUpdateVersions,
     installAvailableUpdates,
-    reviewGuiUpdate,
-    checkGuiApplicationUpdate,
-    checkPlaybackUpdate,
-    installLatestPlaybackBundle,
+    reviewUpdates,
+    checkUpdates,
     installPlaybackBundle,
     rollbackPlaybackInstall,
   } = useUpdateController({
@@ -2777,10 +2775,8 @@ function App() {
             onBrowseCs2={() => void chooseCs2Directory()}
             onDetectCs2={() => void detectCs2Installations()}
             onUseCandidate={useCs2Candidate}
-            onCheckGuiUpdate={() => void checkGuiApplicationUpdate()}
-            onInstallGuiUpdate={reviewGuiUpdate}
-            onCheckPlaybackUpdate={() => void checkPlaybackUpdate()}
-            onInstallLatestPlayback={() => void installLatestPlaybackBundle()}
+            onCheckUpdates={() => void checkUpdates()}
+            onReviewUpdates={reviewUpdates}
             onInstallPlaybackBundle={() => void installPlaybackBundle()}
             onRollbackPlayback={() => void rollbackPlaybackInstall()}
             onLoadServerConfig={loadServerConfig}

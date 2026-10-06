@@ -158,15 +158,10 @@ export function ExportInspector({
             </Button>
           </Group>
           <div className="inspector-output-path">
-            <Text size="xs" c="var(--text-tertiary)">{words.outputParent}</Text>
-            <Text component="code" size="xs" title={outputDir}>
-              {outputDir ? compactPath(outputDir) : words.notSelected}
+            <Text size="xs" c="var(--text-tertiary)">{words.outputTarget}</Text>
+            <Text component="code" size="xs" title={outputRoot || outputDir}>
+              {outputRoot || outputDir ? compactPath(outputRoot || outputDir) : words.notSelected}
             </Text>
-            {outputRoot ? (
-              <Text size="xs" c="var(--text-tertiary)" title={outputRoot}>
-                {words.outputTarget}: {compactPath(outputRoot)}
-              </Text>
-            ) : null}
           </div>
           <Button
             type="button"

@@ -15,7 +15,6 @@ import {
   FolderIcon,
   HelpIcon,
   RefreshIcon,
-  ReplayIcon,
   SearchIcon,
   SlidersIcon,
 } from "../icons";
@@ -157,10 +156,8 @@ interface SettingsWorkspaceProps {
   onBrowseCs2: () => void;
   onDetectCs2: () => void;
   onUseCandidate: (candidate: Cs2InstallCandidate) => void;
-  onCheckGuiUpdate: () => void;
-  onInstallGuiUpdate: () => void;
-  onCheckPlaybackUpdate: () => void;
-  onInstallLatestPlayback: () => void;
+  onCheckUpdates: () => void;
+  onReviewUpdates: () => void;
   onInstallPlaybackBundle: () => void;
   onRollbackPlayback: () => void;
   onLoadServerConfig: () => Promise<boolean>;
@@ -373,10 +370,8 @@ export function SettingsWorkspace({
   onBrowseCs2,
   onDetectCs2,
   onUseCandidate,
-  onCheckGuiUpdate,
-  onInstallGuiUpdate,
-  onCheckPlaybackUpdate,
-  onInstallLatestPlayback,
+  onCheckUpdates,
+  onReviewUpdates,
   onInstallPlaybackBundle,
   onRollbackPlayback,
   onLoadServerConfig,
@@ -604,11 +599,8 @@ export function SettingsWorkspace({
             : words.releaseNotChecked;
   const playbackInstallLabel = playbackInstallProgress?.phase === "downloading" ? words.releaseDownloading
     : playbackInstallProgress?.phase === "verifying" ? words.releaseVerifying
-      : playbackInstallProgress?.phase === "installing" ? words.releaseInstalling
-        : words.releaseChecking;
-  const guiUpdateBusy = guiUpdate.phase === "checking"
-    || guiUpdate.phase === "downloading"
-    || guiUpdate.phase === "installing";
+      : playbackInstallProgress?.phase === "installing" || releaseAction === "installingFile" ? words.releaseInstalling
+        : releaseAction === "rollingBack" ? words.releaseRollingBack : words.releaseChecking;
   const guiStatus = guiUpdate.phase === "checking" ? words.releaseChecking
     : guiUpdate.phase === "current" ? words.releaseUpToDate
       : guiUpdate.phase === "available" ? words.releaseUpdateAvailable
@@ -616,63 +608,62 @@ export function SettingsWorkspace({
           : guiUpdate.phase === "installing" ? words.releaseInstalling
             : guiUpdate.phase === "error" ? words.releaseCheckUnavailable
               : words.releaseNotChecked;
-  const playbackInstallView = (
-    <section className="settings-card playback-install-card" aria-label={words.releasePlayback}>
-      <div className="settings-card-heading">
-        <h3>{words.releasePlayback}</h3>
-        {environment.cs2Path.trim() ? <span className="settings-version" title={words.releaseInstalledBundle}>
-          {playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseVersionUnknown}
-        </span> : null}
-      </div>
+  const updateAvailable = guiUpdate.phase === "available" || playbackUpdate.phase === "available";
+  const playbackErrors = [...new Set([playbackUpdate.error, playbackReleaseError].filter(Boolean))];
+  const updatesView = (
+    <section className="settings-card playback-install-card" aria-label={words.settingsNavUpdates}>
       {releaseNotice ? <div className="release-notice" role="status"><CheckIcon size={16} /><span>{releaseNotice}</span></div> : null}
       <div className="playback-settings-list">
-        {!environment.cs2Path.trim() ? (
-          <p className="settings-inline-note">{words.releaseChooseCs2Folder}</p>
-        ) : (
-          <>
-            <div className={`playback-settings-row is-action is-update-status${playbackUpdate.phase === "available" ? " has-update" : ""}${playbackUpdate.error ? " has-error" : ""}`}>
-              <div>
-                <span>{playbackUpdateLabel}</span>
-                {playbackUpdate.phase === "available" && playbackUpdate.latestVersion ? (
-                  <small className="playback-update-route">
-                    {playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseVersionUnknown} → v{playbackUpdate.latestVersion}
-                  </small>
-                ) : playbackUpdate.error ? <small>{playbackUpdate.error}</small> : null}
-              </div>
-              {playbackUpdate.phase === "available" ? (
-                <button className="primary-button" type="button" disabled={playbackUpdateBusy} onClick={onInstallLatestPlayback}>
-                  <ReplayIcon size={15} />{releaseAction === "installingOnline" ? playbackInstallLabel
-                    : guiUpdate.phase === "available" ? words.releaseUpdateAll : words.releaseInstallPlaybackUpdate}
-                </button>
-              ) : (
-                <button className="secondary-button" type="button" disabled={playbackUpdateBusy} onClick={onCheckPlaybackUpdate}>
-                  <RefreshIcon className={playbackUpdate.phase === "checking" ? "release-spin" : undefined} size={15} />
-                  {playbackUpdate.phase === "checking" ? words.releaseChecking : words.releaseCheckNow}
-                </button>
-              )}
+        <div className="playback-settings-row is-action">
+          <div>
+            <span>{words.releaseDesktop}</span>
+            <small title={words.releaseInstalledBundle}>
+              v{guiUpdate.currentVersion}{guiUpdate.phase === "available" ? " → v" + guiUpdate.availableVersion : ""}
+            </small>
+          </div>
+          <span aria-live="polite">{guiStatus}</span>
+        </div>
+        <div className="playback-settings-row is-action">
+          <div>
+            <span>{words.releasePlayback}</span>
+            <small title={words.releaseInstalledBundle}>
+              {playbackRelease?.currentVersion ? "v" + playbackRelease.currentVersion : words.releaseVersionUnknown}
+              {playbackUpdate.phase === "available" ? " → v" + playbackUpdate.latestVersion : ""}
+            </small>
+          </div>
+          <span aria-live="polite">{!environment.cs2Path.trim() ? words.releaseChooseCs2Folder
+            : releaseAction ? playbackInstallLabel : playbackUpdateLabel}</span>
+        </div>
+        {playbackErrors.map((error) => (
+          <div className="playback-settings-row has-error" role="alert" key={error}>
+            <div><span>{words.errorPlaybackTitle}</span><small>{error}</small></div>
+          </div>
+        ))}
+        <div className="settings-update-actions">
+          <button className={updateAvailable ? "primary-button" : "secondary-button"} type="button" disabled={playbackUpdateBusy} onClick={updateAvailable ? onReviewUpdates : onCheckUpdates}>
+            <RefreshIcon className={guiUpdate.phase === "checking" || playbackUpdate.phase === "checking" ? "release-spin" : undefined} size={15} />
+            {playbackUpdateBusy ? guiUpdate.phase === "downloading" || guiUpdate.phase === "installing" ? guiStatus
+              : releaseAction ? playbackInstallLabel : words.releaseChecking
+              : updateAvailable ? words.releaseInstallNow : words.releaseCheckNow}
+          </button>
+        </div>
+        {environment.cs2Path.trim() ? (
+          <details className="playback-maintenance">
+            <summary>{words.playbackMaintenance}<ChevronIcon size={15} /></summary>
+            <div className="playback-settings-row is-action">
+              <span>{words.releaseLocalPackage}</span>
+              <button className="secondary-button" type="button" disabled={playbackUpdateBusy} onClick={onInstallPlaybackBundle}>
+                <FolderIcon size={15} />{releaseAction === "installingFile" ? words.releaseInstalling : words.releaseInstallFromZip}
+              </button>
             </div>
-            {playbackReleaseError ? (
-              <div className="playback-settings-row has-error" role="alert">
-                <div><span>{words.errorPlaybackTitle}</span><small>{playbackReleaseError}</small></div>
-              </div>
-            ) : null}
-            <details className="playback-maintenance">
-              <summary>{words.playbackMaintenance}<ChevronIcon size={15} /></summary>
-              <div className="playback-settings-row is-action">
-                <span>{words.releaseLocalPackage}</span>
-                <button className="secondary-button" type="button" disabled={releaseBusy} onClick={onInstallPlaybackBundle}>
-                  <FolderIcon size={15} />{releaseAction === "installingFile" ? words.releaseInstalling : words.releaseInstallFromZip}
-                </button>
-              </div>
-              <div className="playback-settings-row is-action">
-                <span>{words.releaseRollback}</span>
-                <button className="secondary-button" type="button" disabled={releaseBusy || !playbackRelease?.canRollback} onClick={onRollbackPlayback}>
-                  {releaseAction === "rollingBack" ? words.releaseRollingBack : words.releaseRollbackAction}
-                </button>
-              </div>
-            </details>
-          </>
-        )}
+            <div className="playback-settings-row is-action">
+              <span>{words.releaseRollback}</span>
+              <button className="secondary-button" type="button" disabled={playbackUpdateBusy || !playbackRelease?.canRollback} onClick={onRollbackPlayback}>
+                {releaseAction === "rollingBack" ? words.releaseRollingBack : words.releaseRollbackAction}
+              </button>
+            </div>
+          </details>
+        ) : null}
       </div>
     </section>
   );
@@ -729,7 +720,6 @@ export function SettingsWorkspace({
         ) : null}
       </section>
 
-      {playbackInstallView}
     </div>
   );
 
@@ -1289,10 +1279,6 @@ export function SettingsWorkspace({
             <section className="settings-group" aria-labelledby="settings-general-title">
               <h2 id="settings-general-title">{words.settingsNavAppearance}</h2>
               {appearanceView}
-              <button className="settings-theme-entry" type="button" disabled={guiUpdateBusy} onClick={guiUpdate.phase === "available" ? onInstallGuiUpdate : onCheckGuiUpdate}>
-                <strong>{guiUpdate.phase === "available" ? words.releaseInstallNow : words.releaseCheckNow}</strong>
-                <em aria-live="polite">{guiStatus}</em><ChevronIcon size={15} />
-              </button>
               <button className="settings-theme-entry" type="button" onClick={() => setSettingsModal("credits")}>
                 <strong>{words.creditsTitle}</strong><span /><ChevronIcon size={15} />
               </button>
@@ -1317,6 +1303,10 @@ export function SettingsWorkspace({
             <section className="settings-group" aria-labelledby="settings-cs2-title">
               <h2 id="settings-cs2-title">{words.settingsNavCs2}</h2>
               {environmentView}
+            </section>
+            <section className="settings-group" aria-labelledby="settings-updates-title">
+              <h2 id="settings-updates-title">{words.settingsNavUpdates}</h2>
+              {updatesView}
             </section>
           </div>
         </div>

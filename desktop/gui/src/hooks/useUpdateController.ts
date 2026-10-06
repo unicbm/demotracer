@@ -25,6 +25,7 @@ import {
   type IgnoredUpdateVersions,
 } from "../updatePrompt";
 import type {
+  CommandErrorDto,
   GuiUpdateStatus,
   Language,
   PlaybackInstallProgress,
@@ -55,13 +56,19 @@ export function useUpdateController({
     normalizeIgnoredUpdateVersions(localStorage.getItem(IGNORED_UPDATE_VERSIONS_STORAGE_KEY))
   ));
   const [playbackRelease, setPlaybackRelease] = useState<PlaybackReleaseStatus | null>(null);
-  const [playbackUpdate, setPlaybackUpdate] = useState<PlaybackUpdateStatus>({ phase: "idle" });
-  const [playbackReleaseError, setPlaybackReleaseError] = useState("");
+  const [playbackUpdateState, setPlaybackUpdate] = useState<PlaybackUpdateStatus>({ phase: "idle" });
+  const [playbackCheckError, setPlaybackCheckError] = useState<CommandErrorDto | null>(null);
+  const playbackUpdate = playbackCheckError ? playbackUpdateFailureStatus(playbackCheckError, language) : playbackUpdateState;
+  const [playbackReleaseFailure, setPlaybackReleaseError] = useState<CommandErrorDto | null>(null);
+  const playbackReleaseError = playbackReleaseFailure ? userFacingErrorMessage(playbackReleaseFailure, language) : "";
   const [playbackInstallBlockedByCs2, setPlaybackInstallBlockedByCs2] = useState(false);
   const [releaseAction, setReleaseActionState] = useState<"installingOnline" | "installingFile" | "rollingBack" | null>(null);
   const releaseActionRef = useRef<typeof releaseAction>(null);
   const [playbackInstallProgress, setPlaybackInstallProgress] = useState<PlaybackInstallProgress | null>(null);
-  const [releaseNotice, setReleaseNotice] = useState("");
+  const [releaseNoticeState, setReleaseNotice] = useState<"current" | { action: "install" | "rollback"; version: string } | null>(null);
+  const releaseNotice = !releaseNoticeState ? "" : releaseNoticeState === "current" ? words.releaseUpToDate
+    : releaseNoticeState.action === "install" ? words.playbackInstalledNotice.replace("{version}", releaseNoticeState.version)
+      : words.playbackRollbackNotice;
   const pendingGuiUpdateRef = useRef<Update | null>(null);
   const guiCheckInFlightRef = useRef(false);
   const playbackContinuationStartedRef = useRef(false);
@@ -78,7 +85,7 @@ export function useUpdateController({
     if (guiCheckInFlightRef.current) return;
     if (guiUpdate.phase === "checking" || guiUpdate.phase === "downloading" || guiUpdate.phase === "installing") return;
     guiCheckInFlightRef.current = true;
-    setReleaseNotice("");
+    setReleaseNotice(null);
     const currentVersion = knownCurrentVersion
       ?? await getVersion().catch(() => guiUpdate.currentVersion || appVersion || packageMetadata.version);
     setGuiUpdate({ phase: "checking", currentVersion });
@@ -89,7 +96,7 @@ export function useUpdateController({
       const update = await check({ timeout: 15_000 });
       if (!update) {
         setGuiUpdate({ phase: "current", currentVersion, availableVersion: currentVersion });
-        if (manual) setReleaseNotice(words.releaseUpToDate);
+        if (manual) setReleaseNotice("current");
         return;
       }
       pendingGuiUpdateRef.current = update;
@@ -111,7 +118,7 @@ export function useUpdateController({
     if (!update || guiUpdate.phase !== "available") return;
     let downloadedBytes = 0;
     let totalBytes: number | undefined;
-    setReleaseNotice("");
+    setReleaseNotice(null);
     setGuiUpdate((current) => ({ ...current, phase: "downloading", downloadedBytes: 0 }));
     try {
       await update.downloadAndInstall((event) => {
@@ -137,6 +144,7 @@ export function useUpdateController({
     const normalizedCs2Path = cs2Path.trim();
     if (!normalizedCs2Path || (!ignoreBusy && releaseActionRef.current)) return;
     const request = ++playbackCheckRef.current;
+    setPlaybackCheckError(null);
     setPlaybackUpdate({ phase: "checking" });
     try {
       const status = await invoke<PlaybackUpdateRelease>("playback_update_status", { cs2Path: normalizedCs2Path });
@@ -148,16 +156,13 @@ export function useUpdateController({
       });
     } catch (reason) {
       if (request === playbackCheckRef.current)
-        setPlaybackUpdate(playbackUpdateFailureStatus(reason, language));
+        setPlaybackCheckError(parseCommandError(reason));
     }
   }
 
   async function finishPlaybackChange(result: PlaybackInstallResult, action: "install" | "rollback") {
     setPlaybackInstallBlockedByCs2(false);
-    setReleaseNotice(action === "install"
-      ? words.playbackInstalledNotice
-        .replace("{version}", result.version)
-      : words.playbackRollbackNotice);
+    setReleaseNotice({ action, version: result.version });
     const installedPath = cs2Path.trim();
     const status = await invoke<PlaybackReleaseStatus>("playback_release_status", { cs2Path: installedPath });
     if (playbackPathRef.current !== installedPath) return;
@@ -175,9 +180,9 @@ export function useUpdateController({
       return false;
     }
     setReleaseAction("installingOnline");
-    setPlaybackReleaseError("");
+    setPlaybackReleaseError(null);
     setPlaybackInstallBlockedByCs2(false);
-    setReleaseNotice("");
+    setReleaseNotice(null);
     setPlaybackInstallProgress({ phase: "checking" });
     const events = new Channel<PlaybackInstallProgress>();
     events.onmessage = (progress) => {
@@ -193,7 +198,7 @@ export function useUpdateController({
     } catch (reason) {
       const error = parseCommandError(reason);
       setPlaybackInstallBlockedByCs2(error.code.toLocaleLowerCase().includes("cs2_running"));
-      setPlaybackReleaseError(userFacingErrorMessage(error, language));
+      setPlaybackReleaseError(error);
       return false;
     } finally {
       events.onmessage = () => undefined;
@@ -206,8 +211,8 @@ export function useUpdateController({
     const normalizedCs2Path = cs2Path.trim();
     if (!normalizedCs2Path || releaseActionRef.current) return;
     setReleaseAction("installingFile");
-    setPlaybackReleaseError("");
-    setReleaseNotice("");
+    setPlaybackReleaseError(null);
+    setReleaseNotice(null);
     try {
       const packagePath = await invoke<string | null>("choose_playback_bundle", { initialPath: null });
       if (!packagePath) return;
@@ -217,7 +222,7 @@ export function useUpdateController({
       });
       await finishPlaybackChange(result, "install");
     } catch (reason) {
-      setPlaybackReleaseError(userFacingErrorMessage(parseCommandError(reason), language));
+      setPlaybackReleaseError(parseCommandError(reason));
     } finally {
       setReleaseAction(null);
     }
@@ -227,13 +232,13 @@ export function useUpdateController({
     const normalizedCs2Path = cs2Path.trim();
     if (!normalizedCs2Path || releaseActionRef.current || !playbackRelease?.canRollback) return;
     setReleaseAction("rollingBack");
-    setPlaybackReleaseError("");
-    setReleaseNotice("");
+    setPlaybackReleaseError(null);
+    setReleaseNotice(null);
     try {
       const result = await invoke<PlaybackInstallResult>("rollback_playback_install", { cs2Path: normalizedCs2Path });
       await finishPlaybackChange(result, "rollback");
     } catch (reason) {
-      setPlaybackReleaseError(userFacingErrorMessage(parseCommandError(reason), language));
+      setPlaybackReleaseError(parseCommandError(reason));
     } finally {
       setReleaseAction(null);
     }
@@ -282,21 +287,22 @@ export function useUpdateController({
     let disposed = false;
     playbackPathRef.current = normalizedCs2Path;
     setPlaybackRelease(null);
-    setPlaybackReleaseError("");
+    setPlaybackCheckError(null);
+    setPlaybackReleaseError(null);
     setPlaybackUpdate(normalizedCs2Path ? { phase: "checking" } : { phase: "idle" });
     void invoke<PlaybackReleaseStatus>("playback_release_status", {
       cs2Path: normalizedCs2Path || null,
     }).then((status) => {
       if (!disposed) setPlaybackRelease(status);
     }).catch((reason) => {
-      if (!disposed) setPlaybackReleaseError(userFacingErrorMessage(parseCommandError(reason), language));
+      if (!disposed) setPlaybackReleaseError(parseCommandError(reason));
     });
     if (normalizedCs2Path) void checkPlaybackUpdate(true);
     return () => {
       disposed = true;
       playbackCheckRef.current++;
     };
-  }, [cs2Path, language]);
+  }, [cs2Path]);
 
   useEffect(() => {
     if (playbackContinuationStartedRef.current) return;
@@ -393,11 +399,16 @@ export function useUpdateController({
     }
   }
 
-  function reviewGuiUpdate() {
+  async function checkUpdates() {
+    await Promise.all([checkGuiApplicationUpdate(false), checkPlaybackUpdate()]);
+  }
+
+  function reviewUpdates() {
     setIgnoredVersions((current) => {
-      if (!updateVersionIsIgnored(current, "gui", guiUpdate.availableVersion)) return current;
-      const { gui: _ignoredGui, ...rest } = current;
-      return rest;
+      const next = { ...current };
+      if (updateVersionIsIgnored(next, "gui", guiUpdate.availableVersion)) delete next.gui;
+      if (updateVersionIsIgnored(next, "playback", playbackUpdate.latestVersion)) delete next.playback;
+      return next;
     });
     setDialogOpen(true);
   }
@@ -429,7 +440,8 @@ export function useUpdateController({
     dismissPrompt,
     ignoreAvailableVersions,
     installAvailableUpdates,
-    reviewGuiUpdate,
+    reviewUpdates,
+    checkUpdates,
     checkGuiApplicationUpdate,
     checkPlaybackUpdate,
     installLatestPlaybackBundle,

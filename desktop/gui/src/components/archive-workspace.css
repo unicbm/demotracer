@@ -533,11 +533,6 @@
   outline-offset: 1px;
 }
 
-.archive-roster-team > ul > li.is-expanded {
-  background: color-mix(in srgb, var(--surface-raised) 91%, var(--roster-player-color, var(--trace)) 9%);
-  border-color: color-mix(in srgb, var(--roster-player-color, var(--trace)) 32%, var(--divider));
-}
-
 .roster-player-summary {
   min-height: 38px;
   padding: 3px 9px;
@@ -1519,7 +1514,6 @@
 .archive-roster-stat-head { font-size: var(--type-tiny); font-weight: var(--weight-semibold); text-transform: none; }
 .archive-roster-team > ul { gap: 0; border: 0; border-top: 1px solid var(--divider); }
 .archive-roster-team > ul > li { min-height: 38px; background: transparent; border: 0; border-bottom: 1px solid var(--divider); border-radius: 0; }
-.archive-roster-team > ul > li.is-expanded { background: var(--surface-subtle); border-color: var(--divider); }
 .roster-player-summary { min-height: 38px; }
 
 .archive-split-view {

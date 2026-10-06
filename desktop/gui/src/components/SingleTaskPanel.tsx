@@ -61,7 +61,7 @@ export function SingleTaskPanel({
     ? words.playerFilesProgress.replace("{written}", String(progress.written)).replace("{total}", String(progress.estimated))
     : progress.unit === "artifacts"
       ? words.artifactsProgress.replace("{written}", String(progress.written)).replace("{total}", String(progress.estimated))
-      : stages[activeIndex];
+      : null;
   const title = preflight
     ? words.preflightTask
     : analysis
@@ -104,15 +104,15 @@ export function SingleTaskPanel({
               <strong>{stages[activeIndex]}</strong>
               <time>{formatElapsed(elapsedSeconds)}</time>
             </div>
-            <div className="conversion-task-progress-copy">
-              <span>{progressLabel}</span>
+            {progressLabel || progress.currentRound !== undefined ? <div className="conversion-task-progress-copy">
+              {progressLabel ? <span>{progressLabel}</span> : null}
               {progress.currentRound !== undefined ? (
                 <b>{words.roundProgress
                   .replace("{round}", String(progress.currentRound))
                   .replace("{completed}", String(progress.completedRounds))
                   .replace("{total}", String(progress.selectedRounds))}</b>
               ) : null}
-            </div>
+            </div> : null}
             <div className={`single-task-progress${determinate ? " is-determinate" : " is-indeterminate"}`}>
               <span style={determinate ? { width: `${fraction * 100}%` } : undefined} />
             </div>
