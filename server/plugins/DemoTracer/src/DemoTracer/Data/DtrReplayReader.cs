@@ -84,8 +84,7 @@ internal static partial class DtrReplayReader
     public static DtrReplayFile Read(string path, DtrReadLimits limits)
         => Read(path, limits, retainAuxiliaryData: true);
 
-    // Playback validates historical evidence without retaining arrays that the
-    // native runtime no longer consumes. Full reads remain available for inspection.
+    // Validate all sections, retaining only the data needed for playback.
     public static DtrReplayFile ReadForPlayback(string path)
         => Read(path, DtrReadLimits.Default, retainAuxiliaryData: false);
 

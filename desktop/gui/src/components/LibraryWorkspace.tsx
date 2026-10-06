@@ -109,13 +109,6 @@ function platformName(value: string): string {
   return value.toLowerCase() === "faceit" ? "FACEIT" : value;
 }
 
-function compatibilityLabel(entry: DemoLibraryEntry, words: TextDictionary): string {
-  if (entry.compatibility === "current") return words.versionCurrent;
-  if (entry.compatibility === "supported") return words.versionSupported;
-  if (entry.compatibility === "legacy") return words.versionLegacy;
-  return words.versionUnsupported;
-}
-
 function playerSearchText(player: LibraryPlayerSummary, professionals: ProfessionalPlayers | null): string {
   return [
     player.name,
@@ -337,13 +330,13 @@ function LibraryRow({
           <div className="library-series-map-badges">
             {entry.compatibility !== "current" ? (
               <span
-                className={`library-series-map-indicator is-${entry.compatibility}${entry.compatibility === "unsupported" ? " has-label" : ""}`}
-                title={compatibilityLabel(entry, words)}
-                aria-label={compatibilityLabel(entry, words)}
+                className="library-series-map-indicator is-unsupported has-label"
+                title={words.versionUnsupported}
+                aria-label={words.versionUnsupported}
                 role="img"
               >
                 <AlertIcon size={12} />
-                {entry.compatibility === "unsupported" ? <span>{compatibilityLabel(entry, words)}</span> : null}
+                <span>{words.versionUnsupported}</span>
               </span>
             ) : null}
             {needsRepair ? (
@@ -427,13 +420,13 @@ function LibraryRow({
             <span className="library-row-indicators">
               {entry.compatibility !== "current" ? (
                 <span
-                  className={`library-row-indicator is-${entry.compatibility}${entry.compatibility === "unsupported" ? " has-label" : ""}`}
-                  title={compatibilityLabel(entry, words)}
-                  aria-label={compatibilityLabel(entry, words)}
+                  className="library-row-indicator is-unsupported has-label"
+                  title={words.versionUnsupported}
+                  aria-label={words.versionUnsupported}
                   role="img"
                 >
                   <AlertIcon size={11} />
-                  {entry.compatibility === "unsupported" ? <span>{compatibilityLabel(entry, words)}</span> : null}
+                  <span>{words.versionUnsupported}</span>
                 </span>
               ) : null}
               {needsRepair ? (

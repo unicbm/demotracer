@@ -621,7 +621,7 @@ export function SettingsWorkspace({
       <div className="settings-card-heading">
         <h3>{words.releasePlayback}</h3>
         {environment.cs2Path.trim() ? <span className="settings-version" title={words.releaseInstalledBundle}>
-          {playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy}
+          {playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseVersionUnknown}
         </span> : null}
       </div>
       {releaseNotice ? <div className="release-notice" role="status"><CheckIcon size={16} /><span>{releaseNotice}</span></div> : null}
@@ -635,7 +635,7 @@ export function SettingsWorkspace({
                 <span>{playbackUpdateLabel}</span>
                 {playbackUpdate.phase === "available" && playbackUpdate.latestVersion ? (
                   <small className="playback-update-route">
-                    {playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy} → v{playbackUpdate.latestVersion}
+                    {playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseVersionUnknown} → v{playbackUpdate.latestVersion}
                   </small>
                 ) : playbackUpdate.error ? <small>{playbackUpdate.error}</small> : null}
               </div>
@@ -702,7 +702,6 @@ export function SettingsWorkspace({
           <div className="detected-install-list">
             <div className="detected-install-heading">
               <strong>{words.detectedCs2Installs}</strong>
-              <small>{words.detectedCs2InstallsHelp}</small>
             </div>
             {candidates.map((candidate) => (
               <button

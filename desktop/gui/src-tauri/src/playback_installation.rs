@@ -47,7 +47,6 @@ pub(crate) struct InstallReceiptWire {
     pub(crate) schema_version: u32,
     pub(crate) product: String,
     pub(crate) bundle_version: String,
-    #[allow(dead_code)]
     pub(crate) git_commit: Option<String>,
     pub(crate) platform: String,
     pub(crate) compatibility: PlaybackContractWire,

@@ -103,12 +103,12 @@ public sealed class CommandPolicyTests
     [InlineData("[::1]:27005")]
     [InlineData("::ffff:127.0.0.1")]
     [InlineData("loopback")]
-    public void ListenServerHostCanExecuteDemoTracerCommands(string remoteAddress)
+    public void LoopbackClientsCanExecuteOnListenServers(string remoteAddress)
     {
         Assert.True(DemoTracerCommandCallerPolicy.CanExecute(
             serverConsole: false,
             isBot: false,
-            playerSlot: 0,
+            playerSlot: 1,
             remoteAddress,
             isDedicatedServer: false));
     }

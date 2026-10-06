@@ -567,7 +567,6 @@ fn validate_config_value(value: &Value) -> ServerConfigValidationDto {
             "chat_auto",
             "round_banner",
             "handoff",
-            "align",
             "fidelity",
             "cosmetics",
         ],
@@ -620,14 +619,6 @@ fn validate_config_value(value: &Value) -> ServerConfigValidationDto {
         &mut warnings,
         &mut unknown_paths,
     );
-
-    if get_case_insensitive(root, "align").is_some_and(|value| !value.is_null()) {
-        errors.push(issue(
-            "$.align",
-            "align_unsupported",
-            "The align config is no longer supported. Use fidelity and cosmetics.",
-        ));
-    }
 
     ServerConfigValidationDto {
         valid: errors.is_empty(),
@@ -948,7 +939,6 @@ fn canonicalize_known_field_names(value: &mut Value) {
             "chat_auto",
             "round_banner",
             "handoff",
-            "align",
             "fidelity",
             "cosmetics",
         ],
@@ -1165,13 +1155,12 @@ mod tests {
     }
 
     #[test]
-    fn validation_matches_css_types_aliases_and_clamping() {
+    fn validation_reports_invalid_types_values_and_unknown_fields() {
         let validation = validate_config_text(
             r#"{
               "allow_partial": "yes",
               "identity": "future",
-              "handoff": { "mode": "kill", "threat_360_range": 900 },
-              "align": { "weapons": true },
+              "handoff": { "mode": "kill", "future_option": 900 },
               "fidelity": { "preset": "handoff_safe" }
             }"#,
         );
@@ -1186,38 +1175,7 @@ mod tests {
             .any(|issue| issue.path == "$.identity" && issue.code == "value_ignored"));
         assert!(validation
             .unknown_paths
-            .contains(&"$.handoff.threat_360_range".to_string()));
-        assert!(validation
-            .errors
-            .iter()
-            .any(|issue| issue.code == "align_unsupported"));
-    }
-
-    #[test]
-    fn retired_match_config_is_unknown_and_preserved_on_save() {
-        let tree = TempTree::new("retired-match");
-        fs::write(
-            tree.config(),
-            br#"{"identity":"name","match":{"preset":"full","scoreboard":true}}"#,
-        )
-        .expect("write config");
-        let loaded = load_server_config_for(tree.root().to_str().unwrap()).unwrap();
-        assert!(loaded.validation.valid);
-        assert!(loaded.validation.unknown_paths.contains(&"$.match".into()));
-
-        let saved = save_server_config_for(&SaveServerConfigRequestDto {
-            cs2_path: tree.root().display().to_string(),
-            json: loaded.json,
-            expected_fingerprint: loaded.fingerprint,
-        })
-        .expect("preserve unknown user config");
-        let value = parse_config_text(&saved.json).unwrap();
-        assert_eq!(value["identity"], "name");
-        assert_eq!(value["match"]["scoreboard"], true);
-        assert!(parse_config_text(BUILTIN_DEFAULT_CONFIG)
-            .unwrap()
-            .get("match")
-            .is_none());
+            .contains(&"$.handoff.future_option".to_string()));
     }
 
     #[test]

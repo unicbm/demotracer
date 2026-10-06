@@ -78,7 +78,7 @@ export function UpdateDialog({
   return (
     <DialogPrimitive
       labelledBy="update-dialog-title"
-      describedBy="update-dialog-description"
+      describedBy={guiUpdateOffered && playbackUpdateOffered ? "update-dialog-description" : undefined}
       onDismiss={() => { if (!busy) onDismiss(); }}
       initialFocusRef={initialFocusRef}
       dismissOnScrimClick={false}
@@ -122,7 +122,7 @@ export function UpdateDialog({
                 <Text id="playback-update-component-title" fw={700}>{words.releasePlayback}</Text>
               </div>
               <div className="update-dialog-version-route" aria-label={words.releaseUpdateStatus}>
-                <code>{playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseMissingLegacy}</code>
+                <code>{playbackRelease?.currentVersion ? `v${playbackRelease.currentVersion}` : words.releaseVersionUnknown}</code>
                 <ArrowIcon size={16} aria-hidden="true" />
                 <code>v{playbackUpdate.latestVersion || "—"}</code>
               </div>
@@ -133,12 +133,11 @@ export function UpdateDialog({
           </section>
         ) : null}
 
-        <div id="update-dialog-description" className="update-dialog-guidance">
-          <Text className="update-dialog-scope" c="dimmed" size="xs">{words.releaseUpdateScope}</Text>
-          {guiUpdateOffered && playbackUpdateOffered ? (
+        {guiUpdateOffered && playbackUpdateOffered ? (
+          <div id="update-dialog-description" className="update-dialog-guidance">
             <Text className="update-dialog-scope" c="dimmed" size="xs">{words.releaseUpdateSequence}</Text>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         {progressActive ? (
           <div className="update-dialog-progress" role="status" aria-live="polite">

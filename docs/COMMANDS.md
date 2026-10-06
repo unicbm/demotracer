@@ -171,7 +171,6 @@ Optional defaults live in `demotracer.config.json` next to `DemoTracer.dll`.
 Start from the packaged `demotracer.config.example.json`, using `fidelity` and
 `cosmetics` sections. JSON comments and trailing commas are accepted.
 
-The former `match` section is ignored and `dtr_match` is no longer registered.
 Playback does not synchronize K/D/A, MVPs, individual scores, team scores or
 team names. CS2 owns match statistics and round settlement. Archive statistics
 remain available in the GUI for analysis.

@@ -155,20 +155,15 @@ export function persistLibraryPreferences(preferences: LibraryPreferences) {
   try {
     if (exportRoot) {
       localStorage.setItem(EXPORT_ROOT_KEY, exportRoot);
-      localStorage.setItem("demotracer.output", exportRoot);
-      localStorage.setItem(LIBRARY_ROOT_KEY, exportRoot);
     } else {
       localStorage.removeItem(EXPORT_ROOT_KEY);
     }
     localStorage.setItem(LIBRARY_ROOTS_KEY, JSON.stringify(roots));
+    localStorage.removeItem(LIBRARY_ROOT_KEY);
+    localStorage.removeItem("demotracer.output");
   } catch {
     // Preferences are convenient state; conversion must remain usable if storage is unavailable.
   }
-}
-
-export function mergeLibraryScan(scan: DemoLibraryScan): DemoLibraryScan {
-  // Read analyzed metadata from demo-info.json so it shares the archive revision.
-  return scan;
 }
 
 export function mergeLibraryScans(scans: DemoLibraryScan[], root: string): DemoLibraryScan {
@@ -179,9 +174,9 @@ export function mergeLibraryScans(scans: DemoLibraryScan[], root: string): DemoL
       if (!entries.has(key)) entries.set(key, entry);
     }
   }
-  return mergeLibraryScan({
+  return {
     root,
     entries: [...entries.values()],
     skipped: scans.flatMap((scan) => scan.skipped),
-  });
+  };
 }

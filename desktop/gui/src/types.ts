@@ -251,7 +251,7 @@ export interface DemoLibraryEntry {
   tickRate: number;
   abi: number;
   formatVersion: number;
-  compatibility: "current" | "supported" | "legacy" | "unsupported" | string;
+  compatibility: "current" | "unsupported";
   modifiedAtMs: number;
   rounds: number;
   files: number;
@@ -537,9 +537,7 @@ export interface PlaybackUpdateStatus {
 export interface PlaybackInstallResult {
   version: string;
   installedFiles: number;
-  removedLegacyFiles: number;
   backupPath: string;
-  gameCsgoPath: string;
 }
 
 export type PlaybackInstallPhase = "checking" | "downloading" | "verifying" | "installing";

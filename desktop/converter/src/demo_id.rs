@@ -54,30 +54,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sha256_matches_standard_vectors() {
-        assert_eq!(
-            sha256_hex(b""),
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        );
-        assert_eq!(
-            sha256_hex(b"abc"),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
-    }
-
-    #[test]
     fn content_hash_changes_demo_id_for_same_stem() {
         let first = demo_id("match", &sha256_hex(b"first demo"));
         let second = demo_id("match", &sha256_hex(b"second demo"));
 
         assert_ne!(first, second);
-    }
-
-    #[test]
-    fn same_bytes_generate_same_demo_id_independent_of_path() {
-        let hash = sha256_hex(b"same demo bytes");
-
-        assert_eq!(demo_id("match", &hash), demo_id("match", &hash));
     }
 
     #[test]

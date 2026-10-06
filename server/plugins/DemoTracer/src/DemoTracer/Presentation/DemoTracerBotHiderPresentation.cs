@@ -5,7 +5,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 using System.Globalization;
-using System.Security.Cryptography;
 using System.Text;
 using CounterStrikeSharp.API;
 using DtrHiderApi;
@@ -221,8 +220,7 @@ public sealed partial class DemoTracerPlugin
                 .Append(request.Clan?.Tag).Append(':')
                 .Append(request.Clan?.Id).Append('|');
         }
-        signature = Convert.ToHexString(
-            SHA256.HashData(Encoding.UTF8.GetBytes(signatureBuilder.ToString())));
+        signature = signatureBuilder.ToString();
         return requests;
     }
 

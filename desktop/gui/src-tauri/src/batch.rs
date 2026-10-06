@@ -7,7 +7,6 @@
 use super::{AppState, CommandErrorDto, CommandResult, CosmeticConsentDto, TaskEvent, TaskPhase};
 use crate::target_lock::TargetFileLock;
 use cs2_demotracer::browser_analysis::BrowserDemoSource;
-use cs2_demotracer::demo_id::sha256_hex;
 use cs2_demotracer::demo_series::{group_demo_sources, resolve_demo_source};
 use cs2_demotracer::model::Side;
 use cs2_demotracer::quality::AnalysisOptions;
@@ -679,14 +678,7 @@ fn build_batch_ledger(request: &StartBatchImportRequest) -> CommandResult<BatchL
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
-        let id_material = format!(
-            "{}\0{}\0{}\0{}",
-            normalized_path_key(&path),
-            metadata.size_bytes,
-            metadata.modified.map(unix_time_ms).unwrap_or(0),
-            index
-        );
-        let item_id = format!("{}-{index:02}", &sha256_hex(id_material.as_bytes())[..16]);
+        let item_id = format!("{batch_id}-{index:02}");
         items.push(BatchItemDto {
             item_id,
             source_path: path.display().to_string(),
@@ -1512,8 +1504,7 @@ fn persist_ledger_atomic(path: &Path, ledger: &BatchLedgerDto) -> CommandResult<
     crate::atomic_file::write(path, &bytes).map_err(|error| {
         CommandErrorDto::at_path("batch_persist_failed", error.to_string(), path)
     })?;
-    // Legacy journals may still have a recovery copy. Keep it until the new
-    // primary is safely published; readers never rename or remove either file.
+    // Remove a recovery copy only after the primary is safely published.
     let _ = fs::remove_file(backup_ledger_path(path));
     Ok(())
 }

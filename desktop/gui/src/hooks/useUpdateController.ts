@@ -157,8 +157,6 @@ export function useUpdateController({
     setReleaseNotice(action === "install"
       ? words.playbackInstalledNotice
         .replace("{version}", result.version)
-        .replace("{installed}", String(result.installedFiles))
-        .replace("{removed}", String(result.removedLegacyFiles))
       : words.playbackRollbackNotice);
     const installedPath = cs2Path.trim();
     const status = await invoke<PlaybackReleaseStatus>("playback_release_status", { cs2Path: installedPath });

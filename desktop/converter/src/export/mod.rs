@@ -2251,7 +2251,7 @@ mod tests {
             .expect("expected partial glove evidence");
         assert_eq!(glove.item_def_index, Some(5030));
         assert_eq!(glove.paint_kit, 10038);
-        assert!((1..=1_000).contains(&glove.seed));
+        assert_eq!(glove.seed, 0);
         assert_eq!(glove.seed_known, Some(false));
         assert_eq!(glove.wear.to_bits(), 0.148_281_16_f32.to_bits());
         assert!(glove.inspect.is_none());
@@ -2427,53 +2427,6 @@ mod tests {
         let manifest_json = fs::read_to_string(&report.manifest_path).unwrap();
         assert!(manifest_json.contains("\"avatar_overrides\""));
         assert!(manifest_json.contains(&format!("\"path\": \"{expected_path}\"")));
-    }
-
-    #[test]
-    fn manifest_uses_a_stable_fallback_without_claiming_missing_seed_evidence() {
-        let mut parsed = sample_demo();
-        parsed.rows = vec![
-            ParsedPlayerTick {
-                glove_item_def_index: Some(5034),
-                glove_paint_kit: Some(10033),
-                glove_paint_seed: None,
-                glove_paint_wear: Some(0.382),
-                ..sample_row(100)
-            },
-            ParsedPlayerTick {
-                glove_item_def_index: Some(5034),
-                glove_paint_kit: Some(10033),
-                glove_paint_seed: None,
-                glove_paint_wear: Some(0.382),
-                ..sample_row(164)
-            },
-        ];
-
-        let repeated_parsed = parsed.clone();
-        let (_directory, report) = export_sample_with_cosmetics(parsed);
-        let glove = report.manifest.files[0]
-            .cosmetics
-            .as_ref()
-            .and_then(|cosmetics| cosmetics.glove.as_ref())
-            .expect("expected partial glove evidence");
-
-        assert_eq!(glove.item_def_index, Some(5034));
-        assert_eq!(glove.paint_kit, 10033);
-        assert!((1..=1_000).contains(&glove.seed));
-        assert_eq!(glove.seed_known, Some(false));
-        assert_eq!(glove.wear.to_bits(), 0.382_f32.to_bits());
-        assert!(glove.inspect.is_none());
-
-        let (_repeated_directory, repeated) = export_sample_with_cosmetics(repeated_parsed);
-        assert_eq!(
-            repeated.manifest.files[0]
-                .cosmetics
-                .as_ref()
-                .and_then(|cosmetics| cosmetics.glove.as_ref())
-                .expect("repeated partial glove evidence")
-                .seed,
-            glove.seed
-        );
     }
 
     #[test]

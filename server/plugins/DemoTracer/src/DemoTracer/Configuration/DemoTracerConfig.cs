@@ -63,8 +63,6 @@ public sealed partial class DemoTracerPlugin
         {
             var json = File.ReadAllText(path);
             config = JsonSerializer.Deserialize<DemoTracerRuntimeConfig>(json, RuntimeConfigJsonOptions);
-            if (config?.UnsupportedAlign != null)
-                throw new JsonException("The align config is no longer supported. Use fidelity and cosmetics.");
         }
         catch (Exception ex)
         {
@@ -297,9 +295,6 @@ public sealed partial class DemoTracerPlugin
         public bool? RoundBanner { get; set; }
 
         public DemoTracerHandoffConfig? Handoff { get; set; }
-
-        [JsonPropertyName("align")]
-        public JsonElement? UnsupportedAlign { get; set; }
 
         public DemoTracerFidelityConfig? Fidelity { get; set; }
 

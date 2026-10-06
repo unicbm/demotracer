@@ -4,8 +4,6 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using BotRandomizerApi;
 using CounterStrikeSharp.API;
@@ -415,7 +413,7 @@ public sealed partial class DemoTracerPlugin
     {
         var canonical = plans.OrderBy(plan => plan.Slot).ToArray();
         var json = JsonSerializer.Serialize(canonical);
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(providerEpoch + "|" + json)));
+        return providerEpoch + "|" + json;
     }
 
     private void InvalidateBotRandomizerCosmeticLease(string reason)

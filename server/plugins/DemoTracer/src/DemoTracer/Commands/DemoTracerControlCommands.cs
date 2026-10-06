@@ -61,7 +61,7 @@ public sealed partial class DemoTracerPlugin
     {
         if (command.ArgCount > 2)
         {
-            command.ReplyToCommand("usage: dtr_handoff_360 [0|1]; range and LOS overrides are no longer supported; native visibility is always used");
+            command.ReplyToCommand("usage: dtr_handoff_360 [0|1]");
             return;
         }
 

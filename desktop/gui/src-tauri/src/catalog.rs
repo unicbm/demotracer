@@ -99,12 +99,10 @@ pub(crate) struct LibraryPlayerDto {
     pub name: String,
     pub side: String,
     pub player_color: Option<String>,
-    /// Legacy manifests only describe a per-round side, not a stable team.
     pub team: String,
     pub team_name: Option<String>,
     pub rounds: usize,
     pub files: usize,
-    /// Latest per-player scoreboard snapshot available in files[].
     pub score: Option<i32>,
     pub kills: Option<u32>,
     pub deaths: Option<u32>,

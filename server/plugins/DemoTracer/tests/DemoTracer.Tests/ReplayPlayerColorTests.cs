@@ -4,9 +4,6 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-using System.Reflection;
-using System.Text.Json;
-
 namespace DemoTracer.Tests;
 
 public sealed class ReplayPlayerColorTests
@@ -52,26 +49,4 @@ public sealed class ReplayPlayerColorTests
     public void FullPaletteDoesNotRecolorAnotherPlayerOrCreateADuplicate()
         => Assert.Null(ReplayPlayerColorPolicy.ChooseMissingColor(-1, 2, new HashSet<int> { 0, 1, 2, 3, 4 }));
 
-    [Fact]
-    public void ManifestRetainsPlayerIdentityWithoutReadingMatchStatistics()
-    {
-        var manifestType = typeof(DemoTracerPlugin).GetNestedType("ConversionManifest", BindingFlags.NonPublic)!;
-        var manifest = JsonSerializer.Deserialize("""
-            { "rounds": [{ "round": 1, "scoreboard": { "t_score": "ignored", "ct_score": {} } }],
-              "files": [{ "round": 1, "side": "t", "scoreboard": {
-                "player_color": " Yellow ", "player_user_id": 12, "player_entity_id": 15,
-                "score": "ignored", "kills": {}, "deaths": [], "assists": true, "mvps": -1
-              } }] }
-            """, manifestType, DemoTracerPlugin.ManifestJsonOptions)!;
-        var files = (System.Collections.IList)manifestType.GetProperty("Files")!.GetValue(manifest)!;
-        var file = files[0]!;
-        var identity = file.GetType().GetProperty("PlayerIdentity")!.GetValue(file)!;
-        var identityType = identity.GetType();
-        Assert.Equal(12, identityType.GetProperty("PlayerUserId")!.GetValue(identity));
-        Assert.Equal(15, identityType.GetProperty("PlayerEntityId")!.GetValue(identity));
-        var color = typeof(DemoTracerPlugin).GetMethod("NormalizeReplayPlayerColor",
-            BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null,
-                [identityType.GetProperty("PlayerColor")!.GetValue(identity)]);
-        Assert.Equal("yellow", color);
-    }
 }

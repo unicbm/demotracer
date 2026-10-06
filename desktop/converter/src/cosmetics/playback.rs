@@ -12,7 +12,6 @@ use crate::inspect_link::{item_inspect, weapon_inspect};
 use crate::model::{
     ReplayAgentCosmetic, ReplayCosmetics, ReplayItemCosmetic, ReplayScoreboardFlair,
 };
-use sha2::{Digest, Sha256};
 
 pub(crate) fn replay_cosmetics_at(
     rows: &[&ParsedPlayerTick],
@@ -284,9 +283,7 @@ fn replay_active_cosmetics(
         cosmetics.glove = Some(ReplayItemCosmetic {
             item_def_index: Some(glove.key.item_def_index),
             paint_kit: glove.key.paint_kit,
-            seed: glove
-                .seed
-                .unwrap_or_else(|| stable_glove_fallback_seed(rows, glove.key)),
+            seed: glove.seed.unwrap_or_default(),
             seed_known: (!seed_known).then_some(false),
             wear: f32::from_bits(glove.key.wear_bits),
             custom_name: None,
@@ -298,23 +295,6 @@ fn replay_active_cosmetics(
         .weapons
         .sort_by_key(|weapon| weapon.weapon_def_index);
     (!cosmetics.is_empty()).then_some(cosmetics)
-}
-
-fn stable_glove_fallback_seed(rows: &[&ParsedPlayerTick], key: EconGloveKey) -> u32 {
-    let identity = rows
-        .iter()
-        .find(|row| row.steam_id != 0)
-        .map(|row| (row.steam_id, row.team_num))
-        .unwrap_or_default();
-    let mut hasher = Sha256::new();
-    hasher.update(b"cs2-demotracer-glove-fallback-seed-v1\0");
-    hasher.update(identity.0.to_le_bytes());
-    hasher.update(identity.1.to_le_bytes());
-    hasher.update(key.item_def_index.to_le_bytes());
-    hasher.update(key.paint_kit.to_le_bytes());
-    hasher.update(key.wear_bits.to_le_bytes());
-    let digest = hasher.finalize();
-    1 + u32::from_le_bytes(digest[..4].try_into().expect("SHA-256 prefix")) % 1_000
 }
 
 fn live_start_inventory_weapon_cosmetics(

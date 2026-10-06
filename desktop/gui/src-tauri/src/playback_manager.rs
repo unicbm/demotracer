@@ -67,9 +67,7 @@ pub(crate) struct PlaybackUpdateStatusDto {
 pub(crate) struct PlaybackInstallResultDto {
     pub version: String,
     pub installed_files: usize,
-    pub removed_legacy_files: usize,
     pub backup_path: String,
-    pub game_csgo_path: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1085,9 +1083,7 @@ fn apply_validated_package(
     Ok(PlaybackInstallResultDto {
         version: package.receipt.bundle_version,
         installed_files: package.receipt.files.len() + 1,
-        removed_legacy_files: legacy_files.len(),
         backup_path: backup_root.display().to_string(),
-        game_csgo_path: paths.game_csgo.display().to_string(),
     })
 }
 
@@ -1181,9 +1177,7 @@ fn rollback_latest(local_data: &Path, cs2_path: &str) -> CommandResult<PlaybackI
     Ok(PlaybackInstallResultDto {
         version: state.installed_version,
         installed_files: state.entries.len(),
-        removed_legacy_files: 0,
         backup_path: backup_root.display().to_string(),
-        game_csgo_path: paths.game_csgo.display().to_string(),
     })
 }
 

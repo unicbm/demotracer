@@ -107,11 +107,9 @@ is not an inventory/market asset identifier.
 
 Glove evidence is retained when the demo exposes an exact item definition,
 paint kit, and wear but omits the texture seed. Such entries carry
-a deterministic fallback `seed` in the CS2 range plus `"seed_known": false`.
-The fallback is stable for the same player, side, glove, and wear so replays do
-not change patterns between rounds. The evidence UI still reports the seed as
-unresolved, while playback writes the fallback after clearing prior glove
-attributes. No inspect payload is generated for partial glove evidence.
+`"seed": 0` as a placeholder plus `"seed_known": false`. The UI reports the
+seed as unknown, and no inspect payload is generated. Playback uses the zero
+seed after clearing prior glove attributes.
 
 ## Header
 

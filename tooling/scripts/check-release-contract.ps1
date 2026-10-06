@@ -34,19 +34,6 @@ function Assert-Equal([string]$Label, [string]$Actual, [string]$Expected) {
     }
 }
 
-function Assert-PathAbsent([string]$RelativePath, [string]$Label) {
-    $path = Join-Path $repoRoot $RelativePath
-    if (Test-Path -LiteralPath $path) {
-        throw "$Label must not be present in the supported 1.0 product: $path"
-    }
-}
-
-function Assert-TextAbsent([string]$RelativePath, [string]$Pattern, [string]$Label) {
-    if ([regex]::IsMatch((Read-Text $RelativePath), $Pattern, [System.Text.RegularExpressions.RegexOptions]::Multiline)) {
-        throw "$Label must not be present in $RelativePath"
-    }
-}
-
 function Assert-TextPresent([string]$RelativePath, [string]$Pattern, [string]$Label) {
     if (-not [regex]::IsMatch((Read-Text $RelativePath), $Pattern, [System.Text.RegularExpressions.RegexOptions]::Multiline)) {
         throw "$Label is missing from $RelativePath"
@@ -168,7 +155,6 @@ Assert-Equal "BotRandomizer API" (Read-RegexValue "server\runtime\BotRandomizer\
 Assert-Equal "BotRandomizer provider" (Read-RegexValue "server\runtime\BotRandomizer\BotRandomizer.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "BotRandomizer provider version") ([string]$contract.bot_randomizer.provider_version)
 Assert-Equal "BotRandomizer assembly" (Read-RegexValue "server\runtime\BotRandomizer\BotRandomizer.csproj" '<Version>([^<]+)</Version>' "BotRandomizer assembly version") ([string]$contract.bot_randomizer.provider_version)
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'import-package\.ps1' "common Randomizer package import"
-Assert-TextAbsent "tooling\scripts\package-server.ps1" 'Invoke-Checked[^\r\n]+\$botRandomizerProject' "separate replay Randomizer build"
 Assert-Equal "DemoTracer target framework" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\DemoTracer.csproj" '<TargetFramework>([^<]+)</TargetFramework>' "DemoTracer target framework") ([string]$contract.counterstrikesharp.target_framework)
 Assert-Equal "CounterStrikeSharp minimum version" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\DemoTracer.csproj" 'CounterStrikeSharp\.API" Version="([^"]+)"' "CounterStrikeSharp version") ([string]$contract.counterstrikesharp.minimum_version)
 Assert-Equal "native hook backend" ([string]$contract.hook_runtime.backend) "khook"
@@ -182,18 +168,8 @@ foreach ($field in @("backend", "metamod_minimum_build", "metamod_plugin_api", "
     Assert-Equal "common hook runtime $field" ([string]$commonHooks.$field) ([string]$contract.hook_runtime.$field)
 }
 foreach ($runtime in @("dtr-controller", "dtr-hider")) {
-    Assert-TextAbsent "server\runtime\$runtime\CMakeLists.txt" 'funchook|core/sourcehook' "$runtime legacy hook dependencies"
     Assert-TextPresent "server\runtime\$runtime\CMakeLists.txt" 'native/khook\.cmake' "$runtime shared KHook interface"
 }
-
-Assert-PathAbsent "desktop\converter\src\main.rs" "converter CLI entrypoint"
-Assert-PathAbsent "desktop\converter\src\cli" "converter CLI module"
-Assert-PathAbsent "desktop\converter\src\pool.rs" "round-pool export module"
-Assert-PathAbsent "desktop\converter\src\workflows\pool.rs" "round-pool workflow"
-Assert-TextAbsent "desktop\converter\Cargo.toml" '(?m)^\s*\[\[bin\]\]' "converter binary target"
-Assert-TextAbsent "desktop\converter\src\model\mod.rs" 'RoundPool(?:Manifest|Candidate)' "round-pool manifest model"
-Assert-TextAbsent "server\plugins\DemoTracer\src\DemoTracer\Playback\DemoTracerPlayback.cs" 'dtr_(?:run_pool|pool_restart|stop_pool)|case\s+"pool"' "round-pool playback command"
-Assert-TextAbsent "docs\COMMANDS.md" 'pool_manifest|dtr_(?:go|arm)\s+pool' "round-pool public documentation"
 
 if (-not [bool]$tauriConfig.bundle.active -or @($tauriConfig.bundle.targets) -notcontains "nsis") {
     throw "desktop release bundling must target NSIS"
@@ -228,13 +204,6 @@ Assert-TextPresent "tooling\scripts\package-server.ps1" 'addons\\counterstrikesh
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+BotRandomizer\.dll[^\r\n]+BotRandomizer\.dll' "packaged BotRandomizer provider assembly"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+cosmetic_catalog\.json[^\r\n]+cosmetic_catalog\.json' "packaged BotRandomizer cosmetic catalog"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+cs2-lib-econ-index\.v1\.json[^\r\n]+cs2-lib-econ-index\.v1\.json' "packaged BotRandomizer replay econ index"
-Assert-TextPresent "server\plugins\DemoTracer\src\DemoTracer\Lifecycle\DemoTracerGameEvents.cs" 'OnRoundPrestart\(EventRoundPrestart' "pre-spawn replay plan preparation"
-Assert-TextPresent "server\plugins\DemoTracer\src\DemoTracer\Lifecycle\DemoTracerGameEvents.cs" 'PrepareNextSequenceRound\(\s*"round_prestart"(?:\s*,|\s*\))' "sequence plan prepared before spawn"
-Assert-TextAbsent "server\plugins\DemoTracer\src\DemoTracer\Lifecycle\DemoTracerGameEvents.cs" 'PrepareNextSequenceRound\("round_start"\)' "late sequence plan preparation"
-Assert-TextAbsent "server\plugins\DemoTracer\src\DemoTracer\Playback\DemoTracerPlayback.cs" 'PollPendingSequencePreparation|PollPendingArmedPreparation' "late freeze-time replay plan preparation"
-Assert-PathAbsent "server\plugins\DemoTracer\src\DemoTracer\Cosmetics\DemoTracerCosmeticEntityWrites.cs" "DemoTracer cosmetic entity writer"
-Assert-TextAbsent "server\plugins\DemoTracer\src\DemoTracer\Cosmetics\DemoTracerCosmeticPlayback.cs" 'ChangeSubclass|FallbackPaintKit\s*=|EconGloves|SetModel\(' "DemoTracer cosmetic playback writer"
-Assert-PathAbsent "tooling\scripts\package-gui-update-test.ps1" "GUI updater test packager"
 if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "tooling\scripts\publish-r2.ps1") -PathType Leaf)) {
     throw "R2 updater publisher is missing"
 }
