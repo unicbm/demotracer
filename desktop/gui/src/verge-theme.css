@@ -7,14 +7,14 @@
 /*
  * DemoTracer interface foundation.
  *
- * The spatial rhythm, system-font typography, layered surfaces, and restrained
+ * The spatial rhythm, layered surfaces, and restrained
  * control styling are informed by the public Clash Verge Rev desktop UI. This
  * file is independently authored for DemoTracer and contains no copied assets.
  */
 
 :root {
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI",
-    "Microsoft YaHei UI", "Microsoft YaHei", Arial, sans-serif;
+  --font-ui: "Noto Sans Variable", "Noto Sans SC Variable", "Segoe UI Variable",
+    "Segoe UI", "Microsoft YaHei UI", sans-serif;
   --ui-font-size: 15px;
   --skin-app-light: #f5f6f8;
   --skin-workspace-light: #f8f9fb;
@@ -67,9 +67,9 @@
   --surface-shadow: 0 1px 2px rgba(25, 32, 44, 0.05), 0 4px 14px rgba(25, 32, 44, 0.04);
   --shadow-sheet: 0 12px 36px rgba(20, 27, 38, 0.16);
   --shadow-dialog: 0 24px 64px rgba(18, 24, 34, 0.22);
-  --type-caption: calc(var(--ui-font-size) - 4px);
-  --type-tiny: calc(var(--ui-font-size) - 3px);
-  --type-micro: calc(var(--ui-font-size) - 2px);
+  --type-caption: max(12px, calc(var(--ui-font-size) - 4px));
+  --type-tiny: max(12px, calc(var(--ui-font-size) - 3px));
+  --type-micro: max(12px, calc(var(--ui-font-size) - 2px));
   --type-support: calc(var(--ui-font-size) - 1px);
   --type-label: calc(var(--ui-font-size) - 1px);
   --type-body: var(--ui-font-size);
@@ -87,8 +87,8 @@
   --type-mono: var(--type-support);
   --weight-regular: 400;
   --weight-medium: 500;
-  --weight-semibold: 600;
-  --weight-bold: 700;
+  --weight-semibold: 550;
+  --weight-bold: 650;
   /* Fixed media and embedded-tool surfaces stay legible in both color modes. */
   --media-foreground: #ffffff;
   --media-foreground-strong: #f4f7fa;
@@ -126,11 +126,6 @@
   --duration-base: 160ms;
   --duration-slow: 220ms;
   --motion-fast: var(--duration-fast);
-}
-
-:root[lang="en"] {
-  --font-ui: "Noto Sans Variable", -apple-system, BlinkMacSystemFont, "Segoe UI Variable",
-    "Segoe UI", Arial, sans-serif;
 }
 
 :root {
@@ -286,7 +281,7 @@
 
 body {
   font-size: var(--type-body);
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 button,
@@ -334,7 +329,7 @@ summary:focus-visible,
   gap: 7px;
   border-radius: var(--radius-sm);
   font-size: var(--type-support);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-medium);
   box-shadow: none;
   transition: color var(--duration-fast) ease, background-color var(--duration-fast) ease,
     border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease,
@@ -355,6 +350,7 @@ summary:focus-visible,
 }
 
 .primary-button {
+  font-weight: var(--weight-semibold);
   color: var(--on-accent);
   background: var(--accent);
   border: 1px solid color-mix(in srgb, var(--accent) 82%, #0063c8);
@@ -399,6 +395,16 @@ summary:focus-visible,
   color: var(--text-disabled);
   background: var(--disabled-bg);
   border-color: var(--divider);
+}
+
+.quiet-button {
+  background: transparent;
+  border-color: transparent;
+}
+
+.quiet-button:hover:not(:disabled) {
+  background: var(--hover-row);
+  border-color: transparent;
 }
 
 .danger-button {
@@ -661,15 +667,16 @@ textarea {
   color: var(--accent);
 }
 
-.sidebar-import-button,
-.sidebar-import-button.is-active {
-  color: var(--on-accent);
-  background: var(--accent);
+.sidebar-import-button {
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--divider);
   font-weight: var(--weight-medium);
 }
 
+.sidebar-import-button.is-active { color: var(--accent); background: var(--accent-soft); }
 .sidebar-import-button.is-active > svg { color: inherit; }
-.sidebar-import-button:hover:not(:disabled) { color: var(--on-accent); background: var(--accent-hover); }
+.sidebar-import-button:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
 .sidebar-import-button:disabled { color: var(--text-disabled); background: var(--disabled-bg); }
 
 .sidebar-nav-item:has(small) {
@@ -751,10 +758,10 @@ textarea {
 .library-heading h1 {
   margin: 0;
   font-family: inherit;
-  font-size: var(--type-heading-large);
+  font-size: var(--type-heading);
   font-weight: var(--weight-semibold);
   line-height: 1.3;
-  letter-spacing: -0.015em;
+  letter-spacing: 0;
 }
 
 .library-heading p {
@@ -807,7 +814,7 @@ textarea {
 
 .library-result-meta strong {
   font-size: var(--type-support);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-regular);
 }
 
 .library-source-link-note {
@@ -968,7 +975,7 @@ textarea {
 }
 
 .settings-section-heading { margin-bottom: var(--space-5); }
-.settings-section-heading h1 { margin: 0; font-size: var(--type-heading-large); font-weight: var(--weight-semibold); }
+.settings-section-heading h1 { margin: 0; font-size: var(--type-heading); font-weight: var(--weight-semibold); line-height: 1.35; }
 
 .settings-workspace > .settings-content {
   padding: var(--space-5);
@@ -989,7 +996,7 @@ textarea {
   border: 0;
   border-radius: var(--radius-lg);
 }
-.settings-group > h2 { margin: 0 0 var(--space-2); font-size: var(--type-section); font-weight: var(--weight-semibold); line-height: 1.4; }
+.settings-group > h2 { margin: 0 0 var(--space-3); font-size: var(--type-section); font-weight: var(--weight-medium); line-height: 1.5; }
 .settings-group .settings-pane { width: 100%; margin: 0; padding: 0; animation: none; }
 .settings-group .settings-card {
   margin: 0;
@@ -1004,11 +1011,11 @@ textarea {
 .settings-group .settings-card-heading { min-height: 44px; padding: 6px 0; border: 0; }
 .settings-group .settings-card :is(.settings-toggle-line, .settings-choice-row, .settings-select-line, .settings-number-row, .playback-settings-row),
 .settings-group .settings-theme-entry {
-  min-height: 44px;
-  padding: 6px 0;
+  min-height: 46px;
+  padding: 7px 0;
   gap: var(--space-4);
   border: 0;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 .settings-group .settings-label { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .settings-help { display: inline-flex; flex: none; padding: 2px; color: var(--text-tertiary); background: transparent; border: 0; border-radius: var(--radius-xs); }
@@ -1230,6 +1237,19 @@ textarea {
 
 .credits-project-links { padding-left: 46px; }
 .credits-contribution { margin-left: auto; white-space: nowrap; }
+
+.credits-font-license { color: var(--text-secondary); font-size: var(--type-support); }
+.credits-font-license + .credits-font-license { margin-top: var(--space-3); }
+.credits-font-license summary { padding-block: var(--space-2); }
+.credits-font-license pre {
+  margin: var(--space-2) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-ui);
+  font-size: var(--type-tiny);
+  line-height: 1.6;
+  user-select: text;
+}
 
 /* Batch, analysis, archive, and task surfaces */
 .batch-workspace,

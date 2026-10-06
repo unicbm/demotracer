@@ -35,8 +35,15 @@ export function prepareVersion(root, { gui, playback, converter, notesZh, notesE
     const difference = newParts.map((n, i) => n - oldParts[i]).find(n => n !== 0n);
     if (difference < 0n) throw new Error(`Version cannot decrease: ${current} -> ${next}`);
   };
-  gui ||= currentGui;
-  playback ||= currentPlayback;
+  if (gui && playback && gui !== playback) {
+    throw new Error('GUI and Playback must use the same release version');
+  }
+  const releaseVersion = gui || playback;
+  gui = releaseVersion || currentGui;
+  playback = releaseVersion || currentPlayback;
+  if (gui !== playback) {
+    throw new Error('Align GUI and Playback by supplying a shared release version');
+  }
   converter ||= currentConverter;
   validate(gui, currentGui);
   validate(playback, currentPlayback);

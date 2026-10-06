@@ -93,7 +93,8 @@ Use Release builds for performance measurements. Enable diagnostics only when ne
 ## Change boundaries
 
 - Update readers, writers and [playback-contract.v1.json](../shared/contracts/playback-contract.v1.json)
-  together when changing formats or APIs. GUI, Playback and API/ABI versions are independent.
+  together when changing formats or APIs. GUI and Playback share one release version;
+  standalone components and API/ABI versions remain independent.
 - Reuse one complete `ParsedDemo` across analysis and export; round selection
   happens after parsing. Stored replay evidence must remain bit-exact.
 - BotRandomizer owns cosmetic entity writes. DemoTracer submits demo-backed
@@ -115,8 +116,10 @@ Cargo, NuGet and the parser pin; Dependabot handles Actions. Bot PRs require
 review and workflow approval. Native SDK/KHook pins, engine profiles,
 CounterStrikeSharp, the Zstd decoder and ABI/API contracts are updated together manually.
 
-`Prepare version PR` accepts independent GUI, Playback and converter versions.
-A GUI bump requires Chinese and English release notes. It updates the pending
+`Prepare version PR` aligns GUI and Playback. Set either version input to bump
+both; if both are supplied they must match. Bump both even for a GUI-only or
+Playback-only change. The converter version remains independent.
+A GUI/Playback bump requires Chinese and English release notes. It updates the pending
 `codex/prepare-version` PR and explicitly dispatches full CI for that branch.
 The explicit dispatch covers the bot's commit without a separate workflow-run
 approval for a PR created with `GITHUB_TOKEN`.
@@ -126,7 +129,7 @@ approval for a PR created with `GITHUB_TOKEN`.
 Merging the bot's GUI version PR into `main` automatically starts **Release NSIS**.
 Only merged PRs authored by `github-actions[bot]` from this repository's
 `codex/prepare-version` branch with a GUI package change qualify. Closing an
-unmerged PR, merging an ordinary code PR, or changing only Playback/converter
+unmerged PR, merging an ordinary code PR, or changing only the converter
 does not publish. Merge the version PR yourself after reviewing CI and notes.
 The bot runs full CI, builds and signs the installer, creates a GitHub
 draft, publishes and verifies the stable R2 updater, then publishes the GitHub
@@ -135,10 +138,9 @@ there is no separate version to type or local build to upload. Normal tag builds
 and dispatches without `publish` only produce build artifacts. Manual publication
 remains available on `main` through the `publish` input.
 
-For a GUI hotfix, change only `gui_version` in **Prepare version PR**. Leave
-Playback unchanged: the release workflow downloads its existing immutable ZIP
-and signature. When GUI and Playback versions match, it reuses the bundle
-already assembled by full CI instead of rebuilding the native runtimes.
+For a GUI or Playback hotfix, set either version input in **Prepare version PR**.
+Both products advance to that version. The release workflow uses the matching
+Playback bundle assembled and validated by full CI from the release commit.
 
 Configure the `release` GitHub environment once, with deployment branches limited
 to `main` and release tags, and these Secrets:
@@ -191,8 +193,8 @@ when needed), then run:
   -CertificateThumbprint <certificate-thumbprint>
 ```
 
-Omit `-PlaybackVersion` when it matches the GUI. For a GUI-only hotfix, provide
-the existing Playback ZIP and `.sig` in `dist/`; the packager reuses them.
+Omit `-PlaybackVersion` or pass the same version as GUI. The release contract
+rejects mismatched product versions, including GUI-only hotfixes.
 Without an Authenticode certificate, use `-AllowUnsignedInstaller` instead of
 `-CertificateThumbprint`. Updater signing is still required.
 
@@ -202,8 +204,8 @@ Without an Authenticode certificate, use `-AllowUnsignedInstaller` instead of
 | `dist/updater-v<version>/` | R2 payloads, signatures, `latest.json` and checksums |
 
 Release text comes from `tooling/release/release-notes.v<version>.json`;
-`-ReleaseNotesZh` and `-ReleaseNotes` override it. Keep JSON notes for any Playback
-version reused by a hotfix. Historical GitHub release drafts can be removed after publishing.
+`-ReleaseNotesZh` and `-ReleaseNotes` override it. Keep historical release notes
+for previously published versions. Historical GitHub release drafts can be removed after publishing.
 
 Publish only the updater directory to R2:
 

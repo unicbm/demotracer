@@ -477,16 +477,8 @@ function App() {
     : activeSection === "analysis" && analysis
       ? [analysis.map || "—", `${analysis.rounds.length} ${words.rounds}`].join(" · ")
       : "";
-  // Library and import pages already have headings; analysis uses match context.
-  const sessionTitle = activeSection === "analysis"
-    ? analysisSessionTitle || words.navAnalysis
-    : activeSection === "tools"
-      ? words.navTools
-    : activeSection === "logs"
-      ? words.navLogs
-      : activeSection === "settings"
-        ? words.navSettings
-        : "";
+  // Page headings live in the workspace; the title bar only adds file context.
+  const sessionTitle = activeSection === "analysis" ? analysisSessionTitle : "";
   const sessionMeta = activeSection === "analysis" ? analysisSessionMeta : "";
   const analysisAvailable = phase !== "idle" || archive !== null || analysis !== null || result !== null;
   soundNotificationsRef.current = localEnvironment.soundNotifications;

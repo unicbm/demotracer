@@ -39,6 +39,8 @@ import {
   type ThemePalette,
 } from "../appearance";
 import { DEMOTRACER_CREDITS } from "../credits";
+import notoSansLicense from "@fontsource-variable/noto-sans/LICENSE?raw";
+import notoSansScLicense from "@fontsource-variable/noto-sans-sc/LICENSE?raw";
 import { LANGUAGE_OPTIONS, type TextDictionary } from "../i18n";
 import type {
   Cs2InstallCandidate,
@@ -1093,6 +1095,19 @@ export function SettingsWorkspace({
             </article>
           ))}
         </div>
+      </section>
+      <section className="credits-section" aria-labelledby="credits-fonts-title">
+        <header className="credits-section-heading">
+          <h3 id="credits-fonts-title">{words.creditsFontsTitle}</h3>
+        </header>
+        <details className="credits-font-license">
+          <summary>Noto Sans · SIL Open Font License 1.1</summary>
+          <pre>{notoSansLicense}</pre>
+        </details>
+        <details className="credits-font-license">
+          <summary>Noto Sans SC · SIL Open Font License 1.1</summary>
+          <pre>{notoSansScLicense}</pre>
+        </details>
       </section>
     </div>
   );

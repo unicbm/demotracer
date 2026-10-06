@@ -39,6 +39,7 @@ import "@mantine/core/styles/Tooltip.css";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/noto-sans/standard.css";
+import "@fontsource-variable/noto-sans-sc";
 import App from "./App";
 import {
   applyThemeCustomization,
@@ -68,6 +69,13 @@ applyThemeCustomization(normalizeThemeCustomization(localStorage.getItem(THEME_C
 
 const mantineTheme = createTheme({
   fontFamily: "var(--font-ui)",
+  fontSizes: {
+    xs: "var(--type-tiny)",
+    sm: "var(--type-support)",
+    md: "var(--type-body)",
+    lg: "var(--type-section)",
+    xl: "var(--type-heading)",
+  },
   primaryColor: "blue",
   defaultRadius: "md",
   respectReducedMotion: true,

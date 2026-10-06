@@ -126,6 +126,7 @@ foreach ($entry in $versionSources.GetEnumerator()) {
 }
 Assert-Equal "telemetry product version" ([string]$telemetryContract.productVersion) $Version
 Assert-Equal "DemoTracer ModuleVersion" $playbackSourceVersion $PlaybackVersion
+Assert-Equal "aligned GUI and Playback release versions" $PlaybackVersion $Version
 $releaseNotes = (Read-Text "tooling\release\release-notes.v$Version.json") | ConvertFrom-Json
 if ([string]::IsNullOrWhiteSpace([string]$releaseNotes.zh) -or [string]::IsNullOrWhiteSpace([string]$releaseNotes.en)) {
     throw "localized release notes must contain non-empty zh and en text"
@@ -218,7 +219,7 @@ Assert-TextPresent "tooling\scripts\package-converter.ps1" 'demotracer-gui-v\$Ve
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'demotracer-css-v\$Version' "CSS release asset name"
 Assert-TextPresent "tooling\scripts\package-release.ps1" '\$cssSignatureName\s*=\s*"\$cssName\.sig"' "CSS updater signature"
 Assert-TextPresent "tooling\scripts\package-release.ps1" 'playback\s*=\s*\$playbackManifest' "playback updater manifest"
-Assert-TextPresent "tooling\scripts\package-release.ps1" '\$PlaybackVersion' "independently versioned Playback packaging"
+Assert-TextPresent "tooling\scripts\package-release.ps1" '\$PlaybackVersion' "explicit Playback packaging version"
 Assert-TextPresent "tooling\scripts\publish-r2.ps1" 'demotracer-css-v\$PlaybackVersion\.zip' "published CSS updater asset"
 Assert-TextPresent "tooling\scripts\publish-r2.ps1" 'latest\.playback\.sha256' "published CSS hash verification"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'addons\\counterstrikesharp\\shared\\BotRandomizerApi' "packaged BotRandomizer API directory"

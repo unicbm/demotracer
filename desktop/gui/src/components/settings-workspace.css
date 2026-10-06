@@ -296,7 +296,7 @@
 
 .playback-settings-list {
   display: grid;
-  background: var(--surface-raised);
+  background: transparent;
 }
 
 .playback-settings-list > .release-callout {

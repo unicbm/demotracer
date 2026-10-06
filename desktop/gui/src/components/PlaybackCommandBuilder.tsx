@@ -11,7 +11,6 @@ import type { ConversionSummary } from "../types";
 import { SwitchControl, type SwitchControlProps } from "./SwitchControl";
 import {
   buildPlaybackCommand,
-  formatPlaybackPreset,
   type PlaybackPresetOptions,
 } from "../playbackCommand";
 
@@ -109,7 +108,6 @@ export function PlaybackCommandBuilder({
         <header className="playback-config-heading">
           <div>
             <strong id="playback-config-title">{words.playbackOptions}</strong>
-            <code>Preset {formatPlaybackPreset(mask)}</code>
           </div>
           {result.rounds.length > 1 ? (
             <Tooltip label={words.sequenceUnavailable} disabled={!sequenceDisabled} position="top" withArrow>

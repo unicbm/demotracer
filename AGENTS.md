@@ -27,7 +27,7 @@ a pinned Git submodule. Keep product contracts and packaging aligned.
 - Change product modules and all affected consumers in one coherent change.
   Shared contracts and generated catalogs have one source in
   `server/runtime/common`; do not copy them into consumer directories.
-- GUI/Playback, standalone package and API/ABI versions remain independent.
+- GUI and Playback share one release version; bump both even when only one changes. Standalone package and API/ABI versions remain independent.
   Source movement does not itself require an API/ABI or DLL identity change.
 - Keep CI impact selection conservative. Shared/build changes and releases
   require full validation; reuse tested artifacts when packaging.

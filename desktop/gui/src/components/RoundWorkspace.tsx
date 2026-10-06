@@ -105,9 +105,6 @@ export function RoundWorkspace({
             <Group justify="space-between" gap="sm" p="sm" wrap="wrap">
               <Group gap="xs" wrap="wrap">
                 <Text size="sm" fw={600}>{words.adjustRoundSelection}</Text>
-                <Badge color="green" variant="light" size="sm">
-                  {words.recommended} {formatNumber(recommendedCount)}
-                </Badge>
                 {partialCount > 0 ? (
                   <Badge color="blue" variant="light" size="sm">
                     {words.partial} {formatNumber(partialCount)}

@@ -1058,7 +1058,7 @@ export function LibraryWorkspace({
             </button>
           </div> : null}
 
-          <div className={`library-result-meta${loading ? " is-scanning" : ""}`} role="status" aria-live="polite">
+          {loading || maintenanceBusy || !libraryIsEmpty || notice || (scan?.skipped.length ?? 0) > 0 ? <div className={`library-result-meta${loading ? " is-scanning" : ""}`} role="status" aria-live="polite">
             {loading ? <span className="library-scan-indicator" aria-hidden="true"><RefreshIcon size={13} /></span> : null}
             <strong>{importingArchives
               ? words.importingArchives
@@ -1067,7 +1067,7 @@ export function LibraryWorkspace({
               : loading ? words.scanningLibrary : words.libraryCount.replace("{count}", String(entries.length))}</strong>
             {notice ? <em className="library-notice">{notice}</em>
               : scan && scan.skipped.length > 0 ? <em>{words.libraryScanNotes.replace("{count}", String(scan.skipped.length))}</em> : null}
-          </div>
+          </div> : null}
 
           {searchingPlayers ? <CatalogLoadStatus {...professionals} words={words} /> : null}
 
@@ -1117,7 +1117,7 @@ export function LibraryWorkspace({
               <strong>{libraryIsEmpty ? words.libraryDirectoryEmptyTitle : words.libraryNoResultsTitle}</strong>
               <p>{libraryIsEmpty ? words.libraryDirectoryEmptyBody : words.libraryNoResultsBody}</p>
               {libraryIsEmpty ? <button className="primary-button" type="button" onClick={onConvert}><PlusIcon size={15} />{words.convertDemo}</button> : null}
-              {libraryIsEmpty ? <em>{words.dropDemo} · {words.dropTypes}</em> : null}
+              {libraryIsEmpty ? <em title={words.dropTypes}>{words.libraryDropHint}</em> : null}
             </div>
           )}
         </>
