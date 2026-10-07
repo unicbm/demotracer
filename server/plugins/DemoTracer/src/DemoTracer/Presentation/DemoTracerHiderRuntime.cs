@@ -37,12 +37,12 @@ public sealed partial class DemoTracerPlugin
     {
         if (BotControllerNative.AbiInfo.AbiMinor < MinimumBotControllerAbiMinor)
         {
-            command.ReplyToCommand("[DTR ERR] Hider 切换需要匹配的 dtr-controller，原生 ABI 至少为 22.1。");
+            command.ReplyToCommand("[DTR ERR] Hider switching requires a matching dtr-controller with native ABI 22.1 or newer.");
             return false;
         }
         if (_hiderSwitchTimer != null)
         {
-            command.ReplyToCommand("[DTR] Hider 切换中，请稍候。");
+            command.ReplyToCommand("[DTR] Hider switching is in progress. Please wait.");
             return false;
         }
         var nativeId = BotControllerNative.FindMetamodPlugin("BotHider");
@@ -57,7 +57,7 @@ public sealed partial class DemoTracerPlugin
         _restoreOriginalHider |= nativeId != 0;
         _hiderUsedThisMap = true;
         var pendingCommand = command.GetCommandString;
-        command.ReplyToCommand("[DTR] 正在卸载 BotHider 并加载 dtr-hider；成功后继续回放。");
+        command.ReplyToCommand("[DTR] Unloading BotHider and loading dtr-hider; playback will continue once ready.");
         if (managedLoaded)
         {
             _restoreOriginalHiderManaged = managed;
@@ -73,8 +73,8 @@ public sealed partial class DemoTracerPlugin
             {
                 CancelHiderSwitch();
                 Server.PrintToConsole(loadingReplayHider
-                    ? "[DTR ERR] dtr-hider 未完成加载或 Bot 接管，回放未启动。"
-                    : "[DTR ERR] BotHider 未完成卸载，回放未启动。");
+                    ? "[DTR ERR] dtr-hider did not finish loading or taking control of bots; playback was not started."
+                    : "[DTR ERR] BotHider did not finish unloading; playback was not started.");
                 return;
             }
             if (BotControllerNative.FindMetamodPlugin("BotHider") != 0 ||
@@ -90,7 +90,7 @@ public sealed partial class DemoTracerPlugin
                 _botHiderBridge.GetProviderInfo()?.Connected != true ||
                 Utilities.GetPlayers().Any(p => p.IsBot && !p.IsHLTV && !_botHiderBridge.IsManagedBot(p.Slot))) return;
             CancelHiderSwitch();
-            Server.PrintToConsole("[DTR] dtr-hider 已接管，本图后续回合继续使用 DH。");
+            Server.PrintToConsole("[DTR] dtr-hider has taken control and will remain active for subsequent rounds on this map.");
             Server.ExecuteCommand(pendingCommand);
         }, TimerFlags.REPEAT);
         return false;
@@ -111,7 +111,7 @@ public sealed partial class DemoTracerPlugin
         _botHiderBridge.Refresh();
         if (_botHiderBridge.GetProviderInfo()?.Connected == true)
         {
-            Server.PrintToConsole("[DTR ERR] dtr-hider 未完成换图清理，无法恢复 BotHider。");
+            Server.PrintToConsole("[DTR ERR] dtr-hider did not finish map-change cleanup; BotHider cannot be restored.");
             return;
         }
         var nativeId = BotControllerNative.FindMetamodPlugin("dtr-hider");

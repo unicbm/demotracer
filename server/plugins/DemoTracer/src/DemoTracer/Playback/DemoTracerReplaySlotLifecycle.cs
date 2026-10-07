@@ -135,7 +135,7 @@ public sealed partial class DemoTracerPlugin
     {
         if (IsWarmupPeriod())
         {
-            reply("[DTR ERR] 热身阶段无法进行回放");
+            reply("[DTR ERR] Replay is unavailable during warmup.");
             return false;
         }
 
@@ -148,11 +148,11 @@ public sealed partial class DemoTracerPlugin
             // Keep the current identity/cosmetic ownership intact until the
             // round_prestart transition can replace all leases atomically before
             // the next pawn inventory is constructed.
-            reply("[DTR WARN] 当前DTR将在round_prestart被原子替换");
+            reply("[DTR WARN] The current DTR session will be replaced atomically at round_prestart.");
             return true;
         }
 
-        reply("[DTR WARN] 会STOP当前所有DTR并override");
+        reply("[DTR WARN] Stopping and replacing all current DTR replays.");
         StopAndUnloadLoaded();
         StopSequenceState();
         return true;

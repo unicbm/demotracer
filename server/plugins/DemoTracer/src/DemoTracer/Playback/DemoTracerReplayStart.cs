@@ -62,7 +62,7 @@ public sealed partial class DemoTracerPlugin
     {
         using var timing = new ReplayPhaseTimer("round playback start");
         if (IsWarmupPeriod())
-            return "[DTR ERR] 热身阶段无法进行回放";
+            return "[DTR ERR] Replay is unavailable during warmup.";
 
         if (!restartLoop && !TryAssignInitialRoundSpawns(out var spawnReason))
             return $"[DTR ERR] initial spawn assignment is not ready: {spawnReason}";
@@ -427,7 +427,7 @@ public sealed partial class DemoTracerPlugin
     {
         if (IsWarmupPeriod())
         {
-            Server.PrintToConsole("[DTR ERR] 热身阶段无法进行回放");
+            Server.PrintToConsole("[DTR ERR] Replay is unavailable during warmup.");
             return false;
         }
 

@@ -60,7 +60,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private const string MaxMoneyConVarName = "mp_maxmoney";
     private static readonly Lazy<string> Cs2PatchVersion = new(DetectCs2PatchVersion);
     private const string CosmeticRiskNotice = "[DTR WARN] cosmetic alignment consumes opt-in manifest cosmetics evidence and may carry Valve GSLT/server-guideline risk outside local/private replay validation.";
-    private const string LeftHandDesiredFidelityNotice = "[DTR WARN] left_hand_desired=off 会丢失 demo 持枪侧信息。Reload loaded replays or plans for this setting to apply.";
+    private const string LeftHandDesiredFidelityNotice = "[DTR WARN] left_hand_desired=off discards the recorded weapon hand. Reload loaded replays or plans for this setting to apply.";
 
     private readonly DemoTracerBotHiderBridge _botHiderBridge = new();
     private readonly DemoTracerApiFacade _apiFacade;
@@ -144,6 +144,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         }
         finally
         {
+            RestoreBotBuyIfIdle(force: true);
             StopPresentationLifetime();
         }
     }
@@ -152,6 +153,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     {
         _mapActive = true;
         ClearReplayStateForLifecycle($"map_start:{mapName}");
+        RestoreBotBuyIfIdle(force: true);
         RestoreHiderAfterMap();
     }
 
@@ -160,6 +162,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         CancelHiderSwitch();
         _mapActive = false;
         ClearReplayStateForLifecycle("map_end");
+        RestoreBotBuyIfIdle(force: true);
     }
 
     private void OnClientDisconnect(int playerSlot)

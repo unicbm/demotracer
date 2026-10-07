@@ -32,7 +32,7 @@ public sealed partial class DemoTracerPlugin
         {
             if (!TryParseRoundArgs(command, "dtr_load round", out var manifestPath, out var round, argOffset: 2))
                 return;
-            if (!EnsureHiderForCommand(command)) return;
+            if (!EnsureReplayPluginsForCommand(command)) return;
 
             ActivatePendingReplayRetentionPriority();
             var result = LoadRound(manifestPath, round);
@@ -47,7 +47,7 @@ public sealed partial class DemoTracerPlugin
         }
 
         var path = command.GetArg(3);
-        if (!EnsureHiderForCommand(command)) return;
+        if (!EnsureReplayPluginsForCommand(command)) return;
         if (!IsReplaySlotStillSafe(slot))
         {
             command.ReplyToCommand($"dtr: refused to load slot {slot}: not a safe bot target");
@@ -81,7 +81,7 @@ public sealed partial class DemoTracerPlugin
         var mode = command.GetArg(1).ToLowerInvariant();
         if (mode == "loaded")
         {
-            if (!EnsureHiderForCommand(command)) return;
+            if (!EnsureReplayPluginsForCommand(command)) return;
             var loopLoaded = command.ArgCount >= 3 && command.GetArg(2) != "0";
             if (!CheckReplayStartGates(message => command.ReplyToCommand(message), stopCurrentForOverride: false))
                 return;
@@ -95,7 +95,7 @@ public sealed partial class DemoTracerPlugin
             command.ReplyToCommand("usage: dtr_play slot <slot> [loop:0|1]");
             return;
         }
-        if (!EnsureHiderForCommand(command)) return;
+        if (!EnsureReplayPluginsForCommand(command)) return;
         if (!IsReplaySlotStillSafe(slot))
         {
             command.ReplyToCommand($"dtr: refused to play slot {slot}: not a safe bot target");

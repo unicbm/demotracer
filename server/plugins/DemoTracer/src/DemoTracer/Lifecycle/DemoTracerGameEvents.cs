@@ -27,6 +27,11 @@ public sealed partial class DemoTracerPlugin
     [GameEventHandler]
     public HookResult OnRoundPrestart(EventRoundPrestart @event, GameEventInfo info)
     {
+        if (BotBuyMustRemainSuspended() && !SuspendBotBuy(Server.PrintToConsole))
+        {
+            StopAllState("botbuy_unload_failed");
+            return HookResult.Continue;
+        }
         using var timing = new ReplayPhaseTimer("round_prestart");
         // CS2 constructs the new pawn inventory after round_prestart but before
         // round_start. BotRandomizer must therefore receive the complete replay
@@ -51,7 +56,7 @@ public sealed partial class DemoTracerPlugin
 
             if ((_session.Plan.SequenceActive || _session.Plan.Armed || HasPlayoffSchedulingState()) && IsWarmupPeriod())
             {
-                Server.PrintToConsole("[DTR ERR] 热身阶段无法进行回放");
+                Server.PrintToConsole("[DTR ERR] Replay is unavailable during warmup.");
                 StopAllState("warmup_block");
                 return HookResult.Continue;
             }
@@ -108,7 +113,7 @@ public sealed partial class DemoTracerPlugin
         _session.RoundSpawnsPending = false;
         if ((_session.Plan.SequenceActive || _session.Plan.Armed || HasPlayoffSchedulingState()) && IsWarmupPeriod())
         {
-            Server.PrintToConsole("[DTR ERR] 热身阶段无法进行回放");
+            Server.PrintToConsole("[DTR ERR] Replay is unavailable during warmup.");
             StopAllState("warmup_block");
             return HookResult.Continue;
         }
@@ -140,7 +145,7 @@ public sealed partial class DemoTracerPlugin
 
         if ((_session.Plan.SequenceActive || _session.Plan.Armed || HasPlayoffSchedulingState()) && IsWarmupPeriod())
         {
-            Server.PrintToConsole("[DTR ERR] 热身阶段无法进行回放");
+            Server.PrintToConsole("[DTR ERR] Replay is unavailable during warmup.");
             StopAllState("warmup_block");
             return HookResult.Continue;
         }
@@ -354,6 +359,7 @@ public sealed partial class DemoTracerPlugin
 
     private void OnTick()
     {
+        RestoreBotBuyIfIdle();
         TickRuntimeHealthHeartbeat();
 
         if (!_mapActive || _lifecycleResetInProgress)
