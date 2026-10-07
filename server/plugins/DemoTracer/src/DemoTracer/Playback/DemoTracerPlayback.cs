@@ -42,11 +42,11 @@ public sealed partial class DemoTracerPlugin
         {
             case "seq":
             case "sequence":
-                if (!EnsureReplayPluginsForCommand(command)) return;
+                if (!EnsureHiderForCommand(command)) return;
                 RunManifestSequence(command, $"{commandName} seq", restart, argOffset: 2);
                 return;
             case "round":
-                if (!EnsureReplayPluginsForCommand(command)) return;
+                if (!EnsureHiderForCommand(command)) return;
                 ArmSingleRound(command, $"{commandName} round", restart, argOffset: 2);
                 return;
             default:

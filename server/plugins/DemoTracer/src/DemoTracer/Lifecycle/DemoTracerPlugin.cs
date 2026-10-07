@@ -144,7 +144,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         }
         finally
         {
-            RestoreBotBuyIfIdle(force: true);
             StopPresentationLifetime();
         }
     }
@@ -153,7 +152,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     {
         _mapActive = true;
         ClearReplayStateForLifecycle($"map_start:{mapName}");
-        RestoreBotBuyIfIdle(force: true);
         RestoreHiderAfterMap();
     }
 
@@ -162,7 +160,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         CancelHiderSwitch();
         _mapActive = false;
         ClearReplayStateForLifecycle("map_end");
-        RestoreBotBuyIfIdle(force: true);
     }
 
     private void OnClientDisconnect(int playerSlot)

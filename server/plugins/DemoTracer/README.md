@@ -21,14 +21,6 @@ regression tests in `tests/DemoTracer.Tests/`.
 session resets. Warm buffers and pending plans do not grant bot write ownership.
 BotRandomizer applies cosmetics; DemoTracer tracks accepted plans.
 
-## BotBuy compatibility
-
-DemoTracer unloads an active `BotBuyPatch` before replay preparation so its
-delayed purchases, refunds and equipment grants cannot modify replay inventory.
-It stays unloaded while any replay bot is owned or another round is pending.
-After control ends, or during plugin/map cleanup, DemoTracer reloads only the
-BotBuy instance it suspended. An already disabled BotBuy remains disabled.
-This pauses BotBuy for all players and resets its in-memory economy history.
 Console command responses and runtime status messages use English.
 
 ## Build and package
