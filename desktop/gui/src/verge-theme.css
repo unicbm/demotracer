@@ -515,6 +515,28 @@ textarea {
   );
 }
 
+.product-lockup {
+  display: flex;
+  flex: none;
+  align-items: center;
+  align-self: stretch;
+  min-width: var(--sidebar-current-width);
+  padding-inline: var(--space-3);
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.product-lockup > svg {
+  flex: none;
+  color: var(--accent);
+}
+
+.product-lockup strong {
+  font-size: var(--type-label);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
+}
+
 .titlebar-context {
   padding-left: var(--space-5);
   gap: 10px;
@@ -698,6 +720,12 @@ textarea {
   padding-inline: 8px;
 }
 
+.app-shell.is-sidebar-collapsed .product-lockup {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.app-shell.is-sidebar-collapsed .product-lockup strong,
 .app-shell.is-sidebar-collapsed .sidebar-nav-item > span {
   display: none;
 }
