@@ -16,6 +16,7 @@
 /.pnpm-store/
 /desktop/gui/dist/
 /desktop/gui/.vite/
+/desktop/gui/.generated/
 /desktop/gui/coverage/
 /desktop/gui/*.tsbuildinfo
 /desktop/gui/src-tauri/gen/
@@ -56,6 +57,7 @@
 !/docs/SIGNATURES.md
 !/docs/ONLINE_SERVICES.md
 !/docs/TELEMETRY.md
+!/docs/SOURCE_PUBLICATION.md
 !/docs/media/
 # Local offline investigation tools
 /tooling/research/

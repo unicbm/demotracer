@@ -119,8 +119,7 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
             LadderNormalZ = 1.0f,
             Ducked = 1,
             Ducking = 1,
-            DesiresDuck = 1,
-            ActualMoveType = 10
+            DesiresDuck = 1
         };
         var post = pre;
         post.OriginX = 1.5f;
@@ -140,7 +139,6 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
             Buttons2 = 3,
             MouseDx = int.MinValue,
             MouseDy = int.MaxValue,
-            WeaponSelect = -1,
             Fields = 0xff,
             LeftHandDesired = 1
         };
@@ -148,11 +146,16 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         var commandPayload = BuildV2CommandPayload([command]);
         var tickMetadata = new byte[8];
         BitConverter.GetBytes(42).CopyTo(tickMetadata, 0);
+        var projectilePayload = new byte[48];
+        BitConverter.GetBytes(45).CopyTo(projectilePayload, 4);
+        projectilePayload[8] = (byte)ReplayProjectileKind.Smoke;
+        for (var i = 0; i < 6; i++)
+            BitConverter.GetBytes(i + 0.5f).CopyTo(projectilePayload, 12 + i * 4);
         var path = WriteFile(writer =>
         {
-            WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0);
+            WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0, projectileCount: 1);
             writer.Write(6U);
-            WriteEmptyPlaybackState(writer, 1);
+            WriteEmptyPlaybackState(writer);
             WriteSection(
                 writer,
                 sectionId: 1,
@@ -161,6 +164,7 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
                 payload: snapshotPayload,
                 sectionVersion: 2);
             WriteSection(writer, sectionId: 2, codec: CodecNone, elementCount: 1, payload: tickMetadata);
+            WriteSection(writer, sectionId: 3, codec: CodecNone, elementCount: 1, payload: projectilePayload);
             WriteSection(writer, sectionId: 5, codec: CodecNone, elementCount: 0, payload: []);
             WriteSection(
                 writer,
@@ -187,6 +191,9 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         Assert.Equal(post.Buttons, replay.Ticks[0].Post.Buttons);
         Assert.Equal(post.Ducked, replay.Ticks[0].Post.Ducked);
         Assert.Equal(42, replay.Ticks[0].WeaponDefIndex);
+        var projectile = Assert.Single(replay.Projectiles);
+        Assert.Equal(new ReplayProjectileEvent(0, ReplayProjectileKind.Smoke, 45,
+            new ReplayVector3(0.5f, 1.5f, 2.5f), new ReplayVector3(3.5f, 4.5f, 5.5f)), projectile);
         var decodedCommand = Assert.Single(replay.CommandFrames);
         Assert.Equal(
             BitConverter.SingleToUInt32Bits(command.UpMove),
@@ -194,159 +201,49 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         Assert.Equal(command.Buttons, decodedCommand.Buttons);
         Assert.Equal(command.MouseDx, decodedCommand.MouseDx);
         Assert.Equal(command.MouseDy, decodedCommand.MouseDy);
-        Assert.Equal(command.WeaponSelect, decodedCommand.WeaponSelect);
-        Assert.Equal(command.Fields, decodedCommand.Fields);
+        Assert.Equal(command.Fields & ~(1U << 6), decodedCommand.Fields);
         Assert.Equal(command.LeftHandDesired, decodedCommand.LeftHandDesired);
-    }
-
-    [Fact]
-    public void ReadsInputHistoryWithAttackIndexes()
-    {
-        var snapshots = BuildV2SnapshotPayload([new NativeMovementSnapshot(), new NativeMovementSnapshot()]);
-        byte[] tickMetadata;
-        using (var stream = new MemoryStream())
-        using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
-        {
-            writer.Write(-1);
-            writer.Write(0U);
-            writer.Flush();
-            tickMetadata = stream.ToArray();
-        }
-        byte[] inputHistory;
-        using (var stream = new MemoryStream())
-        using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
-        {
-            writer.Write(100); // source client tick
-            writer.Write(0);   // attack1 history index
-            writer.Write(-1);  // attack2 history index
-            writer.Write(1U);
-            writer.Write((1U << 1) | (1U << 2) | (1U << 16));
-            writer.Write(0.0f); writer.Write(0.0f); writer.Write(0.0f);
-            writer.Write(99); writer.Write(0.75f);
-            writer.Write(0); writer.Write(0.0f); writer.Write(0.0f);
-            for (var i = 0; i < 3; i++)
-            {
-                writer.Write(-1); writer.Write(-1); writer.Write(0.0f);
-            }
-            writer.Write(0); writer.Write(123);
-            for (var i = 0; i < 12; i++)
-                writer.Write(0.0f);
-            writer.Flush();
-            inputHistory = stream.ToArray();
-        }
-        Assert.Equal(144, inputHistory.Length);
-
-        var path = WriteFile(writer =>
-        {
-            WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0);
-            writer.Write(5U);
-            WriteSection(writer, 9, CodecNone, 0, [], sectionVersion: 2);
-            WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
-            WriteSection(writer, 2, CodecNone, 1, tickMetadata);
-            WriteSection(writer, 5, CodecNone, 0, []);
-            WriteSection(writer, 8, CodecNone, 1, inputHistory);
-        });
-
-        var replay = DtrReplayReader.Read(path);
-
-        var tick = Assert.Single(replay.InputHistoryTicks);
-        Assert.Equal(100, tick.SourceClientTick);
-        Assert.Equal(0, tick.Attack1StartHistoryIndex);
-        Assert.Equal(-1, tick.Attack2StartHistoryIndex);
-        var entry = Assert.Single(replay.InputHistoryEntries);
-        Assert.Equal(99, entry.RenderTickCount);
-        Assert.Equal(0.75f, entry.RenderTickFraction);
-        Assert.Equal(123, entry.TargetEntIndex);
     }
 
     [Fact]
     public void PlaybackReadValidatesButDoesNotRetainUnusedEvidence()
     {
-        var path = WriteAuxiliaryReplay(ValidHistoryPayload(), new byte[48]);
+        var path = WriteAuxiliaryReplay(new byte[48]);
         var full = DtrReplayReader.Read(path);
         var playback = DtrReplayReader.ReadForPlayback(path);
 
         Assert.Single(full.MovementExtras);
-        Assert.Single(full.InputHistoryTicks);
-        Assert.Single(full.InputHistoryEntries);
         Assert.Empty(playback.MovementExtras);
-        Assert.Empty(playback.InputHistoryTicks);
-        Assert.Empty(playback.InputHistoryEntries);
         Assert.Equal(full.Ticks, playback.Ticks);
         Assert.Equal(full.Subticks, playback.Subticks);
         Assert.Equal(full.CommandFrames, playback.CommandFrames);
         Assert.Equal(full.SourceState, playback.SourceState);
         Assert.Equal(full.TickRate, playback.TickRate);
-        Assert.Equal(48 + 16 + 128,
+        Assert.Equal(48,
             DtrReplayPrefetch.EstimateReplayBytes(full) - DtrReplayPrefetch.EstimateReplayBytes(playback));
     }
 
-    [Theory]
-    [InlineData("history_fields", "unknown fields")]
-    [InlineData("history_float", "finite")]
-    [InlineData("history_index", "outside")]
-    [InlineData("history_count", "exceeds")]
-    [InlineData("history_trailing", "trailing bytes")]
-    [InlineData("extra_float", "finite")]
-    public void PlaybackReadRejectsInvalidDiscardedEvidence(string mutation, string message)
-    {
-        var history = ValidHistoryPayload();
-        var extras = new byte[48];
-        switch (mutation)
-        {
-            case "history_fields": BitConverter.GetBytes(1U << 31).CopyTo(history, 16); break;
-            case "history_float": BitConverter.GetBytes(float.NaN).CopyTo(history, 20); break;
-            case "history_index": BitConverter.GetBytes(1).CopyTo(history, 4); break;
-            case "history_count": BitConverter.GetBytes(65U).CopyTo(history, 12); break;
-            case "history_trailing": history = [.. history, 0]; break;
-            case "extra_float": BitConverter.GetBytes(float.PositiveInfinity).CopyTo(extras, 4); break;
-        }
-        var path = WriteAuxiliaryReplay(history, extras);
-        Assert.Contains(message, Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path)).Message);
-        Assert.Contains(message, Assert.Throws<InvalidDataException>(() => DtrReplayReader.ReadForPlayback(path)).Message);
-    }
-
-    [Theory]
-    [InlineData(false, "missing required section input history")]
-    [InlineData(true, "duplicate")]
-    public void PlaybackReadStillEnforcesHistorySectionPresenceAndUniqueness(bool duplicate, string message)
-    {
-        var path = WriteAuxiliaryReplay(ValidHistoryPayload(), new byte[48], duplicate ? 2 : 0);
-        Assert.Contains(message, Assert.Throws<InvalidDataException>(() => DtrReplayReader.ReadForPlayback(path)).Message);
-    }
-
     [Fact]
-    public void PlaybackReadRejectsTruncatedDiscardedHistory()
+    public void PlaybackReadRejectsInvalidDiscardedMovementExtras()
     {
-        var path = WriteAuxiliaryReplay(ValidHistoryPayload()[..^1], new byte[48]);
-        Assert.Throws<EndOfStreamException>(() => DtrReplayReader.ReadForPlayback(path));
+        var extras = new byte[48];
+        BitConverter.GetBytes(float.PositiveInfinity).CopyTo(extras, 4);
+        var path = WriteAuxiliaryReplay(extras);
+        Assert.Contains("finite", Assert.Throws<InvalidDataException>(() => DtrReplayReader.Read(path)).Message);
+        Assert.Contains("finite", Assert.Throws<InvalidDataException>(() => DtrReplayReader.ReadForPlayback(path)).Message);
     }
 
-    private static byte[] ValidHistoryPayload()
-    {
-        var history = new byte[16 + 128];
-        BitConverter.GetBytes(100).CopyTo(history, 0);
-        BitConverter.GetBytes(-1).CopyTo(history, 4);
-        BitConverter.GetBytes(-1).CopyTo(history, 8);
-        BitConverter.GetBytes(1U).CopyTo(history, 12);
-        BitConverter.GetBytes(1U).CopyTo(history, 16);
-        BitConverter.GetBytes(12.0f).CopyTo(history, 20);
-        return history;
-    }
-
-    private string WriteAuxiliaryReplay(byte[] history, byte[] extras, int historySections = 1)
+    private string WriteAuxiliaryReplay(byte[] extras)
         => WriteFile(writer =>
         {
             WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0);
-            writer.Write((uint)(5 + historySections));
+            writer.Write(5U);
             WriteSection(writer, 9, CodecNone, 0, [], sectionVersion: 2);
             WriteSection(writer, 1, CodecNone, 2,
                 BuildV2SnapshotPayload([new NativeMovementSnapshot(), new NativeMovementSnapshot()]), sectionVersion: 2);
             WriteSection(writer, 2, CodecNone, 1, new byte[8]);
             WriteSection(writer, 5, CodecNone, 0, []);
             WriteSection(writer, 7, CodecNone, 1, extras);
-            for (var i = 0; i < historySections; i++)
-                WriteSection(writer, 8, CodecNone, 1, history);
         });
 
     [Fact]
@@ -389,8 +286,8 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         var path = WriteFile(writer =>
         {
             WriteCompleteHeader(writer, version: 12, tickCount: 2, subtickCount: 0);
-            writer.Write(5U);
-            WriteEmptyPlaybackState(writer, 2);
+            writer.Write(4U);
+            WriteEmptyPlaybackState(writer);
             WriteSection(
                 writer,
                 sectionId: 1,
@@ -419,7 +316,7 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     public void ReadsRoundStartBalanceFromCurrentMetadata()
     {
         var metadata = Encoding.UTF8.GetBytes(
-            """{"schema_version":5,"round_start_balance":5250,"events":[],"inventory_snapshots":[],"projectiles":[]}""");
+            """{"schema_version":5,"round_start_balance":5250,"events":[],"inventory_snapshots":[]}""");
         var path = WriteFile(writer =>
         {
             WriteCompleteHeader(
@@ -428,8 +325,8 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
                 tickCount: 0,
                 subtickCount: 0,
                 metadataJsonLength: (uint)metadata.Length);
-            writer.Write(6U);
-            WriteEmptyPlaybackState(writer, 0);
+            writer.Write(5U);
+            WriteEmptyPlaybackState(writer);
             WriteSection(writer, sectionId: 1, codec: CodecNone, elementCount: 0, payload: []);
             WriteSection(writer, sectionId: 2, codec: CodecNone, elementCount: 0, payload: []);
             WriteSection(writer, sectionId: 4, codec: CodecNone, elementCount: 1, payload: metadata);
@@ -448,8 +345,8 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         var path = WriteFile(writer =>
         {
             WriteCompleteHeader(writer, version: 12, tickCount: 0, subtickCount: 0);
-            writer.Write(5U);
-            WriteEmptyPlaybackState(writer, 0);
+            writer.Write(4U);
+            WriteEmptyPlaybackState(writer);
             WriteSection(writer, sectionId: 1, codec: CodecNone, elementCount: 0, payload: []);
             WriteSection(writer, sectionId: 2, codec: CodecNone, elementCount: 0, payload: []);
             WriteSection(writer, sectionId: 5, codec: CodecNone, elementCount: 0, payload: []);
@@ -473,17 +370,11 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         byte codec = CodecNone, int? uncompressedLength = null)
         => WriteFile(writer => {
             WriteCompleteHeader(writer, 12, (uint)ticks, 0);
-            writer.Write(5U);
+            writer.Write(4U);
             WriteSection(writer, 1, CodecNone, ticks + 1,
                 BuildV2SnapshotPayload(new NativeMovementSnapshot[ticks + 1]), sectionVersion: 2);
             WriteSection(writer, 2, CodecNone, ticks, new byte[ticks * 8]);
             WriteSection(writer, 5, CodecNone, 0, []);
-            var history = new byte[ticks * 16];
-            for (var i = 0; i < ticks; ++i) {
-                BitConverter.GetBytes(-1).CopyTo(history, i * 16 + 4);
-                BitConverter.GetBytes(-1).CopyTo(history, i * 16 + 8);
-            }
-            WriteSection(writer, 8, CodecNone, ticks, history);
             WriteSection(writer, 9, codec, count, body, uncompressedLength, sectionVersion: 2);
         });
 
@@ -607,8 +498,8 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         {
             WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0,
                 metadataJsonLength: (uint)metadata.Length);
-            writer.Write(6U);
-            WriteEmptyPlaybackState(writer, 1);
+            writer.Write(5U);
+            WriteEmptyPlaybackState(writer);
             WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
             WriteSection(writer, 2, CodecNone, 1, new byte[8]);
             WriteSection(writer, 4, CodecNone, 1, metadata);
@@ -639,8 +530,8 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         {
             WriteCompleteHeader(writer, version: 12, tickCount: 3, subtickCount: 0,
                 metadataJsonLength: (uint)metadata.Length);
-            writer.Write(6U);
-            WriteEmptyPlaybackState(writer, 3);
+            writer.Write(5U);
+            WriteEmptyPlaybackState(writer);
             WriteSection(writer, 1, CodecNone, 4, snapshots, sectionVersion: 2);
             WriteSection(writer, 2, CodecNone, 3, new byte[24]);
             WriteSection(writer, 4, CodecNone, 1, metadata);
@@ -681,8 +572,8 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         var path = WriteFile(writer =>
         {
             WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0);
-            writer.Write(5U);
-            WriteEmptyPlaybackState(writer, 1);
+            writer.Write(4U);
+            WriteEmptyPlaybackState(writer);
             WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
             WriteSection(writer, 2, CodecNone, 1, tickMetadata);
             WriteSection(writer, 5, CodecNone, 0, []);
@@ -705,8 +596,8 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         var path = WriteFile(writer =>
         {
             WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0);
-            writer.Write(6U);
-            WriteEmptyPlaybackState(writer, 1);
+            writer.Write(5U);
+            WriteEmptyPlaybackState(writer);
             WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
             WriteSection(writer, 2, CodecNone, 1, tickMetadata);
             WriteSection(writer, 5, CodecNone, 0, []);
@@ -818,8 +709,8 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         var path = WriteFile(writer =>
         {
             WriteCompleteHeader(writer, version: 12, tickCount: 0, subtickCount: 0);
-            writer.Write(6U);
-            WriteEmptyPlaybackState(writer, 0);
+            writer.Write(5U);
+            WriteEmptyPlaybackState(writer);
             WriteSection(
                 writer,
                 sectionId: 99,
@@ -916,25 +807,12 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
             payload.Flush();
             subticks = stream.ToArray();
         }
-        byte[] inputHistory;
-        using (var stream = new MemoryStream())
-        using (var payload = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
-        {
-            payload.Write(100);
-            payload.Write(-1);
-            payload.Write(-1);
-            payload.Write(0U);
-            payload.Flush();
-            inputHistory = stream.ToArray();
-        }
-
         WriteCompleteHeader(writer, version, tickCount: 1, subtickCount: 1);
-        writer.Write(5U);
+        writer.Write(4U);
         WriteSection(writer, 9, CodecNone, 0, [], sectionVersion: 2);
         WriteSection(writer, 1, CodecNone, 2, snapshots, sectionVersion: 2);
         WriteSection(writer, 2, CodecNone, 1, tickMetadata);
         WriteSection(writer, 5, CodecNone, 1, subticks);
-        WriteSection(writer, 8, CodecNone, 1, inputHistory);
     }
 
     private static void WriteHeaderPrefix(
@@ -959,15 +837,8 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         writer.Write(metadataJsonLength);
     }
 
-    private static void WriteEmptyPlaybackState(BinaryWriter writer, int ticks)
+    private static void WriteEmptyPlaybackState(BinaryWriter writer)
     {
-        var history = new byte[ticks * 16];
-        for (var i = 0; i < ticks; i++)
-        {
-            BitConverter.GetBytes(-1).CopyTo(history, i * 16 + 4);
-            BitConverter.GetBytes(-1).CopyTo(history, i * 16 + 8);
-        }
-        WriteSection(writer, 8, CodecNone, ticks, history);
         WriteSection(writer, 9, CodecNone, 0, [], sectionVersion: 2);
     }
 
@@ -1037,7 +908,7 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         WriteDeltaByteColumn(writer, snapshots.Select(value => value.Ducked));
         WriteDeltaByteColumn(writer, snapshots.Select(value => value.Ducking));
         WriteDeltaByteColumn(writer, snapshots.Select(value => value.DesiresDuck));
-        WriteDeltaByteColumn(writer, snapshots.Select(value => value.ActualMoveType));
+        WriteDeltaByteColumn(writer, snapshots.Select(_ => byte.MaxValue));
         writer.Flush();
         return output.ToArray();
     }
@@ -1057,7 +928,7 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         WriteDeltaUInt64Column(writer, frames.Select(value => value.Buttons2));
         WriteDeltaUInt32Column(writer, frames.Select(value => unchecked((uint)value.MouseDx)));
         WriteDeltaUInt32Column(writer, frames.Select(value => unchecked((uint)value.MouseDy)));
-        WriteDeltaUInt32Column(writer, frames.Select(value => unchecked((uint)value.WeaponSelect)));
+        WriteDeltaUInt32Column(writer, frames.Select(_ => uint.MaxValue));
         WriteDeltaUInt32Column(writer, frames.Select(value => value.Fields));
         WriteDeltaByteColumn(writer, frames.Select(value => value.LeftHandDesired));
         writer.Flush();

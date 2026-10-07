@@ -323,7 +323,6 @@ internal static partial class BotControllerNative
                 return false;
             }
 
-            // Input history stays in the DTR without mutating the engine-owned protobuf graph.
             if (DtrController_LoadReplayExtended(
                     slot, replay.Ticks, replay.Ticks.Length,
                     replay.Subticks, replay.Subticks.Length,

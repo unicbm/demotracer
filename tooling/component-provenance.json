@@ -28,13 +28,6 @@
     "history_ref": "component-archive/randomizer/heads/main"
   },
   {
-    "id": "converter",
-    "path": "desktop/converter",
-    "former_repository": "unicbm/cs2-dtr-converter",
-    "imported_commit": "7be30c553fb78d5895d6e10829b6eee61b988a80",
-    "history_ref": "component-archive/converter/heads/main"
-  },
-  {
     "id": "css",
     "path": "server/plugins/DemoTracer",
     "former_repository": "unicbm/cs2-css-demotracer",

@@ -1,9 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "allowImportingTsExtensions": true,
-    "types": ["node"]
-  },
-  "include": ["src/vite-env.d.ts", "src/**/*.test.ts"],
-  "exclude": []
-}

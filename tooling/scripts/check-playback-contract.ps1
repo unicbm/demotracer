@@ -5,7 +5,6 @@
 # ---------------------------------------------------------------------------------------------
 
 param(
-    [string]$Version = "",
     [string]$PlaybackVersion = ""
 )
 
@@ -46,10 +45,8 @@ function Read-CargoPackageVersion([string]$RelativePath, [string]$PackageName) {
 }
 
 $contract = (Read-Text "shared\contracts\playback-contract.v1.json") | ConvertFrom-Json
-Assert-Equal "inventory plan writer" (Read-RegexValue "desktop/converter/src/model/mod.rs" 'HIGH_FIDELITY_SCHEMA_VERSION:\s*u32\s*=\s*(\d+)' "metadata schema") ([string]$contract.inventory_plan_schema)
 Assert-Equal "inventory plan reader" (Read-RegexValue "server/plugins/DemoTracer/src/DemoTracer/Native/BotControllerNativeTypes.cs" 'CurrentSchemaVersion\s*=\s*(\d+)' "metadata schema") ([string]$contract.inventory_plan_schema)
 Assert-Equal "inventory plan maximum reader" ([string]$contract.inventory_plan_reader.max) ([string]$contract.inventory_plan_schema)
-Assert-Equal "inventory plan Rust adapter" (Read-RegexValue "desktop/converter/src/rec_writer/mod.rs" 'metadata\.schema_version == (\d+)' "metadata adapter") ([string]$contract.inventory_plan_reader.min)
 Assert-Equal "inventory plan CSS adapter" (Read-RegexValue "server/plugins/DemoTracer/src/DemoTracer/Data/DtrReplayReaderValidation.cs" 'metadata\.SchemaVersion == (\d+)' "metadata adapter") ([string]$contract.inventory_plan_reader.min)
 foreach ($id in @("dtr-controller", "dtr-hider")) {
     $root = "server/runtime/$id"
@@ -86,45 +83,16 @@ for ($fieldIndex = 0; $fieldIndex -lt $sourceRegistry.fields.Count; $fieldIndex+
     $enumPattern = '\b' + [regex]::Escape($field.name) + '\s*=\s*' + $fieldIndex + '\s*,'
     if (-not [regex]::IsMatch($nativeSource, $enumPattern)) { throw "source-state native ID mismatch: $($field.name)" }
 }
-$telemetryContract = (Read-Text "shared\contracts\telemetry-contract.v1.json") | ConvertFrom-Json
-$desktopPackage = (Read-Text "desktop\gui\package.json") | ConvertFrom-Json
-if ([string]::IsNullOrWhiteSpace($Version)) {
-    $Version = [string]$desktopPackage.version
-}
-$null = Read-Text "desktop\gui\pnpm-lock.yaml"
-$tauriConfig = (Read-Text "desktop\gui\src-tauri\tauri.conf.json") | ConvertFrom-Json
-$tauriCapability = (Read-Text "desktop\gui\src-tauri\capabilities\default.json") | ConvertFrom-Json
-$playbackSourceVersion = Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Lifecycle\DemoTracerPlugin.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "DemoTracer module version"
-if ([string]::IsNullOrWhiteSpace($PlaybackVersion)) {
-    $PlaybackVersion = $playbackSourceVersion
-}
 
-$converterVersion = Read-RegexValue "desktop\converter\Cargo.toml" '(?ms)^\[package\]\s*.*?^version = "([^"]+)"' "converter version"
-Assert-Equal "converter Cargo.lock" (Read-CargoPackageVersion "desktop\converter\Cargo.lock" "cs2-demotracer") $converterVersion
-Assert-Equal "desktop converter dependency lock" (Read-CargoPackageVersion "desktop\gui\src-tauri\Cargo.lock" "cs2-demotracer") $converterVersion
-$versionSources = [ordered]@{
-    "desktop package.json" = [string]$desktopPackage.version
-    "desktop Tauri Cargo.toml" = Read-RegexValue "desktop\gui\src-tauri\Cargo.toml" '(?ms)^\[package\]\s*.*?^version = "([^"]+)"' "desktop Tauri version"
-    "desktop Tauri Cargo.lock" = Read-CargoPackageVersion "desktop\gui\src-tauri\Cargo.lock" "cs2-demotracer-gui"
-    "desktop tauri.conf.json" = [string]$tauriConfig.version
-}
-foreach ($entry in $versionSources.GetEnumerator()) {
-    Assert-Equal $entry.Key ([string]$entry.Value) $Version
-}
-Assert-Equal "telemetry product version" ([string]$telemetryContract.productVersion) $Version
+$playbackSourceVersion = Read-RegexValue "server/plugins/DemoTracer/src/DemoTracer/Lifecycle/DemoTracerPlugin.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "DemoTracer module version"
+if ([string]::IsNullOrWhiteSpace($PlaybackVersion)) { $PlaybackVersion = $playbackSourceVersion }
 Assert-Equal "DemoTracer ModuleVersion" $playbackSourceVersion $PlaybackVersion
-Assert-Equal "aligned GUI and Playback release versions" $PlaybackVersion $Version
-$releaseNotes = (Read-Text "tooling\release\release-notes.v$Version.json") | ConvertFrom-Json
-if ([string]::IsNullOrWhiteSpace([string]$releaseNotes.zh) -or [string]::IsNullOrWhiteSpace([string]$releaseNotes.en)) {
-    throw "localized release notes must contain non-empty zh and en text"
-}
-$null = Read-Text "tooling\release\github-release.v$Version.md"
+Assert-Equal "stable DTR writer" ([string]$contract.dtr_writer) "12"
+Assert-Equal "stable DTR reader minimum" ([string]$contract.dtr_reader.min) "12"
+Assert-Equal "stable DTR reader maximum" ([string]$contract.dtr_reader.max) "12"
 
-Assert-Equal "manifest ABI" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'DEMOTRACER_ABI:\s*i32\s*=\s*(\d+)' "manifest ABI") ([string]$contract.manifest_abi)
 Assert-Equal "CSS manifest ABI" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Lifecycle\DemoTracerPlugin.cs" 'ManifestAbiVersion\s*=\s*(\d+)' "manifest ABI") ([string]$contract.manifest_abi)
-Assert-Equal "DTR writer" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'DTR_FORMAT_VERSION:\s*u32\s*=\s*(\d+)' "DTR writer") ([string]$contract.dtr_writer)
 Assert-Equal "DTR section codec" ([string]$contract.dtr_section_writer_codec) "zstd"
-Assert-Equal "DTR Zstd level" (Read-RegexValue "desktop\converter\src\rec_writer\mod.rs" 'ZSTD_LEVEL:\s*i32\s*=\s*(\d+)' "Zstd level") ([string]$contract.dtr_section_zstd_level)
 Assert-TextPresent "server\plugins\DemoTracer\src\DemoTracer\DemoTracer.csproj" 'ZstdSharp\.Port" Version="0\.8\.8"' "managed Zstd decoder"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+ZstdSharp\.dll[^\r\n]+ZstdSharp\.dll' "packaged Zstd decoder"
 Assert-Equal "CSS minimum DTR reader" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'MinRecFormatVersion\s*=\s*(\d+)' "minimum DTR reader") ([string]$contract.dtr_reader.min)
@@ -144,7 +112,6 @@ if ($runtimeMinor -lt [int]$contract.bot_controller.min_abi_minor) {
 Assert-Equal "DemoTracer companion API" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'DemoTracerApiVersion\s*=\s*(\d+)' "DemoTracer companion API") ([string]$contract.demotracer.companion_api)
 Assert-Equal "BotHider API" (Read-RegexValue "server\runtime\dtr-hider\csharp\DtrHiderApi\IDtrHiderApi.cs" 'ApiVersion\s*=\s*(\d+)' "BotHider API") ([string]$contract.bot_hider.api)
 Assert-Equal "BotHider clan tag limit" (Read-RegexValue "server\runtime\dtr-hider\csharp\DtrHiderApi\IDtrHiderApi.cs" 'MaxClanTagUtf8Bytes\s*=\s*(\d+)' "BotHider clan tag limit") ([string]$contract.bot_hider.clan_tag_max_utf8_bytes)
-Assert-Equal "Converter clan tag limit" (Read-RegexValue "desktop\converter\src\model\mod.rs" 'MAX_CLAN_TAG_UTF8_BYTES:\s*usize\s*=\s*(\d+)' "Converter clan tag limit") ([string]$contract.bot_hider.clan_tag_max_utf8_bytes)
 Assert-Equal "BotHider native ABI" (Read-RegexValue "server\runtime\dtr-hider\src\presentation_state.h" 'kNativePresentationAbi\s*=\s*(\d+)' "BotHider native ABI") ([string]$contract.bot_hider.native_abi)
 Assert-Equal "BotHider managed native ABI" (Read-RegexValue "server\runtime\dtr-hider\csharp\DtrHider\NativePresentationClient.cs" 'NativeAbi\s*=\s*(\d+)' "BotHider managed native ABI") ([string]$contract.bot_hider.native_abi)
 Assert-Equal "BotHider native slot bytes" (Read-RegexValue "server\runtime\dtr-hider\src\presentation_state.h" 'sizeof\(PresentationSlot\)\s*==\s*(\d+)' "BotHider native slot bytes") ([string]$contract.bot_hider.native_slot_bytes)
@@ -171,43 +138,13 @@ foreach ($runtime in @("dtr-controller", "dtr-hider")) {
     Assert-TextPresent "server\runtime\$runtime\CMakeLists.txt" 'native/khook\.cmake' "$runtime shared KHook interface"
 }
 
-if (-not [bool]$tauriConfig.bundle.active -or @($tauriConfig.bundle.targets) -notcontains "nsis") {
-    throw "desktop release bundling must target NSIS"
-}
-Assert-Equal "NSIS install mode" ([string]$tauriConfig.bundle.windows.nsis.installMode) "currentUser"
-if (@($tauriCapability.permissions) -notcontains "process:default") {
-    throw "desktop process permission is missing"
-}
-if (@($tauriCapability.permissions) -notcontains "updater:default") {
-    throw "desktop updater permission is missing"
-}
-$updaterVersion = Read-RegexValue "desktop\gui\src-tauri\Cargo.toml" '^tauri-plugin-updater\s*=\s*"=(\d+\.\d+\.\d+)"' "pinned Tauri updater version"
-Assert-Equal "desktop updater dependency" ([string]((Read-Text "desktop\gui\package.json") | ConvertFrom-Json).dependencies.'@tauri-apps/plugin-updater') $updaterVersion
-Assert-Equal "Tauri updater lock version" (Read-CargoPackageVersion "desktop\gui\src-tauri\Cargo.lock" "tauri-plugin-updater") $updaterVersion
-Assert-TextPresent "desktop\gui\package.json" '"@tauri-apps/plugin-process"\s*:' "desktop process dependency"
-Assert-TextPresent "desktop\gui\src-tauri\Cargo.toml" '^minisign-verify\s*=\s*"=\d+\.\d+\.\d+"' "pinned playback signature verifier"
-Assert-TextPresent "desktop\gui\src-tauri\tauri.conf.json" 'https://releases\.detr\.site/channels/stable/latest\.json' "stable updater endpoint"
-Assert-Equal "updater install mode" ([string]$tauriConfig.plugins.updater.windows.installMode) "passive"
-$updaterPublicKey = (Read-Text "tooling\release\updater-public-key.txt").Trim()
-Assert-Equal "Tauri updater public key" ([string]$tauriConfig.plugins.updater.pubkey) $updaterPublicKey
-Assert-TextPresent "tooling\scripts\package-converter.ps1" 'CertificateThumbprint' "Authenticode configuration"
-Assert-TextPresent "tooling\scripts\package-converter.ps1" 'demotracer-gui-v\$Version' "GUI release asset name"
+
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'demotracer-css-v\$Version' "CSS release asset name"
-Assert-TextPresent "tooling\scripts\package-release.ps1" '\$cssSignatureName\s*=\s*"\$cssName\.sig"' "CSS updater signature"
-Assert-TextPresent "tooling\scripts\package-release.ps1" 'playback\s*=\s*\$playbackManifest' "playback updater manifest"
-Assert-TextPresent "tooling\scripts\package-release.ps1" '\$PlaybackVersion' "explicit Playback packaging version"
-Assert-TextPresent "tooling\scripts\publish-r2.ps1" 'demotracer-css-v\$PlaybackVersion\.zip' "published CSS updater asset"
-Assert-TextPresent "tooling\scripts\publish-r2.ps1" 'latest\.playback\.sha256' "published CSS hash verification"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'addons\\counterstrikesharp\\shared\\BotRandomizerApi' "packaged BotRandomizer API directory"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+BotRandomizerApi\.dll[^\r\n]+BotRandomizerApi\.dll' "packaged BotRandomizer API assembly"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'addons\\counterstrikesharp\\plugins\\BotRandomizer' "packaged BotRandomizer provider directory"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+BotRandomizer\.dll[^\r\n]+BotRandomizer\.dll' "packaged BotRandomizer provider assembly"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+cosmetic_catalog\.json[^\r\n]+cosmetic_catalog\.json' "packaged BotRandomizer cosmetic catalog"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+cs2-lib-econ-index\.v1\.json[^\r\n]+cs2-lib-econ-index\.v1\.json' "packaged BotRandomizer replay econ index"
-if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "tooling\scripts\publish-r2.ps1") -PathType Leaf)) {
-    throw "R2 updater publisher is missing"
-}
-
-& (Join-Path $PSScriptRoot "check-first-party-headers.ps1") -RepoRoot $repoRoot
-
-Write-Host "Release contract verified for GUI v$Version and Playback v$PlaybackVersion."
+& (Join-Path $PSScriptRoot "check-first-party-headers.ps1") -RepoRoot $repoRoot -PlaybackOnly
+Write-Host "Playback contract verified for v$PlaybackVersion (DTR v12)."

@@ -251,6 +251,8 @@ internal sealed class CosmeticApplicator
         int seed,
         float wear)
     {
+        if (paintKit == 0)
+            return;
         SetAttribute(networkedAttributes, "set item texture prefab", paintKit);
         SetAttribute(networkedAttributes, "set item texture seed", seed);
         SetAttribute(networkedAttributes, "set item texture wear", wear);

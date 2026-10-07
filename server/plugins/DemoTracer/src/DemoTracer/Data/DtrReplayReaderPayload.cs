@@ -60,8 +60,7 @@ internal static partial class DtrReplayReader
             snapshots[index].Ducking = value);
         ReadDeltaByteColumn(reader, count, "snapshot desires duck", (index, value) =>
             snapshots[index].DesiresDuck = value);
-        ReadDeltaByteColumn(reader, count, "snapshot actual move type", (index, value) =>
-            snapshots[index].ActualMoveType = value);
+        ReadDeltaByteColumn(reader, count, "snapshot actual move type", (_, _) => { });
         RequireConsumed(stream, "snapshots");
         return snapshots;
     }
@@ -144,10 +143,9 @@ internal static partial class DtrReplayReader
             frames[index].MouseDx = unchecked((int)value));
         ReadDeltaUInt32Column(reader, count, "command mouse dy", (index, value) =>
             frames[index].MouseDy = unchecked((int)value));
-        ReadDeltaUInt32Column(reader, count, "command weapon select", (index, value) =>
-            frames[index].WeaponSelect = unchecked((int)value));
+        ReadDeltaUInt32Column(reader, count, "command weapon select", (_, _) => { });
         ReadDeltaUInt32Column(reader, count, "command fields", (index, value) =>
-            frames[index].Fields = value);
+            frames[index].Fields = value & ~(1U << 6));
         ReadDeltaByteColumn(reader, count, "command left hand desired", (index, value) =>
             frames[index].LeftHandDesired = value);
         RequireConsumed(stream, "command frames");
@@ -315,21 +313,16 @@ internal static partial class DtrReplayReader
             reader.ReadSingle(),
             reader.ReadSingle(),
             reader.ReadSingle());
-        var detonationPosition = new ReplayVector3(
-            reader.ReadSingle(),
-            reader.ReadSingle(),
-            reader.ReadSingle());
+        // Consume the retired v12 detonation position without using it in playback.
+        _ = reader.ReadSingle();
+        _ = reader.ReadSingle();
+        _ = reader.ReadSingle();
         return new ReplayProjectileEvent(
             tickIndex,
             kind,
             weaponDefIndex,
             initialPosition,
-            initialVelocity,
-            detonationPosition,
-            new ReplayVector3(0.0f, 0.0f, 0.0f),
-            -1,
-            string.Empty,
-            0.0f);
+            initialVelocity);
     }
 
 }

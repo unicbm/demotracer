@@ -1,4 +1,0 @@
-{
-  "zh": "- 修复部分 CS2 准星被错误显示为圆点的问题，已用 Zero 的准星代码验证。\n- 修复工作区背景不生效，支持裁切、缩放和位置调整。\n- 背景覆盖整个窗口，可选择磨砂或透明效果，调整面板和侧栏透明度、模糊、亮度、饱和度及对比度。\n- 侧栏直接提示可用更新，更新窗口更简洁。\n\n仅更新 GUI；Playback 保持 1.5.2。",
-  "en": "- Fix CS2 crosshairs incorrectly appearing as dots, verified with Zero's crosshair code.\n- Fix workspace backgrounds not appearing; add crop, zoom and position controls.\n- Extend backgrounds across the window with glass or transparent surfaces and controls for panel/sidebar transparency, blur, brightness, saturation and contrast.\n- Show available updates in the sidebar and simplify the update window.\n\nGUI-only update; Playback remains at 1.5.2."
-}

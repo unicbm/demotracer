@@ -382,7 +382,8 @@ public sealed partial class DemoTracerPlugin
 
     private static bool HasCompleteAuthoritativePaintEvidence(ReplayWeaponCosmetic weapon)
         => weapon.WeaponDefIndex > 0 &&
-           weapon.PaintKit is > 0 and <= int.MaxValue &&
+           weapon.PaintKit <= int.MaxValue &&
+           (weapon.PaintKit != 0 || weapon.Seed == 0 && weapon.Wear == 0.0f) &&
            weapon.Seed <= int.MaxValue &&
            float.IsFinite(weapon.Wear) && weapon.Wear is >= 0.0f and <= 1.0f;
 

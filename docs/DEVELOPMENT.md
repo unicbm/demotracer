@@ -1,221 +1,39 @@
-# Development
+# Playback development
 
-## Source map
-
-| Path | Responsibility |
-| --- | --- |
-| `desktop/gui/` | React UI, Tauri bridge, installer and updater |
-| `desktop/converter/` | Rust demo analysis, `.dtr` export and validation |
-| `third_party/demoparser/` | Pinned parser submodule |
-| `server/plugins/DemoTracer/` | Managed playback, commands and tests |
-| `server/runtime/dtr-controller/` | Native movement, input and replay control |
-| `server/runtime/dtr-hider/` | Native identity runtime and managed presentation provider |
-| `server/runtime/BotRandomizer/` | Cosmetic entity writer and API |
-| `server/runtime/common/` | Shared native utilities, companion API, contracts and generated econ data |
-| `shared/contracts/` | Product compatibility and telemetry contracts |
-| `tooling/scripts/` | Validation, packaging and release automation |
-
-The GUI calls the converter crate directly; there is no public converter CLI.
-Only the parser is a submodule. Component origins and archived history are in
-[component-provenance.json](../tooling/component-provenance.json).
-
-## Build and Test
-
-Use Windows x64, PowerShell 7, Rust stable/MSVC, Node.js 22, pnpm 11.9,
-.NET 10 and Tauri's Windows prerequisites. Native builds additionally require
-CMake, Visual Studio Build Tools and the [server SDKs](../server/README.md#shared-hook-runtime).
-
-From the repository root:
+Required: Windows x64, .NET 10, Node.js 22, CMake 3.28+, and the supported MSVC
+toolchain for native builds. See the pinned contracts in server/runtime/common.
+No GUI, converter, Rust parser or private repository access is required.
 
 ```powershell
-git submodule update --init --recursive
-node tooling/scripts/check-source-layout.mjs --require-checkout
-pnpm --dir desktop/gui install --frozen-lockfile
+node tooling/scripts/check-public-source.mjs
+pwsh -NoProfile -File tooling/scripts/check-playback-contract.ps1
+pwsh -NoProfile -File tooling/scripts/test-css.ps1
 ```
 
-The GUI's generated catalogs are tracked. A normal build needs no external
-identity-data checkout; [GUI data](../desktop/gui/src/data/README.md) describes updates.
-
-Run checks for the affected component:
+For native builds, initialize the Metamod and HL2SDK revisions recorded in
+`server/runtime/common/contracts/hook-runtime.v1.json` and
+`server/runtime/common/contracts/native-toolchain.v1.json`. Set MMSOURCE_DEV,
+HL2SDKCS2 and PROTOC to those local dependencies, then run:
 
 ```powershell
-# Converter
-pwsh -NoProfile -File desktop/converter/tools/check.ps1
-
-# GUI
-pnpm --dir desktop/gui run check
-pnpm --dir desktop/gui test
-cargo test --manifest-path desktop/gui/src-tauri/Cargo.toml --locked
-
-# Managed playback and product contracts
-./tooling/scripts/test-css.ps1
-./tooling/scripts/check-release-contract.ps1
-git diff --check
+pwsh -NoProfile -File server/runtime/dtr-controller/tools/check.ps1 -NativeBuild
+pwsh -NoProfile -File server/runtime/dtr-hider/tools/check.ps1 -NativeBuild
+pwsh -NoProfile -File server/runtime/BotRandomizer/tools/check.ps1
 ```
 
-Each runtime has a `tools/check.ps1`; the controller and hider accept
-`-NativeBuild` to build the SDK-dependent plugin as well as their Release tests.
-The [common check](../server/runtime/common/README.md) covers shared native code,
-the companion API and generated econ data. Shared/build changes and releases
-require the full suite. Engine hooks and playback also need a matched-server smoke test.
-
-Parser tests: `pwsh -NoProfile -File third_party/demoparser/tools/check.ps1`.
-Add `-FixtureTests -DemoPath <path>` to run upstream tests with your own demo.
-
-### GUI development
-
-From `desktop/gui`:
+CI builds the five public modules and assembles the matched playback package.
+For a local package, commit the reviewed changes, then stage the freshly tested
+native packages into the same locations used by CI:
 
 ```powershell
-pnpm run dev:acceptance
-pnpm run tauri:build --target x86_64-pc-windows-msvc -- --locked
+foreach ($module in @('dtr-controller', 'dtr-hider')) {
+    $root = "server/runtime/$module"
+    New-Item -ItemType Directory -Force "$root/build/package" | Out-Null
+    Copy-Item "$root/.build/native/package/*" "$root/build/package" -Recurse -Force
+}
+pwsh -NoProfile -File tooling/scripts/package-server.ps1 -Version 1.5.8 -SkipCssBuild
 ```
 
-`dev:acceptance` runs the Release Rust backend with Vite hot reload.
-Use `dev:debug` for Rust debugging or `dev:web` for frontend-only work without Tauri IPC.
-The build command produces an NSIS installer. For only the executable, use
-`pnpm tauri build --no-bundle --ci -- --locked`; bare `cargo build` does not
-perform the frontend embedding step. Verify a standalone build with Vite stopped.
-
-Preferences live in `gui-preferences.v1.json` in Tauri's local-data directory;
-the workspace background lives in `appearance/workspace-background.png`.
-
-### Parser diagnostics
-
-Use Release builds for performance measurements. Enable diagnostics only when needed:
-
-| Environment variable | Effect |
-| --- | --- |
-| `DEMOTRACER_PROFILE` | Parse, conversion, hashing and materialization timings |
-| `DEMOTRACER_SPARSE_COLUMNS=0` | Disable sparse scalar collection for comparison |
-| `DEMOTRACER_PROFILE_PROPERTIES=1` | Sample getters/appends once per 256 rows; adds timer overhead |
-
-## Change boundaries
-
-- Update readers, writers and [playback-contract.v1.json](../shared/contracts/playback-contract.v1.json)
-  together when changing formats or APIs. GUI and Playback share one release version;
-  standalone components and API/ABI versions remain independent.
-- Reuse one complete `ParsedDemo` across analysis and export; round selection
-  happens after parsing. Stored replay evidence must remain bit-exact.
-- BotRandomizer owns cosmetic entity writes. DemoTracer submits demo-backed
-  plans; cosmetics stay opt-in. Match statistics and team scores are engine-owned;
-  playback must not write archive totals into live match state.
-- `ReplaySlotRegistry` owns loaded, claimed and playing slots. Delayed work must
-  match the current ownership epoch and identity generation. Stop, finish,
-  handoff, failure and unload release control; human players are never targets.
-- Movement uses native input hooks. See the [controller](../server/runtime/dtr-controller/README.md)
-  for movement and handoff behavior, and [FORMAT.md](FORMAT.md) for replay semantics.
-- Output promotion uses a target-scoped lock. Archive metadata updates must honor
-  `writeRevision` so stale work cannot overwrite newer edits.
-- Generate shared econ data through [cs2-lib-data](../server/runtime/common/tools/cs2-lib-data/README.md);
-  do not edit generated IDs or copy catalogs into consumers.
-
-## Automated updates
-
-`Update dependencies` is disabled and has no schedule. Enable it only on explicit
-user request; manual runs default to inspection without creating branches or PRs.
-Renovate handles npm/pnpm, Cargo, NuGet and the parser pin; Dependabot handles
-Actions. Creating dependency branches or PRs requires explicit authorization,
-followed by review and workflow approval. Native SDK/KHook pins, engine profiles,
-CounterStrikeSharp, the Zstd decoder and ABI/API contracts are updated together manually.
-
-`Prepare version PR` aligns GUI and Playback. Set either version input to bump
-both; if both are supplied they must match. Bump both even for a GUI-only or
-Playback-only change. The converter version remains independent.
-A GUI/Playback bump requires Chinese and English release notes. It updates the pending
-`codex/prepare-version` PR and explicitly dispatches full CI for that branch.
-The explicit dispatch covers the bot's commit without a separate workflow-run
-approval for a PR created with `GITHUB_TOKEN`.
-
-## GitHub bot releases
-
-Merging the bot's GUI version PR into `main` automatically starts **Release NSIS**.
-Only merged PRs authored by `github-actions[bot]` from this repository's
-`codex/prepare-version` branch with a GUI package change qualify. Closing an
-unmerged PR, merging an ordinary code PR, or changing only the converter
-does not publish. Merge the version PR yourself after reviewing CI and notes.
-The bot runs full CI, builds and signs the installer, creates a GitHub
-draft, publishes and verifies the stable R2 updater, then publishes the GitHub
-release. It reads component versions and bilingual notes from the checkout;
-there is no separate version to type or local build to upload. Normal tag builds
-and dispatches without `publish` only produce build artifacts. Manual publication
-remains available on `main` through the `publish` input.
-
-For a GUI or Playback hotfix, set either version input in **Prepare version PR**.
-Both products advance to that version. The release workflow uses the matching
-Playback bundle assembled and validated by full CI from the release commit.
-
-Configure the `release` GitHub environment once, with deployment branches limited
-to `main` and release tags, and these Secrets:
-
-| Secret | Purpose |
-| --- | --- |
-| `TAURI_SIGNING_PRIVATE_KEY` | Existing updater private key matching the public key shipped in the app |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Updater key password, if set |
-| `CLOUDFLARE_API_TOKEN` | Token authorized to upload to the existing release R2 bucket |
-| `CLOUDFLARE_ACCOUNT_ID` | Account owning the release bucket |
-| `WINDOWS_CERTIFICATE_PFX_BASE64` | Base64 Windows code-signing PFX |
-| `WINDOWS_CERTIFICATE_PASSWORD` | PFX password |
-
-For automatic releases without Windows Authenticode, explicitly set the `release`
-environment variable `RELEASE_ALLOW_UNSIGNED_INSTALLER` to `true`. Manual runs use
-the `allow_unsigned_installer` input instead. Updater signing is always
-required. Keep the existing updater key so installed clients can verify updates.
-The bot uses `GITHUB_TOKEN` for GitHub releases; no personal access token is needed.
-
-Publication is serialized and refuses versions at or below stable or an existing
-GitHub release. If publication fails after creating a draft, inspect the retained
-`demotracer-release-<version>` artifact and draft before retrying. If R2 is already
-published, publish the existing GitHub draft; do not rebuild or overwrite the
-immutable version. If R2 is not published, finish publishing the retained signed
-payloads with `publish-r2.ps1`, then publish that draft.
-
-Release builds use a fresh GitHub-hosted checkout of the exact merged commit;
-local workspaces and local installers are never uploaded as build inputs. CI
-rejects tracked demo/replay files, logs, environment files, private keys and
-certificate containers. Vite disables local `.env` loading, environment-variable
-exposure and automatic `public/` copying, clears its output directory, then checks
-the frontend file allowlist before Tauri embeds it. Extra Tauri resources and
-sidecar executables are rejected. Release uploads name each installer, signature,
-Playback bundle and manifest explicitly rather than uploading whole directories.
-These checks guard against accidental inclusion; additions to product assets or
-build scripts still require source review.
-
-## Packaging
-
-Build native runtimes first. From a clean checkout, provide the updater signing
-key through `TAURI_SIGNING_PRIVATE_KEY` (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-when needed), then run:
-
-```powershell
-./tooling/scripts/package-release.ps1 `
-  -Version <gui-version> `
-  -PlaybackVersion <playback-version> `
-  -RuntimePackage server/runtime/dtr-controller/.build/native/package `
-  -BotHiderRuntimePackage server/runtime/dtr-hider/.build/native/package `
-  -CertificateThumbprint <certificate-thumbprint>
-```
-
-Omit `-PlaybackVersion` or pass the same version as GUI. The release contract
-rejects mismatched product versions, including GUI-only hotfixes.
-Without an Authenticode certificate, use `-AllowUnsignedInstaller` instead of
-`-CertificateThumbprint`. Updater signing is still required.
-
-| Output | Destination |
-| --- | --- |
-| `dist/release-v<version>/` | GitHub assets: `demotracer-gui-v<gui-version>.exe` and `demotracer-css-v<playback-version>.zip` |
-| `dist/updater-v<version>/` | R2 payloads, signatures, `latest.json` and checksums |
-
-Release text comes from `tooling/release/release-notes.v<version>.json`;
-`-ReleaseNotesZh` and `-ReleaseNotes` override it. Keep historical release notes
-for previously published versions. Historical GitHub release drafts can be removed after publishing.
-
-Publish only the updater directory to R2:
-
-```powershell
-./tooling/scripts/publish-r2.ps1 -Version <gui-version> -PlaybackVersion <playback-version>
-```
-
-Before a public push, inspect the staged files for local paths, demos, archives,
-logs, credentials, signing material and build output. Preserve licenses and
-source notices; see [Contributing](../CONTRIBUTING.md).
+Use the current plugin version for `-Version`. External package locations require
+a matching source receipt; arbitrary DLL directories are not accepted.
+The DTR format remains v12; source repository separation changes no ABI.

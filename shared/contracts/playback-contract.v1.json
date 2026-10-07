@@ -5,6 +5,14 @@
   "manifest_abi": 19,
   "dtr_writer": 12,
   "inventory_plan_schema": 5,
+  "cosmetics": {
+    "unpainted_weapon_and_knife_paint_kit": 0,
+    "unpainted_seed": 0,
+    "unpainted_wear": 0,
+    "unpainted_texture_attributes": "omitted",
+    "unpainted_browser_texture_evidence": "omitted",
+    "gloves_require_paint": true
+  },
   "inventory_plan_reader": {
     "min": 4,
     "max": 5

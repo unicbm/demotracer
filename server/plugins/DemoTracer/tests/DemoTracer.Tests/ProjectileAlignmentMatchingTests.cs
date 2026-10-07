@@ -10,7 +10,7 @@ public sealed class ProjectileAlignmentMatchingTests
 {
     private static ReplayProjectileEvent Fire(uint tick, int weapon)
         => new(tick, ReplayProjectileKind.Molotov, weapon,
-            default, default, default, default, -1, "unknown", 0);
+            default, default);
 
     [Fact]
     public void SharedNativeClassDoesNotAllowTheOtherFireWeaponToConsumeAnEvent()

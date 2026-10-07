@@ -59,13 +59,10 @@ internal static partial class DtrReplayReader
     private const uint SectionSubticks = 5;
     private const uint SectionCommandFrames = 6;
     private const uint SectionMovementExtras = 7;
-    private const uint SectionInputHistory = 8;
     private const uint SectionSourceState = 9;
     private const uint SectionVersionV1 = 1;
     private const uint SectionVersionV2 = 2;
-    private const uint CommandFieldsAll = 0xff;
-    private const uint InputHistoryFieldsAll = (1U << 21) - 1;
-    private const int MaxInputHistoryPerTick = 64;
+    private const uint CommandFieldsAll = 0xbf;
 
     private static readonly byte[] RecMagic =
     [
@@ -157,8 +154,6 @@ internal static partial class DtrReplayReader
         NativeSubtickMove[]? subticks = null;
         NativeReplayCommandFrame[]? commandFrames = null;
         NativeReplayMovementExtra[]? movementExtras = null;
-        NativeReplayInputHistoryTick[]? inputHistoryTicks = null;
-        NativeReplayInputHistoryEntry[]? inputHistoryEntries = null;
         NativeReplaySourceStateChange[]? sourceState = null;
         var seenHighFidelity = false;
         var seenKnownSections = new HashSet<uint>();
@@ -215,17 +210,11 @@ internal static partial class DtrReplayReader
                     tickCount,
                     ExpectedSectionLength(tickCount, BotControllerNative.ReplayMovementExtraByteSize, "movement extras")),
                 SectionSourceState => ("source state", header.ElementCount, ExpectedSectionLength(header.ElementCount, 16, "source state")),
-                SectionInputHistory => (
-                    "input history",
-                    tickCount,
-                    0),
                 _ => throw new InvalidDataException($"unsupported known section {header.SectionId}")
             };
             RejectDuplicate(!seenKnownSections.Add(header.SectionId), name);
             var usesV2ColumnLayout = header.SectionId is SectionSnapshots or SectionCommandFrames;
-            if (header.SectionId == SectionInputHistory)
-                RequireInputHistorySectionShape(header, tickCount);
-            else if (header.SectionId == SectionSourceState)
+            if (header.SectionId == SectionSourceState)
                 RequireSourceStateSectionShape(header, tickCount, limits, ref totalDecodedBytes);
             else
                 RequireSectionShape(
@@ -276,10 +265,6 @@ internal static partial class DtrReplayReader
                 case SectionSourceState:
                     sourceState = ReadCompactSourceState(body, header.ElementCount, tickCount);
                     break;
-                case SectionInputHistory:
-                    (inputHistoryTicks, inputHistoryEntries) =
-                        ReadInputHistoryFromSection(body, tickCount, retainAuxiliaryData);
-                    break;
             }
         }
 
@@ -295,8 +280,6 @@ internal static partial class DtrReplayReader
             throw new InvalidDataException("missing required section projectiles");
         if (metadataJsonLength > 0 && !seenHighFidelity)
             throw new InvalidDataException("missing required section high fidelity metadata");
-        if (inputHistoryTicks is null)
-            throw new InvalidDataException("missing required section input history");
 
         var ticks = new NativeReplayTick[tickCount];
         long expectedSubticks = 0;
@@ -318,13 +301,11 @@ internal static partial class DtrReplayReader
         return new DtrReplayFile(
             BotControllerNative.RecFormatVersion,
             ticks,
-            MergeProjectileMetadata(projectiles ?? [], highFidelity),
+            projectiles ?? [],
             highFidelity,
             subticks,
             commandFrames ?? [],
             movementExtras ?? [],
-            inputHistoryTicks,
-            inputHistoryEntries ?? [],
             tickRate,
             (uint)playStartTickIndex) { SourceState = sourceState };
     }
@@ -349,8 +330,6 @@ internal readonly record struct DtrReplayFile(
     NativeSubtickMove[] Subticks,
     NativeReplayCommandFrame[] CommandFrames,
     NativeReplayMovementExtra[] MovementExtras,
-    NativeReplayInputHistoryTick[] InputHistoryTicks,
-    NativeReplayInputHistoryEntry[] InputHistoryEntries,
     float TickRate,
     uint PlayStartTickIndex)
 {

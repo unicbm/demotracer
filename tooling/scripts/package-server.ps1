@@ -51,7 +51,7 @@ $componentArguments = @(
 )
 
 & (Join-Path $PSScriptRoot "assert-clean-worktree.ps1") -RepoRoot $repoRoot
-& (Join-Path $PSScriptRoot "check-release-contract.ps1") -PlaybackVersion $Version
+& (Join-Path $PSScriptRoot "check-playback-contract.ps1") -PlaybackVersion $Version
 
 function Require-Path([string]$Path, [string]$Label) {
     if (-not (Test-Path -LiteralPath $Path)) {

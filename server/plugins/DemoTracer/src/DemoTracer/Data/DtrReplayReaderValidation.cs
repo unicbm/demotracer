@@ -80,13 +80,6 @@ internal static partial class DtrReplayReader
                     projectile.InitialVelocity.X,
                     projectile.InitialVelocity.Y,
                     projectile.InitialVelocity.Z,
-                    projectile.DetonationPosition.X,
-                    projectile.DetonationPosition.Y,
-                    projectile.DetonationPosition.Z,
-                    projectile.EffectPosition.X,
-                    projectile.EffectPosition.Y,
-                    projectile.EffectPosition.Z,
-                    projectile.EffectConfidence
                 ],
                 "projectile", i);
         }
@@ -102,26 +95,6 @@ internal static partial class DtrReplayReader
                 extra.LastLandedVelocityY, extra.LastLandedVelocityZ
             ],
             "movement extra", index);
-    }
-
-    private static void ValidateInputHistoryEntry(in NativeReplayInputHistoryEntry entry, int index)
-    {
-        var unknownFields = entry.Fields & ~InputHistoryFieldsAll;
-        if (unknownFields != 0)
-            throw new InvalidDataException(
-                $"input history entry {index} has unknown fields 0x{unknownFields:X8}");
-        RequireFinite(
-            [
-                entry.ViewPitch, entry.ViewYaw, entry.ViewRoll,
-                entry.RenderTickFraction, entry.PlayerTickFraction,
-                entry.ClInterpFraction, entry.SvInterp0Fraction,
-                entry.SvInterp1Fraction, entry.PlayerInterpFraction,
-                entry.ShootPositionX, entry.ShootPositionY, entry.ShootPositionZ,
-                entry.TargetHeadPosCheckX, entry.TargetHeadPosCheckY, entry.TargetHeadPosCheckZ,
-                entry.TargetAbsPosCheckX, entry.TargetAbsPosCheckY, entry.TargetAbsPosCheckZ,
-                entry.TargetAbsAngCheckX, entry.TargetAbsAngCheckY, entry.TargetAbsAngCheckZ
-            ],
-            "input history entry", index);
     }
 
     private static void ValidateSnapshot(in NativeMovementSnapshot snapshot, int index, string phase)
@@ -167,7 +140,6 @@ internal static partial class DtrReplayReader
             throw new InvalidDataException("unsupported replay metadata schema; reconvert the demo with the current GUI");
         metadata.Events ??= [];
         metadata.InventorySnapshots ??= [];
-        metadata.Projectiles ??= [];
         ValidateInventorySnapshots(metadata.InventorySnapshots, tickCount);
         metadata.InventorySnapshots = metadata.InventorySnapshots.OrderBy(snapshot => snapshot.TickIndex)
             .ThenBy(snapshot => snapshot.Tick).ToArray();
@@ -179,82 +151,6 @@ internal static partial class DtrReplayReader
         metadata.Events = metadata.Events.OrderBy(item => item.TickIndex).ThenBy(item => item.Tick).ToArray();
         return metadata;
     }
-
-    private static ReplayProjectileEvent[] MergeProjectileMetadata(
-        ReplayProjectileEvent[] projectiles,
-        ReplayHighFidelityMetadata highFidelity)
-    {
-        var metadata = highFidelity.Projectiles ?? [];
-        if (projectiles.Length == 0 || metadata.Length == 0)
-            return projectiles;
-
-        var used = new bool[metadata.Length];
-        var merged = new ReplayProjectileEvent[projectiles.Length];
-        for (var i = 0; i < projectiles.Length; i++)
-        {
-            var projectile = projectiles[i];
-            var match = -1;
-            for (var j = 0; j < metadata.Length; j++)
-            {
-                if (used[j])
-                    continue;
-                if (!ProjectileMetadataMatches(projectile, metadata[j]))
-                    continue;
-                match = j;
-                break;
-            }
-
-            if (match < 0)
-            {
-                merged[i] = projectile;
-                continue;
-            }
-
-            used[match] = true;
-            var item = metadata[match];
-            merged[i] = projectile with
-            {
-                EffectPosition = ReadMetadataVector(item.EffectPosition),
-                EffectTickIndex = ReadMetadataTickIndex(item.EffectTickIndex),
-                EffectSource = item.EffectSource ?? string.Empty,
-                EffectConfidence = item.EffectConfidence
-            };
-        }
-
-        return merged;
-    }
-
-    private static bool ProjectileMetadataMatches(
-        ReplayProjectileEvent projectile,
-        ReplayProjectileMetadata metadata)
-    {
-        return metadata.TickIndex == projectile.TickIndex &&
-               ProjectileKindFromString(metadata.Kind) == projectile.Kind &&
-               metadata.WeaponDefIndex == projectile.WeaponDefIndex;
-    }
-
-    private static ReplayProjectileKind ProjectileKindFromString(string? value)
-    {
-        return value?.Trim().ToLowerInvariant() switch
-        {
-            "smoke" => ReplayProjectileKind.Smoke,
-            "flash" => ReplayProjectileKind.Flash,
-            "he" => ReplayProjectileKind.He,
-            "molotov" or "incgrenade" or "incendiary" => ReplayProjectileKind.Molotov,
-            "decoy" => ReplayProjectileKind.Decoy,
-            _ => ReplayProjectileKind.Unknown
-        };
-    }
-
-    private static ReplayVector3 ReadMetadataVector(float[]? values)
-    {
-        return values is { Length: >= 3 }
-            ? new ReplayVector3(values[0], values[1], values[2])
-            : new ReplayVector3(0.0f, 0.0f, 0.0f);
-    }
-
-    private static int ReadMetadataTickIndex(uint? value)
-        => value.HasValue && value.Value <= int.MaxValue ? (int)value.Value : -1;
 
     private static string ReadRecString(BinaryReader reader)
     {

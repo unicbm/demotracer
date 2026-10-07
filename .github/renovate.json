@@ -1,5 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "enabled": false,
   "enabledManagers": ["npm", "cargo", "nuget", "git-submodules"],
   "branchPrefix": "codex/deps/",
   "automerge": false,

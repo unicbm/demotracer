@@ -250,6 +250,10 @@ internal sealed class WeaponItemViewStore : IDisposable
         int seed,
         float wear)
     {
+        // The cached item lists were cleared before this call. Vanilla items
+        // carry attachments/identity without synthetic texture attributes.
+        if (paintKit == 0)
+            return;
         SetAttribute(attributes, "set item texture prefab", paintKit);
         SetAttribute(attributes, "set item texture seed", seed);
         SetAttribute(attributes, "set item texture wear", wear);

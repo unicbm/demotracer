@@ -1,9 +1,0 @@
-# CS2 DemoTracer v1.5.1
-
-Update native CS2 compatibility data, preserve recorded replay velocities, and apply projectile initial-state correction only once at creation. Contact handoff uses native engine vision. Playback runtimes now use the separate dtr-controller and dtr-hider names, and applied player appearance remains after playback ends. Crosshair previews use csgo-sharecode 7.0.0.
-Update the GUI first, then update the complete playback bundle through the GUI. The upgrade removes old BotController/BotHider loading files identified by the DemoTracer installation receipt and preserves or migrates user configuration. Independently installed or replaced upstream plugins are retained. Current game physics and map versions can still affect trajectories from older demos.
-
----
-
-更新 CS2 原生兼容配置，修复回放速度还原，并将投掷物初始状态校正限制在生成时执行一次。接敌交接沿用引擎原生视觉判定。播放组件使用独立的 dtr-controller 与 dtr-hider 名称，回放结束后保留已应用的选手外观。准星预览改用 csgo-sharecode 7.0.0。
-请先更新 GUI，再通过 GUI 更新完整播放组件。升级会清理安装记录确认属于旧版 DemoTracer 的 BotController/BotHider 加载文件，并保留、迁移用户配置；自行安装或替换的上游插件不会自动删除。旧 Demo 的轨迹仍可能受当前游戏物理和地图版本影响。

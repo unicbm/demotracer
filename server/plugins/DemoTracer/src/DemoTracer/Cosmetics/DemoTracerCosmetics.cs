@@ -25,7 +25,7 @@ public sealed partial class DemoTracerPlugin
             if (!IsWeaponCosmeticDefIndex(group.Key) || group.Count() != 1)
                 continue;
             var weapon = group.First();
-            if (!IsKnownWeaponCosmeticPaint(group.Key, weapon.PaintKit))
+            if (weapon.PaintKit != 0 && !IsKnownWeaponCosmeticPaint(group.Key, weapon.PaintKit))
                 continue;
             normalized.Weapons.Add(new ReplayWeaponCosmetic
             {
@@ -45,7 +45,8 @@ public sealed partial class DemoTracerPlugin
         }
 
         if (cosmetics.Knife is { } knife &&
-            IsValidItemCosmetic(knife) &&
+            (IsValidItemCosmetic(knife) ||
+             knife.PaintKit == 0 && knife.Seed == 0 && knife.Wear == 0.0f) &&
             HasCosmeticSeedEvidence(knife.SeedKnown) &&
             knife.ItemDefIndex is { } knifeDef &&
             IsExactKnifeCosmeticDefIndex(knifeDef) &&
@@ -110,8 +111,9 @@ public sealed partial class DemoTracerPlugin
             cosmetics.Agent != null);
 
     private bool IsValidWeaponCosmetic(ReplayWeaponCosmetic cosmetic)
-        => cosmetic.PaintKit > 0 &&
-           IsKnownPaintKit(cosmetic.PaintKit) &&
+        => (cosmetic.PaintKit == 0
+                ? cosmetic.Seed == 0 && cosmetic.Wear == 0.0f
+                : IsKnownPaintKit(cosmetic.PaintKit)) &&
            cosmetic.Wear is >= 0.0f and <= 1.0f &&
            float.IsFinite(cosmetic.Wear);
 

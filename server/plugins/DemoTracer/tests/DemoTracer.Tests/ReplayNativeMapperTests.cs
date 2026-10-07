@@ -11,9 +11,9 @@ public sealed class ReplayNativeMapperTests
     [Fact]
     public void InventoryPlanningKeepsFirstAppearanceOrderWithoutPerTickDuplicates()
     {
-        var replay = new DtrReplayFile(11,
+        var replay = new DtrReplayFile(13,
             new[] { -1, 7, 7, 43, 7, 43, 9 }.Select(def => new NativeReplayTick { WeaponDefIndex = def }).ToArray(),
-            [], ReplayHighFidelityMetadata.Empty, [], [], [], [], [], 64, 2);
+            [], ReplayHighFidelityMetadata.Empty, [], [], [], 64, 2);
         var metadata = ReplayNativeMapper.BuildMetadata(replay);
         Assert.Equal(new[] { -1, 7, 43, 9 }, metadata.WeaponDefIndices);
         Assert.Equal(7, metadata.TickCount);

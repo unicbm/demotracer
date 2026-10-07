@@ -42,7 +42,7 @@ public sealed class ManifestCompatibilityTests
     [InlineData(18, 11, false)]
     [InlineData(19, 12, true)]
     [InlineData(11, 3, false)]
-    [InlineData(20, 12, false)]
+    [InlineData(20, 13, false)]
     [InlineData(19, 13, false)]
     public void PlaybackEntryAcceptsSupportedManifestAndDtrVersions(int abi, int format, bool supported)
     {

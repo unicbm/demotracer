@@ -8,14 +8,6 @@
       "source": "product"
     },
     {
-      "id": "parser",
-      "path": "third_party/demoparser",
-      "repository": "unicbm/demoparser",
-      "branch": "demotracer",
-      "tagPrefix": "dtr-v",
-      "source": "submodule"
-    },
-    {
       "id": "controller",
       "path": "server/runtime/dtr-controller",
       "repository": "unicbm/demotracer",
@@ -30,12 +22,6 @@
     {
       "id": "randomizer",
       "path": "server/runtime/BotRandomizer",
-      "repository": "unicbm/demotracer",
-      "source": "product"
-    },
-    {
-      "id": "converter",
-      "path": "desktop/converter",
       "repository": "unicbm/demotracer",
       "source": "product"
     },

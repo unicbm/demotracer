@@ -1,4 +1,0 @@
-minimumReleaseAgeExclude:
-  - csgo-sharecode@7.0.0
-patchedDependencies:
-  csgo-sharecode@7.0.0: patches/csgo-sharecode@7.0.0.patch

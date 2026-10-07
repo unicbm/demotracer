@@ -101,6 +101,30 @@ internal static class ReplayPlanValidationTests
             "caller mutation cannot change copied items, nested arrays, identities or agent state");
 
         var zeroIdentity = FullPlan();
+        var vanilla = FullPlan();
+        vanilla.Knife!.ItemDefinitionIndex = 519;
+        vanilla.Knife.PaintKit = 0;
+        vanilla.Knife.PaintSeed = 0;
+        vanilla.Knife.PaintWear = 0;
+        vanilla.Knife.CustomName = "Vanilla knife";
+        vanilla.Weapons[0].PaintKit = 0;
+        vanilla.Weapons[0].PaintSeed = 0;
+        vanilla.Weapons[0].PaintWear = 0;
+        var vanillaPolicy = Accept([vanilla])[1].Policy;
+        Require(vanillaPolicy.Knife!.DefIndex == 519 && vanillaPolicy.Knife.PaintKit == 0 &&
+                vanillaPolicy.Knife.Identity!.CustomName == "Vanilla knife" &&
+                vanillaPolicy.Weapons[4].PaintKit == 0 && !vanillaPolicy.Weapons[4].Legacy &&
+                vanillaPolicy.Weapons[4].Stickers.Count == 1 && vanillaPolicy.Weapons[4].Keychains.Count == 1,
+            "vanilla replay items retain identity and attachments without requiring a paint pair");
+        vanilla.Weapons[0].PaintWear = 0.25f;
+        Reject([vanilla], "invalid_weapon:1");
+        vanilla.Weapons[0].PaintWear = 0;
+        vanilla.Knife.PaintSeed = 1;
+        Reject([vanilla], "invalid_knife:1");
+        vanilla.Knife.PaintSeed = 0;
+        vanilla.Gloves!.PaintKit = 0;
+        Reject([vanilla], "unknown_gloves:1:5030:0");
+
         var zeroWeapon = zeroIdentity.Weapons[0];
         zeroWeapon.OriginalOwnerSteamId = 0;
         zeroWeapon.ItemAccountId = 0;

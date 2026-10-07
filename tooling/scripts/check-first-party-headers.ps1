@@ -5,7 +5,8 @@
 # ---------------------------------------------------------------------------------------------
 
 param(
-    [string]$RepoRoot = ""
+    [string]$RepoRoot = "",
+    [switch]$PlaybackOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,6 +25,9 @@ $firstPartyRoots = @(
     "server\runtime\common\tools",
     "tooling\scripts"
 )
+if ($PlaybackOnly) {
+    $firstPartyRoots = @($firstPartyRoots | Where-Object { $_ -notmatch '^(desktop|cloudflare)\\' })
+}
 $sourceExtensions = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
 foreach ($extension in @(
@@ -88,6 +92,9 @@ foreach ($repositoryPath in $repositoryFiles) {
     $prefixLength = [Math]::Min(640, $source.Length)
     $prefix = $source.Substring(0, $prefixLength)
     $expectedLicenseMarker = $licenseMarker
+    if ($relativePath.StartsWith("desktop\", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $expectedLicenseMarker = "Licensed under the DemoTracer proprietary license."
+    }
     if ($retainedLicenseMarkers.ContainsKey($relativePath)) {
         $expectedLicenseMarker = $retainedLicenseMarkers[$relativePath]
     }

@@ -134,7 +134,7 @@ internal sealed class ReplayPlanValidator(CosmeticCatalog catalog, ReplayEconInd
             !econ.IsKnifeDefinition((ushort)requested.ItemDefinitionIndex) ||
             !RandomizerAssets.KnifeDefIndexByName.Values.Contains((ushort)requested.ItemDefinitionIndex) ||
             !catalog.TryGetKnifePaints((ushort)requested.ItemDefinitionIndex, out var paints) ||
-            !paints.Any(paint => paint.PaintKit == requested.PaintKit))
+            requested.PaintKit != 0 && !paints.Any(paint => paint.PaintKit == requested.PaintKit))
         {
             return Fail($"unknown_knife:{slot}:{requested.ItemDefinitionIndex}:{requested.PaintKit}", out reason);
         }
@@ -170,7 +170,8 @@ internal sealed class ReplayPlanValidator(CosmeticCatalog catalog, ReplayEconInd
     {
         result = null;
         reason = string.Empty;
-        if (requested.PaintKit is 0 or > int.MaxValue ||
+        if (requested.PaintKit > int.MaxValue ||
+            requested.PaintKit == 0 && (family == "gloves" || requested.PaintSeed != 0 || requested.PaintWear != 0.0f) ||
             requested.PaintSeed > int.MaxValue ||
             !float.IsFinite(requested.PaintWear) || requested.PaintWear is < 0.0f or > 1.0f ||
             requested.CustomName?.Length > 128)
@@ -211,10 +212,11 @@ internal sealed class ReplayPlanValidator(CosmeticCatalog catalog, ReplayEconInd
                 return Fail($"unknown_weapon:{slot}:{requested?.ItemDefinitionIndex}", out reason);
             if (!TryNormalizeItem(slot, "weapon", requested, out var item, out reason))
                 return false;
-            if (!econ.TryGetWeaponPaint(
+            var replayPaintUsesLegacyModel = false;
+            if (requested.PaintKit != 0 && !econ.TryGetWeaponPaint(
                     (ushort)requested.ItemDefinitionIndex,
                     requested.PaintKit,
-                    out var replayPaintUsesLegacyModel) ||
+                    out replayPaintUsesLegacyModel) ||
                 requested.PaintUsesLegacyModel is { } legacy && legacy != replayPaintUsesLegacyModel)
                 return Fail($"unknown_weapon_paint:{slot}:{requested.ItemDefinitionIndex}:{requested.PaintKit}", out reason);
 

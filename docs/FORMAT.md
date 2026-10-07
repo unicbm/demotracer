@@ -5,7 +5,7 @@ loader and BotController runtime.
 
 All values are little-endian. The format is lossless for stored replay evidence:
 movement snapshots, projectile events, high-fidelity metadata, subtick records,
-command-frame data, and shooting input-history data retain their original
+and command-frame data retain their original
 `f32`, integer, or UTF-8 JSON values. Readers do not reconstruct snapshot
 velocities from positions.
 
@@ -13,7 +13,7 @@ velocities from positions.
 
 - Magic: `CSDTRREC`
 - Current writer format: `.dtr` v12
-- Rust/Desktop and runtime readers: v12 only
+- Rust/Desktop and runtime readers: v12
 - Required manifest ABI: 19
 - High-fidelity metadata: writer schema 5; readers accept schemas 4 and 5
 - Current BotController native ABI: 22
@@ -105,6 +105,16 @@ payload is a deterministic CS2 `CEconItemPreviewDataBlock` protobuf with the
 native leading byte and xCRC trailer. It contains appearance evidence only and
 is not an inventory/market asset identifier.
 
+An evidenced unpainted weapon with stickers, a charm or a custom name, or an
+ownable unpainted knife, uses `paint_kit: 0`, `seed: 0`, and `wear: 0` in the
+manifest and replay plan. These are neutral replay values, not observed texture
+attributes. Playback clears previous attributes and writes no texture attributes
+for these items; attachments and custom names retain their existing export gates.
+Browser evidence omits seed and wear for unpainted items. Inspect previews retain
+the unpainted definition and supported attachments/name. Gloves still require a
+known nonzero paint kit. Missing or malformed painted attributes are not evidence
+of an unpainted item.
+
 Glove evidence is retained when the demo exposes an exact item definition,
 paint kit, and wear but omits the texture seed. Such entries carry
 `"seed": 0` as a placeholder plus `"seed_known": false`. The UI reports the
@@ -161,7 +171,7 @@ Required sections:
 | 1 | `MovementSnapshotV3` chain | `2` | `0 if tick_count == 0, else tick_count + 1` | Columnar delta-varint stream |
 | 2 | tick metadata | `1` | `tick_count` | 8 bytes each |
 | 5 | `SubtickMoveV3` | `1` | `subtick_count` | 28 bytes each |
-| 8 | input history | `1` | `tick_count` | Variable; 16-byte tick descriptor plus 128 bytes per entry |
+| 8 | legacy input history | `1` | `tick_count` | 16-byte descriptors plus legacy entries |
 | 9 | source state | `2` | Logical change count | 12 bytes per compact record |
 
 Optional sections:
@@ -184,27 +194,11 @@ It stores a section uncompressed when compression would not reduce its size,
 including empty sections. Brotli is unsupported. The section codec does not
 change any replay values.
 
-### Input-history section
-
-For each replay tick, the payload stores a 16-byte descriptor followed
-immediately by that tick's entries:
-
-`source_client_tick: i32`, `attack1_start_history_index: i32`,
-`attack2_start_history_index: i32`, `num_entries: u32`.
-
-Each entry is 128 bytes and starts with a `u32 fields` presence mask, followed
-by view angles, render/player tick and fraction fields, client/server/player
-interpolation fields, frame and target indexes, shoot position, and the three
-target check vectors in protobuf field order. At most 64 entries are allowed
-per tick. Attack indexes are `-1` or index the same tick's retained entries.
-All stored floats must be finite. Converter output retains only valid entries
-referenced by `attack1_start_history_index` or `attack2_start_history_index`,
-deduplicates shared references, and remaps both indexes to the retained order.
-
-The Windows runtime validates but does not inject input history into the
-engine-owned command graph. Playback/prefetch discard decoded arrays after
-validation; inspection reads retain them. `target_ent_index` refers to demo
-entities and cannot be used as a live server identity.
+New exports retain the v12 input-history section with one empty descriptor per
+tick: `source_client_tick = i32::MIN`, attack indexes `-1`, and entry count `0`.
+This preserves compatibility with existing readers without collecting unused
+history. Current readers skip this retired section using its bounded payload
+length; it does not drive playback.
 
 ## Columnar Delta-Varint Sections
 
@@ -212,9 +206,8 @@ Native BotController ABI 22 uses 228-byte replay ticks, including a reserved
 36-byte event tail. Every tail field must be zero; native loading rejects nonzero
 payloads because native weapon-drop recording/replay is unsupported. This is an
 in-memory API layout, not the DTR disk layout.
-DTR gameplay events remain in high-fidelity metadata and are executed by the
-managed replay layer; DTR readers initialize the native event tail to zero to
-preserve this contract.
+DTR readers initialize the native event tail to zero. High-fidelity events
+provide C4 ownership evidence to the managed replay layer.
 
 Section version 2 stores `MovementSnapshotV3` and `CommandFrameV1` values
 bit-exactly.
@@ -224,8 +217,7 @@ use component order. Snapshot columns follow this order:
 
 `origin[3]`, `velocity[3]`, `angles[3]`, `entity_flags`, `move_type`,
 `buttons`, `buttons1`, `buttons2`, `duck_amount`, `duck_speed`,
-`ladder_normal[3]`, `ducked`, `ducking`, `desires_duck`,
-`actual_move_type`.
+`ladder_normal[3]`, `ducked`, `ducking`, `desires_duck`, `actual_move_type`.
 
 Command-frame columns follow this order:
 
@@ -244,7 +236,7 @@ For every column:
 
 `f32` columns operate on the original IEEE-754 `to_bits()` value, not on a
 numeric approximation. Signed integer columns operate on their raw bit pattern.
-The five one-byte snapshot columns and `left_hand_desired` use the same rule at
+The four one-byte snapshot columns and `left_hand_desired` use the same rule at
 8-bit width. Native alignment padding is not stored in columnar payloads and is restored
 as zero in native structs. For v2 sections, `uncompressed_len` is the exact
 column stream length rather than `element_count × struct_size`.
@@ -268,8 +260,8 @@ Reconstruct replay ticks as:
 The sum of all `num_subtick` values must equal header `subtick_count`.
 
 Demo rows are post-command observations. For adjacent rows `i` and `i + 1`,
-the converter takes movement/source state from row `i`, and command planes,
-subticks and input history from row `i + 1`. Projectile births in row `i + 1`
+the converter takes movement/source state from row `i`, and command planes
+and subticks from row `i + 1`. Projectile births in row `i + 1`
 belong to replay tick `i`. This keeps jump and attack edges in the simulation
 that produces `post`; pairing row `i` inputs with row `i` state replays them late.
 
@@ -277,7 +269,9 @@ that produces `post`; pairing row `i` inputs with row `i` state replays them lat
 
 ### `MovementSnapshotV3`
 
-This layout is 92 bytes with `Pack=4`.
+The native ABI layout is 92 bytes with `Pack=4`; the final byte is reserved.
+The v12 disk stream retains its legacy `actual_move_type` column. New exports
+write `255` (unknown); readers consume this column without applying it.
 
 | Field | Type |
 | --- | --- |
@@ -296,11 +290,10 @@ This layout is 92 bytes with `Pack=4`.
 | ducked | `u8` |
 | ducking | `u8` |
 | desires_duck | `u8` |
-| actual_move_type | `u8` |
+| reserved | `u8` |
 
-The converter writes `0xff` for unknown `actual_move_type`. Playback derives
-it through native `SetMoveType`. Source-state presence governs duck-state
-restoration.
+Playback applies movement type through native `SetMoveType`. Source-state
+presence governs duck-state restoration.
 
 `buttons`, `buttons1`, and `buttons2` store
 `CInButtonStatePB.buttonstate1`, `buttonstate2`, and `buttonstate3` respectively.
@@ -351,7 +344,7 @@ whose accepted `when` domain is `[0, 1)`; the stored evidence is not rewritten.
 | pad | 3 bytes | |
 | initial_position | `f32[3]` | |
 | initial_velocity | `f32[3]` | |
-| detonation_position | `f32[3]` | |
+| detonation_position | `f32[3]` | Legacy v12 field; new exports write zeros and playback ignores it |
 
 ### `CommandFrameV1`
 
@@ -364,10 +357,15 @@ whose accepted `when` domain is `[0, 1)`; the stored evidence is not rewritten.
 | buttons | `u64[3]` | buttonstate1/2/3; present when bit `4` is set |
 | mouse_dx | `i32` | Present with mouse bit `5` |
 | mouse_dy | `i32` | Present with mouse bit `5` |
-| weapon_select | `i32` | Raw demo command value; present when bit `6` is set |
+| weapon_select | `i32` | Legacy v12 field; new exports write `-1` and playback ignores it |
 | fields | `u32` | Presence bitset |
 | left_hand_desired | `u8` | Present when bit `7` is set |
 | pad | 3 bytes | |
+
+New exports leave command presence bit `6` clear. Readers consume the legacy
+selection column and clear bit `6` before applying the remaining `0xbf` mask. Native ABI
+weapon selection storage remains reserved. Playback resolves live weapon
+entities from the recorded weapon definition rather than demo entity indexes.
 
 ### `MovementExtraV1`
 
@@ -404,17 +402,13 @@ The top-level object contains:
   before its actual start cursor, then grants only newly acquired equipment at
   its recorded time. Later snapshots do not refill unrelated utility, undo
   damage, or remove human-introduced items.
-- `projectiles`: player-scoped projectile effect metadata. This supplements
-  the fixed-size `ProjectileEventV4` section without changing its binary
-  layout.
 
-Event `kind` values include `bomb_initial_owner`, `item_drop`, `item_pickup`,
-`item_transfer`, `bomb_drop`, `bomb_pickup`, `bomb_beginplant`, `bomb_planted`,
-`weapon_fire`, `player_hurt`, `player_death`, `round_start`, and
-`round_freeze_end`.
-
-Combat events are record-only for now: the CSS plugin loads them for diagnostics
-and future behavior, but does not force damage or death.
+New exports emit `bomb_initial_owner` or `bomb_planted`; readers also accept the
+legacy v12 event names. Each new event stores
+`tick_index`, the original demo `tick`, `kind`, and `actor_steam_id` for C4
+ownership lookup. Inventory snapshots store counts, acquisition flags and gear;
+the active weapon comes from tick metadata. The legacy JSON field
+`active_weapon_def_index` is written as `-1` for older v12 readers.
 
 Schema 5 compiles inventory acquisitions during export. Each `weapon_def_counts`
 entry includes `acquired`, true only when its count increased since the previous
@@ -426,20 +420,6 @@ For schema 4, readers calculate these flags once from successive inventory
 snapshots per player and normalize the in-memory metadata to schema 5. Files
 are not rewritten. Playback consumes the same plan for both schemas and does
 not infer utility acquisitions from pickup events.
-
-Projectile metadata entries contain:
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| tick_index | `u32` | Replay tick index of the throw event |
-| tick | `i32` | Original demo tick of the throw event |
-| kind | string | `smoke`, `flash`, `he`, `molotov`, `decoy`, or `unknown` |
-| weapon_def_index | `i32` | Demo weapon definition index when known |
-| effect_tick_index | `u32?` | Replay tick index of the matched effect event |
-| effect_tick | `i32?` | Original demo tick of the matched effect event |
-| effect_position | `f32[3]` | Demo effect position, such as inferno start burn |
-| effect_source | string | Source event/property used for the effect position |
-| effect_confidence | `f32` | Converter confidence in the effect match |
 
 ## Source State Changes
 

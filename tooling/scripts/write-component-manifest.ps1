@@ -6,12 +6,14 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Push-Location $repoRoot
 try {
-    & node tooling/scripts/check-source-layout.mjs --require-checkout
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot record mismatched component sources.' }
+    & (Join-Path $PSScriptRoot 'check-playback-contract.ps1')
     $registry = Get-Content components.json -Raw | ConvertFrom-Json
     $productCommit = (& git rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read product commit.' }
-    $components = @($registry.components | ForEach-Object {
+    $plugin = Get-Content server/plugins/DemoTracer/src/DemoTracer/Lifecycle/DemoTracerPlugin.cs -Raw
+    $version = [regex]::Match($plugin, 'ModuleVersion\s*=>\s*"([^"]+)"').Groups[1].Value
+    if (-not $version) { throw 'Playback source version is missing.' }
+    $components = @($registry.components | Where-Object { $_.path.StartsWith('server/') } | ForEach-Object {
         $componentPath = Join-Path $repoRoot $_.path
         $commit = if ($_.source -eq 'submodule') { (& git -C $componentPath rev-parse HEAD).Trim() } else { $productCommit }
         if ($LASTEXITCODE -ne 0) { throw "Cannot read component commit: $($_.id)" }
@@ -19,7 +21,7 @@ try {
             id = $_.id
             repository = "https://github.com/$($_.repository)"
             commit = $commit
-            source_version = if ($_.source -eq 'submodule') { (Get-Content (Join-Path $componentPath 'version.txt') -Raw).Trim() } else { (Get-Content desktop/gui/package.json -Raw | ConvertFrom-Json).version }
+            source_version = $version
         }
     })
     $manifest = [ordered]@{ schema_version = 1; product_commit = $productCommit; components = $components }

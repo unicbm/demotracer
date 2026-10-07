@@ -237,12 +237,7 @@ internal readonly record struct ReplayProjectileEvent(
     ReplayProjectileKind Kind,
     int WeaponDefIndex,
     ReplayVector3 InitialPosition,
-    ReplayVector3 InitialVelocity,
-    ReplayVector3 DetonationPosition,
-    ReplayVector3 EffectPosition,
-    int EffectTickIndex,
-    string EffectSource,
-    float EffectConfidence);
+    ReplayVector3 InitialVelocity);
 
 internal sealed class ReplayHighFidelityMetadata
 {
@@ -253,20 +248,6 @@ internal sealed class ReplayHighFidelityMetadata
     public uint? RoundStartBalance { get; set; }
     public ReplayHifiEvent[] Events { get; set; } = [];
     public ReplayInventorySnapshot[] InventorySnapshots { get; set; } = [];
-    public ReplayProjectileMetadata[] Projectiles { get; set; } = [];
-}
-
-internal sealed class ReplayProjectileMetadata
-{
-    public uint TickIndex { get; set; }
-    public int Tick { get; set; }
-    public string Kind { get; set; } = string.Empty;
-    public int WeaponDefIndex { get; set; }
-    public uint? EffectTickIndex { get; set; }
-    public int? EffectTick { get; set; }
-    public float[]? EffectPosition { get; set; }
-    public string EffectSource { get; set; } = string.Empty;
-    public float EffectConfidence { get; set; }
 }
 
 internal sealed class ReplayHifiEvent
@@ -275,14 +256,6 @@ internal sealed class ReplayHifiEvent
     public int Tick { get; set; }
     public string Kind { get; set; } = string.Empty;
     public ulong? ActorSteamId { get; set; }
-    public ulong? TargetSteamId { get; set; }
-    public int? WeaponDefIndex { get; set; }
-    public string? ItemName { get; set; }
-    public int? EntityId { get; set; }
-    public int? ActorCountAfter { get; set; }
-    public int? TargetCountAfter { get; set; }
-    public int? Damage { get; set; }
-    public int? Health { get; set; }
 }
 
 internal sealed class ReplayInventorySnapshot
@@ -291,7 +264,6 @@ internal sealed class ReplayInventorySnapshot
     public int Tick { get; set; }
     public ulong SteamId { get; set; }
     public ReplayInventoryItemCount[] WeaponDefCounts { get; set; } = [];
-    public int ActiveWeaponDefIndex { get; set; }
     public int ArmorValue { get; set; }
     public bool HasHelmet { get; set; }
     public bool HasDefuser { get; set; }

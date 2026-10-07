@@ -1,6 +1,6 @@
 # Trademark and Official Build Policy
 
-The DemoTracer source code is open source under AGPL-3.0-only. That license does
+DemoTracer playback source is open source under AGPL-3.0-only. That license does
 not grant permission to misrepresent a modified distribution as an official
 release from this project.
 

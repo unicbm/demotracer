@@ -354,8 +354,6 @@ internal sealed class DtrReplayPrefetch
                             replay.Subticks.LongLength * BotControllerNative.SubtickMoveByteSize +
                             replay.CommandFrames.LongLength * BotControllerNative.ReplayCommandFrameByteSize +
                             replay.MovementExtras.LongLength * BotControllerNative.ReplayMovementExtraByteSize +
-                            replay.InputHistoryTicks.LongLength * BotControllerNative.ReplayInputHistoryTickByteSize +
-                            replay.InputHistoryEntries.LongLength * BotControllerNative.ReplayInputHistoryEntryByteSize +
                             replay.SourceState.LongLength * 16L +
                             replay.Projectiles.LongLength * 128L;
                 bytes += (replay.PreparedMetadata?.WeaponDefIndices.LongLength ?? 0) * sizeof(int);
@@ -364,7 +362,6 @@ internal sealed class DtrReplayPrefetch
                     bytes += replay.HighFidelity.Events.LongLength * 128L;
                     foreach (var snapshot in replay.HighFidelity.InventorySnapshots)
                         bytes += 64L + snapshot.WeaponDefCounts.LongLength * 32L;
-                    bytes += replay.HighFidelity.Projectiles.LongLength * 256L;
                 }
                 return Math.Max(1L, bytes);
             }

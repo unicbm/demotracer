@@ -129,6 +129,11 @@ public sealed class BotRandomizerAgentPlan
 public class BotRandomizerReplayItem
 {
     public int ItemDefinitionIndex { get; set; }
+    /// <summary>
+    /// Zero requests the unpainted finish for a known weapon or knife, with
+    /// PaintSeed and PaintWear both zero. Identity and attachments still apply.
+    /// Gloves require a catalog paint pair.
+    /// </summary>
     public uint PaintKit { get; set; }
     public uint PaintSeed { get; set; }
     public float PaintWear { get; set; }

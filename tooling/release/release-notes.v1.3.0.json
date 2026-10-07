@@ -1,4 +1,0 @@
-{
-  "zh": "1.3.0 改善回放与接管、第一人称与头像同步、装备时序和 5E 解析，精简档案并采用 Zstandard 压缩。\n请先更新 GUI，再更新播放组件。完整说明见 GitHub Release。",
-  "en": "1.3.0 improves replay, handoff, first-person presentation, avatars, equipment timing and 5E parsing, with compact Zstandard archives.\nUpdate the GUI first, then Playback. Full notes are on GitHub Releases."
-}

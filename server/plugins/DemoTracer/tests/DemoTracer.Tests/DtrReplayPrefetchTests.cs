@@ -72,7 +72,7 @@ public sealed class DtrReplayPrefetchTests : IDisposable
         Directory.CreateDirectory(tempDirectory);
         var path = Path.Combine(tempDirectory, "swapped.dtr");
         File.WriteAllBytes(path, [1, 2, 3]);
-        var replay = new DtrReplayFile(11, [], [], ReplayHighFidelityMetadata.Empty, [], [], [], [], [], 64, 0);
+        var replay = new DtrReplayFile(12, [], [], ReplayHighFidelityMetadata.Empty, [], [], [], 64, 0);
         var normal = new DtrReplayPrefetch(_ => replay);
         var swapped = new DtrReplayPrefetch(_ => replay);
         var plugin = (DemoTracerPlugin)RuntimeHelpers.GetUninitializedObject(typeof(DemoTracerPlugin));
