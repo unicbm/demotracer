@@ -16,3 +16,4 @@ Packaging uses tooling/scripts/package-server.ps1 and needs no desktop checkout.
 Never assign replay control to humans. Release all replay ownership, injected
 input, locks and transient state on every completion and failure path.
 Preserve user configuration. Inspect the staged files before every public push.
+Keep documentation brief; include only necessary usage, contracts and attribution.
