@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">DemoTracer logo — color</title>
+  <desc id="desc">Pink, violet and blue circular badge with a white DT monogram.</desc>
+  <defs>
+    <linearGradient id="demotracer-gradient" x1="0.24" y1="0.04" x2="0.75" y2="0.97">
+      <stop offset="0" stop-color="#FF5FA8"/>
+      <stop offset="0.5" stop-color="#A744DF"/>
+      <stop offset="1" stop-color="#3157FF"/>
+    </linearGradient>
+  </defs>
+  <circle cx="512" cy="512" r="460" fill="url(#demotracer-gradient)"/>
+  <circle cx="512" cy="512" r="454" fill="none" stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="8"/>
+  <g fill="#FFFFFF">
+    <path d="M334 656V286c0-12 10-22 22-22h158c98 0 181 62 214 149h-74c-28-49-80-82-140-82H402v258h90v67H334Z"/>
+    <path d="M680 508h72c-5 96-60 178-145 218v-77c42-31 69-82 73-141Z"/>
+    <rect x="438" y="423" width="326" height="66" rx="11"/>
+    <rect x="520" y="460" width="70" height="302" rx="11"/>
+  </g>
+</svg>
