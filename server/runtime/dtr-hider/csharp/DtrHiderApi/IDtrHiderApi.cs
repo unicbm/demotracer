@@ -147,8 +147,11 @@ public sealed class BotHiderDiagnostics
 
     public int RevokedLeases { get; set; }
 
+    // Legacy API name: counts server-side writes/notification requests, not
+    // delivered network updates or client acknowledgements.
     public int PublishedWrites { get; set; }
 
+    // Legacy API name: counts controller/service memory corrections only.
     public int ControllerRepairs { get; set; }
 
     public string[] Signatures { get; set; } = [];

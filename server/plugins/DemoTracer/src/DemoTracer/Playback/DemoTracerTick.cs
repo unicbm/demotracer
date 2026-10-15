@@ -24,11 +24,16 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
+    // Reuse storage only inside the synchronous tick path; refresh engine state
+    // every tick so deaths, disconnects and human takeovers are never cached.
+    private readonly TickPlayerSnapshot _tickPlayerSnapshot = new();
+
     private void ProcessReplayTick()
     {
         ProcessDtrRoundBanner();
-        ProcessVoiceTestPlayback();
-        ProcessChatPlayback();
+        TickPlayerSnapshot? playerSnapshot = null;
+        ProcessVoiceTestPlayback(ref playerSnapshot);
+        ProcessChatPlayback(ref playerSnapshot);
         if (_session.LoadedSlots.Count == 0)
         {
             RestoreAllReplayBotViewmodels();
@@ -52,7 +57,7 @@ public sealed partial class DemoTracerPlugin
                 activeSlots[trackedSlotCount++] = slot;
         }
 
-        var playerSnapshot = BuildTickPlayerSnapshot();
+        playerSnapshot ??= BuildTickPlayerSnapshot(_tickPlayerSnapshot);
         var activeSlotCount = 0;
         for (var trackedIndex = 0; trackedIndex < trackedSlotCount; trackedIndex++)
         {
@@ -120,7 +125,7 @@ public sealed partial class DemoTracerPlugin
             var state = activeStates[activeIndex];
 
             if (_session.LoadedReplays.TryGetValue(slot, out var replay))
-                ProcessReplayInventory(slot, replay, state.Cursor);
+                ProcessReplayInventory(slot, replay, state.CurrentTickIndex, playerSnapshot);
 
             if (!_weaponAlignEnabled)
                 continue;
@@ -135,7 +140,7 @@ public sealed partial class DemoTracerPlugin
                 lastDef == weaponDefIndex)
                 continue;
 
-            ApplyReplayWeaponPreset(slot, weaponDefIndex, force: false);
+            ApplyReplayWeaponPreset(slot, weaponDefIndex, force: false, playerSnapshot: playerSnapshot);
         }
     }
 

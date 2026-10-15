@@ -589,13 +589,19 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
 
     private static void ApplyMusicKit(CCSPlayerController player, int kitId, int musicKitMvps)
     {
-        // These are engine-managed schema values in current CS2/CSS builds.
-        // They are writable but not networked fields, so SetStateChanged would
-        // only be rejected and logged by CounterStrikeSharp.
-        var inventory = player.InventoryServices;
-        if (inventory is not null)
-            inventory.MusicID = checked((ushort)kitId);
+        var inventory = player.InventoryServices
+            ?? throw new InvalidOperationException("music-kit inventory service unavailable");
+        var offset = Schema.GetSchemaOffset("CCSPlayerController_InventoryServices", "m_unMusicID");
+        var chainOffset = Schema.GetSchemaOffset("CPlayerControllerComponent", "__m_pChainEntity");
+        if (offset <= 0 || chainOffset <= 0 ||
+            !Schema.IsSchemaFieldNetworked("CCSPlayerController_InventoryServices", "m_unMusicID"))
+            throw new InvalidOperationException("music-kit network field unavailable");
+        inventory.MusicID = checked((ushort)kitId);
+        NativeAPI.SchemaNetworkStateChanged(inventory.Handle + chainOffset,
+            (uint)offset, uint.MaxValue, uint.MaxValue);
 
+        // Engine-side companion values; the service notification above is not
+        // evidence that these controller fields are independently replicated.
         player.MusicKitID = kitId;
         player.MusicKitMVPs = musicKitMvps;
         player.MvpNoMusic = kitId == 0;

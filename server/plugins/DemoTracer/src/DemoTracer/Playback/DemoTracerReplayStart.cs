@@ -19,11 +19,14 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using CounterStrikeSharp.API.Core.Logging;
 
 namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
+    private string _loadedDemoSha256 = string.Empty;
     private string StartLoaded(bool loop)
         => StartLoaded(loop, ReplayStartAnchor.Live, null);
 
@@ -65,7 +68,11 @@ public sealed partial class DemoTracerPlugin
             return "[DTR ERR] Replay is unavailable during warmup.";
 
         if (!restartLoop && !TryAssignInitialRoundSpawns(out var spawnReason))
+        {
+            if (anchor == ReplayStartAnchor.Live && _soulChallenge is { Active: true })
+                StopAllState("soul_spawn_assignment_failed");
             return $"[DTR ERR] initial spawn assignment is not ready: {spawnReason}";
+        }
 
         var ok = 0;
         foreach (var slot in slots)
@@ -115,7 +122,6 @@ public sealed partial class DemoTracerPlugin
                 ReleaseReplaySlot(slot, "start_failed");
             }
         }
-        RepairMissingReplayPlayerColors();
         timing.Mark("slots");
         // A partial loop must not restart the round's media for a stopped or
         // handed-off speaker. An independent voice test also keeps its clock.
@@ -129,6 +135,12 @@ public sealed partial class DemoTracerPlugin
             ? TryStartLoadedAutoChatPlayback(anchor, freezeTimeSeconds, ok)
             : string.Empty;
         timing.Mark("media");
+        if (anchor == ReplayStartAnchor.Live && !restartLoop)
+            BeginSoulAttempt(ok);
+        if (!restartLoop && ok > 0 && _loadedDemoSha256.Length == 64)
+            // The GUI monitors log-cssharp, not the separate per-plugin log.
+            CoreLogging.Factory.CreateLogger("DemoTracer")
+                .LogInformation("DTR_PLAYED_DEMO_V1 sha256={DemoSha256}", _loadedDemoSha256);
         return $"dtr: started {ok}/{slots.Count} loaded slots, loop={loop}{voice}{chat}";
     }
 

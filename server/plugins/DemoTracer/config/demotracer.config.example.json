@@ -3,6 +3,7 @@
   "allow_partial": true,
   "playoff": false,
   "chat_auto": true,
+  "mute_diverged_dead_comms": true,
   "round_banner": true,
   "handoff": {
     "mode": "death_contact_c4",
@@ -25,7 +26,6 @@
   },
   "cosmetics": {
     "preset": "off",
-    "agents": false,
-    "preserve_native": false
+    "agents": false
   }
 }

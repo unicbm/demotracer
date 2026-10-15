@@ -24,8 +24,8 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
     private bool _draining;
     private bool _disposed;
     private int _revokedLeases;
-    private int _publishedWrites;
-    private int _controllerRepairs;
+    private int _serverWrites;
+    private int _controllerWrites;
 
     public BotHiderPresentationService(NativePresentationClient client)
     {
@@ -86,7 +86,7 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             var lease = new PresentationLease(token, owner, normalized, ownerLifetime);
             AddLease(lease);
             PublishSlots(lease.Overrides.Keys);
-            if (IsLeaseAppliedSynchronously(lease, out var applyReason))
+            if (IsLeaseAppliedOnServer(lease, out var applyReason))
                 return Success(lease);
 
             RemoveLease(lease.Token, countRevocation: false);
@@ -122,7 +122,7 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             AddLeaseMappings(replacement);
             var affectedSlots = existing.Overrides.Keys.Union(normalized.Keys).ToArray();
             PublishSlots(affectedSlots);
-            if (IsLeaseAppliedSynchronously(replacement, out var applyReason))
+            if (IsLeaseAppliedOnServer(replacement, out var applyReason))
                 return Success(replacement);
 
             RemoveLeaseMappings(replacement);
@@ -179,8 +179,8 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
                 ActiveLeases = _leases.Count,
                 LeasedSlots = _leaseBySlot.Count,
                 RevokedLeases = _revokedLeases,
-                PublishedWrites = _publishedWrites,
-                ControllerRepairs = _controllerRepairs,
+                PublishedWrites = _serverWrites,
+                ControllerRepairs = _controllerWrites,
                 Signatures = _client.GetSignatures()
                     .Select(signature => $"{signature.Name}=0x{signature.Addr:X}")
                     .ToArray()
@@ -234,7 +234,7 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
     {
         if (player.Ping != checked((uint)Math.Max(native.Ping, 0)) &&
             _client.PublishPing(slot, _nativeSession, native.Incarnation, player.EntityHandle.Raw))
-            _publishedWrites++;
+            _serverWrites++;
     }
 
     private void ObserveNativeSession()
@@ -491,7 +491,7 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
         var playerName = presentationOverride?.PlayerName ?? native.ReadName();
         var steamId = presentationOverride?.SteamId ?? native.SteamId;
         var crosshair = presentationOverride?.CrosshairCode ??
-            (_slots[slot].PublishedController == 0 ? native.ReadCrosshair() : player.CrosshairCodes ?? string.Empty);
+            (_slots[slot].AppliedController == 0 ? native.ReadCrosshair() : player.CrosshairCodes ?? string.Empty);
         var forceCrosshairPublication = _slots[slot].NeedsCrosshairPublication(player.EntityHandle.Raw);
         try
         {
@@ -502,7 +502,7 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             if (!_client.PublishIdentity(slot, _nativeSession, _slots[slot].NativeIncarnation,
                     steamId, playerName))
                 throw new InvalidOperationException("native identity publication rejected");
-            if (nativeNameMismatch || nativeSidMismatch) _publishedWrites++;
+            if (nativeNameMismatch || nativeSidMismatch) _serverWrites++;
 
             if (!player.PlayerName.Equals(playerName, StringComparison.Ordinal))
             {
@@ -510,7 +510,7 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
                 Utilities.SetStateChanged(player, "CBasePlayerController", "m_iszPlayerName");
                 if (!player.PlayerName.Equals(playerName, StringComparison.Ordinal))
                     throw new InvalidOperationException("controller name write was not retained");
-                _publishedWrites++; _controllerRepairs++;
+                _serverWrites++; _controllerWrites++;
             }
             if (player.SteamID != steamId)
             {
@@ -518,7 +518,7 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
                 Utilities.SetStateChanged(player, "CBasePlayerController", "m_steamID");
                 if (player.SteamID != steamId)
                     throw new InvalidOperationException("controller SteamID write was not retained");
-                _publishedWrites++; _controllerRepairs++;
+                _serverWrites++; _controllerWrites++;
             }
 
             PublishPing(slot, native, player);
@@ -533,34 +533,36 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
                     out var crosshairChanged,
                     out var crosshairPublished);
             _slots[slot].CrosshairPending = !crosshairSynchronized;
-            if (crosshairChanged || crosshairPublished) _publishedWrites++;
-            if (crosshairChanged) _controllerRepairs++;
+            if (crosshairChanged || crosshairPublished) _serverWrites++;
+            if (crosshairChanged) _controllerWrites++;
             if (!crosshairSynchronized)
                 ReportPresentationFailure(slot, "crosshair notification pending");
 
             if (presentationOverride?.ScoreboardFlair is { } flair)
             {
-                if (!ScoreboardFlairMatches(player, flair))
+                if (_slots[slot].FlairPending || !ScoreboardFlairMatches(player, flair))
                 {
+                    _slots[slot].FlairPending = true;
                     if (!ApplyScoreboardFlair(player, flair) || !ScoreboardFlairMatches(player, flair))
                         throw new InvalidOperationException("controller scoreboard flair write was not retained");
-                    _publishedWrites++;
-                    _controllerRepairs++;
+                    _slots[slot].FlairPending = false;
+                    _serverWrites++;
+                    _controllerWrites++;
                 }
             }
 
             if (ApplyClan(presentationOverride?.Clan, player))
             {
-                _publishedWrites++;
-                _controllerRepairs++;
+                _serverWrites++;
+                _controllerWrites++;
             }
 
-            _slots[slot].PublishedController = player.EntityHandle.Raw;
+            _slots[slot].AppliedController = player.EntityHandle.Raw;
             if (crosshairSynchronized) _slots[slot].SuppressedFailures = 0;
         }
         catch (Exception ex)
         {
-            _slots[slot].PublishedController = 0;
+            _slots[slot].AppliedController = 0;
             ReportPresentationFailure(slot, ex.Message);
         }
     }
@@ -591,7 +593,8 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
         if (current == requested)
             return false;
 
-        // Clan fields are not networked; SetStateChanged only emits warnings.
+        // This readback confirms server state only. Controller Schema metadata
+        // does not reliably describe the engine's network serializer.
         if (current.Tag != requested.Tag)
             player.Clan = requested.Tag;
         if (current.Id != requested.Id)
@@ -637,30 +640,22 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
         var ranks = inventory.Rank;
         if (ranks.Length == 0)
             return false;
+        var rankOffset = Schema.GetSchemaOffset("CCSPlayerController_InventoryServices", "m_rank");
+        var chainOffset = Schema.GetSchemaOffset("CPlayerControllerComponent", "__m_pChainEntity");
+        if (rankOffset <= 0 || chainOffset <= 0 ||
+            !Schema.IsSchemaFieldNetworked("CCSPlayerController_InventoryServices", "m_rank"))
+            return false;
         for (var index = 0; index < ranks.Length; index++)
         {
-            if ((uint)ranks[index] == itemDefIndex)
-                continue;
-            ranks[index] = (MedalRank_t)itemDefIndex;
-            TrySetStateChanged(
-                player,
-                "CCSPlayerController_InventoryServices",
-                "m_rank",
-                index * sizeof(uint));
+            if ((uint)ranks[index] != itemDefIndex)
+                ranks[index] = (MedalRank_t)itemDefIndex;
         }
+        // Notify the fixed-array field as a whole. Interior element offsets
+        // are not serializer fields. The service chainer supplies the owner/path.
+        NativeAPI.SchemaNetworkStateChanged(
+            inventory.Handle + chainOffset, (uint)rankOffset,
+            uint.MaxValue, uint.MaxValue);
         return true;
-    }
-
-    private static bool IsNetworkedSchemaField(string className, string fieldName)
-    {
-        try
-        {
-            return Schema.IsSchemaFieldNetworked(className, fieldName);
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     internal static bool TryWriteNetworkedCrosshair(
@@ -698,23 +693,6 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
             // Keep notification failure visible to the retry state and to
             // leases that explicitly requested a crosshair override.
             return false;
-        }
-    }
-
-    private static void TrySetStateChanged(
-        CBaseEntity entity,
-        string className,
-        string fieldName,
-        int extraOffset = 0)
-    {
-        if (!IsNetworkedSchemaField(className, fieldName))
-            return;
-        try
-        {
-            Utilities.SetStateChanged(entity, className, fieldName, extraOffset);
-        }
-        catch
-        {
         }
     }
 
@@ -774,13 +752,13 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
         }
     }
 
-    private bool IsLeaseAppliedSynchronously(PresentationLease lease, out string reason)
+    private bool IsLeaseAppliedOnServer(PresentationLease lease, out string reason)
     {
         foreach (var requested in lease.Overrides.Values)
         {
             if (!_leaseBySlot.TryGetValue(requested.Slot, out var token) ||
                 !token.Equals(lease.Token, StringComparison.Ordinal) ||
-                _slots[requested.Slot].PublishedController == 0 ||
+                _slots[requested.Slot].AppliedController == 0 ||
                 _slots[requested.Slot].Incarnation != requested.Incarnation)
             {
                 reason = $"controller_presentation_not_applied:{requested.Slot}";
@@ -789,7 +767,7 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
 
             var player = Utilities.GetPlayerFromSlot(requested.Slot);
             if (player is not { IsValid: true } ||
-                _slots[requested.Slot].PublishedController != player.EntityHandle.Raw ||
+                _slots[requested.Slot].AppliedController != player.EntityHandle.Raw ||
                 !_client.TryGetSlot(requested.Slot, out var native))
             {
                 reason = $"controller_presentation_not_applied:{requested.Slot}";
@@ -803,7 +781,8 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
                                  (player.SteamID == requested.SteamId.Value &&
                                   native.SteamId == requested.SteamId.Value);
             var scoreboardFlairMatches = !requested.ScoreboardFlair.HasValue ||
-                                         ScoreboardFlairMatches(player, requested.ScoreboardFlair.Value);
+                                         (!_slots[requested.Slot].FlairPending &&
+                                          ScoreboardFlairMatches(player, requested.ScoreboardFlair.Value));
             var crosshairMatches = RequestedCrosshairMatches(
                 requested.CrosshairCode,
                 player.CrosshairCodes,
@@ -892,12 +871,12 @@ internal sealed class BotHiderPresentationService : IDtrHiderApi, IDisposable
     {
         public int UserId;
         public ulong Incarnation, NativeIncarnation;
-        public uint Controller, PublishedController;
-        public bool CrosshairPending;
+        public uint Controller, AppliedController;
+        public bool CrosshairPending, FlairPending;
         public DateTime NextFailureLogUtc;
         public int SuppressedFailures;
 
         public readonly bool NeedsCrosshairPublication(uint controller)
-            => PublishedController == 0 || PublishedController != controller || CrosshairPending;
+            => AppliedController == 0 || AppliedController != controller || CrosshairPending;
     }
 }

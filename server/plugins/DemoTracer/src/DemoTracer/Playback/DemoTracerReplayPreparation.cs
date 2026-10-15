@@ -88,7 +88,6 @@ public sealed partial class DemoTracerPlugin
             }
         }
 
-        RepairMissingReplayPlayerColors();
         AlignSafeC4OwnerForLoadedReplays();
         timing.Mark("presentation_c4");
     }
@@ -254,6 +253,11 @@ public sealed partial class DemoTracerPlugin
         var roundEpoch = _replayRoundWorkEpoch;
         if (_safeC4ReplacementAuthorizedEpoch != roundEpoch)
             return;
+        // Inventory scans miss a dropped C4. A carried, dropped or planted
+        // objective already in the world rules out creating another one.
+        if (Utilities.FindAllEntitiesByDesignerName<CBasePlayerWeapon>("weapon_c4").Any(entity => entity.IsValid) ||
+            Utilities.FindAllEntitiesByDesignerName<CBaseEntity>("planted_c4").Any(entity => entity.IsValid))
+            return;
 
         // Consume the authorization before calling the engine. A successful
         // GiveNamedItem whose attachment is delayed or unobservable must never
@@ -383,6 +387,12 @@ public sealed partial class DemoTracerPlugin
 
         var activeWeaponHandle = pawn.WeaponServices?.ActiveWeapon.Raw ??
                                  Utilities.InvalidEHandleIndex;
+        var previousWeaponDef = BotControllerNative.BotActiveWeaponDef(player.Slot);
+        if (activeWeaponHandle != weaponEntityHandle)
+        {
+            _ = BotControllerNative.SwitchBotWeapon(player.Slot, 49);
+            activeWeaponHandle = pawn.WeaponServices?.ActiveWeapon.Raw ?? Utilities.InvalidEHandleIndex;
+        }
         if (!ReplayWeaponReplacementPolicy.CanUseActiveWeaponDropForC4(
                 pawnOwnsC4,
                 activeWeaponHandle == weaponEntityHandle))
@@ -395,12 +405,15 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
+        _session.LastReplayWeaponDef.Remove(player.Slot);
         try
         {
             // The C4 identity and active-weapon identity were observed to match
             // immediately above, so this active-weapon API cannot drop a gun.
             var itemServices = new CCSPlayer_ItemServices(pawn.ItemServices.Handle);
             itemServices.DropActivePlayerWeapon(weapon);
+            if (previousWeaponDef >= 0 && previousWeaponDef != 49)
+                _ = BotControllerNative.SwitchBotWeapon(player.Slot, previousWeaponDef);
         }
         catch (Exception ex)
         {

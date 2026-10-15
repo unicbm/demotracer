@@ -21,7 +21,9 @@ bool InitializeOffsets() {
     aimServicesOffset = Schema::GetFieldOffset("CCSPlayerPawn", "m_pAimPunchServices");
     bool ready = modernJumpOffset >= 0 && aimServicesOffset >= 0;
     for (uint32_t i = 0; i < FieldCount; ++i) {
-        if (IsRuntimeOwnedAmmo(i)) { offsets[i] = -1; continue; }
+        // Ladder contact detection resets and recomputes this index before use.
+        // Keep its recorded ID readable, but do not restore it into simulation.
+        if (i == LadderSurface || IsRuntimeOwnedAmmo(i)) { offsets[i] = -1; continue; }
         const auto &f = fields[i]; int offset = -1;
         switch (f.target) {
         case Target::Pawn: offset = Find({"CCSPlayerPawn", "CCSPlayerPawnBase", "CBasePlayerPawn", "CBaseEntity"}, f.field); break;
@@ -86,8 +88,8 @@ bool Apply(void *pawn, void *movement, void *weaponServices, void *weapon,
         const auto &write = writes[i];
         if (!TryWriteMemory(write.base, write.offset, &write.bits, write.size)) return false;
     }
-    if (pawnChanged) InputInjector::PublishReplayState(pawn);
-    if (weaponChanged) InputInjector::PublishReplayState(weapon);
+    if (pawnChanged) InputInjector::MarkReplayStateChanged(pawn);
+    if (weaponChanged) InputInjector::MarkReplayStateChanged(weapon);
     return true;
 }
 }

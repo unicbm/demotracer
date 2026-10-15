@@ -124,6 +124,7 @@ public sealed partial class DemoTracerPlugin
                 deferStopUntilRoundStart: restart))
             return;
 
+        CancelSoulChallenge("replaced_by_sequence");
         ActivatePendingReplayRetentionPriority();
         if (!restart)
             StopAndUnloadLoaded();
@@ -168,7 +169,7 @@ public sealed partial class DemoTracerPlugin
             message => command.ReplyToCommand(message));
     }
 
-    private void PlanSingleRound(
+    private bool PlanSingleRound(
         string commandName,
         string manifestPath,
         int round,
@@ -179,14 +180,14 @@ public sealed partial class DemoTracerPlugin
         if (!BotControllerNative.IsCompatible)
         {
             reply($"dtr: ABI mismatch; {BotControllerNative.RuntimeSummary}");
-            return;
+            return false;
         }
         var resolvedManifestPath = ResolveReadableManifestPath(manifestPath);
         var hasManifestStampBefore = ReplayFileStamp.TryRead(resolvedManifestPath, out var manifestStampBefore);
         if (!TryReadManifest(resolvedManifestPath, out var manifest, out var readError))
         {
             reply($"[DTR ERR] failed to read manifest: {readError}");
-            return;
+            return false;
         }
         var stableManifestStamp = hasManifestStampBefore &&
                                   ReplayFileStamp.TryRead(resolvedManifestPath, out var manifestStampAfter) &&
@@ -196,20 +197,21 @@ public sealed partial class DemoTracerPlugin
         if (!CurrentMapMatchesManifest(manifest.Map, out var currentMap))
         {
             reply($"[DTR ERR] map mismatch: server=\"{currentMap}\" manifest=\"{manifest.Map}\" path=\"{manifestPath}\"");
-            return;
+            return false;
         }
         if (!ManifestContainsSourceRound(manifest, round, out var validateError))
         {
             reply(validateError);
-            return;
+            return false;
         }
 
         if (!CheckReplayStartGates(
                 reply,
                 stopCurrentForOverride: true,
                 deferStopUntilRoundStart: restart))
-            return;
+            return false;
 
+        CancelSoulChallenge("replaced_by_single_round");
         ActivatePendingReplayRetentionPriority();
         if (!restart)
             StopAndUnloadLoaded();
@@ -231,6 +233,7 @@ public sealed partial class DemoTracerPlugin
                 : $"[DTR OK] Armed SINGLE ROUND. manifest=\"{manifestPath}\"; source_round={round}; waiting for next round_prestart.");
         reply("[DTR OK] This plan will not advance to later manifest rounds.");
         IssueRestartIfRequested(restart, reply);
+        return true;
     }
 
     private bool PrepareNextSequenceRound(

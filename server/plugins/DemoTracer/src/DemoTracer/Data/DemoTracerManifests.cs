@@ -14,6 +14,7 @@ public sealed partial class DemoTracerPlugin
 {
     private sealed class ConversionManifest
     {
+        public string DemoSha256 { get; set; } = string.Empty;
         public int FormatVersion { get; set; }
         public int Abi { get; set; }
         public string Map { get; set; } = string.Empty;

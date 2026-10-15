@@ -19,6 +19,7 @@ public sealed partial class DemoTracerPlugin
     private const string OriginalHiderPath = "addons/BotHider/bin/win64/BotHider";
     private const string ReplayHiderPath = "addons/dtr-hider/bin/win64/dtr-hider";
     private CounterStrikeSharp.API.Modules.Timers.Timer? _hiderSwitchTimer;
+    private string? _pendingHiderCommand;
     private bool _restoreOriginalHider;
     private IPluginContext? _restoreOriginalHiderManaged;
     private bool _hiderUsedThisMap;
@@ -33,7 +34,7 @@ public sealed partial class DemoTracerPlugin
         return plugins.FindPluginByModuleName("BotHiderImpl");
     }
 
-    private bool EnsureHiderForCommand(CommandInfo command)
+    private bool EnsureHiderForCommand(CommandInfo command, string? deferredCommand = null)
     {
         if (BotControllerNative.AbiInfo.AbiMinor < MinimumBotControllerAbiMinor)
         {
@@ -56,7 +57,8 @@ public sealed partial class DemoTracerPlugin
 
         _restoreOriginalHider |= nativeId != 0;
         _hiderUsedThisMap = true;
-        var pendingCommand = command.GetCommandString;
+        var pendingCommand = deferredCommand ?? command.GetCommandString;
+        _pendingHiderCommand = pendingCommand;
         command.ReplyToCommand("[DTR] Unloading BotHider and loading dtr-hider; playback will continue once ready.");
         if (managedLoaded)
         {
@@ -100,6 +102,7 @@ public sealed partial class DemoTracerPlugin
     {
         _hiderSwitchTimer?.Kill();
         _hiderSwitchTimer = null;
+        _pendingHiderCommand = null;
     }
 
     private void RestoreHiderAfterMap()

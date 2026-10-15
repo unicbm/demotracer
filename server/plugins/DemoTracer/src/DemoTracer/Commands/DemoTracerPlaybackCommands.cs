@@ -34,6 +34,7 @@ public sealed partial class DemoTracerPlugin
                 return;
             if (!EnsureHiderForCommand(command)) return;
 
+            CancelSoulChallenge("manual_load_round");
             ActivatePendingReplayRetentionPriority();
             var result = LoadRound(manifestPath, round);
             command.ReplyToCommand(result.Message);
@@ -54,11 +55,12 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
+        CancelSoulChallenge("manual_load_slot");
         var ok = BotControllerNative.LoadReplayFromFile(slot, path, out var replayMetadata);
         if (ok)
         {
             RememberLoadedSlot(slot);
-            TrackLoadedReplay(slot, path, $"slot{slot}", replayMetadata: replayMetadata);
+            TrackLoadedReplay(slot, path, $"slot{slot}", replayMetadata);
         }
 
         command.ReplyToCommand(ok
@@ -85,6 +87,7 @@ public sealed partial class DemoTracerPlugin
             var loopLoaded = command.ArgCount >= 3 && command.GetArg(2) != "0";
             if (!CheckReplayStartGates(message => command.ReplyToCommand(message), stopCurrentForOverride: false))
                 return;
+            CancelSoulChallenge("manual_play_loaded");
             command.ReplyToCommand("[DTR WARN] dtr_play loaded is manual/debug playback; it bypasses round_start/round_freeze_end lifecycle alignment.");
             command.ReplyToCommand(PlayLoaded(loopLoaded));
             return;
@@ -105,6 +108,7 @@ public sealed partial class DemoTracerPlugin
             return;
 
         var loop = command.ArgCount >= 4 && command.GetArg(3) != "0";
+        CancelSoulChallenge("manual_play_slot");
         _session.ReplaySlots.Claim(slot);
         if (_session.LoadedReplays.TryGetValue(slot, out var replay))
             PreloadReplayWeaponsForSlot(slot, replay);
@@ -147,6 +151,7 @@ public sealed partial class DemoTracerPlugin
                 return;
             case "replay":
             case "loaded":
+                CancelSoulChallenge("manual_stop_replay");
                 StopLoadedReplaySlots("manual_stop_replay");
                 command.ReplyToCommand("[DTR OK] current loaded/running replay slots stopped");
                 return;
@@ -157,6 +162,7 @@ public sealed partial class DemoTracerPlugin
             case "slot":
                 if (!TryParseSlotAt(command, 2, out var namedSlot))
                     return;
+                CancelSoulChallenge("manual_stop_slot");
                 StopOneSlot(command, namedSlot, "manual_stop");
                 return;
             default:

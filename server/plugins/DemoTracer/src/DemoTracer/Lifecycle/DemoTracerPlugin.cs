@@ -25,7 +25,7 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin : BasePlugin
 {
     public override string ModuleName => "CS2 DemoTracer";
-    public override string ModuleVersion => "1.5.9";
+    public override string ModuleVersion => "1.5.10";
     public override string ModuleAuthor => "unicbm";
     public override string ModuleDescription => "Trace CS2 demos into bot-executable route replays.";
 
@@ -72,7 +72,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private bool _cosmeticGlovesEnabled;
     private bool _cosmeticNamesEnabled;
     private bool _cosmeticAgentsEnabled;
-    private bool _preserveNativeBotCosmetics;
     private bool _stickerAlignEnabled;
     private bool _charmAlignEnabled;
     private bool _crosshairAlignEnabled = true;
@@ -168,6 +167,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
             return;
 
         var disconnectsReplaySlot = IsDisconnectingReplaySlot(playerSlot);
+        CheckSoulTeam(playerSlot);
         ClearHumanTeamAvatarOverrideForSlot(playerSlot, "client_disconnect");
         if (disconnectsReplaySlot)
         {

@@ -83,8 +83,11 @@ public sealed partial class DemoTracerPlugin
         _session.ProjectileAlignNextBySlot[slot] = 0;
     }
 
-    private bool CanWriteReplaySlot(int slot)
-        => _session.ReplaySlots.IsOwned(slot) && IsReplaySlotStillSafe(slot);
+    private bool CanWriteReplaySlot(int slot, TickPlayerSnapshot? playerSnapshot = null)
+        => _session.ReplaySlots.IsOwned(slot) &&
+           (playerSnapshot == null
+               ? IsReplaySlotStillSafe(slot)
+               : IsReplaySlotStillSafe(slot, playerSnapshot));
 
     private void ReleaseReplaySlot(
         int slot,

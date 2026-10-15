@@ -35,6 +35,36 @@ Playoff continuation draws from live-start inventories where every recorded
 player on the selected side has a rifle/sniper rifle. Both teams need at least
 two eligible rounds per side. Cash and economy settings do not affect selection.
 
+## Demo Souls
+
+Experimental server commands; stability is not yet verified. The GUI does not
+expose this mode.
+
+```text
+dtr_soul "<manifest.json>" <source_round> [t|ct]
+dtr_soul_stats
+dtr_soul_stop
+```
+
+`dtr_soul` challenges one source round repeatedly. The team defaults to the
+local caller's T/CT side; the server console must specify `t` or `ct`. At least
+one human must be on that team. Team defeat automatically restarts the same
+round through the normal replay preparation path. Human death alone does not
+restart it. Team victory completes the challenge; there is no next level.
+
+A five-second opening banner shows the source round, team and attempt number.
+The statistics command reports combat time and human kills/deaths/damage.
+An optional server-local `sounds/demo-souls-death.dtv` in the plugin directory
+plays on a human participant's death. It uses the existing server voice stream
+and client voice volume, requires no client download, and does not interrupt
+demo voice playback. Simultaneous deaths share one sound. The sound asset is
+installed separately and is not included in the product bundle.
+Victory prints totals and per-attempt results to the server console;
+`dtr_soul_stats` also retrieves the current/last challenge. Statistics are
+session-local, and interrupted attempts are reported separately from defeats.
+`dtr_soul_stop`, replacing the replay plan, map changes and plugin unload cancel
+the challenge. No engine team scores or match statistics are overwritten.
+
 ## Desktop Preset
 
 ```text
@@ -95,14 +125,14 @@ valid manifest PNG when available.
 presentation unchanged; an explicit empty tag clears it. Identity `off` or
 lease release leaves the applied presentation in place.
 
-Unassigned bot teammate colors use recorded evidence when available, selecting
-a free color if occupied. Existing colors and human players remain unchanged.
+Recorded teammate colors remain available as demo metadata. Live teammate
+colors are assigned by CS2; playback does not overwrite them.
 
 ### Cosmetics
 
 ```text
 dtr_cosmetics [status|off|weapons|basic|full]
-dtr_cosmetics <weapons|knives|gloves|names|agents|stickers|charms|preserve_native> <on|off>
+dtr_cosmetics <weapons|knives|gloves|names|agents|stickers|charms> <on|off>
 ```
 
 | Preset | Enabled cosmetics |
@@ -135,6 +165,7 @@ during replay; native visibility checks remain active.
 | Command | Purpose |
 | --- | --- |
 | `dtr_chat_auto [status|on|off]` | Toggle timed manifest chat replay; default on. |
+| `dtr_mute_dead_comms [status|on|off]` | Default on: suppress automatic voice/player chat when the actual pawn is dead while the recorded replay still has alive frames. |
 | `dtr_chat_test <loaded|any|slot> [all|team] <message>` | Send one diagnostic bot chat line. |
 | `dtr_voice_auto [status|on|off]` | Toggle automatic `.dtv` playback. |
 | `dtr_voice_test <voice_clip.dtv> <sender_slot> [recipient_slot|all]` | Test one sidecar with a fixed sender. |
@@ -146,6 +177,10 @@ two round-number digits. Keep these sidecars with the archive. Speakers map by
 XUID to replay bots. Observers hear all replay voice; human T/CT players hear
 their own team. Bots and HLTV are not recipients. Missing usable voice evidence
 produces no sidecar.
+
+`mute_diverged_dead_comms` persists the dead-pawn communication setting in
+`demotracer.config.json`. Recorded communication beyond the exported alive-frame
+interval is preserved, as are server chat and manual communication tests.
 
 ## Manual Replay Control
 

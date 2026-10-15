@@ -438,7 +438,10 @@ are rebased to live simulation time, while inactive sentinel values are preserve
 Aim-punch base states belong to AimPunchServices and are not added to command view
 angles. Stop and handoff preserve native motion and weapon state.
 
-Boundary writes notify native entity replication once, including nested services.
+Boundary writes mark entity state dirty, including networked nested services.
+This requests serialization; it does not confirm client receipt or that the
+recorded value survives simulation before the next snapshot. Local view/history
+angles feed simulation; the engine publishes the resulting eye angles.
 Weapons are selected through the native deploy path before restoring their attack
 deadlines. Writers omit clip counts, reserve ammo, reload flags and the unused
 ServerTick field. Playback never restores
@@ -449,7 +452,8 @@ live tick intervals must match; playback does not resample state clocks.
 A discontinuous start already on a ladder requires a valid recorded contact
 normal. When the demo omits it, start before mounting the ladder so native movement
 can establish contact. Playback rejects that unsupported start instead of using a
-zero or stale plane. The ladder surface index is not a substitute for its normal.
+zero or stale plane. Playback leaves the ladder surface index to native contact
+detection; recorded indices remain readable but are not restored.
 
 Manifest ABI 19 requires the matching v12 reader and BotController ABI 22
 source-state capability (bit 17).

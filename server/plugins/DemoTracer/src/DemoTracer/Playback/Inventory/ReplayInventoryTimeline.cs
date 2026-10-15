@@ -39,13 +39,16 @@ internal sealed class ReplayInventoryTimeline(ReplayInventorySnapshot[] snapshot
         while (_next < snapshots.Length && snapshots[_next].TickIndex <= cursor)
         {
             var snapshot = snapshots[_next++];
-            var counts = snapshot.WeaponDefCounts.ToDictionary(item => item.WeaponDefIndex, item => item.Count);
             // Invalidate a deferred grant if the demo no longer holds that item.
-            foreach (var def in PendingWeapons.Keys.ToArray())
+            if (PendingWeapons.Count > 0)
             {
-                var remaining = counts.GetValueOrDefault(def);
-                if (remaining <= 0) PendingWeapons.Remove(def);
-                else PendingWeapons[def] = Math.Min(PendingWeapons[def], remaining);
+                var counts = snapshot.WeaponDefCounts.ToDictionary(item => item.WeaponDefIndex, item => item.Count);
+                foreach (var def in PendingWeapons.Keys.ToArray())
+                {
+                    var remaining = counts.GetValueOrDefault(def);
+                    if (remaining <= 0) PendingWeapons.Remove(def);
+                    else PendingWeapons[def] = Math.Min(PendingWeapons[def], remaining);
+                }
             }
             foreach (var item in snapshot.WeaponDefCounts)
                 if (item.Acquired) PendingWeapons[item.WeaponDefIndex] = item.Count;

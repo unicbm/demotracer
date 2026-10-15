@@ -333,8 +333,8 @@ public sealed class DtrHiderPlugin : BasePlugin
             $"[dtr-hider] api={provider.ApiVersion} connected={provider.Connected} " +
             $"epoch={provider.ProviderEpoch} map_epoch={provider.MapEpoch} " +
             $"managed={diagnostics.ManagedSlots} leases={diagnostics.ActiveLeases}/" +
-            $"{diagnostics.LeasedSlots} writes={diagnostics.PublishedWrites} " +
-            $"controller_repairs={diagnostics.ControllerRepairs} " +
+            $"{diagnostics.LeasedSlots} server_writes={diagnostics.PublishedWrites} " +
+            $"controller_writes={diagnostics.ControllerRepairs} " +
             "crosshair_writer=networked_on_demand");
         if (diagnostics.Signatures.Length > 0)
             command.ReplyToCommand($"[dtr-hider] hooks: {string.Join(' ', diagnostics.Signatures)}");

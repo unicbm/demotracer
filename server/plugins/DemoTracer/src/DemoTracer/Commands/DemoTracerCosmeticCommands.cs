@@ -24,7 +24,7 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
-    [ConsoleCommand("dtr_cosmetics", "dtr_cosmetics [status|off|weapons|basic|full|weapons|knives|gloves|names|agents|stickers|charms|preserve_native] [on|off]")]
+    [ConsoleCommand("dtr_cosmetics", "dtr_cosmetics [status|off|weapons|basic|full|weapons|knives|gloves|names|agents|stickers|charms] [on|off]")]
     [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
     public void CosmeticsCommand(CCSPlayerController? player, CommandInfo command)
     {
@@ -44,7 +44,7 @@ public sealed partial class DemoTracerPlugin
                      command.ReplyToCommand))
         {
             command.ReplyToCommand("usage: dtr_cosmetics [status|off|weapons|basic|full]");
-            command.ReplyToCommand("usage: dtr_cosmetics <weapons|knives|gloves|names|agents|stickers|charms|preserve_native> <on|off>");
+            command.ReplyToCommand("usage: dtr_cosmetics <weapons|knives|gloves|names|agents|stickers|charms> <on|off>");
             return;
         }
 
@@ -66,8 +66,7 @@ public sealed partial class DemoTracerPlugin
     private void ReplyCosmeticsStatus(Action<string> reply)
     {
         reply($"[DTR COSMETICS] preset={CosmeticPresetName()} risk={FormatOnOff(_cosmeticAlignEnabled)}");
-        reply("[DTR COSMETICS] replay_identity_claims=agent,knife,gloves missing=native_agent,team_knife,no_gloves");
-        reply($"[DTR COSMETICS] weapons={FormatOnOff(_cosmeticWeaponsEnabled)} knives={FormatOnOff(_cosmeticKnivesEnabled)} gloves={FormatOnOff(_cosmeticGlovesEnabled)} names={FormatOnOff(_cosmeticNamesEnabled)} agents={FormatOnOff(_cosmeticAgentsEnabled)} stickers={FormatOnOff(_stickerAlignEnabled)} charms={FormatOnOff(_charmAlignEnabled)} preserve_native={FormatOnOff(_preserveNativeBotCosmetics)}");
+        reply($"[DTR COSMETICS] weapons={FormatOnOff(_cosmeticWeaponsEnabled)} knives={FormatOnOff(_cosmeticKnivesEnabled)} gloves={FormatOnOff(_cosmeticGlovesEnabled)} names={FormatOnOff(_cosmeticNamesEnabled)} agents={FormatOnOff(_cosmeticAgentsEnabled)} stickers={FormatOnOff(_stickerAlignEnabled)} charms={FormatOnOff(_charmAlignEnabled)}");
         reply($"[DTR COSMETICS] {FormatCosmeticStatusCounts()}");
     }
 
@@ -125,13 +124,6 @@ public sealed partial class DemoTracerPlugin
             case "keychain":
                 SetCharmAlignEnabled(enabled);
                 return true;
-            case "preserve_native":
-            case "preserve-native":
-            case "preserve_bot":
-            case "preserve-bot":
-            case "native":
-                _preserveNativeBotCosmetics = enabled;
-                break;
             default:
                 reply($"[DTR ERR] unknown dtr_cosmetics component: {component}");
                 return false;

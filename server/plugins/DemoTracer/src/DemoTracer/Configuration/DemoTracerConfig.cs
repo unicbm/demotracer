@@ -99,6 +99,8 @@ public sealed partial class DemoTracerPlugin
             _playoffEnabled = config.Playoff.Value;
         if (config.ChatAuto.HasValue)
             _chatAutoEnabled = config.ChatAuto.Value;
+        if (config.MuteDivergedDeadComms.HasValue)
+            _muteDivergedDeadCommsEnabled = config.MuteDivergedDeadComms.Value;
         if (config.RoundBanner.HasValue)
             _roundBannerEnabled = config.RoundBanner.Value;
 
@@ -118,6 +120,7 @@ public sealed partial class DemoTracerPlugin
         _handoffThreat360Enabled = true;
         _viewmodelContinuityMode = ViewmodelContinuityMode.Round;
         _chatAutoEnabled = true;
+        _muteDivergedDeadCommsEnabled = true;
         _roundBannerEnabled = true;
 
         SetWeaponAlignEnabled(true);
@@ -126,7 +129,6 @@ public sealed partial class DemoTracerPlugin
         _leftHandDesiredEnabled = true;
         _balanceAlignEnabled = false;
         ApplyCosmeticPreset(CosmeticPreset.Off);
-        _preserveNativeBotCosmetics = false;
     }
 
     private void ApplyRuntimeFidelityConfig(DemoTracerFidelityConfig? fidelity, Action<string> reply)
@@ -189,8 +191,6 @@ public sealed partial class DemoTracerPlugin
             SetStickerAlignEnabled(cosmetics.Stickers.Value);
         if (cosmetics.Charms.HasValue)
             SetCharmAlignEnabled(cosmetics.Charms.Value);
-        if (cosmetics.PreserveNative.HasValue)
-            _preserveNativeBotCosmetics = cosmetics.PreserveNative.Value;
 
         RefreshCosmeticAlignEnabled();
         if (!_cosmeticAlignEnabled)
@@ -262,9 +262,9 @@ public sealed partial class DemoTracerPlugin
 
     private void ReplyRuntimeSettings(Action<string> reply, string prefix)
     {
-        reply($"{prefix} playback identity={ReplayIdentityModeName()} allow_partial={FormatOnOff(_partialReplayEnabled)} playoff={FormatOnOff(_playoffEnabled)} chat_auto={FormatOnOff(_chatAutoEnabled)} round_banner={FormatOnOff(_roundBannerEnabled)} handoff={FormatHandoffMode(_handoffMode)}:{(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} handoff_360={FormatOnOff(_handoffThreat360Enabled)}");
+        reply($"{prefix} playback identity={ReplayIdentityModeName()} allow_partial={FormatOnOff(_partialReplayEnabled)} playoff={FormatOnOff(_playoffEnabled)} chat_auto={FormatOnOff(_chatAutoEnabled)} mute_diverged_dead_comms={FormatOnOff(_muteDivergedDeadCommsEnabled)} round_banner={FormatOnOff(_roundBannerEnabled)} handoff={FormatHandoffMode(_handoffMode)}:{(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} handoff_360={FormatOnOff(_handoffThreat360Enabled)}");
         reply($"{prefix} fidelity preset={AlignPresetName()} weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_mode=birth_once crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)}");
-        reply($"{prefix} cosmetics preset={CosmeticPresetName()} risk={FormatOnOff(_cosmeticAlignEnabled)} weapons={FormatOnOff(_cosmeticWeaponsEnabled)} knives={FormatOnOff(_cosmeticKnivesEnabled)} gloves={FormatOnOff(_cosmeticGlovesEnabled)} names={FormatOnOff(_cosmeticNamesEnabled)} agents={FormatOnOff(_cosmeticAgentsEnabled)} stickers={FormatOnOff(_stickerAlignEnabled)} charms={FormatOnOff(_charmAlignEnabled)} preserve_native={FormatOnOff(_preserveNativeBotCosmetics)}");
+        reply($"{prefix} cosmetics preset={CosmeticPresetName()} risk={FormatOnOff(_cosmeticAlignEnabled)} weapons={FormatOnOff(_cosmeticWeaponsEnabled)} knives={FormatOnOff(_cosmeticKnivesEnabled)} gloves={FormatOnOff(_cosmeticGlovesEnabled)} names={FormatOnOff(_cosmeticNamesEnabled)} agents={FormatOnOff(_cosmeticAgentsEnabled)} stickers={FormatOnOff(_stickerAlignEnabled)} charms={FormatOnOff(_charmAlignEnabled)}");
     }
 
     private static bool TryParseReplayIdentityMode(string value, out ReplayIdentityMode mode)
@@ -291,6 +291,8 @@ public sealed partial class DemoTracerPlugin
         public bool? Playoff { get; set; }
 
         public bool? ChatAuto { get; set; }
+
+        public bool? MuteDivergedDeadComms { get; set; }
 
         public bool? RoundBanner { get; set; }
 
@@ -345,7 +347,5 @@ public sealed partial class DemoTracerPlugin
         public bool? Stickers { get; set; }
 
         public bool? Charms { get; set; }
-
-        public bool? PreserveNative { get; set; }
     }
 }

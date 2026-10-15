@@ -181,6 +181,7 @@ public sealed partial class DemoTracerPlugin
             var playbackSeconds = Math.Max(0.0f, (message.Tick - anchorTick) / tickRate);
             frames.Add(new ChatPlaybackFrame(
                 playbackSeconds,
+                message.Tick,
                 message.SenderSteamId,
                 NormalizeReplayChatScope(message.Scope),
                 text,
@@ -190,7 +191,7 @@ public sealed partial class DemoTracerPlugin
         return frames;
     }
 
-    private void ProcessChatPlayback()
+    private void ProcessChatPlayback(ref TickPlayerSnapshot? playerSnapshot)
     {
         var playback = _chatPlayback;
         if (playback == null)
@@ -207,7 +208,7 @@ public sealed partial class DemoTracerPlugin
                playback.Frames[playback.NextFrameIndex].PlaybackSeconds <= elapsed + ChatPlaybackEpsilonSeconds)
         {
             var frame = playback.Frames[playback.NextFrameIndex++];
-            if (DispatchReplayChatFrame(frame))
+            if (DispatchReplayChatFrame(frame, ref playerSnapshot))
                 playback.SentMessages++;
             else
                 playback.SkippedMessages++;
@@ -217,7 +218,7 @@ public sealed partial class DemoTracerPlugin
             _chatPlayback = null;
     }
 
-    private bool DispatchReplayChatFrame(ChatPlaybackFrame frame)
+    private bool DispatchReplayChatFrame(ChatPlaybackFrame frame, ref TickPlayerSnapshot? playerSnapshot)
     {
         if (ReplayChatOutputFor(frame.Scope) == ReplayChatOutput.ServerChatboxBroadcast)
         {
@@ -225,7 +226,10 @@ public sealed partial class DemoTracerPlugin
             return true;
         }
 
-        if (!TryResolveChatSender(frame.SenderSteamId, out var sender))
+        playerSnapshot ??= BuildTickPlayerSnapshot(_tickPlayerSnapshot);
+        if (!TryResolveChatSender(frame.SenderSteamId, playerSnapshot, out var sender))
+            return false;
+        if (ShouldMuteReplayCommunication(sender, frame.DemoTick, _loadedChatLiveStartTick))
             return false;
 
         return TrySendBotChatCommand(sender, frame.Scope, frame.Text, out _);
@@ -257,14 +261,17 @@ public sealed partial class DemoTracerPlugin
         }
     }
 
-    private bool TryResolveChatSender(ulong senderSteamId, out CCSPlayerController sender)
+    private bool TryResolveChatSender(
+        ulong senderSteamId,
+        TickPlayerSnapshot playerSnapshot,
+        out CCSPlayerController sender)
     {
         foreach (var (slot, replay) in _session.LoadedReplays)
         {
-            if (replay.SteamId != senderSteamId || !IsReplaySlotStillSafe(slot))
+            if (replay.SteamId != senderSteamId)
                 continue;
-            var player = Utilities.GetPlayerFromSlot(slot);
-            if (player is { IsValid: true } && IsReplayTargetBot(player))
+            if (playerSnapshot.TryGetSlot(slot, out var player) &&
+                IsReplaySlotStillSafe(slot, playerSnapshot))
             {
                 sender = player;
                 return true;
@@ -475,12 +482,14 @@ public sealed partial class DemoTracerPlugin
 
     private sealed class ChatPlaybackFrame(
         float playbackSeconds,
+        int demoTick,
         ulong senderSteamId,
         ReplayChatScope scope,
         string text,
         string? senderName)
     {
         public float PlaybackSeconds { get; } = playbackSeconds;
+        public int DemoTick { get; } = demoTick;
         public ulong SenderSteamId { get; } = senderSteamId;
         public ReplayChatScope Scope { get; } = scope;
         public string Text { get; } = text;

@@ -350,21 +350,6 @@ internal static partial class BotControllerNative
         }
     }
 
-    public static bool TryReadReplayMetadata(string path, out ReplayFileMetadata metadata)
-    {
-        try
-        {
-            var replay = DtrReplayReader.ReadForPlayback(path);
-            metadata = ReplayNativeMapper.BuildMetadata(replay);
-            return true;
-        }
-        catch
-        {
-            metadata = ReplayFileMetadata.Empty;
-            return false;
-        }
-    }
-
     private static void StripLeftHandDesired(NativeReplayCommandFrame[] commandFrames)
     {
         for (var i = 0; i < commandFrames.Length; i++)

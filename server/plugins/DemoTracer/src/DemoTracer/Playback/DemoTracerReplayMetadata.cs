@@ -81,6 +81,7 @@ public sealed partial class DemoTracerPlugin
         int slot,
         string path,
         string playerName,
+        ReplayFileMetadata metadata,
         ulong steamId = 0,
         int manifestFirstWeaponDefIndex = -1,
         IReadOnlyList<int>? manifestPreloadWeaponDefIndices = null,
@@ -91,13 +92,11 @@ public sealed partial class DemoTracerPlugin
         ReplayView? view = null,
         string? playerColor = null,
         CsTeam? manifestTeam = null,
-        ReplayFileMetadata? replayMetadata = null,
         int retentionRank = ReplayRetentionPriorityParser.MaxPlayersPerTeam,
         ReplayClan? clan = null)
     {
         InvalidateInitialSpawnAssignment();
         RestoreReplayBotViewmodel(slot);
-        var metadata = replayMetadata ?? ReadReplayMetadataOrEmpty(path);
         TryBuildWeaponPlan(metadata.WeaponDefIndices ?? [], out var scannedFirstDef, out var scannedPreloadDefs);
         var firstDef = NormalizeWeaponDefIndex(manifestFirstWeaponDefIndex);
         if (!IsKnownWeaponDefIndex(firstDef))
@@ -150,10 +149,5 @@ public sealed partial class DemoTracerPlugin
         _ = SyncBotHiderPresentationLease(announce: false);
         _ = SyncBotRandomizerCosmeticLease(announce: false);
     }
-
-    private static ReplayFileMetadata ReadReplayMetadataOrEmpty(string path)
-        => BotControllerNative.TryReadReplayMetadata(path, out var metadata)
-            ? metadata
-            : ReplayFileMetadata.Empty;
 
 }

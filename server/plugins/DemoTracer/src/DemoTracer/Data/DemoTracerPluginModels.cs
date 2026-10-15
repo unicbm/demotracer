@@ -41,23 +41,29 @@ public sealed partial class DemoTracerPlugin
     private sealed class TickPlayerSnapshot
     {
         private readonly CCSPlayerController?[] _bySlot = new CCSPlayerController?[MaxPlayerSlots];
+        private readonly List<CCSPlayerController> _controllers = new(MaxPlayerSlots);
+        private readonly List<CCSPlayerController> _takeoverControllers = new(MaxPlayerSlots);
 
-        public TickPlayerSnapshot(IReadOnlyList<CCSPlayerController> controllers)
+        public void Refresh(IEnumerable<CCSPlayerController> controllers)
         {
-            Controllers = controllers;
-            TakeoverControllers = controllers.Where(controller =>
-                TryGetControllingBotState(controller, out var controllingBot) && controllingBot).ToArray();
-
+            Array.Clear(_bySlot);
+            _controllers.Clear();
+            _takeoverControllers.Clear();
             foreach (var controller in controllers)
             {
-                if (controller is not { IsValid: true } || controller.Slot is < 0 or >= MaxPlayerSlots)
+                if (controller is not { IsValid: true })
                     continue;
-                _bySlot[controller.Slot] ??= controller;
+                _controllers.Add(controller);
+                if (TryGetControllingBotState(controller, out var controllingBot) && controllingBot)
+                    _takeoverControllers.Add(controller);
+                var slot = controller.Slot;
+                if (slot is >= 0 and < MaxPlayerSlots)
+                    _bySlot[slot] ??= controller;
             }
         }
 
-        public IReadOnlyList<CCSPlayerController> Controllers { get; }
-        public IReadOnlyList<CCSPlayerController> TakeoverControllers { get; }
+        public IReadOnlyList<CCSPlayerController> Controllers => _controllers;
+        public IReadOnlyList<CCSPlayerController> TakeoverControllers => _takeoverControllers;
 
         public bool TryGetSlot(int slot, out CCSPlayerController player)
         {

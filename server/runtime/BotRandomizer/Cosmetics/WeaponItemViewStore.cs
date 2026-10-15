@@ -9,6 +9,7 @@ namespace BotRandomizer;
 internal sealed class WeaponItemViewStore : IDisposable
 {
     private readonly MemoryFunctionWithReturn<nint, nint>? _constructor;
+    private readonly MemoryFunctionWithReturn<nint, uint, nint>? _destructor;
     private readonly MemoryFunctionWithReturn<nint, string, float, int>? _setAttributeByName;
     private readonly ILogger _logger;
     private readonly Dictionary<(int Slot, int UserId, ushort DefIndex), nint> _views = [];
@@ -17,15 +18,17 @@ internal sealed class WeaponItemViewStore : IDisposable
 
     internal WeaponItemViewStore(
         MemoryFunctionWithReturn<nint, nint>? constructor,
+        MemoryFunctionWithReturn<nint, uint, nint>? destructor,
         MemoryFunctionWithReturn<nint, string, float, int>? setAttributeByName,
         ILogger logger)
     {
         _constructor = constructor;
+        _destructor = destructor;
         _setAttributeByName = setAttributeByName;
         _logger = logger;
     }
 
-    internal bool NativeAvailable => _constructor is not null && _setAttributeByName is not null;
+    internal bool NativeAvailable => _constructor is not null && _destructor is not null && _setAttributeByName is not null;
 
     internal bool TryPrepareKnife(
         SlotCosmeticState state,
@@ -187,16 +190,18 @@ internal sealed class WeaponItemViewStore : IDisposable
     {
         foreach (var key in _views.Keys.Where(key => key.Slot == slot).ToArray())
         {
-            if (_views.Remove(key, out var handle))
-                Marshal.FreeHGlobal(handle);
+            Destroy(_views[key]);
+            _views.Remove(key);
         }
     }
 
     internal void Clear()
     {
-        foreach (var handle in _views.Values)
-            Marshal.FreeHGlobal(handle);
-        _views.Clear();
+        foreach (var key in _views.Keys.ToArray())
+        {
+            Destroy(_views[key]);
+            _views.Remove(key);
+        }
     }
 
     public void Dispose()
@@ -204,8 +209,16 @@ internal sealed class WeaponItemViewStore : IDisposable
         if (_disposed)
             return;
 
-        _disposed = true;
         Clear();
+        _disposed = true;
+    }
+
+    private void Destroy(nint handle)
+    {
+        // GiveNamedItem synchronously copies this view into the weapon. Cached
+        // source views live until slot cleanup, or unload after both hooks detach.
+        _destructor!.Invoke(handle, 0);
+        Marshal.FreeHGlobal(handle);
     }
 
     private void SetStickerAttributes(CAttributeList attributes, StickerSelection sticker)
@@ -279,15 +292,18 @@ internal sealed class WeaponItemViewStore : IDisposable
             return false;
 
         itemViewHandle = Marshal.AllocHGlobal(classSize);
+        bool constructed = false;
         try
         {
             _constructor!.Invoke(itemViewHandle);
+            constructed = true;
             _views.Add(key, itemViewHandle);
             return true;
         }
         catch
         {
-            Marshal.FreeHGlobal(itemViewHandle);
+            if (constructed) Destroy(itemViewHandle);
+            else Marshal.FreeHGlobal(itemViewHandle);
             itemViewHandle = nint.Zero;
             throw;
         }

@@ -28,6 +28,8 @@ public sealed partial class DemoTracerPlugin
     public HookResult OnRoundPrestart(EventRoundPrestart @event, GameEventInfo info)
     {
         using var timing = new ReplayPhaseTimer("round_prestart");
+        if (_soulChallenge is { Fighting: true })
+            StopAllState("soul_round_reset_without_result");
         // CS2 constructs the new pawn inventory after round_prestart but before
         // round_start. BotRandomizer must therefore receive the complete replay
         // plan here so its GiveNamedItem hook can build the correct item views.
@@ -80,9 +82,11 @@ public sealed partial class DemoTracerPlugin
             }
             else if (_session.Plan.Armed)
             {
-                _ = PrepareArmedRound(
+                var prepared = PrepareArmedRound(
                     "round_prestart",
                     switchingTeamsAtRoundReset);
+                if (!prepared && !_session.Plan.Armed && _soulChallenge is { Active: true })
+                    StopAllState("soul_round_prepare_failed");
             }
             if (retainedPlayoffFallback &&
                 !_session.Plan.PlayoffPrepared &&
@@ -241,14 +245,13 @@ public sealed partial class DemoTracerPlugin
     [GameEventHandler]
     public HookResult OnPlayerTeam(EventPlayerTeam @event, GameEventInfo info)
     {
+        if (_soulChallenge is { Active: true })
+            Server.NextFrame(() => CheckSoulTeam());
         if (@event.Userid is not { IsValid: true } player)
             return HookResult.Continue;
 
         if (IsHumanAvatarOverrideCandidate(player))
             ScheduleHumanTeamAvatarOverrideReconciliation();
-
-        if (_session.LoadedSlots.Count > 0)
-            ScheduleReplayPlayerColorReconciliation();
 
         return HookResult.Continue;
     }

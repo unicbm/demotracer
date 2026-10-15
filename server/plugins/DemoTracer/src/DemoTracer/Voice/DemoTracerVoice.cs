@@ -156,7 +156,10 @@ public sealed partial class DemoTracerPlugin
             clip.AudioPayload,
             clip.Frames,
             recipients,
-            startedFromFreezePreroll: false);
+            startedFromFreezePreroll: false)
+        {
+            DemoStartTick = clip.Manifest.StartTick
+        };
 
         command.ReplyToCommand(
             $"[DTR OK] voice test started frames={clip.Frames.Count} duration={clip.Manifest.DurationSeconds.ToString("F2", CultureInfo.InvariantCulture)}s " +
@@ -199,7 +202,10 @@ public sealed partial class DemoTracerPlugin
             clip.AudioPayload,
             frames,
             recipients,
-            startedFromFreezePreroll: false);
+            startedFromFreezePreroll: false)
+        {
+            DemoStartTick = clip.Manifest.StartTick
+        };
 
         command.ReplyToCommand(
             $"[DTR OK] voice mix started speakers={speakers.Count} frames={frames.Count}/{clip.Frames.Count} " +
@@ -214,7 +220,7 @@ public sealed partial class DemoTracerPlugin
         command.ReplyToCommand(stopped ? "dtr: voice test stopped" : "dtr: no active voice test");
     }
 
-    private void ProcessVoiceTestPlayback()
+    private void ProcessVoiceTestPlayback(ref TickPlayerSnapshot? playerSnapshot)
     {
         var state = _voiceTestPlayback;
         if (state == null)
@@ -249,7 +255,8 @@ public sealed partial class DemoTracerPlugin
             }
 
             var sectionNumber = speaker.NextSectionNumber;
-            if (!TryResolveLiveVoiceSender(speaker, out var sender))
+            playerSnapshot ??= BuildTickPlayerSnapshot(_tickPlayerSnapshot);
+            if (!TryResolveLiveVoiceSender(speaker, playerSnapshot, out var sender))
             {
                 // A team join can evict or rebind one replay bot. Keep the
                 // other speakers synchronized instead of stopping the mix.
@@ -258,9 +265,19 @@ public sealed partial class DemoTracerPlugin
                 continue;
             }
 
+            if (speaker.FollowsLoadedReplay &&
+                ShouldMuteReplayCommunication(sender,
+                    (long)state.DemoStartTick + frame.RelativeTick, _loadedVoiceLiveStartTick))
+            {
+                state.SkippedSenderFrames++;
+                state.NextFrameIndex++;
+                continue;
+            }
+
             var recipientCount = 0;
             foreach (var slot in state.RecipientSlots)
-                if (CanVoiceRecipientHearSpeaker(Utilities.GetPlayerFromSlot(slot), sender, speaker.ExpectedTeam))
+                if (playerSnapshot.TryGetSlot(slot, out var recipient) &&
+                    CanVoiceRecipientHearSpeaker(recipient, sender, speaker.ExpectedTeam))
                     audibleRecipients[recipientCount++] = slot;
             if (recipientCount == 0)
             {
@@ -329,10 +346,11 @@ public sealed partial class DemoTracerPlugin
 
     private bool TryResolveLiveVoiceSender(
         VoiceSpeakerPlayback speaker,
+        TickPlayerSnapshot playerSnapshot,
         out CCSPlayerController sender)
     {
-        var current = Utilities.GetPlayerFromSlot(speaker.Slot);
-        if (IsLiveVoiceSender(speaker, current))
+        if (playerSnapshot.TryGetSlot(speaker.Slot, out var current) &&
+            IsLiveVoiceSender(speaker, current, playerSnapshot))
         {
             sender = current!;
             return true;
@@ -347,8 +365,8 @@ public sealed partial class DemoTracerPlugin
                 if (slot >= reboundSlot || replay.SteamId != speaker.Xuid)
                     continue;
 
-                var candidate = Utilities.GetPlayerFromSlot(slot);
-                if (!IsLiveVoiceSender(speaker, candidate, slot))
+                if (!playerSnapshot.TryGetSlot(slot, out var candidate) ||
+                    !IsLiveVoiceSender(speaker, candidate, playerSnapshot, slot))
                     continue;
 
                 reboundSlot = slot;
@@ -370,9 +388,10 @@ public sealed partial class DemoTracerPlugin
     private bool IsLiveVoiceSender(
         VoiceSpeakerPlayback speaker,
         CCSPlayerController? sender,
+        TickPlayerSnapshot playerSnapshot,
         int? slotOverride = null)
     {
-        if (sender is not { IsValid: true } || !IsReplayTargetBot(sender))
+        if (sender is not { IsValid: true } || !IsReplayTargetBot(sender, playerSnapshot.TakeoverControllers))
             return false;
         if (speaker.ExpectedTeam.HasValue && sender.Team != speaker.ExpectedTeam.Value)
             return false;

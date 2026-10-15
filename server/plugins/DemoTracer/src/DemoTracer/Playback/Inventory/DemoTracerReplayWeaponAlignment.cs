@@ -51,9 +51,10 @@ public sealed partial class DemoTracerPlugin
     private void ApplyReplayWeaponPreset(
         int slot,
         int weaponDefIndex,
-        bool force)
+        bool force,
+        TickPlayerSnapshot? playerSnapshot = null)
     {
-        if (!CanWriteReplaySlot(slot))
+        if (!CanWriteReplaySlot(slot, playerSnapshot))
             return;
 
         var player = Utilities.GetPlayerFromSlot(slot);
@@ -87,11 +88,9 @@ public sealed partial class DemoTracerPlugin
         {
             _session.LastReplayWeaponDef[slot] = normalized;
         }
-        else if (TryGetWeaponClassByDefIndex(normalized, out var expectedClassName) &&
-                 player.PlayerPawn.Value is { IsValid: true } pawn &&
-                 HasReplayWeapon(pawn, expectedClassName))
+        else if (NormalizeWeaponDefIndex(BotControllerNative.BotActiveWeaponDef(slot)) == normalized)
         {
-            // Cache only present weapons so pending grants can retry.
+            // Possession does not prove a failed switch reached the active slot.
             _session.LastReplayWeaponDef[slot] = normalized;
         }
         else

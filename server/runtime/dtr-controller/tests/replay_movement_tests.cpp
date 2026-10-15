@@ -431,6 +431,7 @@ namespace
 
     void LadderStartRequiresContact()
     {
+        namespace source = BotController::ReplaySourceState;
         Reset();
         auto ticks = Ticks(); ticks[0].pre.moveType = 9;
         Check(mr::LoadReplay(slot, ticks.data(), 3, nullptr, 0), "load ladder start");
@@ -438,9 +439,15 @@ namespace
         Check(!mr::StartReplay(slot, false) && !mr::StartReplayUntil(slot, false, 0, 2), "accepted ladder without contact");
         Check(pawn == before && initializations == 0, "unsupported start modified pawn");
         ticks[0].pre.ladderNormalX = 1;
-        Check(mr::LoadReplay(slot, ticks.data(), 3, nullptr, 0) && mr::StartReplay(slot, false), "rejected recorded ladder plane");
+        const source::Change surface{0, source::LadderSurface, 7, 1};
+        constexpr int surfaceOffset = 0x800 + source::LadderSurface * 4;
+        Put(services, surfaceOffset, -1);
+        Check(mr::LoadReplay(slot, ticks.data(), 3, nullptr, 0) &&
+              mr::LoadReplaySourceState(slot, &surface, 1, 64, 1.0f / 64) &&
+              mr::StartReplay(slot, false), "rejected recorded ladder plane");
         Prepare();
         Check(Get<float>(services, tg::kServices_LadderNormal) == 1, "lost ladder plane");
+        Check(Get<int>(services, surfaceOffset) == -1, "restored engine-owned ladder surface index");
     }
 
     void WeaponSourceRestoresOnceAfterDeploy()
@@ -550,7 +557,7 @@ namespace BotController
     {
         bool PrepareReplayPawn(int s) { return s == slot && replayHooksReady && currentBotPawn && !humanOwnsPawn; }
         bool IsReplayPawnCurrent(int s, const void *p) { return s == slot && p == pawn.data() && currentBotPawn && !humanOwnsPawn; }
-        void PublishReplayState(void *) { ++publishes; }
+        void MarkReplayStateChanged(void *) { ++publishes; }
         void *ResolveReplayPawn(int s, void *sv) { return s == slot && sv == services.data() ? pawn.data() : nullptr; }
         void *LiveMovementServices(int s) { return s == slot ? services.data() : nullptr; }
         bool IsSlotControllingBot(int) { return humanOwnsPawn; }

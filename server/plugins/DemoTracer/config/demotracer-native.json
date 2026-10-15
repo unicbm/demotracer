@@ -1,18 +1,18 @@
 {
   "formatVersion": 1,
   "algorithm": "pe-image-v1",
-  "imageSha256": "CCA32096ED5B118C8D97BEA2E996B47ECDE748B27B35329E40C3D4CE4CB367BC",
+  "imageSha256": "5E934AF2F24142F53A05C2471B2D9812C9E22332084FB7A2630D8C44C30A35CB",
   "projectilePhysics": {
-    "entryRva": 10243488,
+    "entryRva": 10241216,
     "bodyLength": 2765,
-    "bodySha256": "412484fff42d213ecf9cd1cfa1178c89665b2878d61d92271cbe546a789d2969",
+    "bodySha256": "4f0fc404b5912cc3e09c6f33b0d8bc80dec724b11c7c4ac7c98e515a3ec3debc",
     "vtableSlotRvas": [
-      24902480,
-      24908120,
-      24905112,
-      26088488,
-      26081696,
-      26075856
+      24902544,
+      24908184,
+      24905176,
+      26088744,
+      26081952,
+      26076112
     ],
     "signature": "48 89 5C 24 18 48 89 74 24 20 55 41 56 41 57 48 8D AC 24 30 FF FF FF 48 81 EC D0 01 00 00"
   }

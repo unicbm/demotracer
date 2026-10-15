@@ -219,6 +219,7 @@ public sealed partial class DemoTracerPlugin
             startedFromFreezePreroll: anchor == ReplayStartAnchor.FreezePreroll)
         {
             IsAutomatic = true,
+            DemoStartTick = clip.Manifest.StartTick,
             NextFrameIndex = initialFrameIndex
         };
 

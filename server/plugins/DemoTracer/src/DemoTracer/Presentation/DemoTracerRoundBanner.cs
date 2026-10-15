@@ -29,7 +29,7 @@ public sealed partial class DemoTracerPlugin
 
     private void TryStartDtrRoundBanner(string evidenceLabel)
     {
-        if (!_roundBannerEnabled || _roundBannerShownThisRound || _session.LoadedSlots.Count == 0)
+        if (!_roundBannerEnabled || _roundBannerShownThisRound || _session.LoadedSlots.Count == 0 || _soulChallenge is { Active: true })
             return;
 
         _roundBannerShownThisRound = true;

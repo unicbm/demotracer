@@ -151,7 +151,7 @@ public sealed partial class DemoTracerPlugin
                 (!_replayLeftHandDesiredLatches.TryGetValue(slot, out var latchOwner) || latchOwner != owner))
                 ApplyReplayLeftHandDesiredLatch(slot, replay.View.Viewmodel?.LeftHanded ?? pawn.LeftHanded);
             if (HasViewmodelEvidence(replay.View))
-                ApplyReplayBotViewmodel(replayBot, replay.View.Viewmodel!);
+                ApplyReplayBotViewmodel(slot, pawn, owner, replay.View.Viewmodel!);
         }
 
         for (var slot = 0; slot < MaxPlayerSlots; slot++)
@@ -225,17 +225,12 @@ public sealed partial class DemoTracerPlugin
         }
     }
 
-    private void ApplyReplayBotViewmodel(CCSPlayerController bot, ReplayViewmodel viewmodel)
+    private void ApplyReplayBotViewmodel(
+        int slot,
+        CCSPlayerPawn pawn,
+        ReplayViewOwner owner,
+        ReplayViewmodel viewmodel)
     {
-        var slot = bot.Slot;
-        if (slot is < 0 or >= MaxPlayerSlots)
-            return;
-
-        var pawn = bot.PlayerPawn.Value;
-        if (pawn is not { IsValid: true })
-            return;
-
-        var owner = GetReplayViewOwner(bot, pawn);
         if (!_session.ReplayViewmodels.TryGetValue(slot, out var state) || state.Owner != owner)
             _session.ReplayViewmodels[slot] = state = new ReplayPawnViewState(owner);
 

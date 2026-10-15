@@ -2200,7 +2200,8 @@ namespace cs2bh
         void *controller = ResolvePresentationController(slot, session, incarnation, controllerHandle);
         PresentationSlot state;
         if (!controller || !Publisher().ReadSlot(slot, state)) return false;
-        // m_iPing is engine display state, not a networked schema field.
+        // This writes server display state only; success is not a network
+        // notification or evidence that a client received the value.
         *reinterpret_cast<int *>(static_cast<char *>(controller) + g_ControllerPingOffset) =
             std::max(0, state.Ping);
         return true;

@@ -22,13 +22,15 @@ public sealed partial class DemoTracerPlugin
         ApplyReplayLoadoutForSlot(slot, replay);
     }
 
-    private void ProcessReplayInventory(int slot, LoadedReplay replay, int cursor)
+    private void ProcessReplayInventory(int slot, LoadedReplay replay, int currentTickIndex, TickPlayerSnapshot playerSnapshot)
     {
-        if (!_weaponAlignEnabled || cursor < 0 ||
+        // Native Cursor points to the next frame; inventory and active weapon
+        // must both follow CurrentTickIndex, the frame actually being replayed.
+        if (!_weaponAlignEnabled || currentTickIndex < 0 ||
             !_session.ReplayInventoryBySlot.TryGetValue(slot, out var timeline) ||
-            !timeline.Advance((uint)cursor))
+            !timeline.Advance((uint)currentTickIndex))
             return;
-        ApplyReplayLoadoutForSlot(slot, replay);
+        ApplyReplayLoadoutForSlot(slot, replay, playerSnapshot: playerSnapshot);
     }
 
     private void ApplyReplayInventoryPending(int slot, int retriesRemaining)

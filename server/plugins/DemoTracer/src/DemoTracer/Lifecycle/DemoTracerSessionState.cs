@@ -36,7 +36,7 @@ public sealed partial class DemoTracerPlugin
         public HashSet<int> RebuiltInventorySlots { get; } = [];
         public HashSet<int> WeaponLoadoutSyncedSlots { get; } = [];
         public ReplayPawnEquipmentSyncTracker PawnEquipmentSync { get; } = new();
-        public HashSet<int> BalanceSyncedSlots { get; } = [];
+        public HashSet<int> BalanceInitializedSlots { get; } = [];
         public Dictionary<int, uint> ReplayPerceptionBaselineSerial { get; } = [];
         public Dictionary<int, PendingBulletHit> PendingBulletHits { get; } = [];
         public Dictionary<int, PendingBulletDamage> PendingBulletDamages { get; } = [];
@@ -67,7 +67,7 @@ public sealed partial class DemoTracerPlugin
             RebuiltInventorySlots.Remove(slot);
             WeaponLoadoutSyncedSlots.Remove(slot);
             PawnEquipmentSync.Invalidate(slot);
-            BalanceSyncedSlots.Remove(slot);
+            BalanceInitializedSlots.Remove(slot);
         }
 
         // Execution ends independently of loaded buffers and presentation.
@@ -111,7 +111,7 @@ public sealed partial class DemoTracerPlugin
             ClearExecution();
             WeaponLoadoutSyncedSlots.Clear();
             PawnEquipmentSync.Clear();
-            BalanceSyncedSlots.Clear();
+            BalanceInitializedSlots.Clear();
             CosmeticSyncedSlots.Clear();
         }
     }

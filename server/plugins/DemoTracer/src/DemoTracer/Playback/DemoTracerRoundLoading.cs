@@ -190,6 +190,7 @@ public sealed partial class DemoTracerPlugin
             ReleaseUnusedWarmReplayBuffers();
             RetainLoadedBotHiderPresentation();
             loadSucceeded = true;
+            _loadedDemoSha256 = NormalizeSha256(manifest.DemoSha256);
             timing.Mark("media_finish");
             return LoadRoundResult.Success($"dtr: loaded {loaded.Count} replays for {selectionLabel}{partial}{voiceStatus}{chatStatus}: {string.Join(", ", loaded)}");
         }
@@ -285,6 +286,7 @@ public sealed partial class DemoTracerPlugin
                 slot,
                 recPath,
                 file.PlayerName,
+                replayMetadata,
                 file.SteamId,
                 file.FirstWeaponDefIndex ?? -1,
                 file.PreloadWeaponDefIndices,
@@ -295,7 +297,6 @@ public sealed partial class DemoTracerPlugin
                 file.View,
                 file.PlayerIdentity?.PlayerColor,
                 manifestTeam: ReplayTeamFromManifestSide(file.Side),
-                replayMetadata: replayMetadata,
                 retentionRank: assignment.RetentionRank,
                 clan: file.Clan);
             timing.Mark("metadata");

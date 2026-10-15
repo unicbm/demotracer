@@ -15,8 +15,12 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
-    private static TickPlayerSnapshot BuildTickPlayerSnapshot()
-        => new(FindPlayerControllers());
+    private static TickPlayerSnapshot BuildTickPlayerSnapshot(TickPlayerSnapshot? snapshot = null)
+    {
+        snapshot ??= new TickPlayerSnapshot();
+        snapshot.Refresh(Utilities.FindAllEntitiesByDesignerName<CCSPlayerController>("cs_player_controller"));
+        return snapshot;
+    }
 
     private List<CCSPlayerController> FindReplayTargets()
     {

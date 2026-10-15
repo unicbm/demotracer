@@ -77,6 +77,7 @@ public sealed partial class DemoTracerPlugin
         _lifecycleResetInProgress = true;
         try
         {
+            CancelSoulChallenge(reason);
             _session.RoundSpawnsPending = false;
             CancelAllReplayDeferredWork();
             _session.ProjectileBirths.Clear();
@@ -181,6 +182,7 @@ public sealed partial class DemoTracerPlugin
 
     private void ClearLoadedReplaySession()
     {
+        _loadedDemoSha256 = string.Empty;
         _session.ClearLoaded();
         ClearAllPendingWeaponSlotReplacements("replay_execution_stopped");
         ClearReplayCrosshairPresentation();
@@ -196,6 +198,7 @@ public sealed partial class DemoTracerPlugin
 
     private void StopAllState(string reason)
     {
+        CancelSoulChallenge(reason);
         CancelReplayPrefetch();
         StopLoadedReplaySlots(reason);
         ClearLoadedTeamAvatarOverrides(reason);

@@ -603,11 +603,12 @@ namespace BotController
             return true;
         }
 
-        void PublishReplayState(void *entity)
+        void MarkReplayStateChanged(void *entity)
         {
             if (!entity) return;
-            // One boundary notification covers nested service chains too.
-            // Continuous playback uses the engine's own change tracking.
+            // Request serialization of networked boundary state, including
+            // nested services. Local-only fields are not published by this call;
+            // simulation can also change values before the next snapshot.
             const NetworkStateChangedData changed(true);
             reinterpret_cast<CEntityInstance *>(entity)->NetworkStateChanged(changed);
         }

@@ -27,9 +27,10 @@ public sealed partial class DemoTracerPlugin
     private void ApplyReplayLoadoutForSlot(
         int slot,
         LoadedReplay replay,
-        int slotRetryFramesRemaining = ReplayLoadoutSlotRetryFrames)
+        int slotRetryFramesRemaining = ReplayLoadoutSlotRetryFrames,
+        TickPlayerSnapshot? playerSnapshot = null)
     {
-        if (!CanWriteReplaySlot(slot) ||
+        if (!CanWriteReplaySlot(slot, playerSnapshot) ||
             !_weaponAlignEnabled)
             return;
 
@@ -222,7 +223,7 @@ public sealed partial class DemoTracerPlugin
     private void ApplyReplayRoundStartBalanceForSlot(int slot, LoadedReplay replay)
     {
         if (!CanWriteReplaySlot(slot) ||
-            _session.BalanceSyncedSlots.Contains(slot) ||
+            _session.BalanceInitializedSlots.Contains(slot) ||
             !ReplayRuntimePolicy.TryResolveRoundStartBalance(
                 _balanceAlignEnabled,
                 replay.RoundStartBalance,
@@ -241,10 +242,18 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        // Account is engine-managed through the money service. The controller
-        // service pointer itself is not a networked field.
+        var offset = Schema.GetSchemaOffset("CCSPlayerController_InGameMoneyServices", "m_iAccount");
+        var chainOffset = Schema.GetSchemaOffset("CPlayerControllerComponent", "__m_pChainEntity");
+        if (offset <= 0 || chainOffset <= 0 ||
+            !Schema.IsSchemaFieldNetworked("CCSPlayerController_InGameMoneyServices", "m_iAccount"))
+            throw new InvalidOperationException("round-start balance network field unavailable");
         moneyServices.Account = balance;
-        _session.BalanceSyncedSlots.Add(slot);
+        NativeAPI.SchemaNetworkStateChanged(moneyServices.Handle + chainOffset,
+            (uint)offset, uint.MaxValue, uint.MaxValue);
+        if (moneyServices.Account != balance)
+            throw new InvalidOperationException("round-start balance server write was not retained");
+        // Records server initialization, not client receipt or a persistent lock.
+        _session.BalanceInitializedSlots.Add(slot);
     }
 
     private static int? ReadServerMaxMoney()
