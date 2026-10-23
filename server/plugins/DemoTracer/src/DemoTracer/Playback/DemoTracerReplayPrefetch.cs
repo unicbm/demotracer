@@ -50,7 +50,7 @@ public sealed partial class DemoTracerPlugin
         if (stableManifestStamp.HasValue)
             RememberPrefetchedManifest(resolvedManifestPath, manifest, stableManifestStamp.Value);
 
-        var manifestDir = Path.GetDirectoryName(resolvedManifestPath) ?? ".";
+        var manifestDir = DtrResources.Root(resolvedManifestPath);
         var roundFiles = manifest.Files.Where(file => file.Round == round).ToList();
         var tFiles = SortReplayFilesForAssignment(roundFiles, "t")
             .Take(StandardTeamSize)
@@ -105,7 +105,7 @@ public sealed partial class DemoTracerPlugin
         PlayoffSourceSelection sources)
     {
         var resolvedManifestPath = ResolveReadableManifestPath(manifestPath);
-        var manifestDir = Path.GetDirectoryName(resolvedManifestPath) ?? ".";
+        var manifestDir = DtrResources.Root(resolvedManifestPath);
         _dtrReplayPrefetch.Begin(PathsFor(sources.SameSides, sources.TRoster, sources.CtRoster));
         _playoffSwappedReplayPrefetch.Begin(PathsFor(sources.SwappedSides, sources.CtRoster, sources.TRoster));
 
@@ -471,7 +471,7 @@ internal readonly record struct ReplayFileStamp(long Length, long LastWriteTimeU
     {
         try
         {
-            var info = new FileInfo(path);
+            var info = new FileInfo(DtrResources.PhysicalPath(path));
             if (!info.Exists)
             {
                 stamp = default;

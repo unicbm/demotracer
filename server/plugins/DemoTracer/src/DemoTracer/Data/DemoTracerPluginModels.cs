@@ -257,7 +257,7 @@ public sealed partial class DemoTracerPlugin
         round = 0;
         if (command.ArgCount <= argOffset + 1)
         {
-            command.ReplyToCommand($"usage: {commandName} <manifest.json> <source_round>");
+            command.ReplyToCommand($"usage: {commandName} <replay.dtr> <source_round>");
             return false;
         }
 

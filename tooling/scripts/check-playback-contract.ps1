@@ -89,16 +89,20 @@ for ($fieldIndex = 0; $fieldIndex -lt $sourceRegistry.fields.Count; $fieldIndex+
 $playbackSourceVersion = Read-RegexValue "server/plugins/DemoTracer/src/DemoTracer/Lifecycle/DemoTracerPlugin.cs" 'ModuleVersion\s*=>\s*"([^"]+)"' "DemoTracer module version"
 if ([string]::IsNullOrWhiteSpace($PlaybackVersion)) { $PlaybackVersion = $playbackSourceVersion }
 Assert-Equal "DemoTracer ModuleVersion" $playbackSourceVersion $PlaybackVersion
-Assert-Equal "stable DTR writer" ([string]$contract.dtr_writer) "12"
-Assert-Equal "stable DTR reader minimum" ([string]$contract.dtr_reader.min) "12"
-Assert-Equal "stable DTR reader maximum" ([string]$contract.dtr_reader.max) "12"
+Assert-Equal "stable DTR writer" ([string]$contract.dtr_writer) "13"
+Assert-Equal "stable DTR reader minimum" ([string]$contract.dtr_reader.min) "13"
+Assert-Equal "stable DTR reader maximum" ([string]$contract.dtr_reader.max) "13"
+Assert-Equal "CSS container reader" (Read-RegexValue "server/plugins/DemoTracer/src/DemoTracer/Data/DtrArchive.cs" 'Version\s*=\s*(\d+)' "container version") ([string]$contract.dtr_reader.max)
+if (Test-Path -LiteralPath (Join-Path $repoRoot "desktop/converter/src/model/mod.rs")) {
+    Assert-Equal "Rust record writer" (Read-RegexValue "desktop/converter/src/model/mod.rs" 'DTR_FORMAT_VERSION:\s*u32\s*=\s*(\d+)' "record version") ([string]$contract.dtr_record_writer)
+}
 
 Assert-Equal "CSS manifest ABI" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Lifecycle\DemoTracerPlugin.cs" 'ManifestAbiVersion\s*=\s*(\d+)' "manifest ABI") ([string]$contract.manifest_abi)
 Assert-Equal "DTR section codec" ([string]$contract.dtr_section_writer_codec) "zstd"
 Assert-TextPresent "server\plugins\DemoTracer\src\DemoTracer\DemoTracer.csproj" 'ZstdSharp\.Port" Version="0\.8\.8"' "managed Zstd decoder"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+ZstdSharp\.dll[^\r\n]+ZstdSharp\.dll' "packaged Zstd decoder"
-Assert-Equal "CSS minimum DTR reader" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'MinRecFormatVersion\s*=\s*(\d+)' "minimum DTR reader") ([string]$contract.dtr_reader.min)
-Assert-Equal "CSS maximum DTR reader" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'RecFormatVersion\s*=\s*(\d+)' "maximum DTR reader") ([string]$contract.dtr_reader.max)
+Assert-Equal "CSS minimum DTR reader" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'MinRecFormatVersion\s*=\s*(\d+)' "minimum DTR reader") ([string]$contract.dtr_record_reader.min)
+Assert-Equal "CSS maximum DTR reader" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'RecFormatVersion\s*=\s*(\d+)' "maximum DTR reader") ([string]$contract.dtr_record_reader.max)
 Assert-Equal "CSS native ABI" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'ExpectedAbiVersion\s*=\s*(\d+)' "CSS native ABI") ([string]$contract.bot_controller.abi_major)
 Assert-Equal "runtime native ABI" (Read-RegexValue "server\runtime\dtr-controller\src\common\exports.cpp" 'kBotControllerAbiMajor\s*=\s*(\d+)' "runtime native ABI") ([string]$contract.bot_controller.abi_major)
 Assert-Equal "minimum native ABI minor" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\DemoTracerRuntimeHealth.cs" 'MinimumBotControllerAbiMinor\s*=\s*(\d+)' "minimum native ABI minor") ([string]$contract.bot_controller.min_abi_minor)
@@ -149,4 +153,4 @@ Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+cosmetic_catalog\.json[^\r\n]+cosmetic_catalog\.json' "packaged BotRandomizer cosmetic catalog"
 Assert-TextPresent "tooling\scripts\package-server.ps1" 'Copy-RequiredFile[^\r\n]+cs2-lib-econ-index\.v1\.json[^\r\n]+cs2-lib-econ-index\.v1\.json' "packaged BotRandomizer replay econ index"
 & (Join-Path $PSScriptRoot "check-first-party-headers.ps1") -RepoRoot $repoRoot -PlaybackOnly
-Write-Host "Playback contract verified for v$PlaybackVersion (DTR v12)."
+Write-Host "Playback contract verified for v$PlaybackVersion (DTR v13 container / v12 records)."

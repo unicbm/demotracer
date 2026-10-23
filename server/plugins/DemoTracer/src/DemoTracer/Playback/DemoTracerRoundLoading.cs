@@ -73,7 +73,7 @@ public sealed partial class DemoTracerPlugin
                     $"dtr: map mismatch, server=\"{currentMap}\" manifest=\"{manifest.Map}\" path=\"{resolvedManifestPath}\"");
             }
 
-            var manifestDir = Path.GetDirectoryName(resolvedManifestPath) ?? ".";
+            var manifestDir = DtrResources.Root(resolvedManifestPath);
             var avatarOverrides = BuildAvatarOverrideMap(manifest.AvatarOverrides);
             var allTFiles = tRound < 0
                 ? []
@@ -631,7 +631,7 @@ public sealed partial class DemoTracerPlugin
 
         if (!TryResolveChildPathUnderRoot(manifestDir, avatar.Path, out var avatarPath, out error))
             return false;
-        if (!File.Exists(avatarPath))
+        if (!DtrResources.Exists(avatarPath))
         {
             error = $"missing {avatar.Path}";
             return false;
@@ -639,7 +639,7 @@ public sealed partial class DemoTracerPlugin
 
         try
         {
-            using var stream = File.OpenRead(avatarPath);
+            using var stream = DtrResources.OpenRead(avatarPath);
             if (stream.Length > 16 * 1024)
             {
                 error = "avatar PNG must be 16 KiB or smaller";

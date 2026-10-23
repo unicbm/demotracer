@@ -151,7 +151,7 @@ internal static partial class BotControllerNative
                    $"voice_send={VoiceStatusText} " +
                    $"release_replay_buffer={HasReleaseReplayBufferCapability} " +
                    $"replay_pawn_equipment={HasReplayPawnEquipmentCapability} " +
-                   $"dtr_reader={RecFormatVersion} " +
+                   $"dtr_reader={DtrArchive.Version} record_reader={RecFormatVersion} " +
                    $"platform={RuntimePlatformName} api={DemoTracerApiVersion}";
         }
     }

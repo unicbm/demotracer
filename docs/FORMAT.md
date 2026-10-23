@@ -9,21 +9,71 @@ and command-frame data retain their original
 `f32`, integer, or UTF-8 JSON values. Readers do not reconstruct snapshot
 velocities from positions.
 
-## Version Gates
+## Container and Record Versions
 
-- Magic: `CSDTRREC`
-- Current writer format: `.dtr` v12
-- Rust/Desktop and runtime readers: v12
-- Required manifest ABI: 19
-- High-fidelity metadata: writer schema 5; readers accept schemas 4 and 5
-- Current BotController native ABI: 22
-- Current DemoTracer companion API: 7
+- Portable archive: DTR v13, magic `CSDTRPAK`. `match.dem` or `match.dem.zst`
+  produces one `match.dtr` under the library's map directory, without a per-demo folder.
+- Manifest ABI: 20; manifest `format_version`: 13.
+- Embedded replay blocks: v12, magic `CSDTRREC`; existing section encoding is unchanged.
+- High-fidelity metadata writer: schema 5; reader accepts 4 and 5.
+- BotController native ABI: 22; companion API: 7. Container storage does not change these interfaces.
 
-Manifest ABI 19 and DTR v12 are required. Readers adapt metadata schema 4 to
-schema 5 once at load. Older or unversioned manifests, DTR v3–v11, and metadata
-schemas 1–3 are rejected with a request to reconvert the original demo using
-the current GUI. Readers do not infer missing versions.
-Playback requires the matching ABI 22 bundle.
+The GUI and playback bundle must match. Legacy v12 / ABI 19 directories can be
+explicitly upgraded from the library menu without the original demo. Upgrade
+validates and copies blocks into a new sibling archive; it retains the original
+folder and refuses to overwrite an existing destination. Import also upgrades
+legacy archives while retaining its source. Older record encodings are rejected.
+
+## v13 Container
+
+Each portable archive contains its manifest, lightweight library projection,
+player-round recordings, optional voice clips, avatar images, analysis metadata
+and notes. Source-path associations are machine-local application data, keyed by
+the demo hash; they are not needed for playback or sharing. Original source paths
+are excluded from embedded analysis metadata. Existing v13 directory archives
+remain readable; importing them incorporates their portable metadata and notes.
+
+The 64-byte little-endian header is followed by resource bytes and a trailing
+UTF-8 JSON index. The index ends exactly at EOF:
+
+| Offset | Type | Meaning |
+| --- | --- | --- |
+| 0 | 8 bytes | `CSDTRPAK` |
+| 8 | u32 | Container version, 13 |
+| 12 | u32 | Header size, 64 |
+| 16 | u64 | Absolute index offset |
+| 24 | u64 | Index byte length |
+| 32 | 32 bytes | SHA-256 of the exact index bytes |
+
+The index is an array of `{path, offset, length, sha256}` resources. Names are
+case-sensitive UTF-8 logical keys, not filesystem paths: forward slashes only,
+no empty/dot/parent components, colons or control characters, at most 1024 bytes.
+Offsets and lengths are unsigned 64-bit values. Reject duplicate names, overlapping
+ranges, overflow, ranges outside the payload region, invalid digests, truncated
+files and trailing data. Index limits: 8 MiB / 32,768 resources; container limit:
+128 GiB; each resource is limited to 64 MiB. Limits are checked before allocation.
+
+Required resources are `manifest.json` and `library.json`. The latter retains
+only the archive identity, round scores, player summaries and avatar references.
+Optional `demo-info.json` and `library-info.json` carry portable detailed and
+summary analysis respectively; `archive-note.json` carries the editable note.
+Manifest `files[].path` identifies an indexed
+v12 record; avatar paths and `voice/roundNN.dtv` also identify indexed resources.
+Only the selected resources are read; the plugin never extracts the archive.
+No outer compression is applied to already-compressed replay sections.
+
+Readers verify the index checksum when opening the archive and resource checksums
+when reading full resources. GUI header-only browsing does not verify trajectory
+payloads. Opening a replay, import, conversion validation and migration validate all resources;
+playback validates the selected blocks before decoding. Prefetch identity includes
+the container's physical file stamp and the resource address.
+
+Writers operate only in the existing unpublished staging transaction, write
+payloads sequentially, finalize the index/header and flush before publishing.
+Adding optional resources during staging replaces the unpublished index. Published
+containers are not edited in place. Metadata edits rebuild a temporary container
+and atomically replace the file. SHA-256 detects corruption; it is not encryption
+or proof of the archive's author.
 
 ## Reader Safety Limits
 
@@ -121,7 +171,7 @@ paint kit, and wear but omits the texture seed. Such entries carry
 seed as unknown, and no inspect payload is generated. Playback uses the zero
 seed after clearing prior glove attributes.
 
-## Header
+## Embedded v12 Record Header
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -148,7 +198,7 @@ context before `play_start_tick_index`. Playback still begins at
 `round_freeze_end`; the pre-start context preserves held grenade button state
 without replaying arbitrarily long paused freeze time.
 
-## Section Container
+## Embedded Record Sections
 
 Each section is:
 
@@ -455,7 +505,7 @@ can establish contact. Playback rejects that unsupported start instead of using 
 zero or stale plane. Playback leaves the ladder surface index to native contact
 detection; recorded indices remain readable but are not restored.
 
-Manifest ABI 19 requires the matching v12 reader and BotController ABI 22
+Manifest ABI 20 requires the v13 container reader, the embedded v12 record reader and BotController ABI 22
 source-state capability (bit 17).
 
 ### Compact Source State (section 9, version 2)

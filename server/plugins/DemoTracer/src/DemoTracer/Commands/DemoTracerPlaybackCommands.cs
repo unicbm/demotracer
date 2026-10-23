@@ -23,7 +23,7 @@ public sealed partial class DemoTracerPlugin
             return;
         if (command.ArgCount < 2)
         {
-            command.ReplyToCommand("usage: dtr_load round <manifest.json> <source_round> | dtr_load slot <slot> <path.dtr>");
+            command.ReplyToCommand("usage: dtr_load round <replay.dtr> <source_round> | dtr_load slot <slot> <path.dtr>");
             return;
         }
 

@@ -10,7 +10,7 @@ slot commands are for development and diagnostics.
 css_plugins reload DemoTracer
 dtr_runtime
 dtr_config_status
-dtr_preset 0x15; dtr_go seq "<manifest.json>" 0
+dtr_preset 0x15; dtr_go seq "<replay.dtr>" 0
 ```
 
 `dtr_go` validates and arms the plan, then runs `mp_restartgame 1`. `dtr_arm`
@@ -20,8 +20,8 @@ uses the same plan without restarting.
 
 | Command | Purpose |
 | --- | --- |
-| `dtr_go seq <manifest.json> [from_source_round]` | Replay the manifest from a source round onward. |
-| `dtr_go round <manifest.json> <source_round>` | Replay exactly one source round. |
+| `dtr_go seq <replay.dtr> [from_source_round]` | Replay the manifest from a source round onward. |
+| `dtr_go round <replay.dtr> <source_round>` | Replay exactly one source round. |
 | `dtr_arm seq|round ...` | Arm the same plan without restarting the server round. |
 | `dtr_playoff <true|false>` | Continue an exhausted sequence with SteamID-matched rifle/sniper openings. |
 | `dtr_retain <t-order-code> <ct-order-code>` | Set per-side bot retention priority for the next manifest plan; use `clear` to reset. |
@@ -41,7 +41,7 @@ Experimental server commands; stability is not yet verified. The GUI does not
 expose this mode.
 
 ```text
-dtr_soul "<manifest.json>" <source_round> [t|ct]
+dtr_soul "<replay.dtr>" <source_round> [t|ct]
 dtr_soul_stats
 dtr_soul_stop
 ```
@@ -173,7 +173,7 @@ during replay; native visibility checks remain active.
 | `dtr_voice_stop` | Stop voice test playback. |
 
 Voice exports use `voice/roundXX.dtv` relative to the manifest, with at least
-two round-number digits. Keep these sidecars with the archive. Speakers map by
+two round-number digits. In v13 these resources are stored inside the container. Speakers map by
 XUID to replay bots. Observers hear all replay voice; human T/CT players hear
 their own team. Bots and HLTV are not recipients. Missing usable voice evidence
 produces no sidecar.
@@ -189,7 +189,7 @@ debugging.
 
 | Command | Purpose |
 | --- | --- |
-| `dtr_load round <manifest.json> <source_round>` | Load one round onto safe bot slots. |
+| `dtr_load round <replay.dtr> <source_round>` | Load one round onto safe bot slots. |
 | `dtr_load slot <slot> <path.dtr>` | Load one raw replay without manifest-only metadata. |
 | `dtr_play loaded [loop:0|1]` | Start every loaded slot immediately. |
 | `dtr_play slot <slot> [loop:0|1]` | Start one loaded slot. |
@@ -231,7 +231,7 @@ plugin with `css_plugins reload DemoTracer`.
 | `dtr_config_status` | Print config path, parse state, and effective settings. |
 | `dtr_config_reload` | Reload server-local defaults. |
 | `dtr_runtime` | Print plugin/runtime ABI and capability state. |
-| `dtr_doctor [manifest.json]` | Check dependencies and optional manifest compatibility. |
+| `dtr_doctor [replay.dtr]` | Check dependencies and optional archive compatibility. |
 | `dtr_bots` | List candidate bots and replay ownership. |
 | `dtr_status [slot <slot>|<slot>]` | Print replay state. |
 | `dtr_hider_status` | Print BotHider provider and managed-slot state. |

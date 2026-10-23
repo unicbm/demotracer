@@ -235,12 +235,12 @@ public sealed partial class DemoTracerPlugin
         if (string.IsNullOrWhiteSpace(manifest.Map))
             throw new InvalidDataException("manifest map is required");
 
-        if (manifest.FormatVersion != BotControllerNative.RecFormatVersion)
+        if (manifest.FormatVersion != DtrArchive.Version)
             throw new InvalidDataException(
-                $"manifest format_version {manifest.FormatVersion} unsupported; expected {BotControllerNative.RecFormatVersion}; reconvert the demo with the current GUI");
+                $"manifest format_version {manifest.FormatVersion} unsupported; expected {DtrArchive.Version}; reconvert the demo with the current GUI");
 
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var manifestDir = Path.GetDirectoryName(Path.GetFullPath(manifestPath)) ?? ".";
+        var manifestDir = DtrResources.Root(manifestPath);
         for (var i = 0; i < manifest.Files.Count; i++)
             ValidateManifestFile(manifest.Files[i], i, manifestDir, paths);
         ValidateManifestAvatarOverrides(manifest.AvatarOverrides, manifestDir);
@@ -323,7 +323,22 @@ public sealed partial class DemoTracerPlugin
         string childPath,
         out string fullPath,
         out string error)
-        => TryResolveRelativePathUnderRoot(rootDir, rootDir, childPath, out fullPath, out error);
+    {
+        if (!DtrResources.IsContainer(rootDir))
+            return TryResolveRelativePathUnderRoot(rootDir, rootDir, childPath, out fullPath, out error);
+        try
+        {
+            fullPath = DtrResources.Address(rootDir, childPath);
+            error = string.Empty;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            fullPath = string.Empty;
+            error = ex.Message;
+            return false;
+        }
+    }
 
     private static bool TryResolveRelativePathUnderRoot(
         string rootDir,
@@ -372,6 +387,10 @@ public sealed partial class DemoTracerPlugin
     }
 
     private static ConversionManifest ReadManifest(string manifestPath)
-        => JsonSerializer.Deserialize<ConversionManifest>(File.ReadAllText(manifestPath), ManifestJsonOptions)
-           ?? throw new InvalidDataException($"manifest JSON is empty: {manifestPath}");
+    {
+        var path = DtrResources.IsContainer(manifestPath)
+            ? DtrResources.Address(manifestPath, "manifest.json") : manifestPath;
+        return JsonSerializer.Deserialize<ConversionManifest>(DtrResources.ReadAllBytes(path), ManifestJsonOptions)
+            ?? throw new InvalidDataException($"manifest JSON is empty: {manifestPath}");
+    }
 }

@@ -17,7 +17,7 @@ public sealed partial class DemoTracerPlugin
     private SoulChallengeState? _soulChallenge;
     private readonly HashSet<int> _soulParticipantUserIds = [];
 
-    [ConsoleCommand("dtr_soul", "dtr_soul <manifest.json> <source_round> [t|ct]")]
+    [ConsoleCommand("dtr_soul", "dtr_soul <replay.dtr> <source_round> [t|ct]")]
     [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
     public void SoulCommand(CCSPlayerController? player, CommandInfo command)
     {
@@ -28,7 +28,7 @@ public sealed partial class DemoTracerPlugin
             : player?.Team ?? CsTeam.None;
         if (team is not (CsTeam.Terrorist or CsTeam.CounterTerrorist))
         {
-            command.ReplyToCommand("[DTR ERR] Join T/CT first, or specify dtr_soul <manifest.json> <source_round> t|ct.");
+            command.ReplyToCommand("[DTR ERR] Join T/CT first, or specify dtr_soul <replay.dtr> <source_round> t|ct.");
             return;
         }
         if (!Utilities.GetPlayers().Any(p => IsSoulHuman(p) && p.Team == team))

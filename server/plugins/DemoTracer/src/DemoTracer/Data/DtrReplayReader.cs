@@ -93,7 +93,7 @@ internal static partial class DtrReplayReader
         if (!string.Equals(Path.GetExtension(path), ".dtr", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("expected .dtr replay file");
 
-        using var stream = File.OpenRead(path);
+        using var stream = DtrResources.OpenRead(path);
         if (stream.Length > limits.MaxFileBytes)
             throw new InvalidDataException(
                 $".dtr file length {stream.Length} exceeds limit {limits.MaxFileBytes}");

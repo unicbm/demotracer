@@ -197,7 +197,7 @@ public sealed partial class DemoTracerPlugin
             $"[DTR OK] DemoTracer {BotControllerNative.RuntimeSummary}");
     }
 
-    [ConsoleCommand("dtr_doctor", "dtr_doctor [manifest.json]")]
+    [ConsoleCommand("dtr_doctor", "dtr_doctor [replay.dtr]")]
     [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
     public void DoctorCommand(CCSPlayerController? player, CommandInfo command)
     {

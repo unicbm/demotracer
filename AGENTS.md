@@ -1,11 +1,11 @@
 # DemoTracer public playback source
 
 Use main for routine work. This repository contains AGPL playback modules,
-shared runtime code and DTR v12 contracts. Preserve upstream licenses.
+shared runtime code and DTR v13 contracts. Preserve upstream licenses.
 
 Never add desktop GUI/converter sources, private workflows, private configuration,
 demos, recordings, credentials, build outputs or private repository history.
-Do not merge the private development branch. Keep DTR writer/reader contract at 12.
+Do not merge the private development branch. Keep the DTR v13 container and v12 record contracts aligned.
 
 Run node tooling/scripts/check-public-source.mjs, then
 pwsh -NoProfile -File tooling/scripts/check-playback-contract.ps1 and

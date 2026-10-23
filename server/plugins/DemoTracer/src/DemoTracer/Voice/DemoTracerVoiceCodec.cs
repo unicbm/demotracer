@@ -52,7 +52,7 @@ public sealed partial class DemoTracerPlugin
         try
         {
             var resolvedPath = identity.Path;
-            var data = File.ReadAllBytes(resolvedPath);
+            var data = DtrResources.ReadAllBytes(resolvedPath);
             if (data.LongLength != identity.Length)
                 throw new InvalidDataException("voice clip length changed while it was being read");
             if (!LooksLikeVoiceDtvBytes(data))
@@ -277,15 +277,16 @@ public sealed partial class DemoTracerPlugin
 
     private static VoiceClipFileIdentity ReadVoiceClipFileIdentity(string path)
     {
-        var info = new FileInfo(path);
+        var info = new FileInfo(DtrResources.PhysicalPath(path));
         if (!info.Exists)
             throw new FileNotFoundException($"voice clip not found: {path}", path);
-        if (info.Length > VoiceDtvMaxFileBytes)
+        var resourceLength = DtrResources.Length(path);
+        if (resourceLength > VoiceDtvMaxFileBytes)
         {
             throw new InvalidDataException(
-                $"voice clip length {info.Length} exceeds limit {VoiceDtvMaxFileBytes}");
+                $"voice clip length {resourceLength} exceeds limit {VoiceDtvMaxFileBytes}");
         }
-        return new VoiceClipFileIdentity(info.FullName, info.Length, info.LastWriteTimeUtc.Ticks);
+        return new VoiceClipFileIdentity(Path.GetFullPath(path), resourceLength, info.LastWriteTimeUtc.Ticks);
     }
 
     private bool TryGetOrReadVoiceClip(

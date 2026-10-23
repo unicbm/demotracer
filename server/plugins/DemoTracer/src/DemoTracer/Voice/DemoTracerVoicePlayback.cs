@@ -277,8 +277,9 @@ public sealed partial class DemoTracerPlugin
 
     private static bool TryResolveVoiceSidecarForRound(string manifestPath, int round, out string clipPath)
     {
-        clipPath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(manifestPath))!, "voice", $"round{round:D2}.dtv");
-        return File.Exists(clipPath);
+        var name = $"voice/round{round:D2}.dtv";
+        clipPath = DtrResources.IsContainer(manifestPath) ? DtrResources.Address(manifestPath,name) : Path.GetFullPath(Path.Combine(DtrResources.Root(manifestPath),name));
+        return DtrResources.Exists(clipPath);
     }
 
     private static List<int> ResolveAllVoiceRecipients()

@@ -115,7 +115,7 @@ official builds. See [Trademarks](TRADEMARKS.md).
 
 ## Playback Development
 
-This public repository contains the playback plugin, native runtimes and DTR v12
+This public repository contains the playback plugin, native runtimes and DTR v13
 contracts. Downloads and issue reports for the desktop app also remain here.
 
 ```powershell

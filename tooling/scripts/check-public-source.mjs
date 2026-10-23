@@ -22,5 +22,5 @@ for (const c of components) {
 }
 if (expected.size) throw new Error('Incomplete playback sources.');
 const contract = JSON.parse(readFileSync('shared/contracts/playback-contract.v1.json', 'utf8'));
-if ([contract.dtr_writer, contract.dtr_reader.min, contract.dtr_reader.max].some(v => v !== 12)) throw new Error('Stable DTR contract must remain v12.');
-console.log(`Public source boundary verified (${files.length} files, five playback modules, DTR v12).`);
+if ([contract.dtr_writer, contract.dtr_reader.min, contract.dtr_reader.max].some(v => v !== 13)) throw new Error('Stable DTR contract must remain v13.');
+console.log(`Public source boundary verified (${files.length} files, five playback modules, DTR v13).`);

@@ -40,9 +40,9 @@ public sealed class ManifestCompatibilityTests
     [InlineData(0, 0, false)]
     [InlineData(12, 3, false)]
     [InlineData(18, 11, false)]
-    [InlineData(19, 12, true)]
+    [InlineData(19, 12, false)]
     [InlineData(11, 3, false)]
-    [InlineData(20, 13, false)]
+    [InlineData(20, 13, true)]
     [InlineData(19, 13, false)]
     public void PlaybackEntryAcceptsSupportedManifestAndDtrVersions(int abi, int format, bool supported)
     {

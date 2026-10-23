@@ -25,7 +25,7 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin : BasePlugin
 {
     public override string ModuleName => "CS2 DemoTracer";
-    public override string ModuleVersion => "1.5.12";
+    public override string ModuleVersion => "1.6.0";
     public override string ModuleAuthor => "unicbm";
     public override string ModuleDescription => "Trace CS2 demos into bot-executable route replays.";
 
@@ -43,7 +43,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private const int BulletHandoffMinDamage = 1;
     private const int ProjectileAlignLogMaxEntries = 128;
     private const float ProjectileAlignMaxInitialPositionDistance = 128.0f;
-    private const int ManifestAbiVersion = 19;
+    private const int ManifestAbiVersion = 20;
     private const int MaxPlayerSlots = BotControllerNative.MaxSlots;
     private const int ReplayStartHealth = 100;
     private const int StandardTeamSize = 5;

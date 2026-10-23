@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\..\..\..\..\shared\contracts\dtr-v13-golden.json" Link="dtr-v13-golden.json" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="..\..\src\DemoTracer\DemoTracer.csproj" />
     <ProjectReference Include="$(DtrHiderRoot)\csharp\DtrHider\DtrHider.csproj" />
     <ProjectReference Include="$(DtrRandomizerRoot)\BotRandomizerApi\BotRandomizerApi.csproj" />
