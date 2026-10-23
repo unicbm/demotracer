@@ -53,7 +53,9 @@ foreach ($id in @("dtr-controller", "dtr-hider")) {
     $componentContract = if ($id -eq "dtr-controller") { $contract.bot_controller } else { $contract.bot_hider }
     Assert-Equal "$id native identity" $componentContract.native_library $id
     Assert-Equal "$id CMake output" (Read-RegexValue "$root/CMakeLists.txt" 'OUTPUT_NAME "([^"]+)"' "native output") $id
-    Assert-Equal "$id Metamod alias" (Read-RegexValue "$root/cmake/$id.vdf.in" '"alias"\s+"([^"]+)"' "Metamod alias") $id
+    if ($id -eq "dtr-controller") {
+        Assert-Equal "$id Metamod alias" (Read-RegexValue "$root/cmake/$id.vdf.in" '"alias"\s+"([^"]+)"' "Metamod alias") $id
+    }
 }
 Assert-Equal "hider managed identity" $contract.bot_hider.managed_assembly "DtrHider"
 Assert-Equal "hider API identity" $contract.bot_hider.managed_api "DtrHiderApi"

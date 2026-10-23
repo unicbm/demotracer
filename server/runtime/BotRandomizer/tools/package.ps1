@@ -24,7 +24,7 @@ $apiVersion = [int][regex]::Match((Get-Content (Join-Path $apiRoot 'IBotRandomiz
 if ($version -notmatch '^\d+\.\d+\.\d+$' -or $apiVersion -le 0) { throw 'Invalid provider version/API' }
 $hostContract = Join-Path $CommonRoot 'contracts/hook-runtime.v1.json'
 if (-not (Test-Path -LiteralPath $hostContract -PathType Leaf)) {
-    throw 'Missing common dependency; run git submodule update --init --recursive'
+    throw 'Missing common dependency; use the complete DemoTracer checkout or set -CommonRoot.'
 }
 $hooks = Get-Content -LiteralPath $hostContract -Raw | ConvertFrom-Json
 if ($hooks.backend -ne 'khook') { throw 'The unified provider requires shared KHook' }

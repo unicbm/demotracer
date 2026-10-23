@@ -15,7 +15,7 @@ $required = @(
 )
 foreach ($relative in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) {
-        throw "Missing dependency $relative; run git submodule update --init --recursive"
+        throw "Missing dependency $relative; use the complete DemoTracer checkout."
     }
 }
 $common = Join-Path $root '../../runtime/common'

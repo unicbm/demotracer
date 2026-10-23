@@ -36,8 +36,10 @@ Pose and duck/ladder initialization occur only at start, seek or loop boundaries
 Missing command axes are neutral.
 
 Native AI continues perception during replay so it is ready for handoff.
-Replay blocks conflicting weapon selection. DemoTracer uses `Lock(All)` only
-during freeze-time pre-roll and releases it at `round_freeze_end`.
+Replay blocks conflicting weapon selection. During freeze-time pre-roll,
+replay hooks own movement, view and input while native `Update` and `Upkeep`
+continue perception. Purchase suppression blocks vanilla buying without
+freezing the bot's AI state.
 
 | Lock | Effect |
 | --- | --- |

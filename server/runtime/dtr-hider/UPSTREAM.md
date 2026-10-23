@@ -1,59 +1,32 @@
 # BotHider upstream tracking
 
-This runtime started from
-[`XBribo/CS2-Bot-Hider`](https://github.com/XBribo/CS2-Bot-Hider) commit
-`4895e6c47c7f490be79c268eef544693d9ba8f94` (2026-07-12).
+Derived from [XBribo/CS2-Bot-Hider](https://github.com/XBribo/CS2-Bot-Hider)
+commit `4895e6c47c7f490be79c268eef544693d9ba8f94` (2026-07-12).
+The maintained source is
+[`unicbm/demotracer/server/runtime/dtr-hider`](https://github.com/unicbm/demotracer/tree/main/server/runtime/dtr-hider).
 
-[`unicbm/demotracer`](https://github.com/unicbm/demotracer/tree/main/server/runtime/dtr-hider) is the
-maintained source of truth, consolidated in DemoTracer's
-`server/runtime/dtr-hider`. The maintained derivative now uses the `dtr-hider`
-DLL/plugin identity, `DtrHiderApi` assembly, `dtr-hider:api:v3` capability,
-and `DtrHider_` native exports. It does not register aliases under the upstream
-identities.
-Upstream changes are reviewed and imported selectively; this repository is not
-kept in mechanical lockstep with the upstream repository.
+## Imported changes
 
-Upstream `main` was reviewed through commit
-`c90a0ac5d04456a77ba266aaba01c9fb0f8d0a8f` (2026-08-02). The current native
-runtime includes selectively adapted upstream work through the controller
-lifetime safety changes in
-`1e87d6773e3e206c3add0f7b8424db657702c815`, including deferred,
-identity-checked controller removal and safer transient fake-client flag
-restoration. It also keeps the Windows `HandleCommand_JoinTeam` identity scope
-from `31b9bd04de3ea326847a701577e9c50779ffe366`.
+Upstream was reviewed through `c90a0ac5d04456a77ba266aaba01c9fb0f8d0a8f`
+(2026-08-02). Selectively adapted changes include:
 
-The subsequent changes through
-`7fc83ea108c7b29cf014efb73584199565c6418c` (upstream v0.4.3) were reviewed on
-2026-09-05.
-No additional upstream runtime changes were imported as part of that review.
+- controller lifetime safety through `1e87d6773e3e206c3add0f7b8424db657702c815`;
+- Windows join-team identity scoping from `31b9bd04de3ea326847a701577e9c50779ffe366`;
+- gamedata-driven layout resolution from `4e4768adf5bec2970e8d082e6e87475c04e31837`,
+  extended to client names, entity systems and entity identities;
+- strict fixed-field UTF-8 validation in the managed native publisher.
 
-The gamedata-driven team offset refinement from
-`4e4768adf5bec2970e8d082e6e87475c04e31837` is extended here to the dangerous
-`CServerSideClient::SetName`, entity-system, and entity-identity layout targets.
-The managed synchronous native publisher also follows upstream's strict fixed-field
-UTF-8 encoding rule: an overlong value is rejected rather than truncated in
-the middle of a sequence.
+The review through upstream v0.4.3, `7fc83ea108c7b29cf014efb73584199565c6418c`
+(2026-09-05), imported no additional runtime changes.
 
-The broader native file-layout refactors, Linux path unification, upstream
-`bot_info.json`, removal of the map whitelist, raw per-slot mutation API,
-native avatar ownership, automatic bot voting, and upstream module-version
-changes remain intentionally unimported because DemoTracer has different
-runtime, packaging, BotController ownership, and presentation-lease
-boundaries.
+## Maintained boundary
 
-The managed provider's independent round-start team assignment/respawn timer
-has been removed. Presentation reconciliation cannot revive a stopped replay
-or take over gameplay lifecycle decisions from DemoTracer and the engine.
+This derivative uses `dtr-hider`, `DtrHiderApi`, `dtr-hider:api:v3` and
+`DtrHider_` exports. It owns bot identity and presentation; DemoTracer and the
+engine own teams, respawns and replay lifecycle. It retains its own persona,
+map-whitelist and presentation-lease behavior. Upstream changes are reviewed
+selectively; their roster data, auxiliary tools and unrelated gameplay features
+are not bundled. Current installation and API behavior are in [README.md](README.md).
 
-The upstream `tools/BotHiderFlairGenerator` utility is intentionally excluded
-because it is not part of DemoTracer server runtime or packaging.
-
-DemoTracer also removes the unused persona FIFO, rematch rebuild entry point,
-experimental controller-flag helper, and separate roster-based SteamID
-provider. Persona bases are selected before adoption and published through
-one native identity snapshot; no configured roster means the engine bot's
-zero SteamID base. Native updates require a full server restart, and active
-managed bots prevent native unload rather than permitting partial cleanup.
-
-BotHider remains licensed under AGPL-3.0-only. Original copyright, attribution,
-and license files are preserved in this directory.
+BotHider remains AGPL-3.0-only. Original copyright, attribution and license
+files are preserved in [LICENSE](LICENSE) and [LICENSE.AGPL3](LICENSE.AGPL3).

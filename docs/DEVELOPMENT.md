@@ -2,6 +2,8 @@
 
 Requires Windows x64, .NET 10, Node.js 22, CMake 3.28+ and MSVC.
 
+## Build and test
+
 ```powershell
 node tooling/scripts/check-public-source.mjs
 pwsh -NoProfile -File tooling/scripts/check-playback-contract.ps1
@@ -18,6 +20,8 @@ pwsh -NoProfile -File server/runtime/dtr-hider/tools/check.ps1 -NativeBuild
 pwsh -NoProfile -File server/runtime/BotRandomizer/tools/check.ps1
 ```
 
+## Packaging
+
 To package locally, commit reviewed changes and stage the tested native builds:
 
 ```powershell
@@ -26,7 +30,10 @@ foreach ($module in @('dtr-controller', 'dtr-hider')) {
     New-Item -ItemType Directory -Force "$root/build/package" | Out-Null
     Copy-Item "$root/.build/native/package/*" "$root/build/package" -Recurse -Force
 }
-pwsh -NoProfile -File tooling/scripts/package-server.ps1 -Version 1.5.8 -SkipCssBuild
+$plugin = Get-Content server/plugins/DemoTracer/src/DemoTracer/Lifecycle/DemoTracerPlugin.cs -Raw
+$version = [regex]::Match($plugin, 'ModuleVersion\s*=>\s*"([^"]+)"').Groups[1].Value
+if (-not $version) { throw 'Playback version not found' }
+pwsh -NoProfile -File tooling/scripts/package-server.ps1 -Version $version -SkipCssBuild
 ```
 
-Use the current plugin version for `-Version`. External packages require a matching receipt.
+External packages require a matching receipt.

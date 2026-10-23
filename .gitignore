@@ -1,78 +1,49 @@
-# Rust
-/target/
+# Private product modules are not part of this checkout.
+/desktop/
+/cloudflare/
+/third_party/
 
-# .NET / CounterStrikeSharp
-*.user
-*.suo
-
-# Native runtime builds
-/server/runtime/BotController/
-/server/runtime/BotHider/
+# Build output and local tools
 /dist/
-/desktop/gui/node_modules/
-/cloudflare/telemetry/node_modules/
-/cloudflare/telemetry/.wrangler/
-/desktop/gui/.pnpm-store/
+/output/
+/tmp/
+/.external/
 /.pnpm-store/
-/desktop/gui/dist/
-/desktop/gui/.vite/
-/desktop/gui/.generated/
-/desktop/gui/coverage/
-/desktop/gui/*.tsbuildinfo
-/desktop/gui/src-tauri/gen/
-/desktop/gui/src-tauri/target/
-/desktop/gui/src-tauri/target-*/
-/.wrangler/
-/.release-secrets/
-.env
-.env.*
-*.pfx
-*.p12
-/tooling/release/*.key
-/tooling/release/*.pem
-/desktop/gui/src-tauri/icons/android/
-/desktop/gui/src-tauri/icons/ios/
-/desktop/gui/src-tauri/icons/icon.icns
-/desktop/gui/src-tauri/icons/icon.png
-/desktop/gui/src-tauri/icons/64x64.png
-/desktop/gui/src-tauri/icons/Square*Logo.png
-/desktop/gui/src-tauri/icons/StoreLogo.png
 *.dll
 *.pdb
 *.lib
 *.exp
 *.obj
 *.exe
+*.user
+*.suo
 
-# Local conversion data
-/.external/
-/output/
-/tmp/
-# Publish only maintained documentation; keep research and audits local.
-/docs/*
-!/docs/README.md
-!/docs/DEVELOPMENT.md
-!/docs/COMMANDS.md
-!/docs/FORMAT.md
-!/docs/SIGNATURES.md
-!/docs/ONLINE_SERVICES.md
-!/docs/TELEMETRY.md
-!/docs/SOURCE_PUBLICATION.md
-!/docs/media/
-# Local offline investigation tools
-/tooling/research/
+# Local recordings, logs and credentials
 *.dem
 *.dtr
 *.cs2rec
 *.log
 *.tmp
+.env
+.env.*
+/.release-secrets/
+*.key
+*.pem
+*.pfx
+*.p12
 
-# IDE
+# Publish maintained documentation only.
+/docs/*
+!/docs/DEVELOPMENT.md
+!/docs/COMMANDS.md
+!/docs/FORMAT.md
+!/docs/SIGNATURES.md
+!/docs/media/
+
+# IDE and script caches
 /.vs/
 /.idea/
 .vscode/
-
-# Script caches
 __pycache__/
 *.pyc
 

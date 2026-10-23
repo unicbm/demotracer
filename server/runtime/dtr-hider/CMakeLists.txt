@@ -198,13 +198,6 @@ else()
 endif()
 
 set(BOT_HIDER_PACKAGE_BIN_DIR "${CMAKE_BINARY_DIR}/package/addons/dtr-hider/bin/${BOT_HIDER_PLATFORM_DIR}")
-set(BOT_HIDER_VDF_FILE "addons/dtr-hider/bin/${BOT_HIDER_PLATFORM_DIR}/dtr-hider")
-configure_file(
-    "${CMAKE_SOURCE_DIR}/cmake/dtr-hider.vdf.in"
-    "${CMAKE_BINARY_DIR}/dtr-hider.vdf"
-    @ONLY
-)
-
 set_target_properties(dtr-hider PROPERTIES
     OUTPUT_NAME "dtr-hider"
     PREFIX ""

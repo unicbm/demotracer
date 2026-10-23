@@ -11,7 +11,7 @@ $catalog = Join-Path $root '../common/econ/randomizer-catalog.json'
 $econ = Join-Path $root '../common/econ/cs2-lib-econ-index.v1.json'
 foreach ($path in @($catalog, $econ, (Join-Path $root '../common/contracts/hook-runtime.v1.json'))) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-        throw 'Missing common dependency; run git submodule update --init --recursive'
+        throw 'Missing common dependency; use the complete DemoTracer checkout.'
     }
 }
 & $DotnetPath build (Join-Path $root 'BotRandomizer.csproj') -c Release '--nologo' '-p:NuGetAudit=false' '-p:UseSharedCompilation=false' '-p:DebugType=None' '-p:DebugSymbols=false' "-p:PathMap=$productRoot=/_/demotracer" '-m:1' '-nodeReuse:false'
