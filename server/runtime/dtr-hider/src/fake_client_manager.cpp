@@ -46,9 +46,9 @@ namespace cs2bh
         uint64_t state = static_cast<uint64_t>(slot) ^ m_PingSeed;
         int baseline = 20 + static_cast<int>(SimpleRand(state) % 70);
 
-        s.Active = true;
         s.Jitter = PingJitter(baseline);
         s.Display = PingDisplay{};
+        s.Active.store(true, std::memory_order_release);
 
         // The caller has already resolved the base identity. Zero preserves
         // the engine bot SteamID when no configured persona was supplied.
@@ -62,7 +62,7 @@ namespace cs2bh
         if (slot < 0 || slot >= kMaxSlots)
             return;
         std::lock_guard<std::mutex> g(m_Mutex);
-        m_Slots[slot].Active = false;
+        m_Slots[slot].Active.store(false, std::memory_order_release);
         m_Slots[slot].Display.Reset();
         Publisher().PublishRelease(slot);
     }
@@ -72,7 +72,7 @@ namespace cs2bh
         std::lock_guard<std::mutex> g(m_Mutex);
         for (int i = 0; i < kMaxSlots; ++i)
         {
-            m_Slots[i].Active = false;
+            m_Slots[i].Active.store(false, std::memory_order_release);
             m_Slots[i].Display.Reset();
             Publisher().PublishRelease(i);
         }
@@ -92,7 +92,7 @@ namespace cs2bh
             for (int i = 0; i < kMaxSlots; ++i)
             {
                 auto &s = m_Slots[i];
-                if (!s.Active)
+                if (!s.Active.load(std::memory_order_relaxed))
                     continue;
                 s.Display.RecordSample(s.Jitter.NextSample());
                 int produced = s.Display.MaybeProduce();
@@ -108,15 +108,14 @@ namespace cs2bh
     {
         if (slot < 0 || slot >= kMaxSlots)
             return false;
-        std::lock_guard<std::mutex> g(m_Mutex);
-        return m_Slots[slot].Active;
+        return m_Slots[slot].Active.load(std::memory_order_acquire);
     }
 
     bool FakeClientManager::HasManagedSlots() const
     {
         std::lock_guard<std::mutex> g(m_Mutex);
         for (const auto &slot : m_Slots)
-            if (slot.Active) return true;
+            if (slot.Active.load(std::memory_order_relaxed)) return true;
         return false;
     }
 

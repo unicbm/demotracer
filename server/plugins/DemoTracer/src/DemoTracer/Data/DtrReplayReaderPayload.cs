@@ -4,8 +4,7 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-using System.Text;
-using System.Text.Json;
+using System.Buffers.Binary;
 
 namespace DemoTracer;
 
@@ -13,62 +12,60 @@ internal static partial class DtrReplayReader
 {
     private static NativeMovementSnapshot[] ReadSnapshotsFromSection(byte[] body, int count)
     {
-        using var stream = new MemoryStream(body, writable: false);
-        using var reader = new BinaryReader(stream);
+        var reader = new SectionPayloadReader(body);
         var snapshots = new NativeMovementSnapshot[count];
-        ReadDeltaUInt32Column(reader, count, "snapshot origin x", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "snapshot origin x", (index, value) =>
             snapshots[index].OriginX = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "snapshot origin y", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "snapshot origin y", (index, value) =>
             snapshots[index].OriginY = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "snapshot origin z", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "snapshot origin z", (index, value) =>
             snapshots[index].OriginZ = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "snapshot velocity x", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "snapshot velocity x", (index, value) =>
             snapshots[index].VelX = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "snapshot velocity y", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "snapshot velocity y", (index, value) =>
             snapshots[index].VelY = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "snapshot velocity z", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "snapshot velocity z", (index, value) =>
             snapshots[index].VelZ = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "snapshot pitch", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "snapshot pitch", (index, value) =>
             snapshots[index].Pitch = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "snapshot yaw", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "snapshot yaw", (index, value) =>
             snapshots[index].Yaw = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "snapshot roll", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "snapshot roll", (index, value) =>
             snapshots[index].Roll = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "snapshot entity flags", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "snapshot entity flags", (index, value) =>
             snapshots[index].EntityFlags = value);
-        ReadDeltaByteColumn(reader, count, "snapshot move type", (index, value) =>
+        ReadDeltaByteColumn(ref reader, count, "snapshot move type", (index, value) =>
             snapshots[index].MoveType = value);
-        ReadDeltaUInt64Column(reader, count, "snapshot buttons", (index, value) =>
+        ReadDeltaUInt64Column(ref reader, count, "snapshot buttons", (index, value) =>
             snapshots[index].Buttons = value);
-        ReadDeltaUInt64Column(reader, count, "snapshot buttons1", (index, value) =>
+        ReadDeltaUInt64Column(ref reader, count, "snapshot buttons1", (index, value) =>
             snapshots[index].Buttons1 = value);
-        ReadDeltaUInt64Column(reader, count, "snapshot buttons2", (index, value) =>
+        ReadDeltaUInt64Column(ref reader, count, "snapshot buttons2", (index, value) =>
             snapshots[index].Buttons2 = value);
-        ReadDeltaUInt32Column(reader, count, "snapshot duck amount", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "snapshot duck amount", (index, value) =>
             snapshots[index].DuckAmount = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "snapshot duck speed", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "snapshot duck speed", (index, value) =>
             snapshots[index].DuckSpeed = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "snapshot ladder x", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "snapshot ladder x", (index, value) =>
             snapshots[index].LadderNormalX = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "snapshot ladder y", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "snapshot ladder y", (index, value) =>
             snapshots[index].LadderNormalY = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "snapshot ladder z", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "snapshot ladder z", (index, value) =>
             snapshots[index].LadderNormalZ = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaByteColumn(reader, count, "snapshot ducked", (index, value) =>
+        ReadDeltaByteColumn(ref reader, count, "snapshot ducked", (index, value) =>
             snapshots[index].Ducked = value);
-        ReadDeltaByteColumn(reader, count, "snapshot ducking", (index, value) =>
+        ReadDeltaByteColumn(ref reader, count, "snapshot ducking", (index, value) =>
             snapshots[index].Ducking = value);
-        ReadDeltaByteColumn(reader, count, "snapshot desires duck", (index, value) =>
+        ReadDeltaByteColumn(ref reader, count, "snapshot desires duck", (index, value) =>
             snapshots[index].DesiresDuck = value);
-        ReadDeltaByteColumn(reader, count, "snapshot actual move type", (_, _) => { });
-        RequireConsumed(stream, "snapshots");
+        ReadDeltaByteColumn(ref reader, count, "snapshot actual move type", (_, _) => { });
+        reader.RequireConsumed("snapshots");
         return snapshots;
     }
 
     private static TickMetadata[] ReadTickMetadataFromSection(byte[] body, int count)
     {
-        using var stream = new MemoryStream(body, writable: false);
-        using var reader = new BinaryReader(stream);
+        var reader = new SectionPayloadReader(body);
         var metadata = new TickMetadata[count];
         for (var i = 0; i < count; i++)
         {
@@ -76,33 +73,31 @@ internal static partial class DtrReplayReader
                 reader.ReadInt32(),
                 reader.ReadUInt32());
         }
-        RequireConsumed(stream, "tick metadata");
+        reader.RequireConsumed("tick metadata");
         return metadata;
     }
 
     private static ReplayProjectileEvent[] ReadProjectilesFromSection(byte[] body, int count)
     {
-        using var stream = new MemoryStream(body, writable: false);
-        using var reader = new BinaryReader(stream);
+        var reader = new SectionPayloadReader(body);
         var projectiles = new ReplayProjectileEvent[count];
         for (var i = 0; i < count; i++)
-            projectiles[i] = ReadProjectileEvent(reader);
-        RequireConsumed(stream, "projectiles");
+            projectiles[i] = ReadProjectileEvent(ref reader);
+        reader.RequireConsumed("projectiles");
         return projectiles;
     }
 
     private static NativeSubtickMove[] ReadSubticksFromSection(byte[] body, int count)
     {
-        using var stream = new MemoryStream(body, writable: false);
-        using var reader = new BinaryReader(stream);
+        var reader = new SectionPayloadReader(body);
         var subticks = new NativeSubtickMove[count];
         for (var i = 0; i < count; i++)
-            subticks[i] = ReadSubtickMove(reader);
-        RequireConsumed(stream, "subticks");
+            subticks[i] = ReadSubtickMove(ref reader);
+        reader.RequireConsumed("subticks");
         return subticks;
     }
 
-    private static NativeSubtickMove ReadSubtickMove(BinaryReader reader)
+    private static NativeSubtickMove ReadSubtickMove(ref SectionPayloadReader reader)
     {
         return new NativeSubtickMove
         {
@@ -118,42 +113,41 @@ internal static partial class DtrReplayReader
 
     private static NativeReplayCommandFrame[] ReadCommandFramesFromSection(byte[] body, int count)
     {
-        using var stream = new MemoryStream(body, writable: false);
-        using var reader = new BinaryReader(stream);
+        var reader = new SectionPayloadReader(body);
         var frames = new NativeReplayCommandFrame[count];
-        ReadDeltaUInt32Column(reader, count, "command forward move", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "command forward move", (index, value) =>
             frames[index].ForwardMove = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "command left move", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "command left move", (index, value) =>
             frames[index].LeftMove = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "command up move", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "command up move", (index, value) =>
             frames[index].UpMove = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "command pitch", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "command pitch", (index, value) =>
             frames[index].Pitch = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "command yaw", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "command yaw", (index, value) =>
             frames[index].Yaw = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt32Column(reader, count, "command roll", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "command roll", (index, value) =>
             frames[index].Roll = BitConverter.UInt32BitsToSingle(value));
-        ReadDeltaUInt64Column(reader, count, "command buttons", (index, value) =>
+        ReadDeltaUInt64Column(ref reader, count, "command buttons", (index, value) =>
             frames[index].Buttons = value);
-        ReadDeltaUInt64Column(reader, count, "command buttons1", (index, value) =>
+        ReadDeltaUInt64Column(ref reader, count, "command buttons1", (index, value) =>
             frames[index].Buttons1 = value);
-        ReadDeltaUInt64Column(reader, count, "command buttons2", (index, value) =>
+        ReadDeltaUInt64Column(ref reader, count, "command buttons2", (index, value) =>
             frames[index].Buttons2 = value);
-        ReadDeltaUInt32Column(reader, count, "command mouse dx", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "command mouse dx", (index, value) =>
             frames[index].MouseDx = unchecked((int)value));
-        ReadDeltaUInt32Column(reader, count, "command mouse dy", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "command mouse dy", (index, value) =>
             frames[index].MouseDy = unchecked((int)value));
-        ReadDeltaUInt32Column(reader, count, "command weapon select", (_, _) => { });
-        ReadDeltaUInt32Column(reader, count, "command fields", (index, value) =>
+        ReadDeltaUInt32Column(ref reader, count, "command weapon select", (_, _) => { });
+        ReadDeltaUInt32Column(ref reader, count, "command fields", (index, value) =>
             frames[index].Fields = value & ~(1U << 6));
-        ReadDeltaByteColumn(reader, count, "command left hand desired", (index, value) =>
+        ReadDeltaByteColumn(ref reader, count, "command left hand desired", (index, value) =>
             frames[index].LeftHandDesired = value);
-        RequireConsumed(stream, "command frames");
+        reader.RequireConsumed("command frames");
         return frames;
     }
 
     private static void ReadDeltaUInt32Column(
-        BinaryReader reader,
+        ref SectionPayloadReader reader,
         int count,
         string name,
         Action<int, uint> set)
@@ -164,7 +158,7 @@ internal static partial class DtrReplayReader
         set(0, previous);
         for (var index = 1; index < count; index++)
         {
-            var delta = unchecked((uint)UnzigzagUInt32(ReadUleb128UInt32(reader, name)));
+            var delta = unchecked((uint)UnzigzagUInt32(ReadUleb128UInt32(ref reader, name)));
             var current = unchecked(previous + delta);
             set(index, current);
             previous = current;
@@ -172,7 +166,7 @@ internal static partial class DtrReplayReader
     }
 
     private static void ReadDeltaUInt64Column(
-        BinaryReader reader,
+        ref SectionPayloadReader reader,
         int count,
         string name,
         Action<int, ulong> set)
@@ -183,7 +177,7 @@ internal static partial class DtrReplayReader
         set(0, previous);
         for (var index = 1; index < count; index++)
         {
-            var delta = unchecked((ulong)UnzigzagUInt64(ReadUleb128UInt64(reader, name)));
+            var delta = unchecked((ulong)UnzigzagUInt64(ReadUleb128UInt64(ref reader, name)));
             var current = unchecked(previous + delta);
             set(index, current);
             previous = current;
@@ -191,7 +185,7 @@ internal static partial class DtrReplayReader
     }
 
     private static void ReadDeltaByteColumn(
-        BinaryReader reader,
+        ref SectionPayloadReader reader,
         int count,
         string name,
         Action<int, byte> set)
@@ -202,7 +196,7 @@ internal static partial class DtrReplayReader
         set(0, previous);
         for (var index = 1; index < count; index++)
         {
-            var encoded = ReadUleb128UInt32(reader, name);
+            var encoded = ReadUleb128UInt32(ref reader, name);
             if (encoded > byte.MaxValue)
                 throw new InvalidDataException($"{name} delta {encoded} exceeds byte");
             var delta = unchecked((byte)(sbyte)UnzigzagByte((byte)encoded));
@@ -221,7 +215,7 @@ internal static partial class DtrReplayReader
     private static long UnzigzagUInt64(ulong value)
         => unchecked((long)(value >> 1) ^ -(long)(value & 1));
 
-    private static uint ReadUleb128UInt32(BinaryReader reader, string name)
+    private static uint ReadUleb128UInt32(ref SectionPayloadReader reader, string name)
     {
         uint value = 0;
         for (var index = 0; index < 5; index++)
@@ -240,7 +234,7 @@ internal static partial class DtrReplayReader
         throw new InvalidDataException($"{name} varint is too long");
     }
 
-    private static ulong ReadUleb128UInt64(BinaryReader reader, string name)
+    private static ulong ReadUleb128UInt64(ref SectionPayloadReader reader, string name)
     {
         ulong value = 0;
         for (var index = 0; index < 10; index++)
@@ -261,8 +255,7 @@ internal static partial class DtrReplayReader
 
     private static NativeReplayMovementExtra[] ReadMovementExtrasFromSection(byte[] body, int count, bool retainData)
     {
-        using var stream = new MemoryStream(body, writable: false);
-        using var reader = new BinaryReader(stream);
+        var reader = new SectionPayloadReader(body);
         var extras = retainData ? new NativeReplayMovementExtra[count] : [];
         for (var i = 0; i < count; i++)
         {
@@ -285,17 +278,47 @@ internal static partial class DtrReplayReader
             if (retainData)
                 extras[i] = extra;
         }
-        RequireConsumed(stream, "movement extras");
+        reader.RequireConsumed("movement extras");
         return extras;
     }
 
-    private static void RequireConsumed(Stream stream, string name)
+    // Section bodies are already decoded and bounded. Read directly from that
+    // memory instead of routing every delta byte through a second stream.
+    private ref struct SectionPayloadReader(ReadOnlySpan<byte> body)
     {
-        if (stream.Position != stream.Length)
-            throw new InvalidDataException($"trailing bytes in {name} section");
+        private ReadOnlySpan<byte> _remaining = body;
+
+        public byte ReadByte()
+        {
+            if (_remaining.IsEmpty)
+                throw new EndOfStreamException();
+            var value = _remaining[0];
+            _remaining = _remaining[1..];
+            return value;
+        }
+
+        public uint ReadUInt32() => BinaryPrimitives.ReadUInt32LittleEndian(Read(sizeof(uint)));
+        public ulong ReadUInt64() => BinaryPrimitives.ReadUInt64LittleEndian(Read(sizeof(ulong)));
+        public int ReadInt32() => unchecked((int)ReadUInt32());
+        public float ReadSingle() => BitConverter.UInt32BitsToSingle(ReadUInt32());
+
+        public readonly void RequireConsumed(string name)
+        {
+            if (!_remaining.IsEmpty)
+                throw new InvalidDataException($"trailing bytes in {name} section");
+        }
+
+        private ReadOnlySpan<byte> Read(int length)
+        {
+            if (_remaining.Length < length)
+                throw new EndOfStreamException();
+            var value = _remaining[..length];
+            _remaining = _remaining[length..];
+            return value;
+        }
     }
 
-    private static ReplayProjectileEvent ReadProjectileEvent(BinaryReader reader)
+    private static ReplayProjectileEvent ReadProjectileEvent(ref SectionPayloadReader reader)
     {
         var tickIndex = reader.ReadUInt32();
         var weaponDefIndex = reader.ReadInt32();

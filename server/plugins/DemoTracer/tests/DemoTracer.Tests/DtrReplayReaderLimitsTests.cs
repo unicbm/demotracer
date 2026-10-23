@@ -205,6 +205,69 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
         Assert.Equal(command.LeftHandDesired, decodedCommand.LeftHandDesired);
     }
 
+    [Theory]
+    [InlineData(4, "8000", "not canonical")]
+    [InlineData(4, "FFFFFFFF10", "overflows uint32")]
+    [InlineData(51, "8000", "not canonical")]
+    [InlineData(51, "8002", "exceeds byte")]
+    [InlineData(60, "8000", "not canonical")]
+    [InlineData(60, "FFFFFFFFFFFFFFFFFF02", "overflows uint64")]
+    public void RejectsMalformedColumnDeltas(int deltaOffset, string encodedDelta, string error)
+    {
+        // Two zero snapshots encode the first uint32/byte/uint64 deltas at
+        // these offsets; replace only that value, preserving all later columns.
+        var payload = BuildV2SnapshotPayload(new NativeMovementSnapshot[2]);
+        byte[] malformed = [.. payload[..deltaOffset], .. Convert.FromHexString(encodedDelta),
+            .. payload[(deltaOffset + 1)..]];
+
+        var exception = Assert.Throws<InvalidDataException>(() =>
+            DtrReplayReader.Read(WriteSnapshotReplay(malformed)));
+
+        Assert.Contains(error, exception.Message);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(50)]
+    [InlineData(51)]
+    [InlineData(52)]
+    [InlineData(59)]
+    [InlineData(60)]
+    [InlineData(-1)]
+    public void RejectsTruncatedColumnValues(int length)
+    {
+        var payload = BuildV2SnapshotPayload(new NativeMovementSnapshot[2]);
+        if (length < 0)
+            length += payload.Length;
+
+        Assert.Throws<EndOfStreamException>(() =>
+            DtrReplayReader.Read(WriteSnapshotReplay(payload[..length])));
+    }
+
+    [Fact]
+    public void RejectsTrailingColumnPayload()
+    {
+        var payload = BuildV2SnapshotPayload(new NativeMovementSnapshot[2]);
+
+        var exception = Assert.Throws<InvalidDataException>(() =>
+            DtrReplayReader.Read(WriteSnapshotReplay([.. payload, 0])));
+
+        Assert.Contains("trailing bytes in snapshots section", exception.Message);
+    }
+
+    private string WriteSnapshotReplay(byte[] payload)
+        => WriteFile(writer =>
+        {
+            WriteCompleteHeader(writer, version: 12, tickCount: 1, subtickCount: 0);
+            writer.Write(4U);
+            WriteEmptyPlaybackState(writer);
+            WriteSection(writer, 1, CodecNone, 2, payload, sectionVersion: 2);
+            WriteSection(writer, 2, CodecNone, 1, new byte[8]);
+            WriteSection(writer, 5, CodecNone, 0, []);
+        });
+
     [Fact]
     public void PlaybackReadValidatesButDoesNotRetainUnusedEvidence()
     {

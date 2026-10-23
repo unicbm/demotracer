@@ -83,10 +83,23 @@ int main()
     std::thread worker([&] { workerManaged = manager.IsManaged(2); });
     worker.join();
     if (!workerManaged || !manager.HasManagedSlots()) return 14;
+    if (manager.IsManaged(-1) || manager.IsManaged(cs2bh::FakeClientManager::kMaxSlots)) return 23;
+    if (!manager.AdoptSlot(63, "last slot", 0, "", 0) || !manager.IsManaged(63)) return 24;
     manager.ReleaseSlot(0);
     if (publisher.CanPublishSteamId(0, zero.Session, zero.Incarnation, 0)) return 15;
+    if (manager.IsManaged(0) || !manager.IsManaged(1) || !manager.IsManaged(2) ||
+        !manager.IsManaged(63) || !manager.HasManagedSlots()) return 25;
+    manager.ReleaseSlot(63);
+    if (manager.IsManaged(63) || !manager.AdoptSlot(63, "replacement", 0, "", 0)) return 26;
     manager.ReleaseAll();
     if (manager.HasManagedSlots()) return 16;
+    bool workerReleased = true;
+    std::thread releasedWorker([&] {
+        for (int slot = 0; slot < cs2bh::FakeClientManager::kMaxSlots; ++slot)
+            if (manager.IsManaged(slot)) workerReleased = false;
+    });
+    releasedWorker.join();
+    if (!workerReleased) return 27;
     if (emptyRoster.ResolveBaseSteamId(UINT64_MAX, [](uint64_t) { return true; }) != 0) return 17;
     publisher.Shutdown();
 }

@@ -72,6 +72,34 @@ public sealed class ReplayInventoryTimelineTests
     }
 
     [Fact]
+    public void SnapshotCountsDoNotSurviveDropsCompletedGrantsOrRestart()
+    {
+        var timeline = new ReplayInventoryTimeline([
+            At(0, weapons: [7, 4, 43, 43, 45], acquired: [7, 4, 43, 45]),
+            At(10, weapons: [43], acquired: []),
+            At(20, weapons: [4, 44], acquired: [4, 44]),
+            At(30, weapons: [], acquired: []),
+        ]);
+
+        timeline.Start(0);
+        Assert.True(timeline.Advance(10));
+        Assert.Equal(new Dictionary<int, int> { [43] = 1 }, timeline.PendingWeapons);
+        timeline.PendingWeapons.Clear(); // The deferred grant finished before the next acquisition.
+        Assert.True(timeline.Advance(20));
+        Assert.Equal(new Dictionary<int, int> { [4] = 1, [44] = 1 }, timeline.PendingWeapons);
+        Assert.True(timeline.Advance(30));
+        Assert.Empty(timeline.PendingWeapons);
+
+        timeline.Start(0);
+        Assert.True(timeline.Advance(30)); // Several snapshots can become due in one tick.
+        Assert.Empty(timeline.PendingWeapons);
+        timeline.Start(20);
+        Assert.Equal(new Dictionary<int, int> { [4] = 1, [44] = 1 }, timeline.PendingWeapons);
+        Assert.True(timeline.Advance(30));
+        Assert.Empty(timeline.PendingWeapons);
+    }
+
+    [Fact]
     public void MissingInitialEvidenceNeverUsesAFutureSnapshotAndRestartResetsProgress()
     {
         var timeline = new ReplayInventoryTimeline([At(50, [7], [7], 100, true, true, 7)]);

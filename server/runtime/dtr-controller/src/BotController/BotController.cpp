@@ -188,8 +188,10 @@ namespace BotController
             if (slot < 0 || slot >= static_cast<int>(g_pendingBestWeaponBots.size()))
                 return {KHook::Action::Ignore};
 
-            void *requestedBot = g_pendingBestWeaponBots[static_cast<size_t>(slot)].exchange(
-                nullptr, std::memory_order_acq_rel);
+            auto &pendingBot = g_pendingBestWeaponBots[static_cast<size_t>(slot)];
+            if (!pendingBot.load(std::memory_order_acquire))
+                return {KHook::Action::Ignore};
+            void *requestedBot = pendingBot.exchange(nullptr, std::memory_order_acq_rel);
             if (requestedBot != bot ||
                 MotionRecorder::IsReplaying(slot) ||
                 InputInjector::IsSlotControllingBot(slot) ||

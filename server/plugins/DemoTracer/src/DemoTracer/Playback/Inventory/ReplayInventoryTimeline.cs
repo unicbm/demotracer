@@ -11,6 +11,7 @@ namespace DemoTracer;
 internal sealed class ReplayInventoryTimeline(ReplayInventorySnapshot[] snapshots)
 {
     private int _next;
+    private readonly Dictionary<int, int> _snapshotCounts = [];
     public Dictionary<int, int> PendingWeapons { get; } = [];
     public int? Armor { get; private set; }
     public bool? Helmet { get; private set; }
@@ -21,6 +22,7 @@ internal sealed class ReplayInventoryTimeline(ReplayInventorySnapshot[] snapshot
         _next = 0;
         ReplayInventorySnapshot? initial = null;
         PendingWeapons.Clear();
+        _snapshotCounts.Clear();
         ClearGear();
         while (_next < snapshots.Length && snapshots[_next].TickIndex <= cursor)
             initial = snapshots[_next++];
@@ -42,12 +44,16 @@ internal sealed class ReplayInventoryTimeline(ReplayInventorySnapshot[] snapshot
             // Invalidate a deferred grant if the demo no longer holds that item.
             if (PendingWeapons.Count > 0)
             {
-                var counts = snapshot.WeaponDefCounts.ToDictionary(item => item.WeaponDefIndex, item => item.Count);
-                foreach (var def in PendingWeapons.Keys.ToArray())
+                _snapshotCounts.Clear();
+                foreach (var item in snapshot.WeaponDefCounts)
+                    _snapshotCounts.Add(item.WeaponDefIndex, item.Count);
+                // .NET permits removing entries and replacing existing values
+                // during Dictionary enumeration; acquisitions are added below.
+                foreach (var (def, pending) in PendingWeapons)
                 {
-                    var remaining = counts.GetValueOrDefault(def);
+                    var remaining = _snapshotCounts.GetValueOrDefault(def);
                     if (remaining <= 0) PendingWeapons.Remove(def);
-                    else PendingWeapons[def] = Math.Min(PendingWeapons[def], remaining);
+                    else PendingWeapons[def] = Math.Min(pending, remaining);
                 }
             }
             foreach (var item in snapshot.WeaponDefCounts)

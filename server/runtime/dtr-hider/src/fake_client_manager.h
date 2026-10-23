@@ -5,6 +5,7 @@
 #include "ping_display.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 
@@ -13,7 +14,7 @@ namespace cs2bh
 
     struct ManagedSlot
     {
-        bool Active = false;
+        std::atomic<bool> Active{false};
         PingJitter Jitter{50}; // 50ms baseline
         PingDisplay Display;
     };
@@ -41,9 +42,9 @@ namespace cs2bh
 
     private:
         mutable std::mutex m_Mutex;
-        // PackEntities may query Active from a worker thread. Identity itself
-        // lives only in the main-thread SlotPublisher; keep this lock for the
-        // worker-visible managed set and ping state.
+        // PackEntities reads only Active from worker threads. Ping state stays
+        // under the mutex; identity remains in the main-thread SlotPublisher.
+        // An active flag does not extend the lifetime of any engine entity.
         std::array<ManagedSlot, kMaxSlots> m_Slots;
         uint64_t m_PingSeed;
     };

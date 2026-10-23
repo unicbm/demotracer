@@ -189,6 +189,10 @@ namespace BotController::ReplayPawnEquipment
         {
             return true;
         }
+        // Both command and movement hooks poll this one-shot pass. Keep the
+        // completed path read-only, then claim pending work with the exchange.
+        if (!state.pending.load(std::memory_order_acquire))
+            return true;
         // Consume this generation's hook-side pass before writing. Even a
         // failed readback must not turn round-start initialization into a
         // combat-time armor refill loop.
