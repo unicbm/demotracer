@@ -271,7 +271,13 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
 
         TryGetWritePolicy(state, out var writePolicy);
         var musicKit = _options.ResolveMusicKit(writePolicy, state.Loadout);
-        ApplyMusicKit(player, musicKit, 0);
+        ApplyMusicKit(player, musicKit);
+        // These fields describe the current MVP award, not the equipped kit.
+        // The engine clears them when resetting MVP counts; spawn/plan writes
+        // must not turn a 1 -> 0 client count update into another MVP anthem.
+        player.MusicKitID = musicKit;
+        player.MusicKitMVPs = 0;
+        player.MvpNoMusic = musicKit == 0;
         @event.Musickitid = musicKit;
         @event.Musickitmvps = 0;
         @event.Nomusic = musicKit == 0 ? 1 : 0;
@@ -316,7 +322,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
 
         if ((scope & CosmeticScope.MusicKit) != 0)
         {
-            ApplyMusicKit(player, _options.ResolveMusicKit(writePolicy, state.Loadout), 0);
+            ApplyMusicKit(player, _options.ResolveMusicKit(writePolicy, state.Loadout));
         }
     }
 
@@ -587,7 +593,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
     private static bool IsPlayableTeam(int team)
         => team is RandomizerAssets.TerroristTeam or RandomizerAssets.CounterTerroristTeam;
 
-    private static void ApplyMusicKit(CCSPlayerController player, int kitId, int musicKitMvps)
+    private static void ApplyMusicKit(CCSPlayerController player, int kitId)
     {
         var inventory = player.InventoryServices
             ?? throw new InvalidOperationException("music-kit inventory service unavailable");
@@ -599,12 +605,6 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         inventory.MusicID = checked((ushort)kitId);
         NativeAPI.SchemaNetworkStateChanged(inventory.Handle + chainOffset,
             (uint)offset, uint.MaxValue, uint.MaxValue);
-
-        // Engine-side companion values; the service notification above is not
-        // evidence that these controller fields are independently replicated.
-        player.MusicKitID = kitId;
-        player.MusicKitMVPs = musicKitMvps;
-        player.MvpNoMusic = kitId == 0;
     }
 
     private bool TryGetWritePolicy(

@@ -85,8 +85,8 @@ static DemoTracerHooks::Hook<MaintainQuotaFn> g_QuotaHook;
 static void *g_pQuotaHookTarget = nullptr;
 
 #if defined(_WIN32)
-using HandleJoinTeamFn = int64_t(__fastcall *)(void * /*CCSPlayerController*/,
-                                               unsigned int, bool);
+using HandleJoinTeamFn = bool(__fastcall *)(void * /*CCSPlayerController*/,
+                                          unsigned int, uint8_t);
 static DemoTracerHooks::Hook<HandleJoinTeamFn> g_JoinTeamHook;
 static void *g_pHandleJoinTeamHookTarget = nullptr;
 #endif
@@ -326,9 +326,10 @@ static KHook::Return<int64_t> Detour_MaintainBotQuota(void *mgr)
 
 #if defined(_WIN32)
 // Restore bot identity only while the engine validates an initial team join.
-static KHook::Return<int64_t> __fastcall Detour_HandleCommandJoinTeam(void *controller,
-                                                       unsigned int requestedTeam,
-                                                       bool unknownFlag)
+// Native arg3 is a bitmask (including 0x02), not a bool; preserve every flag.
+static KHook::Return<bool> __fastcall Detour_HandleCommandJoinTeam(void *controller,
+                                                               unsigned int requestedTeam,
+                                                               uint8_t joinFlags)
 {
     ManagedControllerTrace trace = cs2bh::TraceManagedController(controller);
     const bool needsFakeClientScope = trace.Managed && !trace.Hltv &&
@@ -342,7 +343,7 @@ static KHook::Return<int64_t> __fastcall Detour_HandleCommandJoinTeam(void *cont
             controller, trace.Slot, trace.CurrentTeam, requestedTeam);
     }
 
-    return g_JoinTeamHook.Continue(controller, requestedTeam, unknownFlag);
+    return g_JoinTeamHook.Continue(controller, requestedTeam, joinFlags);
 }
 #endif
 
