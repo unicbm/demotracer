@@ -95,6 +95,8 @@ public sealed partial class DemoTracerPlugin
 
         if (config.AllowPartial.HasValue)
             _partialReplayEnabled = config.AllowPartial.Value;
+        if (config.ClanTag.HasValue)
+            _replayClanTagEnabled = config.ClanTag.Value;
         if (config.Playoff.HasValue)
             _playoffEnabled = config.Playoff.Value;
         if (config.ChatAuto.HasValue)
@@ -113,6 +115,7 @@ public sealed partial class DemoTracerPlugin
     private void ResetRuntimeConfigDefaults()
     {
         _replayIdentityMode = ReplayIdentityMode.Steam;
+        _replayClanTagEnabled = true;
         _partialReplayEnabled = true;
         _playoffEnabled = false;
         _handoffMode = HandoffMode.DeathContactC4;
@@ -262,7 +265,7 @@ public sealed partial class DemoTracerPlugin
 
     private void ReplyRuntimeSettings(Action<string> reply, string prefix)
     {
-        reply($"{prefix} playback identity={ReplayIdentityModeName()} allow_partial={FormatOnOff(_partialReplayEnabled)} playoff={FormatOnOff(_playoffEnabled)} chat_auto={FormatOnOff(_chatAutoEnabled)} mute_diverged_dead_comms={FormatOnOff(_muteDivergedDeadCommsEnabled)} round_banner={FormatOnOff(_roundBannerEnabled)} handoff={FormatHandoffMode(_handoffMode)}:{(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} handoff_360={FormatOnOff(_handoffThreat360Enabled)}");
+        reply($"{prefix} playback identity={ReplayIdentityModeName()} clan_tag={FormatOnOff(_replayClanTagEnabled)} allow_partial={FormatOnOff(_partialReplayEnabled)} playoff={FormatOnOff(_playoffEnabled)} chat_auto={FormatOnOff(_chatAutoEnabled)} mute_diverged_dead_comms={FormatOnOff(_muteDivergedDeadCommsEnabled)} round_banner={FormatOnOff(_roundBannerEnabled)} handoff={FormatHandoffMode(_handoffMode)}:{(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} handoff_360={FormatOnOff(_handoffThreat360Enabled)}");
         reply($"{prefix} fidelity preset={AlignPresetName()} weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_mode=birth_once crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)}");
         reply($"{prefix} cosmetics preset={CosmeticPresetName()} risk={FormatOnOff(_cosmeticAlignEnabled)} weapons={FormatOnOff(_cosmeticWeaponsEnabled)} knives={FormatOnOff(_cosmeticKnivesEnabled)} gloves={FormatOnOff(_cosmeticGlovesEnabled)} names={FormatOnOff(_cosmeticNamesEnabled)} agents={FormatOnOff(_cosmeticAgentsEnabled)} stickers={FormatOnOff(_stickerAlignEnabled)} charms={FormatOnOff(_charmAlignEnabled)}");
     }
@@ -285,6 +288,8 @@ public sealed partial class DemoTracerPlugin
     public sealed class DemoTracerRuntimeConfig
     {
         public string? Identity { get; set; }
+
+        public bool? ClanTag { get; set; }
 
         public bool? AllowPartial { get; set; }
 

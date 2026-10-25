@@ -25,7 +25,7 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin : BasePlugin
 {
     public override string ModuleName => "CS2 DemoTracer";
-    public override string ModuleVersion => "1.6.0";
+    public override string ModuleVersion => "1.6.1";
     public override string ModuleAuthor => "unicbm";
     public override string ModuleDescription => "Trace CS2 demos into bot-executable route replays.";
 
@@ -82,6 +82,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private bool _handoffThreat360Enabled = true;
     private bool _partialReplayEnabled = true;
     private ReplayIdentityMode _replayIdentityMode = ReplayIdentityMode.Steam;
+    private bool _replayClanTagEnabled = true;
     private bool _mapActive = true;
     private bool _lifecycleResetInProgress;
 
@@ -180,6 +181,8 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         }
 
         ForgetRetainedBotHiderPresentation(playerSlot);
+        if (_retainedBotRandomizerCosmeticSlots.Remove(playerSlot))
+            _ = SyncBotRandomizerCosmeticLease(announce: false);
         ClearReplayCrosshairPresentationEntry(playerSlot);
     }
 

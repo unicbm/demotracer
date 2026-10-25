@@ -1,5 +1,6 @@
 {
   "identity": "steam",
+  "clan_tag": true,
   "allow_partial": true,
   "playoff": false,
   "chat_auto": true,

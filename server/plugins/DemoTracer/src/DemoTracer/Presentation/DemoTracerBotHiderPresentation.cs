@@ -251,7 +251,10 @@ public sealed partial class DemoTracerPlugin
             ? evidence.View.CrosshairCode
             : null;
 
-        var clan = _replayIdentityMode == ReplayIdentityMode.Off ? null : evidence.Clan;
+        // Hider treats null as "leave unchanged"; disabling must explicitly clear.
+        var clan = !_replayClanTagEnabled
+            ? new BotHiderClan(string.Empty, 0)
+            : _replayIdentityMode != ReplayIdentityMode.Off ? evidence.Clan : null;
 
         if (playerName == null && !steamId.HasValue && !flair.HasValue && crosshair == null && clan == null)
             return;
@@ -379,7 +382,10 @@ public sealed partial class DemoTracerPlugin
                 replay.RetentionRank,
                 replay.ScoreboardFlair,
                 replay.View,
-                replay.Clan);
+                replay.Clan)
+            {
+                ControllerHandle = Utilities.GetPlayerFromSlot(pair.Key)?.EntityHandle.Raw ?? 0,
+            };
         }
 
         _retainedBotHiderPresentation.Clear();
@@ -450,5 +456,8 @@ public sealed partial class DemoTracerPlugin
         int RetentionRank,
         ReplayScoreboardFlair? ScoreboardFlair,
         ReplayView View,
-        BotHiderClan? Clan);
+        BotHiderClan? Clan)
+    {
+        public uint ControllerHandle { get; init; }
+    }
 }

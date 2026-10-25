@@ -15,7 +15,7 @@ public sealed class PlayoffRoundSelectionPolicyTests
     private static readonly HashSet<ulong> Roster = [101, 102];
 
     [Fact]
-    public void SelectsOnlyLongGunNonPistolRoundsCoveringTheRosterExactlyOnce()
+    public void SelectsNonPistolRoundsWithKnownLoadoutsCoveringTheRosterExactlyOnce()
     {
         var candidates = new[]
         {
@@ -27,7 +27,7 @@ public sealed class PlayoffRoundSelectionPolicyTests
             Candidate(8, pistol: false, primary: 7, 101, 102)
         };
 
-        Assert.Equal([8], PlayoffRoundSelectionPolicy.FindEligibleRounds(candidates, Roster));
+        Assert.Equal([8, 10], PlayoffRoundSelectionPolicy.FindEligibleRounds(candidates, Roster));
     }
 
     [Fact]
@@ -54,22 +54,38 @@ public sealed class PlayoffRoundSelectionPolicyTests
             new HashSet<ulong>()));
     }
 
-    [Theory]
-    [InlineData(2, 2, 2, 2, true)]
-    [InlineData(3, 4, 2, 5, true)]
-    [InlineData(1, 2, 2, 2, false)]
-    [InlineData(2, 0, 2, 2, false)]
-    public void RequiresTwoLongGunSamplesForBothRostersOnBothSides(
-        int firstAsT,
-        int firstAsCt,
-        int secondAsT,
-        int secondAsCt,
-        bool expected)
+    [Fact]
+    public void HistoryCyclesThroughCandidatesWithoutRepeatingAtCycleBoundary()
     {
-        Assert.Equal(
-            expected,
-            new PlayoffCoverageCounts(firstAsT, firstAsCt, secondAsT, secondAsCt)
-                .IsEligible(minimumPerRosterSide: 2));
+        var history = new PlayoffRoundHistory();
+        int[] candidates = [8, 10, 12];
+        var played = new List<int>();
+        for (var i = 0; i < 9; i++)
+        {
+            var round = history.Choose("t", Roster, candidates);
+            history.Record("t", Roster, round);
+            played.Add(round);
+        }
+        Assert.Equal(3, played.Take(3).Distinct().Count());
+        Assert.Equal(3, played.Skip(3).Take(3).Distinct().Count());
+        Assert.Equal(3, played.Skip(6).Distinct().Count());
+        Assert.All(played.Zip(played.Skip(1)), pair => Assert.NotEqual(pair.First, pair.Second));
+    }
+
+    [Fact]
+    public void HistoryFollowsRosterAndSideAndOnlyRecordsPlayedSources()
+    {
+        var history = new PlayoffRoundHistory();
+        history.Record("t", Roster, 8); // Last sequence round is already used.
+        history.Record("ct", Roster, 10);
+        Assert.Equal(10, history.Choose("t", new HashSet<ulong> { 102, 101 }, [8, 10]));
+        Assert.Equal(10, history.Choose("t", Roster, [8, 10])); // Prefetch is not consumption.
+        Assert.Equal(8, history.Choose("ct", Roster, [8, 10]));
+        Assert.Equal(8, history.Choose("t", Roster, [8])); // A single candidate can repeat.
+        Assert.Equal(12, history.Choose("t", Roster, [8, 12]));
+        history.Clear();
+        history.Record("t", Roster, 10);
+        Assert.Equal(8, history.Choose("t", Roster, [8, 10]));
     }
 
     private static PlayoffRoundCandidate Candidate(
@@ -104,17 +120,19 @@ public sealed class PlayoffRoundSelectionPolicyTests
         => Assert.Equal(pool, PlayoffRoundSelectionPolicy.ClassifyLoadout([42, 4, weapon]).ToString());
 
     [Fact]
-    public void OvertimeRequiresLongGunsAcrossTheRecordedSideIncludingUnselectedPlayers()
+    public void MixedEquipmentAndUnselectedPlayersDoNotExcludeUsableRoutes()
     {
         PlayoffRoundCandidate[] candidates =
         [
             new(5, false, [new(101, [7]), new(102, [9]), new(999, [16])]),
             new(6, false, [new(101, [7]), new(102, [9]), new(999, [34])]),
             new(7, false, [new(101, [7]), new(102, null)]),
-            new(8, false, [new(101, [7]), new(102, [])])
+            new(8, false, [new(101, [7]), new(102, [])]),
+            new(9, false, [new(101, [7]), new(102, [34]), new(999, null)]),
+            new(10, false, [new(101, [4]), new(102, [1])])
         ];
 
-        Assert.Equal([5], PlayoffRoundSelectionPolicy.FindEligibleRounds(candidates, Roster));
+        Assert.Equal([5, 6, 9, 10], PlayoffRoundSelectionPolicy.FindEligibleRounds(candidates, Roster));
         Assert.Equal(PlayoffWeaponPool.Mixed, PlayoffRoundSelectionPolicy.ClassifyRound(candidates[1].Players));
     }
 
@@ -140,12 +158,25 @@ public sealed class PlayoffRoundSelectionPolicyTests
             """, manifestType, DemoTracerPlugin.ManifestJsonOptions)!;
         var method = typeof(DemoTracerPlugin).GetMethod("FindEligiblePlayoffRounds", BindingFlags.Static | BindingFlags.NonPublic)!;
 
-        Assert.Equal([8], (int[])method.Invoke(null, [manifest, "t", new HashSet<ulong> { 101 }])!);
+        Assert.Equal([8, 9], (int[])method.Invoke(null, [manifest, "t", new HashSet<ulong> { 101 }])!);
     }
 }
 
 public sealed class PlayoffSourceSelectionTests
 {
+    [Fact]
+    public void MissingOppositeSideDoesNotInvalidateAnAvailableOrientation()
+    {
+        var first = new HashSet<ulong> { 101 };
+        var second = new HashSet<ulong> { 201 };
+        var selection = new PlayoffSourceSelection(first, second, new(8, 9, "same"), null);
+        Assert.True(selection.TryResolve(first, second, out var sources));
+        Assert.Equal(8, sources.TRound);
+        Assert.False(selection.TryResolve(second, first, out _));
+        var onlySwapped = selection with { SameSides = null, SwappedSides = new(18, 19, "swapped") };
+        Assert.True(onlySwapped.TryResolve(second, first, out sources));
+        Assert.Equal(18, sources.TRound);
+    }
     [Theory]
     [InlineData(false, 8, 9)]
     [InlineData(true, 18, 19)]
@@ -186,6 +217,12 @@ public sealed class PlayoffSourceSelectionTests
 
 public sealed class PlayoffReplayFallbackPolicyTests
 {
+    [Fact]
+    public void SideSwapCannotReuseThePreviousSidesRoutesWhileDecoding()
+        => Assert.False(PlayoffReplayFallbackPolicy.ShouldRetainLoadedReplay(
+            planReady: true, prepared: false, preparationPending: true,
+            prefetchReady: false, hasLoadedReplay: true, switchingTeamsAtRoundReset: true));
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]

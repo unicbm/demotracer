@@ -1,8 +1,8 @@
 {
   "backend": "khook",
-  "metamod_minimum_build": 1469,
+  "metamod_minimum_build": 1483,
   "metamod_plugin_api": 18,
-  "metamod_source_commit": "fa6f80e4662e5b96cc2e97722d812f374581dfd8",
-  "khook_source_commit": "40d233d160b5bf60cc3e732939142b222fbd8ece",
-  "counterstrikesharp_source_commit": "9cbdee0ce7871671f38ff25101052bd5c2f0a858"
+  "metamod_source_commit": "170058a2f0dbd58106b7c76bfe88a94672295356",
+  "khook_source_commit": "0ca2b01363aff9fa11ad73b1b08dfdc2a195fb3a",
+  "counterstrikesharp_source_commit": "d9efaf83b951c74b988ed0a358d03db79c0a4205"
 }

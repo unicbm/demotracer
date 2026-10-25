@@ -6,6 +6,8 @@
 
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Collections;
+using System.Text.Json;
 using DtrHiderApi;
 
 namespace DemoTracer.Tests;
@@ -52,7 +54,82 @@ public sealed class BotHiderTakeoverPresentationTests
         bridgeField.SetValue(plugin, bridge);
         var mode = typeof(DemoTracerPlugin).GetField("_replayIdentityMode", PrivateInstance)!;
         mode.SetValue(plugin, Enum.Parse(mode.FieldType, "Steam"));
+        typeof(DemoTracerPlugin).GetField("_replayClanTagEnabled", PrivateInstance)!.SetValue(plugin, true);
         return (plugin, (ManagedBotProvider)api);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ClanTagToggleUpdatesLoadedAndRetainedIdentityWithoutChangingNameOrSteamId(bool retained)
+    {
+        var (plugin, _) = CreatePlugin();
+        foreach (var name in new[] { "_session", "_retainedBotHiderPresentation" })
+        {
+            var field = typeof(DemoTracerPlugin).GetField(name, PrivateInstance)!;
+            field.SetValue(plugin, Activator.CreateInstance(field.FieldType, nonPublic: true));
+        }
+        var clan = new BotHiderClan("team_B1ad3", 38084528);
+        if (retained)
+        {
+            var evidenceBySlot = (IDictionary)typeof(DemoTracerPlugin).GetField("_retainedBotHiderPresentation", PrivateInstance)!.GetValue(plugin)!;
+            var evidenceType = evidenceBySlot.GetType().GetGenericArguments()[1];
+            evidenceBySlot.Add(7, Activator.CreateInstance(evidenceType,
+                [7, "demo player", 76561198000000001UL, 0, null, null, clan]));
+        }
+        else
+        {
+            var session = typeof(DemoTracerPlugin).GetField("_session", PrivateInstance)!.GetValue(plugin)!;
+            var slots = (ReplaySlotRegistry)session.GetType().GetProperty("ReplaySlots")!.GetValue(session)!;
+            slots.LoadAndClaim(7);
+            var replays = (IDictionary)session.GetType().GetProperty("LoadedReplays")!.GetValue(session)!;
+            var replayType = replays.GetType().GetGenericArguments()[1];
+            var replay = Activator.CreateInstance(replayType)!;
+            replayType.GetProperty("SteamId")!.SetValue(replay, 76561198000000001UL);
+            replayType.GetProperty("PlayerName")!.SetValue(replay, "demo player");
+            replayType.GetProperty("Clan")!.SetValue(replay, clan);
+            replays.Add(7, replay);
+        }
+        var builder = typeof(DemoTracerPlugin).GetMethod("BuildBotHiderPresentationOverrides", PrivateInstance)!;
+        object?[] args = [null];
+        var before = Assert.Single((BotHiderPresentationOverride[])builder.Invoke(plugin, args)!);
+        var beforeSignature = Assert.IsType<string>(args[0]);
+        var flag = typeof(DemoTracerPlugin).GetField("_replayClanTagEnabled", PrivateInstance)!;
+        flag.SetValue(plugin, false);
+        var after = Assert.Single((BotHiderPresentationOverride[])builder.Invoke(plugin, args)!);
+        Assert.Equal(new BotHiderClan(string.Empty, 0), after.Clan);
+        Assert.Equal(before.PlayerName, after.PlayerName);
+        Assert.Equal(before.SteamId, after.SteamId);
+        Assert.NotEqual(beforeSignature, args[0]);
+        flag.SetValue(plugin, true);
+        Assert.Equal(clan, Assert.Single((BotHiderPresentationOverride[])builder.Invoke(plugin, args)!).Clan);
+        Assert.Equal(beforeSignature, args[0]);
+    }
+
+    [Fact]
+    public void ClanTagOffExplicitlyClearsAnAppliedClanEvenWithIdentityOff()
+    {
+        var (plugin, _) = CreatePlugin();
+        var mode = typeof(DemoTracerPlugin).GetField("_replayIdentityMode", PrivateInstance)!;
+        mode.SetValue(plugin, Enum.Parse(mode.FieldType, "Off"));
+        typeof(DemoTracerPlugin).GetField("_replayClanTagEnabled", PrivateInstance)!.SetValue(plugin, false);
+        var request = BuildOverride(plugin, 7);
+        Assert.Null(request.PlayerName);
+        Assert.Null(request.SteamId);
+        Assert.Equal(new BotHiderClan(string.Empty, 0), request.Clan);
+    }
+
+    [Theory]
+    [InlineData("{}", null)]
+    [InlineData("{\"clan_tag\":false}", false)]
+    [InlineData("{\"clan_tag\":true}", true)]
+    public void RuntimeConfigPreservesClanTagSettingAcrossSerialization(string json, bool? expected)
+    {
+        var options = (JsonSerializerOptions)typeof(DemoTracerPlugin)
+            .GetField("RuntimeConfigJsonOptions", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+        var config = JsonSerializer.Deserialize<DemoTracerPlugin.DemoTracerRuntimeConfig>(json, options)!;
+        var reloaded = JsonSerializer.Deserialize<DemoTracerPlugin.DemoTracerRuntimeConfig>(JsonSerializer.Serialize(config, options), options)!;
+        Assert.Equal(expected, reloaded.ClanTag);
     }
 
     [Theory]

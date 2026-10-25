@@ -11,6 +11,38 @@ namespace DemoTracer.Tests;
 public sealed class ReplayRetentionPriorityTests
 {
     [Fact]
+    public void RemovedMiddleBotDoesNotRenameSurvivingControllers()
+    {
+        Assert.Equal([0, 2, 3, 4], ReplayRetentionPriorityParser.AssignReplayIndices(
+            [101, 102, 103, 104, 105], [1, 2, 3, 4, 5], [101, 103, 104, 105]));
+    }
+
+    [Fact]
+    public void ReusedLowSlotOnlyReceivesTheVacantIdentity()
+    {
+        Assert.Equal([1, 0, 2, 3, 4], ReplayRetentionPriorityParser.AssignReplayIndices(
+            [101, 102, 103, 104, 105], [1, 2, 3, 4, 5], [0, 101, 103, 104, 105]));
+    }
+
+    [Fact]
+    public void RetainedIdentitySurvivesSourceSortAndPriorityChanges()
+    {
+        Assert.Equal([2, 0, 1], ReplayRetentionPriorityParser.AssignReplayIndices(
+            [103, 102, 101, 104, 105], [5, 2, 4, 1, 3], [101, 103, 102]));
+        Assert.Equal([2, 3], ReplayRetentionPriorityParser.AssignReplayIndices(
+            [101, 102, 103, 104, 105], [5, 4, 3, 1, 2], [103, 0]));
+    }
+
+    [Fact]
+    public void InitialPartialRosterStillUsesRetentionPriority()
+    {
+        Assert.Equal([1, 3], ReplayRetentionPriorityParser.AssignReplayIndices(
+            [101, 102, 103, 104, 105], [5, 1, 4, 2, 3], [0, 0]));
+        Assert.Equal([0, 1, -1], ReplayRetentionPriorityParser.AssignReplayIndices(
+            [101, 102], [1, 2], [0, 0, 0]));
+    }
+
+    [Fact]
     public void ParsesOrderedSteamIdGroup()
     {
         var ok = ReplayRetentionPriorityParser.TryParseGroup(

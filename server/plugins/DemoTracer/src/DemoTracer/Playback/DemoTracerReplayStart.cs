@@ -27,13 +27,14 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin
 {
     private string _loadedDemoSha256 = string.Empty;
-    private string StartLoaded(bool loop)
-        => StartLoaded(loop, ReplayStartAnchor.Live, null);
+    private string StartLoaded(bool loop, Action<int>? onStarted = null)
+        => StartLoaded(loop, ReplayStartAnchor.Live, null, onStarted);
 
     private string StartLoaded(
         bool loop,
         ReplayStartAnchor anchor,
-        float? freezeTimeSeconds)
+        float? freezeTimeSeconds,
+        Action<int>? onStarted = null)
     {
         var respawned = RespawnDeadLoadedReplayBots();
         if (respawned > 0)
@@ -42,26 +43,28 @@ public sealed partial class DemoTracerPlugin
             {
                 PreloadLoadedReplays();
                 Server.PrintToConsole(
-                    $"dtr: queued start after respawn: {StartLoadedReady(loop, anchor, freezeTimeSeconds)}");
+                    $"dtr: queued start after respawn: {StartLoadedReady(loop, anchor, freezeTimeSeconds, onStarted)}");
             });
             return $"dtr: respawned {respawned} replay bot(s), start queued";
         }
 
-        return StartLoadedReady(loop, anchor, freezeTimeSeconds);
+        return StartLoadedReady(loop, anchor, freezeTimeSeconds, onStarted);
     }
 
     private string StartLoadedReady(
         bool loop,
         ReplayStartAnchor anchor,
-        float? freezeTimeSeconds)
-        => StartReplaySlotsReady(_session.LoadedSlots, loop, anchor, freezeTimeSeconds);
+        float? freezeTimeSeconds,
+        Action<int>? onStarted = null)
+        => StartReplaySlotsReady(_session.LoadedSlots, loop, anchor, freezeTimeSeconds, onStarted: onStarted);
 
     private string StartReplaySlotsReady(
         IReadOnlyList<int> slots,
         bool loop,
         ReplayStartAnchor anchor,
         float? freezeTimeSeconds,
-        bool restartLoop = false)
+        bool restartLoop = false,
+        Action<int>? onStarted = null)
     {
         using var timing = new ReplayPhaseTimer("round playback start");
         if (IsWarmupPeriod())
@@ -141,6 +144,7 @@ public sealed partial class DemoTracerPlugin
             // The GUI monitors log-cssharp, not the separate per-plugin log.
             CoreLogging.Factory.CreateLogger("DemoTracer")
                 .LogInformation("DTR_PLAYED_DEMO_V1 sha256={DemoSha256}", _loadedDemoSha256);
+        onStarted?.Invoke(ok);
         return $"dtr: started {ok}/{slots.Count} loaded slots, loop={loop}{voice}{chat}";
     }
 

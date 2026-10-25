@@ -11,22 +11,34 @@ internal readonly record struct PlayoffRoundSources(int TRound, int CtRound, str
 internal sealed record PlayoffSourceSelection(
     IReadOnlySet<ulong> TRoster,
     IReadOnlySet<ulong> CtRoster,
-    PlayoffRoundSources SameSides,
-    PlayoffRoundSources SwappedSides)
+    PlayoffRoundSources? SameSides,
+    PlayoffRoundSources? SwappedSides)
 {
     public bool TryResolve(
         IReadOnlySet<ulong> upcomingTRoster,
         IReadOnlySet<ulong> upcomingCtRoster,
         out PlayoffRoundSources sources)
+        => TryResolve(upcomingTRoster, upcomingCtRoster, out sources, out _);
+
+    public bool TryResolve(
+        IReadOnlySet<ulong> upcomingTRoster,
+        IReadOnlySet<ulong> upcomingCtRoster,
+        out PlayoffRoundSources sources,
+        out bool swapped)
     {
-        if (TRoster.SetEquals(upcomingTRoster) && CtRoster.SetEquals(upcomingCtRoster))
+        swapped = false;
+        if (TRoster.SetEquals(upcomingTRoster) && CtRoster.SetEquals(upcomingCtRoster) &&
+            SameSides is { } same)
         {
-            sources = SameSides;
+            sources = same;
             return true;
         }
-        if (TRoster.SetEquals(upcomingCtRoster) && CtRoster.SetEquals(upcomingTRoster))
+        if (TRoster.SetEquals(upcomingCtRoster) && CtRoster.SetEquals(upcomingTRoster) &&
+            SwappedSides is { } swappedSources)
         {
-            sources = SwappedSides;
+            sources = swappedSources;
+            // The resolved source and its prefetch cache must use the same orientation.
+            swapped = true;
             return true;
         }
 
@@ -53,26 +65,43 @@ internal enum PlayoffWeaponPool
     Mixed
 }
 
-internal readonly record struct PlayoffCoverageCounts(
-    int FirstRosterAsT,
-    int FirstRosterAsCt,
-    int SecondRosterAsT,
-    int SecondRosterAsCt)
+internal sealed class PlayoffRoundHistory
 {
-    public bool IsEligible(int minimumPerRosterSide)
-        => minimumPerRosterSide > 0 &&
-           FirstRosterAsT >= minimumPerRosterSide &&
-           FirstRosterAsCt >= minimumPerRosterSide &&
-           SecondRosterAsT >= minimumPerRosterSide &&
-           SecondRosterAsCt >= minimumPerRosterSide;
+    private readonly Dictionary<(string Side, string Roster, int Round), int> _uses = [];
+    private readonly Dictionary<(string Side, string Roster), int> _previous = [];
+
+    public int Choose(string side, IReadOnlySet<ulong> roster, IReadOnlyList<int> candidates)
+    {
+        var key = string.Join(',', roster.Order());
+        var previous = _previous.GetValueOrDefault((side, key), -1);
+        var available = candidates.Where(round => candidates.Count == 1 || round != previous).ToArray();
+        var minimumUses = available.Min(round => _uses.GetValueOrDefault((side, key, round)));
+        var choices = available.Where(round => _uses.GetValueOrDefault((side, key, round)) == minimumUses).ToArray();
+        return choices[Random.Shared.Next(choices.Length)];
+    }
+
+    public void Record(string side, IReadOnlySet<ulong> roster, int round)
+    {
+        if (roster.Count > 0 && round >= 0)
+        {
+            var key = string.Join(',', roster.Order());
+            _uses[(side, key, round)] = _uses.GetValueOrDefault((side, key, round)) + 1;
+            _previous[(side, key)] = round;
+        }
+    }
+
+    public void Clear()
+    {
+        _uses.Clear();
+        _previous.Clear();
+    }
 }
 
 internal static class PlayoffRoundSelectionPolicy
 {
     public static int[] FindEligibleRounds(
         IEnumerable<PlayoffRoundCandidate> candidates,
-        IReadOnlySet<ulong> requiredSteamIds,
-        PlayoffWeaponPool pool = PlayoffWeaponPool.LongGuns)
+        IReadOnlySet<ulong> requiredSteamIds)
     {
         if (requiredSteamIds.Count == 0)
             return [];
@@ -80,8 +109,9 @@ internal static class PlayoffRoundSelectionPolicy
         return candidates
             .Where(candidate =>
                 !candidate.PistolRound &&
-                ClassifyRound(candidate.Players) == pool &&
-                CoversRosterExactlyOnce(candidate.Players.Select(player => player.SteamId).ToArray(), requiredSteamIds))
+                CoversRosterExactlyOnce(candidate.Players.Select(player => player.SteamId).ToArray(), requiredSteamIds) &&
+                candidate.Players.Where(player => requiredSteamIds.Contains(player.SteamId))
+                    .All(player => ClassifyLoadout(player.Weapons) != PlayoffWeaponPool.Unknown))
             .Select(candidate => candidate.Round)
             .Distinct()
             .Order()

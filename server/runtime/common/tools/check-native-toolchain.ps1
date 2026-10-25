@@ -8,7 +8,7 @@ $sdk = Get-Content (Join-Path $root 'contracts/native-toolchain.v1.json') -Raw |
 foreach ($field in @('metamod_source_commit', 'khook_source_commit', 'counterstrikesharp_source_commit')) {
     if ([string]$hooks.$field -notmatch '^[0-9a-f]{40}$') { throw "Invalid hook source pin: $field" }
 }
-if ($hooks.backend -ne 'khook' -or $hooks.metamod_plugin_api -ne 18 -or $hooks.metamod_minimum_build -lt 1469) {
+if ($hooks.backend -ne 'khook' -or $hooks.metamod_plugin_api -ne 18 -or $hooks.metamod_minimum_build -lt 1483) {
     throw 'Unsupported shared hook runtime contract'
 }
 if ($sdk.hl2sdk_repository -ne 'alliedmodders/hl2sdk' -or

@@ -7,6 +7,7 @@
 using System.Text.Json;
 using BotRandomizerApi;
 using CounterStrikeSharp.API;
+using CounterStrikeSharp.API.Modules.Utils;
 
 namespace DemoTracer;
 
@@ -41,18 +42,6 @@ internal sealed class DemoTracerBotRandomizerPlanSnapshot
         => _plans.TryGetValue(slot, out plan!) &&
            subjectSteamId != 0 &&
            plan.SubjectSteamId == subjectSteamId;
-
-    internal bool TryBuildRetainedPlan(
-        int slot,
-        ulong subjectSteamId,
-        out BotRandomizerReplayCosmeticPlan plan)
-    {
-        plan = null!;
-        if (!TryGet(slot, subjectSteamId, out var active))
-            return false;
-        plan = Clone(active);
-        return true;
-    }
 
     private static BotRandomizerReplayCosmeticPlan Clone(BotRandomizerReplayCosmeticPlan plan)
         => new()
@@ -126,6 +115,11 @@ public sealed partial class DemoTracerPlugin
 {
     private readonly DemoTracerBotRandomizerBridge _botRandomizerBridge = new();
     private readonly DemoTracerBotRandomizerPlanSnapshot _botRandomizerLease = new();
+    private sealed record RetainedReplayCosmetics(
+        ulong Incarnation, ulong SteamId, CsTeam? ManifestTeam,
+        ReplayCosmetics Cosmetics, int MusicKitId, string ProviderEpoch);
+
+    private readonly Dictionary<int, RetainedReplayCosmetics> _retainedBotRandomizerCosmeticSlots = [];
     private string _botRandomizerLeaseSignature = string.Empty;
     private string _lastBotRandomizerLeaseError = string.Empty;
     private int _botRandomizerLeaseTransitionDepth;
@@ -154,8 +148,9 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
-        if (!string.IsNullOrWhiteSpace(_botRandomizerLease.ProviderEpoch) &&
-            !_botRandomizerLease.ProviderEpoch.Equals(provider.ProviderEpoch, StringComparison.Ordinal))
+        if ((!string.IsNullOrWhiteSpace(_botRandomizerLease.ProviderEpoch) &&
+             !_botRandomizerLease.ProviderEpoch.Equals(provider.ProviderEpoch, StringComparison.Ordinal)) ||
+            _retainedBotRandomizerCosmeticSlots.Values.Any(replay => replay.ProviderEpoch != provider.ProviderEpoch))
         {
             InvalidateBotRandomizerCosmeticLease("provider_epoch_changed");
         }
@@ -163,7 +158,7 @@ public sealed partial class DemoTracerPlugin
         var requests = BuildBotRandomizerReplayPlans();
         if (requests.Length == 0)
         {
-            ReleaseBotRandomizerCosmeticLease("no_replay_plans");
+            ReleaseBotRandomizerCosmeticLease("no_replay_plans", clearEvidence: false);
             return true;
         }
 
@@ -212,6 +207,7 @@ public sealed partial class DemoTracerPlugin
         }
 
         _botRandomizerLease.Activate(result.PlanToken, result.ProviderEpoch, requests);
+        RetainLoadedBotRandomizerCosmetics();
         _botRandomizerLeaseSignature = signature;
         _lastBotRandomizerLeaseError = string.Empty;
         foreach (var slot in result.Slots)
@@ -245,33 +241,51 @@ public sealed partial class DemoTracerPlugin
             var slot = pair.Key;
             var replay = pair.Value;
             var canWriteReplaySlot = CanWriteReplaySlot(slot);
-            var currentPlanAccepted = HasCurrentLoadedReplayCosmeticAlignment(slot, replay);
-            if (!ShouldHoldBotRandomizerCosmeticLease(canWriteReplaySlot, currentPlanAccepted))
-                continue;
-
             if (canWriteReplaySlot &&
                 _botRandomizerBridge.TryGetManagedBot(slot, out var managed) &&
                 BuildBotRandomizerReplayPlan(managed.Slot, managed.Incarnation, replay) is { } plan)
             {
                 plans.Add(plan);
-                continue;
-            }
-
-            if (currentPlanAccepted &&
-                _botRandomizerLease.TryBuildRetainedPlan(slot, replay.SteamId, out var retained))
-            {
-                plans.Add(retained);
             }
         }
+        foreach (var (slot, evidence) in _retainedBotRandomizerCosmeticSlots.ToArray())
+        {
+            if (CanWriteReplaySlot(slot))
+                continue;
+            if (!_botRandomizerBridge.TryGetManagedBot(slot, out var managed) ||
+                managed.Incarnation != evidence.Incarnation || (byte?)evidence.ManifestTeam != managed.Team ||
+                (_session.LoadedReplays.TryGetValue(slot, out var loaded) && loaded.SteamId != evidence.SteamId))
+            {
+                _retainedBotRandomizerCosmeticSlots.Remove(slot);
+                continue;
+            }
+            if (BuildBotRandomizerReplayPlan(slot, evidence) is { } retained)
+                plans.Add(retained);
+        }
         return plans.ToArray();
+    }
+
+    private void RetainLoadedBotRandomizerCosmetics()
+    {
+        foreach (var (slot, replay) in _session.LoadedReplays)
+        {
+            if (_botRandomizerLease.TryGet(slot, replay.SteamId, out var plan))
+                _retainedBotRandomizerCosmeticSlots[slot] = new(
+                    plan.Incarnation, replay.SteamId, replay.ManifestTeam, replay.Cosmetics,
+                    replay.MusicKitId, _botRandomizerLease.ProviderEpoch);
+        }
     }
 
     private BotRandomizerReplayCosmeticPlan? BuildBotRandomizerReplayPlan(
         int slot,
         ulong incarnation,
         LoadedReplay replay)
+        => BuildBotRandomizerReplayPlan(slot, new RetainedReplayCosmetics(
+            incarnation, replay.SteamId, replay.ManifestTeam, replay.Cosmetics, replay.MusicKitId, string.Empty));
+
+    private BotRandomizerReplayCosmeticPlan? BuildBotRandomizerReplayPlan(int slot, RetainedReplayCosmetics replay)
     {
-        if (slot < 0 || incarnation == 0 || replay.SteamId == 0)
+        if (slot < 0 || replay.Incarnation == 0 || replay.SteamId == 0)
             return null;
 
         var agent = new BotRandomizerAgentPlan { Mode = BotRandomizerAgentPlanMode.Randomized };
@@ -290,7 +304,7 @@ public sealed partial class DemoTracerPlugin
         var plan = new BotRandomizerReplayCosmeticPlan
         {
             Slot = slot,
-            Incarnation = incarnation,
+            Incarnation = replay.Incarnation,
             SubjectSteamId = replay.SteamId,
             SpawnTeam = replay.ManifestTeam.HasValue
                 ? (byte)replay.ManifestTeam.Value
@@ -303,7 +317,7 @@ public sealed partial class DemoTracerPlugin
                 ? ToReplayItem(replay.Cosmetics.Glove)
                 : null,
             MusicKit = ReplayMusicKitAlignmentAllowed(replay.MusicKitId) ? replay.MusicKitId : null,
-            Weapons = BuildReplayWeapons(replay)
+            Weapons = BuildReplayWeapons(replay.Cosmetics)
         };
 
         var claimsAnything = plan.Agent.Mode != BotRandomizerAgentPlanMode.Randomized ||
@@ -312,12 +326,12 @@ public sealed partial class DemoTracerPlugin
         return claimsAnything ? plan : null;
     }
 
-    private BotRandomizerReplayWeapon[] BuildReplayWeapons(LoadedReplay replay)
+    private BotRandomizerReplayWeapon[] BuildReplayWeapons(ReplayCosmetics cosmetics)
     {
         if (!_cosmeticAlignEnabled || !_weaponAlignEnabled || !_cosmeticWeaponsEnabled)
             return [];
 
-        return replay.Cosmetics.Weapons
+        return cosmetics.Weapons
             .Where(weapon => HasCompleteAuthoritativePaintEvidence(weapon))
             .OrderBy(weapon => weapon.WeaponDefIndex)
             .Select(weapon => new BotRandomizerReplayWeapon
@@ -390,11 +404,6 @@ public sealed partial class DemoTracerPlugin
     internal static bool RequestsRequireReplayPrebuild(IEnumerable<BotRandomizerReplayCosmeticPlan> plans)
         => plans.Any(plan => plan.Knife is not null || (plan.Weapons?.Length ?? 0) > 0);
 
-    internal static bool ShouldHoldBotRandomizerCosmeticLease(
-        bool canWriteReplaySlot,
-        bool currentPawnCosmeticsAligned)
-        => canWriteReplaySlot || currentPawnCosmeticsAligned;
-
     internal static bool ShouldRetainActiveBotRandomizerLeaseAfterSyncFailure(
         bool hadActiveLease,
         string? reason)
@@ -419,6 +428,7 @@ public sealed partial class DemoTracerPlugin
 
     private void InvalidateBotRandomizerCosmeticLease(string reason)
     {
+        _retainedBotRandomizerCosmeticSlots.Clear();
         var hadActiveLease = !string.IsNullOrWhiteSpace(_botRandomizerLease.Token);
         _botRandomizerLease.Invalidate();
         _botRandomizerLeaseSignature = string.Empty;
@@ -427,7 +437,13 @@ public sealed partial class DemoTracerPlugin
     }
 
     private void ReleaseBotRandomizerCosmeticLease(string reason)
+        => ReleaseBotRandomizerCosmeticLease(reason, clearEvidence: true);
+
+    private void ReleaseBotRandomizerCosmeticLease(string reason, bool clearEvidence)
     {
+        if (clearEvidence)
+            _retainedBotRandomizerCosmeticSlots.Clear();
+        _session.CosmeticSyncedSlots.Clear();
         if (_botRandomizerLeaseTransitionDepth > 0)
             return;
 

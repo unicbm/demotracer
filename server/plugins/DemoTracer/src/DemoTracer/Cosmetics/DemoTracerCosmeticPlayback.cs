@@ -27,10 +27,6 @@ public sealed partial class DemoTracerPlugin
     private void InvalidateLoadedReplayCosmeticAlignmentForSlot(int slot)
         => _session.CosmeticSyncedSlots.Remove(slot);
 
-    private bool HasCurrentLoadedReplayCosmeticAlignment(int slot, LoadedReplay replay)
-        => _session.CosmeticSyncedSlots.Contains(slot) &&
-           _botRandomizerLease.TryGet(slot, replay.SteamId, out _);
-
     private static bool PawnOwnsWeapon(CCSPlayerPawn pawn, CBasePlayerWeapon weapon)
     {
         if (pawn.WeaponServices == null)

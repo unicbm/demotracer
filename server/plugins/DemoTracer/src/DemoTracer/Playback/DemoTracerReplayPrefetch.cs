@@ -109,9 +109,11 @@ public sealed partial class DemoTracerPlugin
         _dtrReplayPrefetch.Begin(PathsFor(sources.SameSides, sources.TRoster, sources.CtRoster));
         _playoffSwappedReplayPrefetch.Begin(PathsFor(sources.SwappedSides, sources.CtRoster, sources.TRoster));
 
-        List<string> PathsFor(PlayoffRoundSources rounds, IReadOnlySet<ulong> tRoster, IReadOnlySet<ulong> ctRoster)
+        List<string> PathsFor(PlayoffRoundSources? selection, IReadOnlySet<ulong> tRoster, IReadOnlySet<ulong> ctRoster)
         {
             var paths = new List<string>(tRoster.Count + ctRoster.Count);
+            if (selection is not { } rounds)
+                return paths;
             AddSide(paths, "t", rounds.TRound, tRoster);
             AddSide(paths, "ct", rounds.CtRound, ctRoster);
             return paths;

@@ -36,6 +36,12 @@ public sealed partial class DemoTracerPlugin
         return targets;
     }
 
+    private bool HasPlayoffReplayIdentity(int slot)
+        => _session.LoadedReplays.ContainsKey(slot) || _retainedBotHiderPresentation.ContainsKey(slot);
+
+    private List<CCSPlayerController> FindPlayoffReplayTargets()
+        => FindReplayTargets().Where(bot => HasPlayoffReplayIdentity(bot.Slot)).ToList();
+
     private bool IsReplayTargetBot(CCSPlayerController player)
     {
         return IsReplayTargetBot(player, null);

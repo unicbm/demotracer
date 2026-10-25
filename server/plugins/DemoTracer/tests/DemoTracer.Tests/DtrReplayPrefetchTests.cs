@@ -93,6 +93,55 @@ public sealed class DtrReplayPrefetchTests : IDisposable
         Assert.False(swapped.HasGeneration);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PlayoffWaitsOnlyForTheResolvedOrientation(bool swapTeams)
+    {
+        Directory.CreateDirectory(tempDirectory);
+        var path = Path.Combine(tempDirectory, "shared.dtr");
+        File.WriteAllBytes(path, [1, 2, 3]);
+        var replay = new DtrReplayFile(12, [], [], ReplayHighFidelityMetadata.Empty, [], [], [], 64, 0);
+        using var enteredReader = new ManualResetEventSlim();
+        using var releaseReader = new ManualResetEventSlim();
+        var ready = new DtrReplayPrefetch(_ => replay);
+        var pending = new DtrReplayPrefetch(_ =>
+        {
+            enteredReader.Set();
+            releaseReader.Wait();
+            return replay;
+        });
+        var plugin = (DemoTracerPlugin)RuntimeHelpers.GetUninitializedObject(typeof(DemoTracerPlugin));
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        typeof(DemoTracerPlugin).GetField("_dtrReplayPrefetch", flags)!.SetValue(plugin, swapTeams ? pending : ready);
+        typeof(DemoTracerPlugin).GetField("_playoffSwappedReplayPrefetch", flags)!.SetValue(plugin, swapTeams ? ready : pending);
+        var tRoster = new HashSet<ulong> { 101 };
+        var ctRoster = new HashSet<ulong> { 102 };
+        var sources = new PlayoffSourceSelection(tRoster, ctRoster, new(4, 6, "same"), new(7, 8, "swapped"));
+        Assert.True(sources.TryResolve(swapTeams ? ctRoster : tRoster, swapTeams ? tRoster : ctRoster,
+            out var selected, out var swapped));
+        Assert.Equal(swapTeams, swapped);
+        Assert.Equal(swapTeams ? 7 : 4, selected.TRound);
+
+        try
+        {
+            pending.Begin([path]);
+            ready.Begin([path]);
+            Assert.True(enteredReader.Wait(TimeSpan.FromSeconds(5)));
+            Assert.True(SpinWait.SpinUntil(ready.AllPendingCompleted, TimeSpan.FromSeconds(5)));
+            var isReady = typeof(DemoTracerPlugin).GetMethod("PlayoffOrientationPrefetchReady", flags)!;
+            Assert.Equal(true, isReady.Invoke(plugin, [swapped]));
+            Assert.Equal(false, isReady.Invoke(plugin, [!swapped]));
+        }
+        finally
+        {
+            releaseReader.Set();
+            Assert.True(SpinWait.SpinUntil(pending.AllPendingCompleted, TimeSpan.FromSeconds(5)));
+            pending.Cancel();
+            ready.Cancel();
+        }
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(tempDirectory))

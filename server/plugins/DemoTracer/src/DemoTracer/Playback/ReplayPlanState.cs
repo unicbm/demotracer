@@ -53,6 +53,15 @@ internal sealed class ReplayPlanState
     public string PlayoffPreparedLabel { get; set; } = string.Empty;
     public int PlayoffRoundIndex { get; set; }
 
+    public bool TryCompletePlayoffStart(int started)
+    {
+        if (started <= 0)
+            return false;
+        PlayoffRoundIndex++;
+        ClearPlayoffPrepared(resetRoundIndex: false);
+        return true;
+    }
+
     public void ClearArmed()
     {
         Armed = false;

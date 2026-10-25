@@ -6,12 +6,149 @@
 
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Collections;
+using System.Text.Json;
+using BotRandomizerApi;
+using CounterStrikeSharp.API.Modules.Utils;
 
 namespace DemoTracer.Tests;
 
 public sealed class ReplayLifecycleBoundaryTests
 {
     private const BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
+
+    [Fact]
+    public void NaturalBoundaryKeepsCosmeticsWithoutReplayOwnershipAndExplicitUnloadClearsThem()
+    {
+        var plugin = CreatePlugin();
+        var session = GetField<object>(plugin, "_session");
+        var replays = GetProperty<IDictionary>(session, "LoadedReplays");
+        var replayType = replays.GetType().GetGenericArguments()[1];
+        var replay = Activator.CreateInstance(replayType)!;
+        replayType.GetProperty("SteamId")!.SetValue(replay, 101UL);
+        replayType.GetProperty("ManifestTeam")!.SetValue(replay, CsTeam.CounterTerrorist);
+        var cosmetics = replayType.GetProperty("Cosmetics")!;
+        cosmetics.SetValue(replay, JsonSerializer.Deserialize("""
+            {"Agent":{"ModelPath":"demo_agent"},"Weapons":[{"WeaponDefIndex":60,"PaintKit":309}]}
+            """, cosmetics.PropertyType));
+        foreach (var flag in new[] { "_cosmeticAlignEnabled", "_cosmeticAgentsEnabled", "_cosmeticWeaponsEnabled", "_weaponAlignEnabled" })
+            typeof(DemoTracerPlugin).GetField(flag, PrivateInstance)!.SetValue(plugin, true);
+        replays.Add(3, replay);
+        var snapshot = GetField<DemoTracerBotRandomizerPlanSnapshot>(plugin, "_botRandomizerLease");
+        snapshot.Activate("token", "epoch", [new()
+        {
+            Slot = 3, Incarnation = 7, SubjectSteamId = 101, SpawnTeam = 3,
+            Agent = new() { Mode = BotRandomizerAgentPlanMode.ReplayModel, ModelPath = "demo_agent" },
+            Weapons = [new() { ItemDefinitionIndex = 60, PaintKit = 309 }]
+        }]);
+        var bridge = GetField<object>(plugin, "_botRandomizerBridge");
+        var api = DispatchProxy.Create<IBotRandomizerApi, CosmeticProvider>();
+        bridge.GetType().GetField("_api", PrivateInstance)!.SetValue(bridge, api);
+        bridge.GetType().GetField("_resolved", PrivateInstance)!.SetValue(bridge, true);
+        typeof(DemoTracerPlugin).GetField("_botRandomizerLeaseTransitionDepth", PrivateInstance)!.SetValue(plugin, 1);
+
+        // Exercise the actual round-boundary unload after execution has ended.
+        // There are no native buffers in this fixture; only the accepted plan.
+        typeof(DemoTracerPlugin).GetMethod("StopAndUnloadLoaded", PrivateInstance,
+            [typeof(bool), typeof(bool), typeof(bool)])!.Invoke(plugin, [false, true, true]);
+        Assert.Empty(replays);
+        Assert.False(GetProperty<ReplaySlotRegistry>(session, "ReplaySlots").HasAnyState);
+        var retained = Assert.Single(Invoke<BotRandomizerReplayCosmeticPlan[]>(plugin, "BuildBotRandomizerReplayPlans"));
+        Assert.Equal("demo_agent", retained.Agent.ModelPath);
+        Assert.Equal(309U, Assert.Single(retained.Weapons).PaintKit);
+        Assert.Single(Invoke<BotRandomizerReplayCosmeticPlan[]>(plugin, "BuildBotRandomizerReplayPlans"));
+
+        // Explicit unload inside the same transition cannot resurrect the plan.
+        typeof(DemoTracerPlugin).GetMethod("StopAndUnloadLoaded", PrivateInstance, Type.EmptyTypes)!.Invoke(plugin, null);
+        Assert.Empty(Invoke<BotRandomizerReplayCosmeticPlan[]>(plugin, "BuildBotRandomizerReplayPlans"));
+
+        // Stop-all can retain loaded metadata inside an atomic transition.
+        // That metadata must not revive the just-released cosmetic plan.
+        replays.Add(3, replay);
+        GetProperty<HashSet<int>>(session, "CosmeticSyncedSlots").Add(3);
+        typeof(DemoTracerPlugin).GetMethod("ReleaseBotRandomizerCosmeticLease", PrivateInstance,
+            [typeof(string)])!.Invoke(plugin, ["stop_all"]);
+        Assert.Empty(Invoke<BotRandomizerReplayCosmeticPlan[]>(plugin, "BuildBotRandomizerReplayPlans"));
+    }
+
+    [Fact]
+    public void PlayoffIgnoresOrdinaryBotsButKeepsTrackedIdentityValidation()
+    {
+        var plugin = CreatePlugin();
+        var replays = GetProperty<IDictionary>(GetField<object>(plugin, "_session"), "LoadedReplays");
+        var replay = Activator.CreateInstance(replays.GetType().GetGenericArguments()[1])!;
+        replays.Add(3, replay); // Tracked but missing SteamID must still reach roster validation.
+        var retained = GetField<IDictionary>(plugin, "_retainedBotHiderPresentation");
+        var evidence = Activator.CreateInstance(retained.GetType().GetGenericArguments()[1],
+            [4, "demo player", 101UL, 0, null, null, null]);
+        retained.Add(4, evidence);
+
+        Assert.True(Invoke<bool>(plugin, "HasPlayoffReplayIdentity", 3));
+        Assert.True(Invoke<bool>(plugin, "HasPlayoffReplayIdentity", 4));
+        Assert.False(Invoke<bool>(plugin, "HasPlayoffReplayIdentity", 5));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PlayoffCountsAndRecordsOnlyStartedRoundsIncludingFallback(bool prepared)
+    {
+        var plugin = CreatePlugin();
+        var session = GetField<object>(plugin, "_session");
+        var plan = GetProperty<ReplayPlanState>(session, "Plan");
+        plan.PlayoffPrepared = prepared;
+        plan.PlayoffPreparedTRound = 4;
+        plan.PlayoffPreparedCtRound = 6;
+        var replays = GetProperty<IDictionary>(session, "LoadedReplays");
+        var replayType = replays.GetType().GetGenericArguments()[1];
+        var slots = GetProperty<ReplaySlotRegistry>(session, "ReplaySlots");
+        foreach (var (slot, steamId, team) in new[] { (3, 101UL, CsTeam.Terrorist), (4, 102UL, CsTeam.CounterTerrorist) })
+        {
+            var replay = Activator.CreateInstance(replayType)!;
+            replayType.GetProperty("SteamId")!.SetValue(replay, steamId);
+            replayType.GetProperty("ManifestTeam")!.SetValue(replay, team);
+            replays.Add(slot, replay);
+            slots.LoadAndClaim(slot);
+        }
+        typeof(DemoTracerPlugin).GetField("_loadedRoundSources", PrivateInstance)!
+            .SetValue(plugin, new PlayoffRoundSources(4, 6, "test"));
+        var history = GetField<PlayoffRoundHistory>(plugin, "_playoffHistory");
+        var uses = GetField<Dictionary<(string, string, int), int>>(history, "_uses");
+
+        // A queued or failed attempt cannot consume the prepared selection.
+        Invoke<object?>(plugin, "CompletePlayoffRoundStart", 0);
+        Assert.Equal(0, plan.PlayoffRoundIndex);
+        Assert.Equal(prepared, plan.PlayoffPrepared);
+        Assert.Empty(uses);
+
+        // The delayed success callback counts only the side that actually ran.
+        slots.MarkPlaying(3);
+        Invoke<object?>(plugin, "CompletePlayoffRoundStart", 1);
+        Assert.Equal(1, plan.PlayoffRoundIndex);
+        Assert.False(plan.PlayoffPrepared);
+        Assert.Equal(1, uses[("t", "101", 4)]);
+        Assert.False(uses.ContainsKey(("ct", "102", 6)));
+
+        // Reusing the same loaded source in a later round also counts its use.
+        slots.MarkPlaying(4);
+        Invoke<object?>(plugin, "CompletePlayoffRoundStart", 2);
+        Assert.Equal(2, plan.PlayoffRoundIndex);
+        Assert.Equal(2, uses[("t", "101", 4)]);
+        Assert.Equal(1, uses[("ct", "102", 6)]);
+    }
+
+    public class CosmeticProvider : DispatchProxy
+    {
+        protected override object? Invoke(MethodInfo? method, object?[]? args)
+        {
+            if (method!.Name == "get_ApiVersion")
+                return BotRandomizerContract.ApiVersion;
+            if (method.Name != nameof(IBotRandomizerApi.TryGetManagedBot))
+                throw new InvalidOperationException($"Unexpected provider call: {method.Name}");
+            args![1] = new BotRandomizerManagedBot { Slot = 3, Incarnation = 7, Team = 3 };
+            return (int)args[0]! == 3;
+        }
+    }
 
     [Fact]
     public void CleanupTargetsIncludeReleasedAndWarmBuffersButNotUntrackedSlots()
@@ -268,9 +405,11 @@ public sealed class ReplayLifecycleBoundaryTests
         // BasePlugin requires a running CSS host. Initialize only the managed
         // state touched by cleanup; no controller or native replay is present.
         var plugin = (DemoTracerPlugin)RuntimeHelpers.GetUninitializedObject(typeof(DemoTracerPlugin));
+        typeof(DemoTracerPlugin).GetField("_replayEquipment", PrivateInstance)!.SetValue(plugin, ReplayEquipmentCatalog.Empty);
         foreach (var name in new[]
                  {
-                     "_session", "_replaySlotWork", "_replayRoundWork", "_pendingSafeC4DropHandles", "_botRandomizerLease",
+                    "_session", "_replaySlotWork", "_replayRoundWork", "_pendingSafeC4DropHandles", "_botRandomizerLease",
+                    "_retainedBotRandomizerCosmeticSlots", "_botRandomizerBridge", "_legacyCosmeticPaints", "_playoffHistory",
                      "_voiceClipPreloadGate",
                      "_retainedBotHiderPresentation", "_activeBotHiderReplaySteamIds",
                      "_retainedReplayViewmodelSlots", "_replayLeftHandDesiredLatches"

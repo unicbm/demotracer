@@ -117,6 +117,23 @@ public sealed partial class DemoTracerPlugin
         command.ReplyToCommand($"dtr: replay_identity={ReplayIdentityModeName()}");
     }
 
+    [ConsoleCommand("dtr_replay_clantag", "dtr_replay_clantag <on|off>")]
+    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
+    public void ReplayClanTagCommand(CCSPlayerController? player, CommandInfo command)
+    {
+        if (command.ArgCount >= 2)
+        {
+            if (!TryParseBooleanToggle(command.GetArg(1), out var enabled))
+            {
+                command.ReplyToCommand("usage: dtr_replay_clantag <on|off>");
+                return;
+            }
+            _replayClanTagEnabled = enabled;
+            _ = SyncBotHiderPresentationLease(announce: false);
+        }
+        command.ReplyToCommand($"dtr: replay_clantag={FormatOnOff(_replayClanTagEnabled)}");
+    }
+
     [ConsoleCommand("dtr_bots", "dtr_bots")]
     [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
     public void BotsCommand(CCSPlayerController? player, CommandInfo command)

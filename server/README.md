@@ -12,11 +12,11 @@ See [playback commands](../docs/COMMANDS.md) and the
 
 ## Shared hook runtime
 
-The supported target is Windows x64 with Metamod 2.0 build 1469+ (plugin API 18)
-and a KHook-enabled CounterStrikeSharp host. The managed API minimum is 1.0.371;
-the NuGet version alone does not establish native hook compatibility.
-Use the source pins in [playback-contract.v1.json](../shared/contracts/playback-contract.v1.json),
-including the matched CounterStrikeSharp build. Public host v1.0.374 predates the KHook migration.
+The supported target is Windows x64 with official [Metamod 2.0 build 1483+](https://www.metamodsource.net/downloads.php?branch=master)
+(plugin API 18) and official [CounterStrikeSharp 1.0.378+](https://github.com/roflmuffin/CounterStrikeSharp/releases/tag/v1.0.378).
+These upstream builds include the shared KHook backend; no locally patched host is required.
+The managed API minimum is 1.0.378. Reproducible build pins are recorded in
+[playback-contract.v1.json](../shared/contracts/playback-contract.v1.json).
 
 All three providers use Metamod's shared KHook engine. KHook coordinates hooks;
 the provider APIs coordinate presentation and cosmetic ownership. Run one

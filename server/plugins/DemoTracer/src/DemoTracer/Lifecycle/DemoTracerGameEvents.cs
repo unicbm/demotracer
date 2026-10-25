@@ -40,7 +40,11 @@ public sealed partial class DemoTracerPlugin
         BeginBotRandomizerCosmeticLeaseTransition();
         try
         {
-            var retainedPlayoffFallback = ShouldRetainLoadedPlayoffFallback();
+            var teamTransitionKnown = TryReadSwitchingTeamsAtRoundReset(
+                out var switchingTeamsAtRoundReset,
+                out var teamTransitionError);
+            var retainedPlayoffFallback = teamTransitionKnown &&
+                ShouldRetainLoadedPlayoffFallback(switchingTeamsAtRoundReset);
             if (retainedPlayoffFallback)
             {
                 StopLoadedReplaySlots("playoff_pending_fallback");
@@ -58,9 +62,7 @@ public sealed partial class DemoTracerPlugin
                 return HookResult.Continue;
             }
 
-            if (!TryReadSwitchingTeamsAtRoundReset(
-                    out var switchingTeamsAtRoundReset,
-                    out var teamTransitionError))
+            if (!teamTransitionKnown)
             {
                 Server.PrintToConsole(
                     $"[DTR ERR] round_prestart cannot resolve the upcoming team transition: {teamTransitionError}");

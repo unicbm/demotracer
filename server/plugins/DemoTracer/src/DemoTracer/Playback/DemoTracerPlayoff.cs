@@ -16,7 +16,8 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
-    private const int MinimumPlayoffRoundsPerRosterSide = 2;
+    private readonly PlayoffRoundHistory _playoffHistory = new();
+    private PlayoffRoundSources? _loadedRoundSources;
     private bool _playoffEnabled;
 
     [ConsoleCommand("dtr_playoff", "dtr_playoff <true|false>")]
@@ -33,7 +34,7 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        if (!TryParsePlayoffToggle(command.GetArg(1), out var enabled))
+        if (!TryParseBooleanToggle(command.GetArg(1), out var enabled))
         {
             command.ReplyToCommand("usage: dtr_playoff <true|false>");
             return;
@@ -57,7 +58,7 @@ public sealed partial class DemoTracerPlugin
         }
     }
 
-    private static bool TryParsePlayoffToggle(string value, out bool enabled)
+    private static bool TryParseBooleanToggle(string value, out bool enabled)
     {
         switch (value.Trim().ToLowerInvariant())
         {
@@ -91,20 +92,21 @@ public sealed partial class DemoTracerPlugin
     private bool HasPlayoffSchedulingState()
         => IsPlayoffPlanReady() || _session.Plan.PlayoffPreparePending || _session.Plan.PlayoffPrepared;
 
-    private bool ShouldRetainLoadedPlayoffFallback()
+    private bool ShouldRetainLoadedPlayoffFallback(bool switchingTeamsAtRoundReset)
         => PlayoffReplayFallbackPolicy.ShouldRetainLoadedReplay(
             planReady: IsPlayoffPlanReady(),
             prepared: _session.Plan.PlayoffPrepared,
             preparationPending: _session.Plan.PlayoffPreparePending,
-            prefetchReady: ReplayPrefetchReady(),
-            hasLoadedReplay: _session.LoadedSlots.Count > 0);
+            prefetchReady: PlayoffPrefetchReady(switchingTeamsAtRoundReset),
+            hasLoadedReplay: _session.LoadedSlots.Count > 0,
+            switchingTeamsAtRoundReset: switchingTeamsAtRoundReset);
 
     private string FormatPlayoffPlanStatus()
     {
         if (_session.Plan.PlayoffPrepared)
             return $"prepared:T=r{_session.Plan.PlayoffPreparedTRound},CT=r{_session.Plan.PlayoffPreparedCtRound}";
         if (_session.Plan.PlayoffPreparePending)
-            return $"decoding:T=r{_session.Plan.PlayoffPendingSources?.SameSides.TRound},CT=r{_session.Plan.PlayoffPendingSources?.SameSides.CtRound} (both side assignments)";
+            return "decoding:available side assignments";
         if (IsPlayoffPlanReady())
             return $"ready:extra_round={_session.Plan.PlayoffRoundIndex + 1}";
         if (_session.Plan.SequenceActive && _playoffEnabled)
@@ -114,6 +116,7 @@ public sealed partial class DemoTracerPlugin
 
     private void ResetPlayoffProgress()
     {
+        _playoffHistory.Clear();
         ClearPlayoffPendingPreparation(cancelDecode: true);
         _session.Plan.ClearPlayoffPrepared(resetRoundIndex: true);
     }
@@ -151,12 +154,7 @@ public sealed partial class DemoTracerPlugin
                 return false;
 
             _session.Plan.PlayoffPendingCanLoad = true;
-            if (ReplayPrefetchReady())
-            {
-                return CompletePendingPlayoffPreparation(switchingTeamsAtRoundReset);
-            }
-
-            return false;
+            return CompletePendingPlayoffPreparation(switchingTeamsAtRoundReset);
         }
 
         var manifestPath = ResolveReadableManifestPath(_session.Plan.SequenceManifestPath);
@@ -197,31 +195,20 @@ public sealed partial class DemoTracerPlugin
                 $"dtr: playoff skipped extra round {_session.Plan.PlayoffRoundIndex + 1}: no replay bot targets");
             return false;
         }
-        var coverage = GetPlayoffCoverageCounts(manifest, tSteamIds, ctSteamIds);
-        if (!coverage.IsEligible(MinimumPlayoffRoundsPerRosterSide))
-        {
-            _playoffEnabled = false;
-            ResetPlayoffProgress();
-            Server.PrintToConsole(
-                "[DTR WARN] playoff disabled: insufficient non-pistol long-gun coverage " +
-                $"(required={MinimumPlayoffRoundsPerRosterSide} per roster/side; " +
-                $"first T={coverage.FirstRosterAsT}/CT={coverage.FirstRosterAsCt}, " +
-                $"second T={coverage.SecondRosterAsT}/CT={coverage.SecondRosterAsCt})");
-            return false;
-        }
-
-        if (!TryChoosePlayoffSources(manifest, tSteamIds, ctSteamIds, out var sameSides, out var chooseError) ||
-            !TryChoosePlayoffSources(manifest, ctSteamIds, tSteamIds, out var swappedSides, out chooseError))
+        var hasSameSides = TryChoosePlayoffSources(manifest, tSteamIds, ctSteamIds, out var sameSides, out var sameError);
+        var hasSwappedSides = TryChoosePlayoffSources(manifest, ctSteamIds, tSteamIds, out var swappedSides, out var swappedError);
+        if (!hasSameSides && !hasSwappedSides)
         {
             Server.PrintToConsole(
-                $"dtr: playoff skipped extra round {_session.Plan.PlayoffRoundIndex + 1}: {chooseError}");
+                $"dtr: playoff skipped extra round {_session.Plan.PlayoffRoundIndex + 1}: same sides: {sameError}; swapped sides: {swappedError}");
             return false;
         }
 
         // The next round's swap flag is not known at live prefetch time.
-        // Decode both orientations now; choose by retained roster identity at
+        // Decode available orientations now; choose by retained roster identity at
         // round_prestart, using the same upcoming-team rule as bot assignment.
-        var sources = new PlayoffSourceSelection(tSteamIds, ctSteamIds, sameSides, swappedSides);
+        var sources = new PlayoffSourceSelection(tSteamIds, ctSteamIds,
+            hasSameSides ? sameSides : null, hasSwappedSides ? swappedSides : null);
         PrefetchPlayoffRoundReplays(manifestPath, manifest, sources);
         _session.Plan.PlayoffPreparePending = true;
         _session.Plan.PlayoffPendingCanLoad = allowLoad;
@@ -230,7 +217,8 @@ public sealed partial class DemoTracerPlugin
         _session.Plan.PlayoffPrepareToken++;
         Server.PrintToConsole(
             $"dtr: playoff extra round {_session.Plan.PlayoffRoundIndex + 1} selected on {prepareReason}; " +
-            $"same sides: {sameSides.Reason}; swapped sides: {swappedSides.Reason}; decoding replay data off-thread");
+            $"same sides: {(hasSameSides ? sameSides.Reason : sameError)}; " +
+            $"swapped sides: {(hasSwappedSides ? swappedSides.Reason : swappedError)}; decoding replay data off-thread");
         return false;
     }
 
@@ -242,7 +230,7 @@ public sealed partial class DemoTracerPlugin
     {
         steamIds = new HashSet<ulong>();
         error = string.Empty;
-        var targets = FindReplayTargets().Where(bot => ReplayTeamAssignmentPolicy.ResolveUpcomingTeam(
+        var targets = FindPlayoffReplayTargets().Where(bot => ReplayTeamAssignmentPolicy.ResolveUpcomingTeam(
             bot.Team, switchingTeamsAtRoundReset) == team).ToList();
         foreach (var bot in targets)
         {
@@ -266,7 +254,7 @@ public sealed partial class DemoTracerPlugin
         return true;
     }
 
-    private static bool TryChoosePlayoffSources(
+    private bool TryChoosePlayoffSources(
         ConversionManifest manifest,
         IReadOnlySet<ulong> tSteamIds,
         IReadOnlySet<ulong> ctSteamIds,
@@ -281,11 +269,11 @@ public sealed partial class DemoTracerPlugin
             return false;
 
         sources = new PlayoffRoundSources(tRound, ctRound,
-            $"T=r{tRound} from {tCount} long-gun candidate(s), CT=r{ctRound} from {ctCount} long-gun candidate(s)");
+            $"T=r{tRound} from {tCount} candidate(s), CT=r{ctRound} from {ctCount} candidate(s)");
         return true;
     }
 
-    private static bool TryChoosePlayoffSourceRound(
+    private bool TryChoosePlayoffSourceRound(
         ConversionManifest manifest,
         string side,
         IReadOnlySet<ulong> steamIds,
@@ -303,23 +291,26 @@ public sealed partial class DemoTracerPlugin
         candidateCount = candidates.Length;
         if (candidates.Length == 0)
         {
-            error = $"side={side} has no long-gun source round covering every retained SteamID";
+            error = $"side={side} has no non-pistol source round with known loadouts covering every retained SteamID";
             return false;
         }
 
-        selectedRound = candidates[Random.Shared.Next(candidates.Length)];
+        selectedRound = _playoffHistory.Choose(side, steamIds, candidates);
         return true;
     }
 
-    private static PlayoffCoverageCounts GetPlayoffCoverageCounts(
-        ConversionManifest manifest,
-        IReadOnlySet<ulong> firstRoster,
-        IReadOnlySet<ulong> secondRoster)
-        => new(
-            FindEligiblePlayoffRounds(manifest, "t", firstRoster).Length,
-            FindEligiblePlayoffRounds(manifest, "ct", firstRoster).Length,
-            FindEligiblePlayoffRounds(manifest, "t", secondRoster).Length,
-            FindEligiblePlayoffRounds(manifest, "ct", secondRoster).Length);
+    private void RecordStartedPlayoffSources(int tRound, int ctRound)
+    {
+        if (_session.ReplaySlots.PlayingCount == 0)
+            return;
+        foreach (var side in new[] { (Team: CsTeam.Terrorist, Name: "t", Round: tRound),
+                                     (Team: CsTeam.CounterTerrorist, Name: "ct", Round: ctRound) })
+        {
+            var players = _session.LoadedReplays.Where(pair => pair.Value.ManifestTeam == side.Team).ToArray();
+            if (players.Any(pair => _session.ReplaySlots.IsPlaying(pair.Key)))
+                _playoffHistory.Record(side.Name, players.Select(pair => pair.Value.SteamId).ToHashSet(), side.Round);
+        }
+    }
 
     private static int[] FindEligiblePlayoffRounds(
         ConversionManifest manifest,
@@ -347,8 +338,6 @@ public sealed partial class DemoTracerPlugin
     {
         if (!_session.Plan.PlayoffPreparePending)
             return _session.Plan.PlayoffPrepared;
-        if (!ReplayPrefetchReady())
-            return false;
 
         var pending = _session.Plan.PlayoffPendingSources;
         if (!TryGetPlayoffRosterSteamIds(CsTeam.Terrorist, switchingTeamsAtRoundReset,
@@ -359,12 +348,16 @@ public sealed partial class DemoTracerPlugin
             Server.PrintToConsole($"[DTR ERR] playoff upcoming roster unavailable: {rosterError}");
             return false;
         }
-        if (pending == null || !pending.TryResolve(tSteamIds, ctSteamIds, out var sources))
+        if (pending == null || !pending.TryResolve(tSteamIds, ctSteamIds, out var sources, out var swapped))
         {
             ClearPlayoffPendingPreparation(cancelDecode: true);
-            Server.PrintToConsole("[DTR WARN] playoff roster changed since prefetch; selecting new sources");
+            Server.PrintToConsole("[DTR WARN] playoff has no prefetched source for the upcoming roster/sides; selecting new sources");
             return PrepareNextPlayoffRound("roster changed", switchingTeamsAtRoundReset: switchingTeamsAtRoundReset);
         }
+        if (!PlayoffOrientationPrefetchReady(swapped))
+            return false;
+        // The unused orientation must not mask a ready entry in the selected cache.
+        (swapped ? _dtrReplayPrefetch : _playoffSwappedReplayPrefetch).Cancel();
         var tRound = sources.TRound;
         var ctRound = sources.CtRound;
         var reason = sources.Reason;
@@ -396,6 +389,16 @@ public sealed partial class DemoTracerPlugin
         return true;
     }
 
+    private bool PlayoffPrefetchReady(bool switchingTeamsAtRoundReset)
+        => _session.Plan.PlayoffPendingSources is { } pending &&
+           TryGetPlayoffRosterSteamIds(CsTeam.Terrorist, switchingTeamsAtRoundReset, out var tRoster, out _) &&
+           TryGetPlayoffRosterSteamIds(CsTeam.CounterTerrorist, switchingTeamsAtRoundReset, out var ctRoster, out _) &&
+           pending.TryResolve(tRoster, ctRoster, out _, out var swapped) &&
+           PlayoffOrientationPrefetchReady(swapped);
+
+    private bool PlayoffOrientationPrefetchReady(bool swapped)
+        => (swapped ? _playoffSwappedReplayPrefetch : _dtrReplayPrefetch).AllPendingCompleted();
+
     private void StartPreparedPlayoffRound()
     {
         var extraRound = _session.Plan.PlayoffRoundIndex + 1;
@@ -406,13 +409,9 @@ public sealed partial class DemoTracerPlugin
                 // Reuse the loaded round while the next source is decoding.
                 _session.Plan.PlayoffPendingCanLoad = false;
                 PrepareLoadedReplayOwnership();
-                var fallback = StartLoaded(loop: false);
+                var fallback = StartLoaded(loop: false, CompletePlayoffRoundStart);
                 Server.PrintToConsole(
                     $"dtr: playoff extra round {extraRound} reused the last loaded DTR while the next source finishes decoding; {fallback}");
-                _session.Plan.PlayoffRoundIndex++;
-                _ = PrepareNextPlayoffRound(
-                    $"playoff extra round {extraRound} fallback live prefetch",
-                    allowLoad: false);
                 return;
             }
 
@@ -423,14 +422,20 @@ public sealed partial class DemoTracerPlugin
         }
 
         var label = _session.Plan.PlayoffPreparedLabel;
-        var play = StartLoaded(loop: false);
+        var play = StartLoaded(loop: false, CompletePlayoffRoundStart);
         Server.PrintToConsole(
             $"dtr: playoff extra round {extraRound} start on round_freeze_end -> {label}; {play}");
-        _session.Plan.PlayoffRoundIndex++;
-        _session.Plan.ClearPlayoffPrepared(resetRoundIndex: false);
+    }
+
+    private void CompletePlayoffRoundStart(int started)
+    {
+        if (!_session.Plan.TryCompletePlayoffStart(started))
+            return;
+        if (_loadedRoundSources is { } sources)
+            RecordStartedPlayoffSources(sources.TRound, sources.CtRound);
         ReleaseUnusedWarmReplayBuffers();
         _ = PrepareNextPlayoffRound(
-            $"playoff extra round {extraRound} live prefetch",
+            $"playoff extra round {_session.Plan.PlayoffRoundIndex} live prefetch",
             allowLoad: false);
     }
 }
@@ -442,8 +447,10 @@ internal static class PlayoffReplayFallbackPolicy
         bool prepared,
         bool preparationPending,
         bool prefetchReady,
-        bool hasLoadedReplay)
+        bool hasLoadedReplay,
+        bool switchingTeamsAtRoundReset = false)
         => planReady &&
+           !switchingTeamsAtRoundReset &&
            !prepared &&
            hasLoadedReplay &&
            (!preparationPending || !prefetchReady);

@@ -4,8 +4,8 @@
   "description": "Generated runtime projection of the pinned @ianlucas/cs2-lib item catalog for CS2 DemoTracer.",
   "source": {
     "package": "@ianlucas/cs2-lib",
-    "version": "9.3.0",
-    "integrity": "sha512-Y/5EbYAPYj/DIakivLIscOlpoaNBowU/5p4Y6uFiZloEn6eoXHZSjFhQwXVmAinYDAzq27XahIEUXObbY+gyCw==",
+    "version": "9.7.0",
+    "integrity": "sha512-0GeO3S/Yg7JRsZ+5vUgIu9azFT9imZKYsDdTQNwy4wuJ6PRjCO5cgLCvuiBLn31capyoRrwvCaVKagZhhFfoWQ==",
     "repository": "https://github.com/ianlucas/cs2-lib"
   },
   "generation_policy": "Generated exclusively from @ianlucas/cs2-lib exports; do not hand-edit or add local item identifiers.",
@@ -12832,6 +12832,8 @@
     4778,
     4780,
     4781,
+    5036,
+    5037,
     5105,
     5106,
     5107,
@@ -24808,7 +24810,7 @@
     "replay_equipment": 64,
     "knife_defidx": 22,
     "glove_defidx": 10,
-    "agent_defidx": 63,
+    "agent_defidx": 65,
     "sticker_ids": 11144,
     "keychain_ids": 81,
     "music_kit_ids": 101,

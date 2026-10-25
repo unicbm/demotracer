@@ -417,9 +417,15 @@ public sealed partial class DemoTracerPlugin
         }
 
         var round = _session.Plan.SequencePreparedRound;
-        var play = StartLoaded(loop: false);
+        var play = StartLoaded(loop: false, started => CompleteSequenceRoundStart(round, started));
         Server.PrintToConsole($"dtr: sequence round {round} start on round_freeze_end: {play}");
+    }
 
+    private void CompleteSequenceRoundStart(int round, int started)
+    {
+        if (started <= 0)
+            return;
+        RecordStartedPlayoffSources(round, round);
         _session.Plan.SequencePrepared = false;
         _session.Plan.SequencePreparedRound = -1;
         _session.Plan.SequenceIndex++;

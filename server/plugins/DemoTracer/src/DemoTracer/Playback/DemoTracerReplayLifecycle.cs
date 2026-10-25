@@ -30,7 +30,7 @@ public sealed partial class DemoTracerPlugin
     private void StopAndUnloadLoaded(bool clearArmedPlan)
         => StopAndUnloadLoaded(clearArmedPlan, releaseBuffers: true);
 
-    private void StopAndUnloadLoaded(bool clearArmedPlan, bool releaseBuffers)
+    private void StopAndUnloadLoaded(bool clearArmedPlan, bool releaseBuffers, bool retainCosmetics = false)
     {
         CancelAllReplayDeferredWork();
         InvalidateFreezePreroll();
@@ -40,7 +40,10 @@ public sealed partial class DemoTracerPlugin
         StopVoiceTestPlayback("unload_all", printSummary: false);
         ClearLoadedAutoVoiceClip();
         ClearLoadedAutoChat();
-        ReleaseBotRandomizerCosmeticLease("unload_all");
+        if (retainCosmetics)
+            RetainLoadedBotRandomizerCosmetics();
+        else
+            ReleaseBotRandomizerCosmeticLease("unload_all");
         foreach (var slot in _session.LoadedSlots.ToArray())
         {
             if (releaseBuffers)
@@ -182,6 +185,7 @@ public sealed partial class DemoTracerPlugin
 
     private void ClearLoadedReplaySession()
     {
+        _loadedRoundSources = null;
         _loadedDemoSha256 = string.Empty;
         _session.ClearLoaded();
         ClearAllPendingWeaponSlotReplacements("replay_execution_stopped");
@@ -201,6 +205,7 @@ public sealed partial class DemoTracerPlugin
         CancelSoulChallenge(reason);
         CancelReplayPrefetch();
         StopLoadedReplaySlots(reason);
+        ReleaseBotRandomizerCosmeticLease(reason);
         ClearLoadedTeamAvatarOverrides(reason);
         ClearReplayRetentionPriority(clearPending: true);
         ClearLoadedAutoVoiceClip();
@@ -218,9 +223,11 @@ public sealed partial class DemoTracerPlugin
             return false;
 
         var keepWarmBuffers = _session.Plan.SequenceActive || _session.Plan.Armed;
+        _session.Plan.ClearPlayoffPrepared(resetRoundIndex: false);
         StopAndUnloadLoaded(
             clearArmedPlan: false,
-            releaseBuffers: !keepWarmBuffers);
+            releaseBuffers: !keepWarmBuffers,
+            retainCosmetics: true);
         return true;
     }
 

@@ -415,7 +415,7 @@ plugins as one matching runtime set.
 
 1. Stop the CS2 server.
 2. Install Metamod:Source build __METAMOD_BUILD__+ (plugin API __METAMOD_API__)
-   and the KHook-enabled CounterStrikeSharp source baseline listed below.
+   and official CounterStrikeSharp __CSS_VERSION__ or newer.
    They are prerequisites and are not included in this bundle.
 3. Use the GUI installer to migrate receipt-owned legacy DTR files. It preserves
    independently installed upstream components and user data. For a manual upgrade,
@@ -510,10 +510,9 @@ maps restores the original providers. Do not add a dtr-hider startup VDF.
 
 Required external server prerequisites:
 
-- Metamod:Source 2.0 build __METAMOD_BUILD__ or newer (plugin API __METAMOD_API__, KHook).
-- CounterStrikeSharp with the KHook backend. The matched baseline is PR #1418,
-  source commit `__CSS_KHOOK_COMMIT__`. A managed API version number alone does
-  not prove KHook support; stock v1.0.374 and older use the previous backend.
+- Official Metamod:Source 2.0 build __METAMOD_BUILD__ or newer (plugin API __METAMOD_API__, KHook).
+- Official CounterStrikeSharp __CSS_VERSION__ or newer with the shared KHook backend.
+  Source baseline: `__CSS_KHOOK_COMMIT__`. No locally patched host is required.
 - Native source pins: Metamod `__METAMOD_COMMIT__`, KHook `__KHOOK_COMMIT__`.
 
 Included in this bundle:
@@ -556,6 +555,7 @@ $readme = $readme.Replace("__BOTCONTROLLER_ABI_MINOR__", [string]$playbackContra
 $readme = $readme.Replace("__DEMOTRACER_API__", [string]$playbackContract.demotracer.companion_api)
 $readme = $readme.Replace("__BOTHIDER_API__", [string]$playbackContract.bot_hider.api)
 $readme = $readme.Replace("__BOTRANDOMIZER_API__", [string]$playbackContract.bot_randomizer.api)
+$readme = $readme.Replace("__CSS_VERSION__", [string]$playbackContract.counterstrikesharp.minimum_version)
 $readme = $readme.Replace("__CSS_TARGET__", [string]$playbackContract.counterstrikesharp.target_framework)
 $readme = $readme.Replace("__METAMOD_BUILD__", [string]$playbackContract.hook_runtime.metamod_minimum_build)
 $readme = $readme.Replace("__METAMOD_API__", [string]$playbackContract.hook_runtime.metamod_plugin_api)

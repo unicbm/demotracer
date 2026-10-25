@@ -66,6 +66,7 @@ public sealed partial class DemoTracerPlugin
 
     private void ForgetLoadedReplayMetadata(int slot)
     {
+        _retainedBotRandomizerCosmeticSlots.Remove(slot);
         InvalidateInitialSpawnAssignment();
         InvalidateReplayIdentityGeneration(slot);
         InvalidateReplayWriteEpoch(slot);

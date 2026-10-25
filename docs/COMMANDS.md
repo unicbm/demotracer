@@ -23,7 +23,7 @@ uses the same plan without restarting.
 | `dtr_go seq <replay.dtr> [from_source_round]` | Replay the manifest from a source round onward. |
 | `dtr_go round <replay.dtr> <source_round>` | Replay exactly one source round. |
 | `dtr_arm seq|round ...` | Arm the same plan without restarting the server round. |
-| `dtr_playoff <true|false>` | Continue an exhausted sequence with SteamID-matched rifle/sniper openings. |
+| `dtr_playoff <true|false>` | Continue an exhausted sequence with SteamID-matched demo openings. |
 | `dtr_retain <t-order-code> <ct-order-code>` | Set per-side bot retention priority for the next manifest plan; use `clear` to reset. |
 | `dtr_stop sequence|replay|slot <slot>|all` | Stop the selected scheduler or replay state. |
 
@@ -31,9 +31,16 @@ uses the same plan without restarting.
 chat or voice metadata because they can draw the two sides
 from different source rounds. Recorded teammate colors remain available.
 
-Playoff continuation draws from live-start inventories where every recorded
-player on the selected side has a rifle/sniper rifle. Both teams need at least
-two eligible rounds per side. Cash and economy settings do not affect selection.
+Playoff continuation accepts non-pistol rounds with known live-start weapons for
+every selected player, including mixed equipment and eco rounds. One source per
+selected side is enough; unavailable opposite-side footage does not disable the
+available assignment. Each roster/side randomly draws among its least used
+sources and avoids consecutive repeats when alternatives exist. Cash and economy
+settings do not affect selection.
+
+At a natural round boundary, replay control and buffers are released while the
+accepted cosmetic plan remains for the same bot and side. New replay plans,
+explicit unload/stop-all, disconnects and map changes replace or clear it.
 
 ## Demo Souls
 
@@ -115,15 +122,19 @@ effect positions are diagnostics only. `dtr_runtime` reports hook availability.
 | Command | Purpose |
 | --- | --- |
 | `dtr_replay_identity <off|name|steam|avatar>` | Select the bot identity lease. `full` aliases `avatar`. |
+| `dtr_replay_clantag <on|off>` | Show recorded clan tags/group IDs (default on). Applies to loaded and retained replay identities. |
 | `dtr_partial <0|1>` | Allow fewer replay bots than manifest players. |
 
 Use identity `name` or `off` when the original demo player is also connected to
 the local server. `steam` is the normal mode. `avatar` additionally applies a
 valid manifest PNG when available.
 
-`name`, `steam` and `avatar` also apply recorded clan tags/group IDs. Missing evidence leaves
-presentation unchanged; an explicit empty tag clears it. Identity `off` or
-lease release leaves the applied presentation in place.
+`name`, `steam` and `avatar` also apply recorded clan tags/group IDs when
+`dtr_replay_clantag` is on. Set `"clan_tag": false` in `demotracer.config.json`
+to keep this disabled across reloads; the console command changes runtime state only.
+Clantag `off` explicitly clears the tag and group ID without changing other identity settings.
+With clantag `on`, missing evidence leaves presentation unchanged; an explicit
+empty tag clears it. Identity `off` or lease release leaves the applied presentation in place.
 
 Recorded teammate colors remain available as demo metadata. Live teammate
 colors are assigned by CS2; playback does not overwrite them.

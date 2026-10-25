@@ -166,7 +166,6 @@ public sealed partial class DemoTracerPlugin
     private void RefreshCosmeticAlignEnabled()
     {
         _cosmeticAlignEnabled = AnyCosmeticFeatureEnabled();
-        if (!_cosmeticAlignEnabled)
         _ = SyncBotRandomizerCosmeticLease(announce: false);
     }
 

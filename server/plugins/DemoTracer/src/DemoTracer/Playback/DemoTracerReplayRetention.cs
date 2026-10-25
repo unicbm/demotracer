@@ -107,6 +107,36 @@ internal static class ReplayRetentionPriorityParser
             .ToArray();
     }
 
+    internal static int[] AssignReplayIndices(
+        IReadOnlyList<ulong> steamIds,
+        IReadOnlyList<int> ranks,
+        IReadOnlyList<ulong> retainedSteamIds)
+    {
+        if (steamIds.Count != ranks.Count)
+            throw new ArgumentException("Replay identity and rank counts differ.");
+        var result = Enumerable.Repeat(-1, retainedSteamIds.Count).ToArray();
+        var used = new HashSet<int>();
+        // A surviving controller owns its match statistics. Preserve its demo
+        // identity before considering priority for genuinely vacant slots.
+        for (var bot = 0; bot < result.Length; bot++)
+        {
+            if (retainedSteamIds[bot] == 0) continue;
+            for (var file = 0; file < steamIds.Count; file++)
+            {
+                if (steamIds[file] != retainedSteamIds[bot] || !used.Add(file)) continue;
+                result[bot] = file;
+                break;
+            }
+        }
+        var remaining = Enumerable.Range(0, steamIds.Count).Where(i => !used.Contains(i)).ToArray();
+        var selected = SelectPreferredIndices(
+            remaining.Select(i => ranks[i]).ToArray(), result.Count(i => i < 0));
+        var next = 0;
+        for (var bot = 0; bot < result.Length && next < selected.Length; bot++)
+            if (result[bot] < 0) result[bot] = remaining[selected[next++]];
+        return result;
+    }
+
     internal static int ReservedBotQuota(int baseline, int pendingHumanJoins)
         => Math.Max(0, baseline - Math.Max(0, pendingHumanJoins));
 }

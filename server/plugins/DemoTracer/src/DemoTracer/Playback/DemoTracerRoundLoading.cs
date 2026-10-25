@@ -94,7 +94,7 @@ public sealed partial class DemoTracerPlugin
                 ? manifest.Rounds.FirstOrDefault(item => item.Round == tRound)
                 : null;
 
-            var targets = FindReplayTargets();
+            var targets = steamIdMatch ? FindPlayoffReplayTargets() : FindReplayTargets();
             var tBots = targets
                 .Where(bot => ReplayTeamAssignmentPolicy.ResolveUpcomingTeam(
                     bot.Team,
@@ -190,6 +190,7 @@ public sealed partial class DemoTracerPlugin
             ReleaseUnusedWarmReplayBuffers();
             RetainLoadedBotHiderPresentation();
             loadSucceeded = true;
+            _loadedRoundSources = new(tRound, ctRound, selectionLabel);
             _loadedDemoSha256 = NormalizeSha256(manifest.DemoSha256);
             timing.Mark("media_finish");
             return LoadRoundResult.Success($"dtr: loaded {loaded.Count} replays for {selectionLabel}{partial}{voiceStatus}{chatStatus}: {string.Join(", ", loaded)}");
@@ -326,16 +327,17 @@ public sealed partial class DemoTracerPlugin
                 Rank = ResolveReplayRetentionRank(file.SteamId, index + 1),
             })
             .ToArray();
-        var selectedFiles = ReplayRetentionPriorityParser
-            .SelectPreferredIndices(rankedFiles.Select(item => item.Rank).ToArray(), count)
-            .Select(index => rankedFiles[index])
-            .ToArray();
-        for (var i = 0; i < selectedFiles.Length; i++)
+        var indices = ReplayRetentionPriorityParser.AssignReplayIndices(
+            rankedFiles.Select(item => item.File.SteamId).ToArray(),
+            rankedFiles.Select(item => item.Rank).ToArray(),
+            bots.Select(bot => _retainedBotHiderPresentation.TryGetValue(bot.Slot, out var retained) &&
+                               retained.ControllerHandle == bot.EntityHandle.Raw
+                ? retained.SteamId : 0UL).ToArray());
+        for (var i = 0; i < indices.Length; i++)
         {
-            assignments.Add(new ReplayAssignment(
-                selectedFiles[i].File,
-                bots[i],
-                selectedFiles[i].Rank));
+            if (indices[i] < 0) continue;
+            var selected = rankedFiles[indices[i]];
+            assignments.Add(new ReplayAssignment(selected.File, bots[i], selected.Rank));
         }
         return assignments;
     }
