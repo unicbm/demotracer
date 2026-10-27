@@ -16,6 +16,7 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
+    private const int MinimumBotControllerAbiMinor = 1;
     private const string OriginalHiderPath = "addons/BotHider/bin/win64/BotHider";
     private const string ReplayHiderPath = "addons/dtr-hider/bin/win64/dtr-hider";
     private CounterStrikeSharp.API.Modules.Timers.Timer? _hiderSwitchTimer;

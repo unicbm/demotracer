@@ -253,25 +253,6 @@ internal static partial class BotControllerNative
         }
     }
 
-    public static bool TryGetReplayPawnEquipmentState(
-        int slot,
-        out NativeReplayPawnEquipmentState state)
-    {
-        state = default;
-        if (!ValidSlot(slot) || !HasReplayPawnEquipmentCapability)
-            return false;
-        try
-        {
-            return DtrController_GetReplayPawnEquipmentState(
-                slot, out state, ReplayPawnEquipmentStateByteSize) == 0;
-        }
-        catch
-        {
-            state = default;
-            return false;
-        }
-    }
-
     public static bool LoadReplayFromFile(int slot, string path, out ReplayFileMetadata metadata)
     {
         metadata = ReplayFileMetadata.Empty;

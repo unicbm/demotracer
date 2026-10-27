@@ -19,7 +19,7 @@ Assert(replayEconIndex.IsSticker(7887) && replayEconIndex.IsKeychain(37),
     "demo sticker and keychain evidence");
 Assert(replayEconIndex.IsKnifeDefinition(506) && replayEconIndex.IsKnifeDefinition(526),
     "valid replay knives excluded from random type weights");
-Assert(replayEconIndex.IsGloveDefinition(5030) && replayEconIndex.IsPaintKit(10038),
+Assert(replayEconIndex.IsGloveDefinition(5030),
     "demo glove evidence");
 var originalOwnerIdentity = new ReplayEconIdentity(
     Quality: null,

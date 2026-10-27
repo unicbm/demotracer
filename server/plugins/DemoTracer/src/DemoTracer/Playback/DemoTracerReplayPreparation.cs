@@ -95,21 +95,6 @@ public sealed partial class DemoTracerPlugin
     private bool ReplayMusicKitAlignmentAllowed(int musicKitId)
         => _cosmeticAlignEnabled && IsKnownMusicKitId(musicKitId);
 
-    private static string DetectCs2PatchVersion()
-    {
-        try
-        {
-            var steamInfPath = Path.Combine(Server.GameDirectory, "steam.inf");
-            var patchLine = File.ReadLines(steamInfPath)
-                .FirstOrDefault(line => line.StartsWith("PatchVersion=", StringComparison.OrdinalIgnoreCase));
-            return patchLine?["PatchVersion=".Length..].Trim() ?? "unknown";
-        }
-        catch
-        {
-            return "unknown";
-        }
-    }
-
     private int NormalizeMusicKitId(uint? musicKitId)
         => musicKitId is > 0 and <= int.MaxValue && IsKnownMusicKitId((int)musicKitId.Value)
             ? (int)musicKitId.Value

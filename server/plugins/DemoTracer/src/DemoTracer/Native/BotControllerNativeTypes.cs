@@ -20,7 +20,6 @@ internal static partial class BotControllerNative
     public const int ReplayMovementExtraByteSize = 48;
     public const int ReplayInputHistoryTickByteSize = 16;
     public const int ReplayInputHistoryEntryByteSize = 128;
-    public const int ReplayPawnEquipmentStateByteSize = 48;
     internal const uint CommandFieldLeftHand = 1U << 7;
     public const int ReplaySlotStateByteSize = 24;
     public const int MaxSlots = 64;
@@ -38,16 +37,12 @@ internal static partial class BotControllerNative
     private const ulong CapabilityBuyPlan = 1UL << 6;
     private const ulong CapabilityControllerBotOffset = 1UL << 7;
     internal const ulong CapabilityExtendedReplay = 1UL << 8;
-    internal const ulong CapabilityUsercmdMovementIntent = 1UL << 9;
     internal const ulong CapabilityVoiceSend = 1UL << 10;
     internal const ulong CapabilityNativePerception = 1UL << 11;
     internal const ulong CapabilityReleaseReplayBuffer = 1UL << 12;
-    internal const ulong CapabilityButtonOnlyMovementIntent = 1UL << 13;
     internal const ulong CapabilityHandoffBestWeapon = 1UL << 14;
-    internal const ulong CapabilityReplayInputHistory = 1UL << 15;
     internal const ulong CapabilityReplayPawnEquipment = 1UL << 16;
     internal const ulong CapabilityReplaySourceState = 1UL << 17;
-    internal const int MovementIntentPreserveMoveAxes = 1 << 0;
 
     internal const ulong CapabilityAvatarPublication = 1UL << 18;
 
@@ -109,9 +104,6 @@ internal static partial class BotControllerNative
         if (inputHistoryEntrySize != ReplayInputHistoryEntryByteSize)
             throw new InvalidOperationException($"ReplayInputHistoryEntry layout is {inputHistoryEntrySize}, expected {ReplayInputHistoryEntryByteSize}");
 
-        var replayPawnEquipmentStateSize = Marshal.SizeOf<NativeReplayPawnEquipmentState>();
-        if (replayPawnEquipmentStateSize != ReplayPawnEquipmentStateByteSize)
-            throw new InvalidOperationException($"ReplayPawnEquipmentState layout is {replayPawnEquipmentStateSize}, expected {ReplayPawnEquipmentStateByteSize}");
     }
 }
 
@@ -142,23 +134,6 @@ internal struct BotControllerAbiInfo
         MaxSlots = BotControllerNative.MaxSlots,
         Capabilities = 0
     };
-}
-
-[StructLayout(LayoutKind.Sequential, Pack = 4)]
-internal struct NativeReplayPawnEquipmentState
-{
-    public int Configured;
-    public int Pending;
-    public int Applied;
-    public int ExpectedArmor;
-    public int ExpectedHelmet;
-    public int ExpectedDefuser;
-    public int PawnArmor;
-    public int ControllerArmor;
-    public int ItemServicesHelmet;
-    public int ControllerHelmet;
-    public int ItemServicesDefuser;
-    public int ControllerDefuser;
 }
 
 internal readonly record struct ReplayFileMetadata(

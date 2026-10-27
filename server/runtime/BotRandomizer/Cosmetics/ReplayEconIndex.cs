@@ -15,7 +15,6 @@ internal sealed class ReplayEconIndex
 {
     private readonly HashSet<(ushort WeaponDefIndex, uint PaintKit)> _weaponPaints = [];
     private readonly HashSet<(ushort WeaponDefIndex, uint PaintKit)> _legacyWeaponPaints = [];
-    private readonly HashSet<uint> _paintKits = [];
     private readonly HashSet<ushort> _knifeDefinitions = [];
     private readonly HashSet<ushort> _gloveDefinitions = [];
     private readonly HashSet<uint> _agentDefinitions = [];
@@ -29,7 +28,6 @@ internal sealed class ReplayEconIndex
 
     internal string SourceVersion { get; private set; } = string.Empty;
     internal int WeaponPaintCount => _weaponPaints.Count;
-    internal int MusicKitCount => _musicKitIds.Count;
 
     internal static ReplayEconIndex Load(string path)
     {
@@ -44,7 +42,6 @@ internal sealed class ReplayEconIndex
 
         ReadPaintPairs(root, "weapon_paints", result._weaponPaints);
         ReadPaintPairs(root, "legacy_bodygroup_paints", result._legacyWeaponPaints);
-        ReadUIntSet(root, "paint_kit_ids", result._paintKits);
         ReadUShortSet(root, "knife_defidx", result._knifeDefinitions);
         ReadUShortSet(root, "glove_defidx", result._gloveDefinitions);
         ReadUIntSet(root, "agent_defidx", result._agentDefinitions);
@@ -53,7 +50,6 @@ internal sealed class ReplayEconIndex
         ReadIntSet(root, "music_kit_ids", result._musicKitIds);
 
         if (result._weaponPaints.Count == 0 ||
-            result._paintKits.Count == 0 ||
             result._knifeDefinitions.Count == 0 ||
             result._gloveDefinitions.Count == 0 ||
             result._stickerIds.Count == 0 ||
@@ -70,7 +66,6 @@ internal sealed class ReplayEconIndex
         return _weaponPaints.Contains((weaponDefIndex, paintKit));
     }
 
-    internal bool IsPaintKit(uint paintKit) => paintKit > 0 && _paintKits.Contains(paintKit);
     internal bool IsKnifeDefinition(ushort defIndex) => _knifeDefinitions.Contains(defIndex);
     internal bool IsGloveDefinition(ushort defIndex) => _gloveDefinitions.Contains(defIndex);
     internal bool IsAgentDefinition(uint defIndex) => _agentDefinitions.Contains(defIndex);

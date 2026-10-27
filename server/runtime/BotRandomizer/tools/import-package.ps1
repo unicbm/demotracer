@@ -13,7 +13,7 @@ $destination = [IO.Path]::GetFullPath($DestinationRoot)
 if (Test-Path -LiteralPath $destination) { throw 'Package import requires a new staging directory' }
 $contract = Get-Content -LiteralPath $ExpectedContractPath -Raw | ConvertFrom-Json
 $plugin = 'addons/counterstrikesharp/plugins/BotRandomizer/'
-$required = @('BotRandomizer.dll', 'BotRandomizer.deps.json', 'cosmetic_catalog.json', 'charm_placements.json', 'cs2-lib-econ-index.v1.json', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'API.md', 'UPSTREAM.md') | ForEach-Object { $plugin + $_ }
+$required = @('BotRandomizer.dll', 'BotRandomizer.deps.json', 'cosmetic_catalog.json', 'charm_placements.json', 'cs2-lib-econ-index.v1.json') | ForEach-Object { $plugin + $_ }
 $required += 'addons/counterstrikesharp/shared/BotRandomizerApi/BotRandomizerApi.dll'
 $zip = [IO.Compression.ZipFile]::OpenRead([IO.Path]::GetFullPath($Package))
 try {

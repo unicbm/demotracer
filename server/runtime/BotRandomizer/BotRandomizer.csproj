@@ -19,5 +19,8 @@
     <None Include="$(DtrCommonRoot)\econ\cs2-lib-econ-index.v1.json" Link="cs2-lib-econ-index.v1.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(DtrCommonRoot)\econ\randomizer-catalog.json" Link="cosmetic_catalog.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="charm_placements.json" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="LICENSE" LogicalName="BotRandomizer.Licenses.AGPL.txt" />
+    <EmbeddedResource Include="THIRD_PARTY_NOTICES.md" LogicalName="BotRandomizer.Licenses.ThirdParty.txt" />
+    <EmbeddedResource Include="UPSTREAM.md" LogicalName="BotRandomizer.Licenses.Upstream.txt" />
   </ItemGroup>
 </Project>

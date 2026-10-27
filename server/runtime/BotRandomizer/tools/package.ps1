@@ -44,9 +44,6 @@ $files = [ordered]@{}
 foreach ($name in @('BotRandomizer.dll', 'BotRandomizer.deps.json', 'cosmetic_catalog.json', 'charm_placements.json', 'cs2-lib-econ-index.v1.json')) {
     $files["$plugin/$name"] = Join-Path $output $name
 }
-foreach ($name in @('LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'API.md', 'UPSTREAM.md')) {
-    $files["$plugin/$name"] = Join-Path $root $name
-}
 $files[$api] = $apiOutput
 $entries = @()
 foreach ($path in $files.Keys) {

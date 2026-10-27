@@ -36,10 +36,10 @@ Both scripts accept `-DotnetPath`. Checks build Release and run the managed
 suite without a live CS2 server. Engine hooks still need server testing.
 Dependencies come from `server/runtime/common`, `dtr-hider` and `BotRandomizer`.
 
-The component ZIP contains the plugin, Zstd decoder, config example, native
-profile, econ data, notices and shared `DemoTracerApi.dll`. It excludes native
-providers and the CS2/Metamod/CounterStrikeSharp host. Full product packaging is
-documented in the [development guide](../../../docs/DEVELOPMENT.md#packaging).
+The component ZIP contains the plugin, dependency metadata, Zstd decoder, native
+profile, econ data and shared `DemoTracerApi.dll`. Full product packaging adds
+the native providers; CS2, Metamod and CounterStrikeSharp remain separate. See
+the [development guide](../../../docs/DEVELOPMENT.md#packaging).
 
 AGPL-3.0-only. See [LICENSE](LICENSE), [UPSTREAM.md](UPSTREAM.md) and
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

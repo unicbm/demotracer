@@ -359,7 +359,6 @@ public sealed partial class DemoTracerPlugin
 
     private void OnTick()
     {
-        TickRuntimeHealthHeartbeat();
 
         if (!_mapActive || _lifecycleResetInProgress)
             return;

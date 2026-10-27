@@ -23,13 +23,10 @@ do not run a renamed copy alongside it. Keep user configuration. The shared API
 is required even when no consumer is installed. No DemoTracer assembly, demo
 file, or native Randomizer shim is needed for ordinary randomization.
 
-Requires .NET 10, CounterStrikeSharp managed API 1.0.371+, and the **KHook-enabled
-CSS host** matched to Metamod 2.0 build 1469+ (plugin API 18). The exact host pins
-are in `botrandomizer-package.v1.json`. The NuGet version alone does not prove
-the host uses KHook. Configure the host for cosmetic plugins as required by
-CounterStrikeSharp (`FollowCS2ServerGuidelines: false`). Windows x64 is the
-maintained runtime target; Linux builds require independent signature and live
-server validation before distribution as supported builds.
+Requires .NET 10 and the Windows x64 [shared KHook host](../../README.md#shared-hook-runtime).
+Exact host pins come from [hook-runtime.v1.json](../common/contracts/hook-runtime.v1.json)
+and are included in the package receipt. Configure CounterStrikeSharp for
+cosmetic plugins (`FollowCS2ServerGuidelines: false`).
 
 All native hooks use Metamod's shared KHook through CSS. KHook shares detours;
 the provider's ownership plans prevent competing cosmetic writes. Two separate

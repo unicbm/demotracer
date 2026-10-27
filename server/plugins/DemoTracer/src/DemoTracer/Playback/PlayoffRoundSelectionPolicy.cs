@@ -17,12 +17,6 @@ internal sealed record PlayoffSourceSelection(
     public bool TryResolve(
         IReadOnlySet<ulong> upcomingTRoster,
         IReadOnlySet<ulong> upcomingCtRoster,
-        out PlayoffRoundSources sources)
-        => TryResolve(upcomingTRoster, upcomingCtRoster, out sources, out _);
-
-    public bool TryResolve(
-        IReadOnlySet<ulong> upcomingTRoster,
-        IReadOnlySet<ulong> upcomingCtRoster,
         out PlayoffRoundSources sources,
         out bool swapped)
     {
@@ -53,17 +47,6 @@ internal readonly record struct PlayoffRoundCandidate(
     IReadOnlyList<PlayoffPlayerLoadout> Players);
 
 internal readonly record struct PlayoffPlayerLoadout(ulong SteamId, IReadOnlyList<int>? Weapons);
-
-internal enum PlayoffWeaponPool
-{
-    Unknown,
-    Pistols,
-    Smgs,
-    Shotguns,
-    MachineGuns,
-    LongGuns,
-    Mixed
-}
 
 internal sealed class PlayoffRoundHistory
 {
@@ -111,46 +94,19 @@ internal static class PlayoffRoundSelectionPolicy
                 !candidate.PistolRound &&
                 CoversRosterExactlyOnce(candidate.Players.Select(player => player.SteamId).ToArray(), requiredSteamIds) &&
                 candidate.Players.Where(player => requiredSteamIds.Contains(player.SteamId))
-                    .All(player => ClassifyLoadout(player.Weapons) != PlayoffWeaponPool.Unknown))
+                    .All(player => HasReplayWeapon(player.Weapons)))
             .Select(candidate => candidate.Round)
             .Distinct()
             .Order()
             .ToArray();
     }
 
-    internal static PlayoffWeaponPool ClassifyRound(IReadOnlyList<PlayoffPlayerLoadout> players)
-    {
-        var pools = players.Select(player => ClassifyLoadout(player.Weapons)).Distinct().ToArray();
-        if (pools.Length == 0 || pools.Contains(PlayoffWeaponPool.Unknown))
-            return PlayoffWeaponPool.Unknown;
-        return pools.Length == 1 ? pools[0] : PlayoffWeaponPool.Mixed;
-    }
-
-    internal static PlayoffWeaponPool ClassifyLoadout(IReadOnlyList<int>? weapons)
-    {
-        if (weapons == null || weapons.Count == 0)
-            return PlayoffWeaponPool.Unknown;
-
-        // Only the manifest's live-start inventory is evidence here. The
-        // active weapon may be a knife, and preload lists include later pickups.
-        var primaries = weapons.Select(def => def switch
-        {
-            7 or 8 or 10 or 13 or 16 or 39 or 60 => PlayoffWeaponPool.LongGuns, // rifles
-            9 or 11 or 38 or 40 => PlayoffWeaponPool.LongGuns, // sniper rifles
-            17 or 19 or 23 or 24 or 26 or 33 or 34 => PlayoffWeaponPool.Smgs,
-            25 or 27 or 29 or 35 => PlayoffWeaponPool.Shotguns,
-            14 or 28 => PlayoffWeaponPool.MachineGuns,
-            _ => PlayoffWeaponPool.Unknown
-        }).Where(pool => pool != PlayoffWeaponPool.Unknown).Distinct().ToArray();
-        if (primaries.Length > 1)
-            return PlayoffWeaponPool.Mixed;
-        if (primaries.Length == 1)
-            return primaries[0];
-
-        return weapons.Any(def => def is 1 or 2 or 3 or 4 or 30 or 32 or 36 or 61 or 63 or 64)
-            ? PlayoffWeaponPool.Pistols
-            : PlayoffWeaponPool.Unknown;
-    }
+    // Only live-start inventory is evidence; active knives and later pickups are not.
+    private static bool HasReplayWeapon(IReadOnlyList<int>? weapons)
+        => weapons?.Any(def => def is
+            7 or 8 or 10 or 13 or 16 or 39 or 60 or 9 or 11 or 38 or 40 or
+            17 or 19 or 23 or 24 or 26 or 33 or 34 or 25 or 27 or 29 or 35 or 14 or 28 or
+            1 or 2 or 3 or 4 or 30 or 32 or 36 or 61 or 63 or 64) == true;
 
     private static bool CoversRosterExactlyOnce(
         IReadOnlyList<ulong> replaySteamIds,

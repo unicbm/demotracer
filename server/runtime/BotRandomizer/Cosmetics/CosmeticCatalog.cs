@@ -53,7 +53,6 @@ internal sealed class CosmeticCatalog
     internal IReadOnlyCollection<WeaponCatalogEntry> Weapons => _weapons.Values;
     internal int WeaponCount => _weapons.Count;
     internal int WeaponPaintCount => _weapons.Values.Sum(entry => entry.Paints.Count);
-    internal int KnifePaintCount => _knives.Values.Sum(entry => entry.Count);
 
     internal static CosmeticCatalog Load(string path)
     {

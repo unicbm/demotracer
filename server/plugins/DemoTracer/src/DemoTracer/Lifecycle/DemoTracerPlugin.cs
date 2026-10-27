@@ -25,7 +25,7 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin : BasePlugin
 {
     public override string ModuleName => "CS2 DemoTracer";
-    public override string ModuleVersion => "1.6.3";
+    public override string ModuleVersion => "1.6.4";
     public override string ModuleAuthor => "unicbm";
     public override string ModuleDescription => "Trace CS2 demos into bot-executable route replays.";
 
@@ -58,7 +58,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private const float PlayerHullHeight = 72.0f;
     private const string FreezeTimeConVarName = "mp_freezetime";
     private const string MaxMoneyConVarName = "mp_maxmoney";
-    private static readonly Lazy<string> Cs2PatchVersion = new(DetectCs2PatchVersion);
     private const string CosmeticRiskNotice = "[DTR WARN] cosmetic alignment consumes opt-in manifest cosmetics evidence and may carry Valve GSLT/server-guideline risk outside local/private replay validation.";
     private const string LeftHandDesiredFidelityNotice = "[DTR WARN] left_hand_desired=off discards the recorded weapon hand. Reload loaded replays or plans for this setting to apply.";
 
@@ -103,7 +102,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         ConfigureNativeSafetyOffsets();
         InstallProjectilePhysicsHook();
         StartPresentationLifetime();
-        StartRuntimeHealthHeartbeat();
         Server.PrintToConsole("dtr: CSS control plugin loaded");
     }
 
@@ -115,7 +113,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         _botRandomizerBridge.Refresh();
         _ = _botRandomizerBridge.ReleaseOwner(BotRandomizerApi.BotRandomizerContract.DemoTracerOwner);
         _ = SyncBotRandomizerCosmeticLease(announce: _session.LoadedSlots.Count > 0);
-        RefreshRuntimeHealthHeartbeat();
     }
 
     public override void Unload(bool hotReload)
@@ -134,7 +131,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
                 // ownership and injected input if native hook cleanup reports an error.
                 Server.PrintToConsole($"dtr: projectile hook cleanup failed: {ex.Message}");
             }
-            StopRuntimeHealthHeartbeat();
             UnregisterReplayBuySuppressionHooks();
             UnregisterReplayRetentionJoinHook();
             ClearReplayStateForLifecycle(hotReload ? "plugin_reload" : "plugin_unload");

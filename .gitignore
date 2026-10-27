@@ -4,10 +4,18 @@
 /third_party/
 
 # Build output and local tools
-/dist/
+.build/
+build/
+out/
+target/
+bin/
+obj/
+node_modules/
+dist/
+.external/
+.component-update.md
 /output/
 /tmp/
-/.external/
 /.pnpm-store/
 *.dll
 *.pdb
@@ -20,6 +28,7 @@
 
 # Local recordings, logs and credentials
 *.dem
+*.dem.zst
 *.dtr
 *.cs2rec
 *.log
@@ -46,5 +55,3 @@
 .vscode/
 __pycache__/
 *.pyc
-
-# Product modules retain their local build/cache exclusions.

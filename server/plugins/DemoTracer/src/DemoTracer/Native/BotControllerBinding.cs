@@ -65,12 +65,6 @@ internal static partial class BotControllerNative
     private static extern int DtrController_ClearReplayPawnEquipment(int slot);
 
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int DtrController_GetReplayPawnEquipmentState(
-        int slot,
-        out NativeReplayPawnEquipmentState state,
-        int size);
-
-    [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_SetLeftHandDesiredLatch(
         int slot,
         int enabled,

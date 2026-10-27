@@ -255,8 +255,7 @@ if (-not (Test-SameFullPath $botHiderRuntimeRoot $defaultBotHiderRuntimeRoot)) {
         -RequiredPaths @(
             "addons\dtr-hider\bin\win64\dtr-hider.dll",
             "addons\dtr-hider\gamedata.json",
-            "addons\dtr-hider\map_whitelist.json",
-            "addons\dtr-hider\bot_info.example.json"
+            "addons\dtr-hider\map_whitelist.json"
         ) `
         -Component "bot_hider_native" `
         -Label "BotHider" `
@@ -312,15 +311,12 @@ Copy-RequiredFile (Join-Path $botHiderRuntimeRoot "addons\dtr-hider\gamedata.jso
     (Join-Path $botHiderOut "gamedata.json")
 Copy-RequiredFile (Join-Path $botHiderRuntimeRoot "addons\dtr-hider\map_whitelist.json") `
     (Join-Path $botHiderOut "map_whitelist.json")
-Copy-RequiredFile (Join-Path $botHiderRuntimeRoot "addons\dtr-hider\bot_info.example.json") `
-    (Join-Path $botHiderOut "bot_info.example.json")
 
 $pluginOut = Join-Path $stageRoot "addons\counterstrikesharp\plugins\DemoTracer"
 Copy-RequiredFile (Join-Path $cssOut "DemoTracer.deps.json") (Join-Path $pluginOut "DemoTracer.deps.json")
 Copy-RequiredFile (Join-Path $cssOut "DemoTracer.dll") (Join-Path $pluginOut "DemoTracer.dll")
 Copy-RequiredFile (Join-Path $cssOut "ZstdSharp.dll") (Join-Path $pluginOut "ZstdSharp.dll")
 Copy-RequiredFile (Join-Path $cssOut "cs2-lib-econ-index.v1.json") (Join-Path $pluginOut "cs2-lib-econ-index.v1.json")
-Copy-RequiredFile (Join-Path $repoRoot "server\plugins\DemoTracer\config\demotracer.config.example.json") (Join-Path $pluginOut "demotracer.config.example.json")
 Copy-RequiredFile (Join-Path $cssOut "demotracer-native.json") (Join-Path $pluginOut "demotracer-native.json")
 $demoTracerApiSharedOut = Join-Path $stageRoot "addons\counterstrikesharp\shared\DemoTracerApi"
 Copy-RequiredFile (Join-Path $apiOut "DemoTracerApi.dll") (Join-Path $demoTracerApiSharedOut "DemoTracerApi.dll")
@@ -354,15 +350,6 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($gitCommit)) {
     throw "Unable to resolve the release Git commit."
 }
 
-# Keep usage/API documentation in the source repository. Ship required notices once.
-$notices = @(
-    "CS2 DemoTracer Playback v$Version",
-    "Corresponding source: https://github.com/unicbm/demotracer/tree/$gitCommit",
-    (Get-Content -LiteralPath (Join-Path $repoRoot "LICENSE") -Raw -Encoding UTF8),
-    (Get-Content -LiteralPath (Join-Path $repoRoot "server/plugins/DemoTracer/THIRD_PARTY_NOTICES.md") -Raw -Encoding UTF8),
-    (Get-Content -LiteralPath (Join-Path $botRandomizerOut "THIRD_PARTY_NOTICES.md") -Raw -Encoding UTF8)
-)
-Set-Content -LiteralPath (Join-Path $addonsOut "demotracer-LICENSE.txt") -Value ($notices -join "`n`n") -Encoding UTF8
 $receiptFiles = @(
     Get-ChildItem -LiteralPath $addonsOut -Recurse -File |
         Sort-Object FullName |
@@ -404,12 +391,13 @@ $installReceipt = [ordered]@{
 $installReceiptPath = Join-Path $addonsOut "demotracer-install.v1.json"
 $installReceipt | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $installReceiptPath -Encoding UTF8
 
-if (-not $IncludeSymbols) {
-    $pdbFiles = @(Get-ChildItem -LiteralPath $stageRoot -Recurse -Filter "*.pdb" -File -ErrorAction SilentlyContinue)
-    if ($pdbFiles.Count -gt 0) {
-        $pdbList = ($pdbFiles | ForEach-Object { $_.FullName }) -join "`n"
-        throw "default playback bundle must not contain PDB files:`n$pdbList"
-    }
+$allowedExtensions = @('.dll', '.json', '.vdf')
+if ($IncludeSymbols) { $allowedExtensions += '.pdb' }
+$unexpected = @(Get-ChildItem -LiteralPath $stageRoot -Recurse -File | Where-Object {
+    $_.Extension -notin $allowedExtensions -or $_.Name -like '*.example.json'
+})
+if ($unexpected.Count -gt 0) {
+    throw "Playback bundle contains non-runtime files: $($unexpected.Name -join ', ')"
 }
 
 if (Test-Path -LiteralPath $zipPath) {

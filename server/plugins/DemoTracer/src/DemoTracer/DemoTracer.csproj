@@ -26,9 +26,10 @@
 
   <ItemGroup>
     <None Include="$(DtrCommonRoot)\econ\cs2-lib-econ-index.v1.json" Link="cs2-lib-econ-index.v1.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\config\demotracer.config.example.json" Link="demotracer.config.example.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\config\demotracer-native.json" Link="demotracer-native.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="$(DtrCommonRoot)\..\..\..\LICENSE" LogicalName="DemoTracer.Licenses.AGPL.txt" />
+    <EmbeddedResource Include="..\..\THIRD_PARTY_NOTICES.md" LogicalName="DemoTracer.Licenses.ThirdParty.txt" />
+    <EmbeddedResource Include="..\..\UPSTREAM.md" LogicalName="DemoTracer.Licenses.Upstream.txt" />
   </ItemGroup>
 
   <ItemGroup>

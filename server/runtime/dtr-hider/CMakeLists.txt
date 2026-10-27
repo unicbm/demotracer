@@ -220,8 +220,6 @@ add_custom_command(TARGET dtr-hider POST_BUILD
         "${CMAKE_BINARY_DIR}/package/addons/dtr-hider/map_whitelist.json"
     COMMAND ${CMAKE_COMMAND} -E rm -f
         "${CMAKE_BINARY_DIR}/package/addons/dtr-hider/bot_info.json"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/configs/addons/dtr-hider/bot_info.example.json"
         "${CMAKE_BINARY_DIR}/package/addons/dtr-hider/bot_info.example.json"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_SOURCE_DIR}/configs/addons/dtr-hider/gamedata.json"

@@ -16,6 +16,31 @@ public sealed class DtrReplayPrefetchTests : IDisposable
         $"demotracer-prefetch-tests-{Guid.NewGuid():N}");
 
     [Fact]
+    public void BudgetMissesRemainLoadableButChangedFilesStillFailValidation()
+    {
+        Directory.CreateDirectory(tempDirectory);
+        var first = Path.Combine(tempDirectory, "first.dtr");
+        var second = Path.Combine(tempDirectory, "second.dtr");
+        File.WriteAllBytes(first, [1]);
+        File.WriteAllBytes(second, [2]);
+        var replay = new DtrReplayFile(12, [], [], ReplayHighFidelityMetadata.Empty, [], [], [], 64, 0);
+        var prefetch = new DtrReplayPrefetch(_ => replay, decodedByteLimit: 1);
+        prefetch.Begin([first, second]);
+        Assert.True(SpinWait.SpinUntil(prefetch.AllPendingCompleted, TimeSpan.FromSeconds(5)));
+        var statuses = new[] { prefetch.TryTake(first, out _), prefetch.TryTake(second, out _) };
+        Assert.Contains(DtrReplayPrefetchTakeStatus.Success, statuses);
+        Assert.Contains(DtrReplayPrefetchTakeStatus.CapacityExceeded, statuses);
+        prefetch.Cancel();
+
+        var noCache = new DtrReplayPrefetch(_ => replay, decodedByteLimit: 0);
+        noCache.Begin([first]);
+        Assert.True(SpinWait.SpinUntil(noCache.AllPendingCompleted, TimeSpan.FromSeconds(5)));
+        File.WriteAllBytes(first, [1, 2]);
+        Assert.Equal(DtrReplayPrefetchTakeStatus.Failed, noCache.TryTake(first, out _));
+        noCache.Cancel();
+    }
+
+    [Fact]
     public async Task TryTakeNeverWaitsForPendingDecode()
     {
         Directory.CreateDirectory(tempDirectory);

@@ -204,13 +204,15 @@ internal sealed class DtrReplayPrefetch
     private readonly object _sync = new();
     private readonly SemaphoreSlim _singleReader = new(1, 1);
     private readonly Func<string, DtrReplayFile> _readReplay;
+    private readonly long _decodedByteLimit;
     private Dictionary<string, PrefetchEntry> _pending =
         new(StringComparer.OrdinalIgnoreCase);
     private PrefetchGeneration? _generation;
 
-    internal DtrReplayPrefetch(Func<string, DtrReplayFile>? readReplay = null)
+    internal DtrReplayPrefetch(Func<string, DtrReplayFile>? readReplay = null, long decodedByteLimit = MaxRetainedDecodedBytes)
     {
         _readReplay = readReplay ?? DtrReplayReader.ReadForPlayback;
+        _decodedByteLimit = decodedByteLimit;
     }
 
     public bool HasGeneration
@@ -228,7 +230,7 @@ internal sealed class DtrReplayPrefetch
             .Select(Path.GetFullPath)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        var generation = new PrefetchGeneration(fullPaths.Length, MaxRetainedDecodedBytes);
+        var generation = new PrefetchGeneration(fullPaths.Length, _decodedByteLimit);
         PrefetchGeneration? previous;
         lock (_sync)
         {
@@ -268,7 +270,7 @@ internal sealed class DtrReplayPrefetch
         var result = entry.Task.GetAwaiter().GetResult();
         try
         {
-            if (!result.Ok ||
+            if (result.Status == DtrReplayPrefetchTakeStatus.Failed ||
                 !ReplayFileStamp.TryRead(fullPath, out var currentStamp) ||
                 currentStamp != result.Stamp)
             {
@@ -276,7 +278,7 @@ internal sealed class DtrReplayPrefetch
             }
 
             replay = result.Replay;
-            return DtrReplayPrefetchTakeStatus.Success;
+            return result.Status;
         }
         finally
         {
@@ -331,9 +333,9 @@ internal sealed class DtrReplayPrefetch
                 }
                 var reservedBytes = EstimateReplayBytes(replay);
                 if (!generation.TryReserveDecodedBytes(reservedBytes))
-                    return DtrReplayDecodeResult.Failed;
+                    return new DtrReplayDecodeResult(DtrReplayPrefetchTakeStatus.CapacityExceeded, default, after, 0);
 
-                return new DtrReplayDecodeResult(true, replay, after, reservedBytes);
+                return new DtrReplayDecodeResult(DtrReplayPrefetchTakeStatus.Success, replay, after, reservedBytes);
             }
             finally
             {
@@ -451,12 +453,12 @@ internal sealed class DtrReplayPrefetch
 }
 
 internal readonly record struct DtrReplayDecodeResult(
-    bool Ok,
+    DtrReplayPrefetchTakeStatus Status,
     DtrReplayFile Replay,
     ReplayFileStamp Stamp,
     long ReservedBytes)
 {
-    public static DtrReplayDecodeResult Failed { get; } = new(false, default, default, 0);
+    public static DtrReplayDecodeResult Failed { get; } = new(DtrReplayPrefetchTakeStatus.Failed, default, default, 0);
 }
 
 internal enum DtrReplayPrefetchTakeStatus
@@ -464,6 +466,7 @@ internal enum DtrReplayPrefetchTakeStatus
     Missing,
     Pending,
     Failed,
+    CapacityExceeded,
     Success,
 }
 

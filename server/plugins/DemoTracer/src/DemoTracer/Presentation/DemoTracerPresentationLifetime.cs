@@ -47,7 +47,6 @@ public sealed partial class DemoTracerPlugin
             if (_presentationLifetime.IsCancellationRequested) return;
             _ = SyncBotHiderPresentationLease(announce: false, forceReplace: true);
             _ = SyncBotRandomizerCosmeticLease(announce: false);
-            RefreshRuntimeHealthHeartbeat();
         });
     }
 }

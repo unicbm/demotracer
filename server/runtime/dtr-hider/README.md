@@ -67,7 +67,7 @@ Crosshair changes require readback and native network notification.
 The disguise toggle preserves `bot_quota` and `bot_quota_mode`, including zero.
 It is separate from the Bot Improver Panel's Profiles toggle.
 
-The bundle ships `bot_info.example.json` and preserves server-local `bot_info.json`.
+The bundle preserves server-local `bot_info.json`; no persona configuration is bundled.
 Configured personas are exclusive to one bot each. Without an available persona,
 bots keep their engine name and SteamID 0; other presentation fields still work.
 A lease can supply an exact nonzero SteamID, which remains after release.

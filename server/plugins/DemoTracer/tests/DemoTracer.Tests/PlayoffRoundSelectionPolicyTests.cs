@@ -95,29 +95,19 @@ public sealed class PlayoffRoundSelectionPolicyTests
         params ulong[] steamIds)
         => new(round, pistol, steamIds.Select(id => new PlayoffPlayerLoadout(id, [primary, 4, 42])).ToArray());
 
-    [Theory]
-    [InlineData(7)]
-    [InlineData(8)]
-    [InlineData(9)]
-    [InlineData(10)]
-    [InlineData(11)]
-    [InlineData(13)]
-    [InlineData(16)]
-    [InlineData(38)]
-    [InlineData(39)]
-    [InlineData(40)]
-    [InlineData(60)]
-    public void RifleAndSniperInventoriesBelongToLongGunPool(int primary)
-        => Assert.Equal(PlayoffWeaponPool.LongGuns,
-            PlayoffRoundSelectionPolicy.ClassifyLoadout([42, 4, primary, 44, 45]));
-
-    [Theory]
-    [InlineData(34, "Smgs")]
-    [InlineData(35, "Shotguns")]
-    [InlineData(28, "MachineGuns")]
-    [InlineData(1, "Pistols")]
-    public void OtherPrimaryTypesStayInSeparatePools(int weapon, string pool)
-        => Assert.Equal(pool, PlayoffRoundSelectionPolicy.ClassifyLoadout([42, 4, weapon]).ToString());
+    [Fact]
+    public void EligibilityRequiresAKnownFirearmInTheLiveStartInventory()
+    {
+        int[] firearms = [1, 2, 3, 4, 7, 8, 9, 10, 11, 13, 14, 16, 17, 19, 23, 24,
+            25, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 38, 39, 40, 60, 61, 63, 64];
+        foreach (var weapon in firearms.Concat([-1, 0, 42, 43, 44, 45, 46, 47, 48, 49, 59, 999]))
+        {
+            PlayoffRoundCandidate[] candidates = [new(8, false,
+                [new(101, [weapon]), new(102, [weapon])])];
+            var selected = PlayoffRoundSelectionPolicy.FindEligibleRounds(candidates, Roster);
+            Assert.Equal(firearms.Contains(weapon), selected.SequenceEqual([8]));
+        }
+    }
 
     [Fact]
     public void MixedEquipmentAndUnselectedPlayersDoNotExcludeUsableRoutes()
@@ -133,7 +123,6 @@ public sealed class PlayoffRoundSelectionPolicyTests
         ];
 
         Assert.Equal([5, 6, 9, 10], PlayoffRoundSelectionPolicy.FindEligibleRounds(candidates, Roster));
-        Assert.Equal(PlayoffWeaponPool.Mixed, PlayoffRoundSelectionPolicy.ClassifyRound(candidates[1].Players));
     }
 
     [Fact]
@@ -170,11 +159,11 @@ public sealed class PlayoffSourceSelectionTests
         var first = new HashSet<ulong> { 101 };
         var second = new HashSet<ulong> { 201 };
         var selection = new PlayoffSourceSelection(first, second, new(8, 9, "same"), null);
-        Assert.True(selection.TryResolve(first, second, out var sources));
+        Assert.True(selection.TryResolve(first, second, out var sources, out _));
         Assert.Equal(8, sources.TRound);
-        Assert.False(selection.TryResolve(second, first, out _));
+        Assert.False(selection.TryResolve(second, first, out _, out _));
         var onlySwapped = selection with { SameSides = null, SwappedSides = new(18, 19, "swapped") };
-        Assert.True(onlySwapped.TryResolve(second, first, out sources));
+        Assert.True(onlySwapped.TryResolve(second, first, out sources, out _));
         Assert.Equal(18, sources.TRound);
     }
     [Theory]
@@ -193,16 +182,16 @@ public sealed class PlayoffSourceSelectionTests
         var upcomingCt = players.Where(player => ReplayTeamAssignmentPolicy.ResolveUpcomingTeam(player.Team, swap) ==
             CsTeam.CounterTerrorist).Select(player => player.Id).ToHashSet();
 
-        Assert.True(selection.TryResolve(upcomingT, upcomingCt, out var sources));
+        Assert.True(selection.TryResolve(upcomingT, upcomingCt, out var sources, out _));
         Assert.Equal(tRound, sources.TRound);
         Assert.Equal(ctRound, sources.CtRound);
 
         // A fresh prefetch on the new sides must keep working next round and
         // at the next overtime swap; never reuse a previous round's flip flag.
         var next = new PlayoffSourceSelection(upcomingT, upcomingCt, sources, new(28, 29, "next swap"));
-        Assert.True(next.TryResolve(upcomingT, upcomingCt, out var same));
+        Assert.True(next.TryResolve(upcomingT, upcomingCt, out var same, out _));
         Assert.Equal(sources, same);
-        Assert.True(next.TryResolve(upcomingCt, upcomingT, out var swapped));
+        Assert.True(next.TryResolve(upcomingCt, upcomingT, out var swapped, out _));
         Assert.Equal(28, swapped.TRound);
     }
 
@@ -211,7 +200,7 @@ public sealed class PlayoffSourceSelectionTests
     {
         var selection = new PlayoffSourceSelection(new HashSet<ulong> { 101 }, new HashSet<ulong> { 201 },
             new(8, 9, "same"), new(18, 19, "swapped"));
-        Assert.False(selection.TryResolve(new HashSet<ulong> { 301 }, new HashSet<ulong> { 201 }, out _));
+        Assert.False(selection.TryResolve(new HashSet<ulong> { 301 }, new HashSet<ulong> { 201 }, out _, out _));
     }
 }
 

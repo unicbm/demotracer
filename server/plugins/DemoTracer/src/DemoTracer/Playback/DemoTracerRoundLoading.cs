@@ -266,8 +266,8 @@ public sealed partial class DemoTracerPlugin
                     error = $"{file.Side}:slot{slot}:{file.PlayerName} replay prefetch failed validation";
                     return false;
                 default:
-                    // Explicit/manual load paths do not necessarily create a
-                    // prefetch generation and retain their synchronous behavior.
+                    // A missing cache entry or exhausted prefetch budget uses
+                    // the normal validated, synchronous reader.
                     loadedReplay = BotControllerNative.LoadReplayFromFile(
                         slot,
                         recPath,
@@ -441,17 +441,6 @@ public sealed partial class DemoTracerPlugin
             "green" => 3,
             "orange" => 4,
             _ => 100,
-        };
-
-    private static int ReplayPlayerColorSchemaIndex(string? playerColor)
-        => NormalizeReplayPlayerColor(playerColor) switch
-        {
-            "blue" => 0,
-            "green" => 1,
-            "yellow" => 2,
-            "orange" => 3,
-            "purple" => 4,
-            _ => -1,
         };
 
     private static string? NormalizeReplayPlayerColor(string? playerColor)
