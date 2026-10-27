@@ -319,7 +319,6 @@ $pluginOut = Join-Path $stageRoot "addons\counterstrikesharp\plugins\DemoTracer"
 Copy-RequiredFile (Join-Path $cssOut "DemoTracer.deps.json") (Join-Path $pluginOut "DemoTracer.deps.json")
 Copy-RequiredFile (Join-Path $cssOut "DemoTracer.dll") (Join-Path $pluginOut "DemoTracer.dll")
 Copy-RequiredFile (Join-Path $cssOut "ZstdSharp.dll") (Join-Path $pluginOut "ZstdSharp.dll")
-Copy-RequiredFile (Join-Path $repoRoot "server\plugins\DemoTracer\THIRD_PARTY_NOTICES.md") (Join-Path $pluginOut "THIRD_PARTY_NOTICES.md")
 Copy-RequiredFile (Join-Path $cssOut "cs2-lib-econ-index.v1.json") (Join-Path $pluginOut "cs2-lib-econ-index.v1.json")
 Copy-RequiredFile (Join-Path $repoRoot "server\plugins\DemoTracer\config\demotracer.config.example.json") (Join-Path $pluginOut "demotracer.config.example.json")
 Copy-RequiredFile (Join-Path $cssOut "demotracer-native.json") (Join-Path $pluginOut "demotracer-native.json")
@@ -333,11 +332,6 @@ Copy-RequiredFile (Join-Path $botRandomizerOut "BotRandomizer.dll") (Join-Path $
 Copy-RequiredFile (Join-Path $botRandomizerOut "cosmetic_catalog.json") (Join-Path $botRandomizerPluginOut "cosmetic_catalog.json")
 Copy-RequiredFile (Join-Path $botRandomizerOut "cs2-lib-econ-index.v1.json") (Join-Path $botRandomizerPluginOut "cs2-lib-econ-index.v1.json")
 Copy-RequiredFile (Join-Path $botRandomizerOut "charm_placements.json") (Join-Path $botRandomizerPluginOut "charm_placements.json")
-Copy-RequiredFile (Join-Path $botRandomizerOut "README.md") (Join-Path $botRandomizerPluginOut "README.md")
-Copy-RequiredFile (Join-Path $botRandomizerOut "API.md") (Join-Path $botRandomizerPluginOut "API.md")
-Copy-RequiredFile (Join-Path $botRandomizerOut "UPSTREAM.md") (Join-Path $botRandomizerPluginOut "UPSTREAM.md")
-Copy-RequiredFile (Join-Path $botRandomizerOut "THIRD_PARTY_NOTICES.md") (Join-Path $botRandomizerPluginOut "THIRD_PARTY_NOTICES.md")
-Copy-RequiredFile (Join-Path $botRandomizerOut "LICENSE") (Join-Path $botRandomizerPluginOut "LICENSE")
 
 $botHiderPluginOut = Join-Path $stageRoot "addons\counterstrikesharp\plugins\DtrHider"
 Copy-RequiredFile (Join-Path $botHiderCssOut "DtrHider.deps.json") (Join-Path $botHiderPluginOut "DtrHider.deps.json")
@@ -354,14 +348,21 @@ if ($IncludeSymbols) {
     Copy-RequiredFile (Join-Path $botHiderApiOut "DtrHiderApi.pdb") (Join-Path $botHiderSharedOut "DtrHiderApi.pdb")
 }
 
-Copy-RequiredFile (Join-Path $repoRoot "LICENSE") (Join-Path $stageRoot "LICENSE")
 
 $gitCommit = (git -C $repoRoot rev-parse --short=12 HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($gitCommit)) {
     throw "Unable to resolve the release Git commit."
 }
 
-& (Join-Path $PSScriptRoot "write-component-manifest.ps1") -OutputPath (Join-Path $addonsOut "demotracer-sources.v1.json")
+# Keep usage/API documentation in the source repository. Ship required notices once.
+$notices = @(
+    "CS2 DemoTracer Playback v$Version",
+    "Corresponding source: https://github.com/unicbm/demotracer/tree/$gitCommit",
+    (Get-Content -LiteralPath (Join-Path $repoRoot "LICENSE") -Raw -Encoding UTF8),
+    (Get-Content -LiteralPath (Join-Path $repoRoot "server/plugins/DemoTracer/THIRD_PARTY_NOTICES.md") -Raw -Encoding UTF8),
+    (Get-Content -LiteralPath (Join-Path $botRandomizerOut "THIRD_PARTY_NOTICES.md") -Raw -Encoding UTF8)
+)
+Set-Content -LiteralPath (Join-Path $addonsOut "demotracer-LICENSE.txt") -Value ($notices -join "`n`n") -Encoding UTF8
 $receiptFiles = @(
     Get-ChildItem -LiteralPath $addonsOut -Recurse -File |
         Sort-Object FullName |
@@ -402,167 +403,6 @@ $installReceipt = [ordered]@{
 }
 $installReceiptPath = Join-Path $addonsOut "demotracer-install.v1.json"
 $installReceipt | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $installReceiptPath -Encoding UTF8
-
-$readme = @'
-# DemoTracer-CSS v__VERSION__
-
-This is the complete Windows x64 local playback package. Install it into the CS2
-server used for replay; it is not a hosted or cloud service. The bundle includes
-the Metamod dtr-controller and dtr-hider runtimes plus their CounterStrikeSharp
-plugins as one matching runtime set.
-
-## Install
-
-1. Stop the CS2 server.
-2. Install Metamod:Source build __METAMOD_BUILD__+ (plugin API __METAMOD_API__)
-   and official CounterStrikeSharp __CSS_VERSION__ or newer.
-   They are prerequisites and are not included in this bundle.
-3. Use the GUI installer to migrate receipt-owned legacy DTR files. It preserves
-   independently installed upstream components and user data. For a manual upgrade,
-   remove only the old DTR-owned native VDF/DLL and managed provider/API files,
-   then copy user bot_info.json, map_whitelist.json and recordings to the new paths.
-4. Keep this bundle's `dtr-controller`, `dtr-hider` and shared APIs together.
-5. Copy this package's `addons` directory into the server `game/csgo` directory
-   so it merges with the existing `addons` directory.
-6. Start the server.
-7. In the server console, run:
-
-```text
-dtr_runtime
-dtr_controller_status
-dtr_hider_status
-```
-
-Expected ABI check:
-
-```text
-expected_abi=__BOTCONTROLLER_ABI__ runtime_abi=__BOTCONTROLLER_ABI__ abi_minor=__BOTCONTROLLER_ABI_MINOR__
-```
-
-For v__VERSION__, require `runtime_abi=__BOTCONTROLLER_ABI__` and `abi_minor=__BOTCONTROLLER_ABI_MINOR__` or newer. If the minor
-version is missing or lower, replace the complete playback bundle, including
-`addons/dtr-controller/bin/win64/dtr-controller.dll`,
-`addons/dtr-controller/gamedata.json`, and `addons/metamod/dtr-controller.vdf`.
-
-## Desktop Playback Presets
-
-The desktop GUI generates a compact command such as:
-
-```text
-dtr_preset 0x15; dtr_go seq "<manifest.json>" 0
-```
-
-`dtr_preset status` prints the effective v1 mask and bit assignments. Presets
-from the current desktop GUI require a playback bundle that includes this
-command.
-
-## Voice Replay
-
-Voice playback uses demo-backed `.dtv` sidecars exported by the desktop GUI when
-voice export is enabled. Keep `voice/roundXX.dtv` next to the matching manifest
-output and enable `dtr_voice_auto on` before `dtr_go seq` or `dtr_go round`.
-
-## Chat Replay
-
-Text chat is stored in `manifest.json` as `rounds[].chat_messages` and replays
-through CS2's native `say` / `say_team` path when `dtr_chat_auto on` is enabled
-(default). For spectator testing of native player text chat, set
-`sv_full_alltalk 1`; `sv_allchat 1` by itself is not enough.
-
-## Contents
-
-- `addons/dtr-controller/bin/win64/dtr-controller.dll`
-- `addons/dtr-controller/gamedata.json`
-- `addons/metamod/dtr-controller.vdf`
-- `addons/dtr-hider/bin/win64/dtr-hider.dll`
-- `addons/dtr-hider/gamedata.json`
-- `addons/dtr-hider/bot_info.example.json` (does not overwrite local `bot_info.json`)
-- `addons/demotracer-install.v1.json` (component contract and file hashes for desktop diagnostics)
-- `addons/counterstrikesharp/plugins/DtrHider/`
-- `addons/counterstrikesharp/shared/DtrHiderApi/`
-- `addons/counterstrikesharp/shared/BotRandomizerApi/`
-- `addons/counterstrikesharp/plugins/BotRandomizer/`
-  - `cosmetic_catalog.json` random-roll pools
-  - `cs2-lib-econ-index.v1.json` canonical replay-evidence allow-list
-- `addons/counterstrikesharp/shared/DemoTracerApi/`
-- `addons/counterstrikesharp/plugins/DemoTracer/`
-  - `demotracer.config.example.json` sanitized local runtime defaults
-  - `cs2-lib-econ-index.v1.json` compact projection of the pinned cs2-lib catalog
-  - `demotracer-runtime.v1.json` is created at runtime as a short-lived local
-    health heartbeat; it is not prepackaged
-
-## Compatibility
-
-Native dtr-hider loads on the first replay command, after unloading official
-BotHider and BotHiderImpl when present. It owns the rest of that map; changing
-maps restores the original providers. Do not add a dtr-hider startup VDF.
-
-- Required BotController native ABI: __BOTCONTROLLER_ABI__
-- Required BotController native ABI minor: __BOTCONTROLLER_ABI_MINOR__ or newer
-- Supported `.dtr` format: __DTR_READER_MAX__ only; reconvert older archives with the current GUI.
-- DemoTracer companion API: __DEMOTRACER_API__
-- DemoTracer BotHider API: __BOTHIDER_API__
-- BotRandomizer replay-plan API: __BOTRANDOMIZER_API__
-- CounterStrikeSharp plugin target: __CSS_TARGET__
-- Maintained runtime platform: Windows x64
-
-## Dependencies
-
-Required external server prerequisites:
-
-- Official Metamod:Source 2.0 build __METAMOD_BUILD__ or newer (plugin API __METAMOD_API__, KHook).
-- Official CounterStrikeSharp __CSS_VERSION__ or newer with the shared KHook backend.
-  Source baseline: `__CSS_KHOOK_COMMIT__`. No locally patched host is required.
-- Native source pins: Metamod `__METAMOD_COMMIT__`, KHook `__KHOOK_COMMIT__`.
-
-Included in this bundle:
-
-- `dtr-controller` Metamod runtime
-- `dtr-hider` Metamod runtime maintained by DemoTracer
-- `DemoTracer` CounterStrikeSharp plugin
-- `dtr-hider` CounterStrikeSharp plugin
-- `BotRandomizer` CounterStrikeSharp replay-cosmetic provider
-- `DtrHiderApi.dll`
-- `BotRandomizerApi.dll`
-- `DemoTracerApi.dll`
-- `cs2-lib-econ-index.v1.json`
-- `demotracer.config.example.json`
-
-DTR DLLs, API capabilities, commands and installation paths are isolated from
-upstream components. KHook coordinates shared detours; it does not arbitrate
-competing gameplay or presentation writes to the same bots.
-
-Do not infer BotController/BotHider compatibility from directory names or VDF
-targets. Known CS2-Bot-Improver v1.4.2 native packages use BotController ABI 14;
-DemoTracer requires ABI __BOTCONTROLLER_ABI__/minor __BOTCONTROLLER_ABI_MINOR__. The desktop environment inspection reads
-`addons/demotracer-install.v1.json` and exact component hashes to detect a mixed
-or replaced vendor set.
-
-Contact handoff uses the bundled BotController native perception. No external
-tracing provider is required.
-
-The bundled common BotRandomizer API v3 provider is the sole cosmetic entity writer.
-DemoTracer submits validated demo evidence as a complete desired-state plan
-before the next natural spawn; BotRandomizer consumes it during GiveNamedItem
-construction. Replay validation uses the canonical cs2-lib econ index rather
-than the narrower random-roll pools. DemoTracer does not mutate weapon econ
-state, knife subclasses, gloves, agent models, or music-kit fields directly.
-'@
-$readme = $readme.Replace("__VERSION__", $Version)
-$readme = $readme.Replace("__DTR_READER_MAX__", [string]$playbackContract.dtr_reader.max)
-$readme = $readme.Replace("__BOTCONTROLLER_ABI__", [string]$playbackContract.bot_controller.abi_major)
-$readme = $readme.Replace("__BOTCONTROLLER_ABI_MINOR__", [string]$playbackContract.bot_controller.min_abi_minor)
-$readme = $readme.Replace("__DEMOTRACER_API__", [string]$playbackContract.demotracer.companion_api)
-$readme = $readme.Replace("__BOTHIDER_API__", [string]$playbackContract.bot_hider.api)
-$readme = $readme.Replace("__BOTRANDOMIZER_API__", [string]$playbackContract.bot_randomizer.api)
-$readme = $readme.Replace("__CSS_VERSION__", [string]$playbackContract.counterstrikesharp.minimum_version)
-$readme = $readme.Replace("__CSS_TARGET__", [string]$playbackContract.counterstrikesharp.target_framework)
-$readme = $readme.Replace("__METAMOD_BUILD__", [string]$playbackContract.hook_runtime.metamod_minimum_build)
-$readme = $readme.Replace("__METAMOD_API__", [string]$playbackContract.hook_runtime.metamod_plugin_api)
-$readme = $readme.Replace("__METAMOD_COMMIT__", [string]$playbackContract.hook_runtime.metamod_source_commit)
-$readme = $readme.Replace("__KHOOK_COMMIT__", [string]$playbackContract.hook_runtime.khook_source_commit)
-$readme = $readme.Replace("__CSS_KHOOK_COMMIT__", [string]$playbackContract.hook_runtime.counterstrikesharp_source_commit)
-Set-Content -LiteralPath (Join-Path $stageRoot "README.md") -Value $readme -Encoding UTF8
 
 if (-not $IncludeSymbols) {
     $pdbFiles = @(Get-ChildItem -LiteralPath $stageRoot -Recurse -Filter "*.pdb" -File -ErrorAction SilentlyContinue)
