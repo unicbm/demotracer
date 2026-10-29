@@ -37,6 +37,12 @@ internal static partial class BotControllerNative
 
     public static bool IsCompatible => AbiVersion == ExpectedAbiVersion;
 
+    public static bool IsReady => IsRuntimeReady(AbiInfo);
+
+    internal static bool IsRuntimeReady(BotControllerAbiInfo info)
+        => info.AbiMajor == ExpectedAbiVersion &&
+           (info.Capabilities & RequiredCapabilityMask) == RequiredCapabilityMask;
+
     public static ulong MissingRequiredCapabilities
         => RequiredCapabilityMask & ~Capabilities;
 
@@ -146,7 +152,7 @@ internal static partial class BotControllerNative
         {
             var abiInfo = AbiInfo;
             return $"expected_abi={ExpectedAbiVersion} runtime_abi={AbiVersion} abi_minor={abiInfo.AbiMinor} " +
-                   $"compatible={IsCompatible} caps=0x{Capabilities:X} missing=0x{MissingRequiredCapabilities:X} " +
+                   $"compatible={IsCompatible} ready={IsRuntimeReady(abiInfo)} caps=0x{Capabilities:X} missing=0x{MissingRequiredCapabilities:X} " +
                    $"build={BuildId} " +
                    $"voice_send={VoiceStatusText} " +
                    $"release_replay_buffer={HasReleaseReplayBufferCapability} " +

@@ -442,7 +442,13 @@ public sealed partial class DemoTracerPlugin
     private void ReleaseBotRandomizerCosmeticLease(string reason, bool clearEvidence)
     {
         if (clearEvidence)
+        {
             _retainedBotRandomizerCosmeticSlots.Clear();
+            // Keep the provider lease during an atomic reload, but force its
+            // replacement even if the next replay has identical cosmetics.
+            // Retention was cleared and old spawn callbacks must be invalidated.
+            _botRandomizerLeaseSignature = string.Empty;
+        }
         _session.CosmeticSyncedSlots.Clear();
         if (_botRandomizerLeaseTransitionDepth > 0)
             return;

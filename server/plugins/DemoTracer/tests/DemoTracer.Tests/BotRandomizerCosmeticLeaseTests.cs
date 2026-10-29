@@ -113,6 +113,33 @@ public sealed class BotRandomizerCosmeticLeaseTests
         Assert.False(snapshot.TryGet(3, 76561198000000002, out _));
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void AtomicUnloadInvalidatesThePlanCacheWithoutReleasingTheProvider(int transitionDepth)
+    {
+        var (plugin, _, snapshot) = CreateRetainedPlugin();
+        var signature = typeof(DemoTracerPlugin).GetField("_botRandomizerLeaseSignature", PrivateInstance)!;
+        signature.SetValue(plugin, "accepted_plan");
+        typeof(DemoTracerPlugin).GetField("_botRandomizerLeaseTransitionDepth", PrivateInstance)!
+            .SetValue(plugin, transitionDepth);
+        var session = typeof(DemoTracerPlugin).GetField("_session", PrivateInstance)!.GetValue(plugin)!;
+        var synced = (HashSet<int>)session.GetType().GetProperty("CosmeticSyncedSlots")!.GetValue(session)!;
+        synced.Add(3);
+
+        typeof(DemoTracerPlugin).GetMethod("ReleaseBotRandomizerCosmeticLease", PrivateInstance,
+            [typeof(string)])!.Invoke(plugin, ["unload_all"]);
+
+        // A repeated dtr_go may load exactly the same players and cosmetics.
+        // It must replace the plan again to rebuild retention and invalidate
+        // old provider callbacks, while keeping ownership during the transition.
+        Assert.Equal(string.Empty, signature.GetValue(plugin));
+        Assert.Empty(BuildPlans(plugin));
+        Assert.Empty(synced);
+        Assert.Equal("token", snapshot.Token);
+        Assert.True(snapshot.TryGet(3, 76561198000000001, out _));
+    }
+
     [Fact]
     public void WeaponsAndKnifeRequireConstructionTimePrebuild()
     {

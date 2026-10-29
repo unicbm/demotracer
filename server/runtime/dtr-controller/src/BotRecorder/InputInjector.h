@@ -23,6 +23,8 @@ namespace BotController
         // Disable + remove the hooks.
         void Remove();
 
+        bool Ready();
+
         // Optional schema offset for CCSPlayerController::m_bControllingBot.
         // When available, replay stops immediately if a real player takes over a bot.
         bool SetControllerControllingBotOffset(int offset);

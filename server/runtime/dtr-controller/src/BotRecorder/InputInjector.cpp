@@ -1062,6 +1062,7 @@ namespace BotController
             g_status = "not_attempted";
         }
 
+        bool Ready() { return g_installed; }
         const char *Status() { return g_status.c_str(); }
 
         void *ProcessUsercmdAddress() { return g_addrProcessMovement; }

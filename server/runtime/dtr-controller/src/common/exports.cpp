@@ -131,7 +131,8 @@ extern "C" __declspec(dllexport) int DtrController_GetAbiInfo(BotControllerAbiIn
     info.subtickMoveSize = static_cast<int32_t>(sizeof(BotController::SubtickMove));
     info.replaySlotStateSize = static_cast<int32_t>(sizeof(BotController::MotionRecorder::ReplaySlotState));
     info.maxSlots = BotController::MotionRecorder::kMaxSlots;
-    info.capabilities = kBotControllerCapabilities;
+    // Loading the DLL through P/Invoke does not initialize the Metamod plugin.
+    info.capabilities = BotController::InputInjector::Ready() ? kBotControllerCapabilities : 0;
     if (!BotController::BuyControllerHooks::Ready()) info.capabilities &= ~kCapabilityBuyPlan;
     std::memcpy(out, &info, sizeof(info));
     return 0;
@@ -139,6 +140,7 @@ extern "C" __declspec(dllexport) int DtrController_GetAbiInfo(BotControllerAbiIn
 
 extern "C" __declspec(dllexport) uint64_t DtrController_GetCapabilities()
 {
+    if (!BotController::InputInjector::Ready()) return 0;
     return BotController::BuyControllerHooks::Ready() ? kBotControllerCapabilities :
         (kBotControllerCapabilities & ~kCapabilityBuyPlan);
 }

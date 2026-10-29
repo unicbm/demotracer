@@ -10,8 +10,29 @@ namespace DemoTracer;
 
 internal static partial class BotControllerNative
 {
+    internal static string ControllerLibraryPath(string serverPath)
+        => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(serverPath)!,
+            "..", "..", "addons", "dtr-controller", "bin", "win64", "dtr-controller.dll"));
+
+    internal static void ConfigureLibrary(string serverPath)
+    {
+        // Bind the same image that Metamod registers, even if an old manual
+        // installation left another copy beside the managed plugin.
+        string libraryPath = ControllerLibraryPath(serverPath);
+        NativeLibrary.SetDllImportResolver(typeof(BotControllerNative).Assembly,
+            (name, _, _) => name == "dtr-controller" ? NativeLibrary.Load(libraryPath) : 0);
+    }
+
+    internal static int FindMetamodPlugin(string library)
+    {
+        if (!IsReady)
+            throw new InvalidOperationException("dtr-controller is not ready; check meta list for native load failures.");
+        int id = DtrController_FindMetamodPlugin(library);
+        return id >= 0 ? id : throw new InvalidOperationException("dtr-controller Metamod plugin lookup is unavailable.");
+    }
+
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl, EntryPoint = "DtrController_FindMetamodPlugin")]
-    internal static extern int FindMetamodPlugin([MarshalAs(UnmanagedType.LPUTF8Str)] string library);
+    private static extern int DtrController_FindMetamodPlugin([MarshalAs(UnmanagedType.LPUTF8Str)] string library);
 
     [DllImport("dtr-controller", CallingConvention = CallingConvention.Cdecl)]
     private static extern int DtrController_LoadReplaySourceState(int slot, [In] NativeReplaySourceStateChange[] changes, int count, float tickRate, float liveTickInterval);

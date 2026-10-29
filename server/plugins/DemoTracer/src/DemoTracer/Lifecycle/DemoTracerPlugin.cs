@@ -25,7 +25,7 @@ namespace DemoTracer;
 public sealed partial class DemoTracerPlugin : BasePlugin
 {
     public override string ModuleName => "CS2 DemoTracer";
-    public override string ModuleVersion => "1.6.4";
+    public override string ModuleVersion => "1.6.5";
     public override string ModuleAuthor => "unicbm";
     public override string ModuleDescription => "Trace CS2 demos into bot-executable route replays.";
 
@@ -87,6 +87,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
 
     public override void Load(bool hotReload)
     {
+        BotControllerNative.ConfigureLibrary(Addresses.ServerPath);
         RegisterControlCommandAuthorization();
         RegisterReplayRetentionJoinHook();
         RegisterReplayBuySuppressionHooks();

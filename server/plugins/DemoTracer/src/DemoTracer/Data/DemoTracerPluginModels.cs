@@ -238,11 +238,11 @@ public sealed partial class DemoTracerPlugin
 
     private static bool CheckAbi(CommandInfo command)
     {
-        if (BotControllerNative.IsCompatible)
+        if (BotControllerNative.IsReady)
             return true;
 
         command.ReplyToCommand(
-            $"dtr: ABI mismatch; {BotControllerNative.RuntimeSummary}");
+            $"dtr: native runtime unavailable or incompatible; check meta list; {BotControllerNative.RuntimeSummary}");
         return false;
     }
 

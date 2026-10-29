@@ -65,12 +65,17 @@ PLUGIN_EXPOSE(BotControllerPlugin, g_BotControllerPlugin);
 // Metamod registration, rather than DLL residency, determines plugin lifetime.
 extern "C" __declspec(dllexport) int DtrController_FindMetamodPlugin(const char *library)
 {
+    // A resident DLL may never have loaded through Metamod, or may have been
+    // unloaded while P/Invoke still holds it. Do not use its stale interfaces.
+    if (!BotController::InputInjector::Ready() || !g_SMAPI || !library || !*library)
+        return -1;
     auto *plugins = static_cast<ISmmPluginManager *>(g_SMAPI->MetaFactory(MMIFACE_PLMANAGER, nullptr, nullptr));
+    if (!plugins) return -1;
     for (PluginId id = 1; id <= g_LastMetamodPluginId; ++id)
     {
         const char *file = nullptr;
         Pl_Status status;
-        if (plugins->Query(id, &file, &status, nullptr) && status >= Pl_Paused &&
+        if (plugins->Query(id, &file, &status, nullptr) && file && status >= Pl_Paused &&
             std::filesystem::path(file).stem() == library) return id;
     }
     return 0;
