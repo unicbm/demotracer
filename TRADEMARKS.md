@@ -4,7 +4,7 @@ DemoTracer playback source is open source under AGPL-3.0-only. That license does
 not grant permission to misrepresent a modified distribution as an official
 release from this project.
 
-DemoTracer, CS2 DemoTracer, the project logo and icons, and the phrase Official
+DemoTracer (formerly CS2 DemoTracer), the project logo and icons, and the phrase Official
 DemoTracer Build identify the upstream project maintained by unicbm. This policy
 does not claim ownership of Valve or Counter-Strike trademarks.
 

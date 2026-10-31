@@ -19,6 +19,11 @@ Upstream was reviewed through `c90a0ac5d04456a77ba266aaba01c9fb0f8d0a8f`
 The review through upstream v0.4.3, `7fc83ea108c7b29cf014efb73584199565c6418c`
 (2026-09-05), imported no additional runtime changes.
 
+From `8568270e089c10ab627ac84c5031e7559f0e287e` (2026-10-29), selectively
+adapted required disguise dependencies, explicit identity-check failure and
+configured-only automatic SteamIDs. Exact demo leases and batch identity
+permutations retain their existing synchronous publication path.
+
 ## Maintained boundary
 
 This derivative uses `dtr-hider`, `DtrHiderApi`, `dtr-hider:api:v3` and

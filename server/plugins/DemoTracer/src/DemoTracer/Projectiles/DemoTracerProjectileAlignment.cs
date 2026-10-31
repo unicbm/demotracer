@@ -24,6 +24,7 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
+    internal const string ExternalProjectileName = "dtr_external_projectile_v1";
     private void OnEntitySpawned(CEntityInstance entity)
     {
         if (!_mapActive || _lifecycleResetInProgress || !_projectileAlignEnabled)
@@ -180,7 +181,9 @@ public sealed partial class DemoTracerPlugin
         int weaponDefIndex,
         ReplayPlaybackBoundary playbackBoundary)
     {
-        if (!_projectileAlignEnabled)
+        // External rescue utility belongs to its provider. Check before
+        // looking up or consuming any recorded throw, including same-tick throws.
+        if (!_projectileAlignEnabled || projectile.Entity?.Name == ExternalProjectileName)
             return false;
 
         if (!TryResolveProjectileAlign(

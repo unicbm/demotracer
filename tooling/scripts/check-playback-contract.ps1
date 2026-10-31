@@ -116,6 +116,7 @@ if ($runtimeMinor -lt [int]$contract.bot_controller.min_abi_minor) {
 }
 
 Assert-Equal "DemoTracer companion API" (Read-RegexValue "server\plugins\DemoTracer\src\DemoTracer\Native\BotControllerNativeTypes.cs" 'DemoTracerApiVersion\s*=\s*(\d+)' "DemoTracer companion API") ([string]$contract.demotracer.companion_api)
+Assert-Equal "External projectile marker" (Read-RegexValue "server/plugins/DemoTracer/src/DemoTracer/Projectiles/DemoTracerProjectileAlignment.cs" 'ExternalProjectileName\s*=\s*"([^"]+)"' "external projectile marker") ([string]$contract.demotracer.external_projectile_entity_name)
 Assert-Equal "BotHider API" (Read-RegexValue "server\runtime\dtr-hider\csharp\DtrHiderApi\IDtrHiderApi.cs" 'ApiVersion\s*=\s*(\d+)' "BotHider API") ([string]$contract.bot_hider.api)
 Assert-Equal "BotHider clan tag limit" (Read-RegexValue "server\runtime\dtr-hider\csharp\DtrHiderApi\IDtrHiderApi.cs" 'MaxClanTagUtf8Bytes\s*=\s*(\d+)' "BotHider clan tag limit") ([string]$contract.bot_hider.clan_tag_max_utf8_bytes)
 Assert-Equal "BotHider native ABI" (Read-RegexValue "server\runtime\dtr-hider\src\presentation_state.h" 'kNativePresentationAbi\s*=\s*(\d+)' "BotHider native ABI") ([string]$contract.bot_hider.native_abi)

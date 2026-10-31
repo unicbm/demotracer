@@ -2,7 +2,7 @@
   <img src="docs/media/demotracer-logo-color.svg" alt="DemoTracer logo" width="112" height="112">
 </p>
 
-<h1 align="center">CS2 DemoTracer</h1>
+<h1 align="center">DemoTracer</h1>
 
 <p align="center">
   Analyze Counter-Strike 2 demos, export selected rounds, and replay them through bots on a local server.

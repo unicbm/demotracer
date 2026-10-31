@@ -1,6 +1,6 @@
 # dtr-hider
 
-Bot identity and presentation provider for CS2 DemoTracer:
+Bot identity and presentation provider for DemoTracer:
 
 | Part | Purpose |
 | --- | --- |
@@ -14,6 +14,8 @@ dtr-hider and adopts existing bots before continuing playback. DH owns the rest
 of that map; changing maps retires DH and restores the original providers.
 There is no native dtr-hider startup VDF. Managed provider reload releases leases
 and can reconnect to the native runtime.
+Native load and disguise activation require the quota, packing and Windows
+join-team hooks, controller cleanup and required entity fields.
 
 ## Build
 
@@ -70,6 +72,8 @@ It is separate from the Bot Improver Panel's Profiles toggle.
 The bundle preserves server-local `bot_info.json`; no persona configuration is bundled.
 Configured personas are exclusive to one bot each. Without an available persona,
 bots keep their engine name and SteamID 0; other presentation fields still work.
+Automatic SteamIDs come only from configured identities. Exhaustion or a failed
+collision check keeps the engine name and SteamID 0, without generating an ID.
 A lease can supply an exact nonzero SteamID, which remains after release.
 
 ## Credits and license

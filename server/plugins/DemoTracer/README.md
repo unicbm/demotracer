@@ -1,6 +1,6 @@
 # DemoTracer playback plugin
 
-CounterStrikeSharp playback component for CS2 DemoTracer.
+CounterStrikeSharp playback component for DemoTracer.
 Assembly: `DemoTracer`; companion capability: `demotracer:api` (API 7).
 Install the matched product Playback bundle for the native providers and shared APIs.
 
@@ -22,6 +22,12 @@ session resets. Warm buffers and pending plans do not grant bot write ownership.
 BotRandomizer applies cosmetics; DemoTracer tracks accepted plans.
 
 Console command responses and runtime status messages use English.
+
+External utility providers can set a projectile's entity name to
+`dtr_external_projectile_v1` before its first physics step. Playback skips both
+alignment and recorded-throw consumption for that projectile. The marker is
+published in `shared/contracts/playback-contract.v1.json`; NadeSystem uses it for
+fire-protection smoke without releasing replay ownership.
 
 ## Build and package
 

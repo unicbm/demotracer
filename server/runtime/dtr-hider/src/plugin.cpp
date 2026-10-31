@@ -441,19 +441,19 @@ namespace cs2bh
         return true;
     }
 
-    // True if sid is already live on any connected client other than exceptSlot
-    static bool IsSteamIdInUseByOther(uint64_t sid, int exceptSlot)
+    // An unavailable client list cannot establish that an identity is unused.
+    static SteamIdAvailability CheckSteamIdAvailability(uint64_t sid, int exceptSlot)
     {
         if (sid == 0 || !g_pNetworkServerService)
-            return false;
+            return SteamIdAvailability::CheckFailed;
         auto *gs = g_pNetworkServerService->GetIGameServer();
         if (!gs)
-            return false;
+            return SteamIdAvailability::CheckFailed;
         auto *vec = reinterpret_cast<CUtlVector<void *> *>(
             reinterpret_cast<unsigned char *>(gs) + targets::kClientListOffset);
         int count = vec->Count();
-        if (count < 0 || count > 256)
-            return false;
+        if (count < 0 || count > 256 || exceptSlot < 0 || exceptSlot >= count || !vec->Element(exceptSlot))
+            return SteamIdAvailability::CheckFailed;
         for (int i = 0; i < count; ++i)
         {
             if (i == exceptSlot)
@@ -464,9 +464,9 @@ namespace cs2bh
             uint64_t other = *reinterpret_cast<uint64_t *>(
                 reinterpret_cast<unsigned char *>(pClient) + ssc::OFFSET_m_SteamID);
             if (other == sid)
-                return true;
+                return SteamIdAvailability::InUse;
         }
-        return false;
+        return SteamIdAvailability::Available;
     }
 
     // Resolve a SteamID for slot that collides with other client
@@ -474,7 +474,10 @@ namespace cs2bh
     {
         return BotInfo().ResolveBaseSteamId(desired, [slot](uint64_t sid)
         {
-            return IsSteamIdInUseByOther(sid, slot);
+            const auto availability = CheckSteamIdAvailability(sid, slot);
+            if (availability == SteamIdAvailability::CheckFailed)
+                META_CONPRINTF("[BOTHIDER] automatic identity skipped slot=%d: SteamID availability check failed\n", slot);
+            return availability;
         });
     }
 
@@ -591,6 +594,21 @@ namespace cs2bh
         if (targets::kVTSlot_UserInfoChanged < 0)
             return "CNetworkGameServerBase::UserInfoChanged";
 #endif
+        return nullptr;
+    }
+
+    static const char *FirstMissingDisguiseDependency()
+    {
+        if (const char *missing = FirstMissingMemberOffset()) return missing;
+        if (!g_QuotaHook.Active()) return "CCSBotManager::MaintainBotQuota";
+        if (!g_PackEntitiesHook.Active()) return "CNetworkGameServer::PackEntities";
+#if defined(_WIN32)
+        if (!g_JoinTeamHook.Active()) return "CCSPlayerController::HandleCommand_JoinTeam";
+#endif
+        if (!g_pfnUtilRemove) return "UTIL_Remove";
+        if (!g_pGameResourceService) return "GameResourceServiceServer";
+        if (g_BotPawnHandleOffset < 0) return "controller pawn handle";
+        if (targets::kBaseEntity_FlagsOffset < 0) return "CBaseEntity::m_fFlags";
         return nullptr;
     }
 
@@ -1403,6 +1421,12 @@ namespace cs2bh
             return {KHook::Action::Ignore};
 
         const BotEntry *entry = BotInfo().PickForBot(pszName);
+        const uint64_t baseSid = MakeUniqueSteamId(idx, entry ? entry->SteamId64 : 0);
+        if (entry && baseSid == 0)
+        {
+            BotInfo().ReleaseAssignment(entry);
+            entry = nullptr;
+        }
         std::string displayName;
         if (m_bUseBotInfoName && entry)
             displayName = entry->Name;
@@ -1417,7 +1441,6 @@ namespace cs2bh
             return {KHook::Action::Ignore};
         }
 
-        const uint64_t baseSid = MakeUniqueSteamId(idx, entry ? entry->SteamId64 : 0);
         const char *crosshairCode = entry ? entry->CrosshairCode.c_str() : nullptr;
         const uint32_t scoreboardFlair = entry ? entry->ScoreboardFlair : 0;
         if (!Manager().AdoptSlot(
@@ -1910,6 +1933,14 @@ namespace cs2bh
     // Toggle disguise: off restores m_bFakePlayer=1 so the bot manager spawns bots again
     bool HiderPlugin::SetDisguiseEnabled(bool enabled)
     {
+        if (enabled)
+        {
+            if (const char *missing = FirstMissingDisguiseDependency())
+            {
+                META_CONPRINTF("[BOTHIDER] disguise change rejected: required dependency missing: %s\n", missing);
+                return false;
+            }
+        }
         if (m_bDisguiseEnabled == enabled)
             return true;
 
@@ -2051,6 +2082,13 @@ namespace cs2bh
         std::string engineName = context.ConnectedName.empty()
                                      ? context.RequestedName
                                      : context.ConnectedName;
+        const uint64_t baseSid = MakeUniqueSteamId(returnedSlot, context.Entry ? context.Entry->SteamId64 : 0);
+        if (context.Entry && baseSid == 0)
+        {
+            BotInfo().ReleaseAssignment(context.Entry);
+            context.Entry = nullptr;
+            context.Persona = engineName;
+        }
         std::string displayName;
         if (context.UseBotInfoName && !context.Persona.empty())
             displayName = context.Persona;
@@ -2077,7 +2115,6 @@ namespace cs2bh
         }
 
         const BotEntry *cfg = context.Entry;
-        const uint64_t baseSid = MakeUniqueSteamId(returnedSlot, cfg ? cfg->SteamId64 : 0);
         const char *cfgCross = cfg ? cfg->CrosshairCode.c_str() : nullptr;
         uint32_t cfgFlair = cfg ? cfg->ScoreboardFlair : 0;
         if (!Manager().AdoptSlot(returnedSlot, boundName, baseSid, cfgCross, cfgFlair))
@@ -2306,6 +2343,9 @@ namespace cs2bh
     bool HiderPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, bool late)
     {
         PLUGIN_SAVEVARS();
+        m_bDisguiseEnabled = false;
+        g_pfnUtilRemove = nullptr;
+        g_ppEntSysGlobal = nullptr;
 #if !defined(_WIN32)
         if (late)
         {
@@ -2403,7 +2443,6 @@ namespace cs2bh
         }
 
         g_pCVar = icvar;
-        g_SMAPI->AddListener(this, this);
 
         // Resolve controller pawn and idle-timer schema offsets
         if (schema::Init())
@@ -2437,6 +2476,13 @@ namespace cs2bh
         }
 
         InstallPreparedHooks();
+        if (const char *missing = FirstMissingDisguiseDependency())
+        {
+            std::snprintf(error, maxlen, "required disguise dependency missing: %s", missing);
+            RemoveHooks();
+            schema::Reset();
+            return false;
+        }
 
         // Linux retains the upstream CUtlString::Set name path. Windows uses
         // CServerSideClient::SetName directly without this symbol
@@ -2530,6 +2576,8 @@ namespace cs2bh
             return false;
         }
 
+        m_bDisguiseEnabled = true;
+        g_SMAPI->AddListener(this, this);
         META_CONPRINTF("[BOTHIDER] loaded — m_bFakePlayer offset=%d\n",
                        ssc::OFFSET_m_bFakePlayer);
 #if defined(_WIN32)

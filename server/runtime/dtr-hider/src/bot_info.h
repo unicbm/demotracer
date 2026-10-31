@@ -13,6 +13,8 @@
 namespace cs2bh
 {
 
+    enum class SteamIdAvailability { Available, InUse, CheckFailed };
+
     struct BotEntry
     {
         std::string Name;
@@ -32,7 +34,7 @@ namespace cs2bh
 
         // Used only when adopting a persona base. Lease identities remain exact.
         uint64_t ResolveBaseSteamId(uint64_t desired,
-                                   const std::function<bool(uint64_t)> &isInUse) const;
+                                   const std::function<SteamIdAvailability(uint64_t)> &check) const;
 
         // Release an entry's assignment (slot freed / mapchange).
         void ReleaseAssignment(const BotEntry *entry);

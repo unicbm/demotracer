@@ -89,7 +89,7 @@ namespace cs2bh
         std::vector<std::unique_ptr<KHook::__Hook>> m_Hooks;
         unsigned int m_TickCounter = 0; // throttles per-tick idle-timer reset
         // Master disguise switch
-        bool m_bDisguiseEnabled = true;
+        bool m_bDisguiseEnabled = false;
 
         bool m_bRebuilding = false;
 

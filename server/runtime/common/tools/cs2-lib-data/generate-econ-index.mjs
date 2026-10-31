@@ -181,7 +181,7 @@ const index = {
   name: "cs2-lib-econ-index",
   schema_version: 1,
   description:
-    "Generated runtime projection of the pinned @ianlucas/cs2-lib item catalog for CS2 DemoTracer.",
+    "Generated runtime projection of the pinned @ianlucas/cs2-lib item catalog for DemoTracer.",
   source: {
     package: PACKAGE_NAME,
     version: source.version,

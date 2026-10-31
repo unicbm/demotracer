@@ -125,18 +125,21 @@ namespace cs2bh
     }
 
     uint64_t BotInfoStore::ResolveBaseSteamId(
-        uint64_t desired, const std::function<bool(uint64_t)> &isInUse) const
+        uint64_t desired, const std::function<SteamIdAvailability(uint64_t)> &check) const
     {
         // An unconfigured bot keeps the engine's zero identity. Resolve a
         // configured collision before PublishAdopt captures the immutable base.
-        if (desired == 0 || !isInUse(desired))
-            return desired;
+        if (desired == 0) return 0;
+        const auto availability = check(desired);
+        if (availability == SteamIdAvailability::Available) return desired;
+        if (availability == SteamIdAvailability::CheckFailed) return 0;
         for (const auto &entry : m_Entries)
-            if (entry.SteamId64 != 0 && !isInUse(entry.SteamId64))
-                return entry.SteamId64;
-        for (uint64_t bump = 1; bump <= 4096 && desired <= UINT64_MAX - bump; ++bump)
-            if (!isInUse(desired + bump))
-                return desired + bump;
+        {
+            if (entry.SteamId64 == 0 || entry.SteamId64 == desired) continue;
+            const auto candidate = check(entry.SteamId64);
+            if (candidate == SteamIdAvailability::Available) return entry.SteamId64;
+            if (candidate == SteamIdAvailability::CheckFailed) return 0;
+        }
         return 0;
     }
 

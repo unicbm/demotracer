@@ -1,7 +1,7 @@
 {
   "name": "cs2-lib-econ-index",
   "schema_version": 1,
-  "description": "Generated runtime projection of the pinned @ianlucas/cs2-lib item catalog for CS2 DemoTracer.",
+  "description": "Generated runtime projection of the pinned @ianlucas/cs2-lib item catalog for DemoTracer.",
   "source": {
     "package": "@ianlucas/cs2-lib",
     "version": "9.7.0",

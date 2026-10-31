@@ -14,6 +14,7 @@
 
 int main()
 {
+    using Availability = cs2bh::SteamIdAvailability;
     const auto rosterPath = std::filesystem::temp_directory_path() /
         ("dtr-hider-roster-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
     {
@@ -40,7 +41,7 @@ int main()
     const auto engineSid = emptyRoster.ResolveBaseSteamId(0, [&](uint64_t)
     {
         queriedZero = true;
-        return true;
+        return Availability::CheckFailed;
     });
     if (engineSid != 0 || queriedZero) return 1;
 
@@ -62,9 +63,21 @@ int main()
     // Two bots request the same configured identity. Resolve the collision
     // before adoption so controller reconciliation and release use the same base.
     constexpr uint64_t requested = 76561197960265729ULL;
-    const auto first = emptyRoster.ResolveBaseSteamId(requested, [](uint64_t) { return false; });
-    const auto second = emptyRoster.ResolveBaseSteamId(requested, [first](uint64_t sid) { return sid == first; });
-    if (first != requested || second == first || !second) return 8;
+    const auto first = roster.ResolveBaseSteamId(requested, [](uint64_t) { return Availability::Available; });
+    const auto second = roster.ResolveBaseSteamId(requested, [first](uint64_t sid)
+    {
+        return sid == first ? Availability::InUse : Availability::Available;
+    });
+    if (first != requested || second != b->SteamId64) return 8;
+    // Exhaustion must not invent an ID, even when the next numeric ID is free.
+    if (emptyRoster.ResolveBaseSteamId(requested, [first](uint64_t sid)
+        { return sid == first ? Availability::InUse : Availability::Available; }) != 0) return 28;
+    if (roster.ResolveBaseSteamId(requested, [](uint64_t) { return Availability::InUse; }) != 0) return 29;
+    int checks = 0;
+    if (roster.ResolveBaseSteamId(requested, [&](uint64_t)
+        { ++checks; return Availability::CheckFailed; }) != 0 || checks != 1) return 30;
+    if (roster.ResolveBaseSteamId(requested, [first](uint64_t sid)
+        { return sid == first ? Availability::InUse : Availability::CheckFailed; }) != 0) return 31;
     if (!manager.AdoptSlot(1, "first", first, "", 0) ||
         !manager.AdoptSlot(2, "second", second, "", 0)) return 9;
     cs2bh::PresentationSlot adopted{};
@@ -76,6 +89,20 @@ int main()
     publisher.UpdateSyntheticSid(2, adopted.BaseSteamId);
     publisher.ReadSlot(2, adopted);
     if (adopted.SteamId != second) return 13;
+
+    // Exact demo identities can be exchanged by a managed batch. The native
+    // publisher must permit the intermediate duplicate; the lease validates
+    // the complete batch before writing either participant.
+    cs2bh::PresentationSlot firstSlot{};
+    publisher.ReadSlot(1, firstSlot);
+    if (!publisher.CanPublishSteamId(1, firstSlot.Session, firstSlot.Incarnation, second) ||
+        !publisher.CanPublishSteamId(2, adopted.Session, adopted.Incarnation, first)) return 32;
+    publisher.UpdateSyntheticSid(1, second);
+    publisher.UpdateSyntheticSid(2, first);
+    publisher.ReadSlot(1, firstSlot);
+    publisher.ReadSlot(2, adopted);
+    if (firstSlot.SteamId != second || adopted.SteamId != first ||
+        firstSlot.BaseSteamId != first || adopted.BaseSteamId != second) return 33;
 
     // Packing threads keep their synchronized managed-set view, without
     // copying identity into a second ledger.
@@ -100,6 +127,6 @@ int main()
     });
     releasedWorker.join();
     if (!workerReleased) return 27;
-    if (emptyRoster.ResolveBaseSteamId(UINT64_MAX, [](uint64_t) { return true; }) != 0) return 17;
+    if (emptyRoster.ResolveBaseSteamId(UINT64_MAX, [](uint64_t) { return Availability::InUse; }) != 0) return 17;
     publisher.Shutdown();
 }
