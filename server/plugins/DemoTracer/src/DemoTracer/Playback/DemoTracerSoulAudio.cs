@@ -44,7 +44,7 @@ public sealed partial class DemoTracerPlugin
         var senderSlot = victim.Slot;
         var senderUserId = victim.UserId;
         var senderXuid = victim.SteamID;
-        _soulDeathSoundTimer = AddTimer(0.01f, () =>
+        _soulDeathSoundTimer = AddOwnedTimer(0.01f, () =>
         {
             if (!IsSoulHuman(victim) || victim.UserId != senderUserId)
             {
@@ -86,7 +86,7 @@ public sealed partial class DemoTracerPlugin
 
     private void StopSoulDeathSound()
     {
-        _soulDeathSoundTimer?.Kill();
+        ReleaseOwnedTimer(_soulDeathSoundTimer);
         _soulDeathSoundTimer = null;
     }
 }

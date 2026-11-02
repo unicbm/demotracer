@@ -70,7 +70,7 @@ public sealed partial class DemoTracerPlugin
 
         var loadingReplayHider = false;
         var attempts = 0;
-        _hiderSwitchTimer = AddTimer(0.05f, () =>
+        _hiderSwitchTimer = AddOwnedTimer(0.05f, () =>
         {
             if (++attempts > 100)
             {
@@ -101,7 +101,7 @@ public sealed partial class DemoTracerPlugin
 
     private void CancelHiderSwitch()
     {
-        _hiderSwitchTimer?.Kill();
+        ReleaseOwnedTimer(_hiderSwitchTimer);
         _hiderSwitchTimer = null;
         _pendingHiderCommand = null;
     }

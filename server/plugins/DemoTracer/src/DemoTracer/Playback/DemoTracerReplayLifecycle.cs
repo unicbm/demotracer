@@ -83,7 +83,6 @@ public sealed partial class DemoTracerPlugin
             CancelSoulChallenge(reason);
             _session.RoundSpawnsPending = false;
             CancelAllReplayDeferredWork();
-            _session.ProjectileBirths.Clear();
             CancelReplayPrefetch();
             InvalidateInitialSpawnAssignment();
             ClearLoadedTeamAvatarOverrides(reason);

@@ -9,7 +9,6 @@
 #include "ReplaySubtickLayout.h"
 #include "WeaponLocker.h"
 #include "ccsbot_slot.h"
-#include "scene_node.h"
 #include "version_targets.h"
 
 #include <array>

@@ -89,7 +89,7 @@ dtr_preset [status|0x00..0x3F]
 
 The normal GUI preset is `0x15`: weapons, Steam identity, and voice. Avatar
 requires Steam identity; cosmetics require weapon alignment. The mask does not
-change projectiles, handoff, crosshair, partial replay, or
+change handoff, crosshair, partial replay, or
 chat settings.
 
 ## Replay Behavior
@@ -98,24 +98,17 @@ chat settings.
 
 ```text
 dtr_align [status|default|full|handoff_safe|off]
-dtr_align <weapons|projectiles|crosshair|left_hand|balance> <on|off>
+dtr_align <weapons|crosshair|left_hand|balance> <on|off>
 ```
 
-`default` enables weapons, projectiles, crosshair, and left-hand desired.
+`default` enables weapons, crosshair, and left-hand desired.
 `full` additionally enables the default-off round-start balance write.
 `handoff_safe` disables left-hand desired and balance writes. Weapon alignment
-applies demo loadouts and active weapon switching; projectile alignment consumes
-demo-backed throw evidence. Balance alignment writes only the demo-backed
+applies demo loadouts and active weapon switching. Balance alignment writes only the demo-backed
 `m_iAccount` value once when the corresponding DTR round starts; missing
 evidence is left untouched.
 
-Projectile alignment applies recorded birth position and velocity once before
-the first physics step. CS2 owns subsequent flight, collision and detonation;
-effect positions are diagnostics only. `dtr_runtime` reports hook availability.
-
-| Command | Purpose |
-| --- | --- |
-| `dtr_projectile_align_log [clear|all|molotov|fire]` | Print or clear alignment diagnostics. |
+Grenades use normal throws and engine physics without birth-position or velocity correction.
 
 ### Identity and Presentation
 
@@ -224,7 +217,7 @@ remain available in the GUI for analysis.
 | Setting | Default |
 | --- | --- |
 | Identity | `steam` |
-| Fidelity | weapons, projectiles, crosshair, and left-hand on |
+| Fidelity | weapons, crosshair, and left-hand on |
 | Round-start balance | off |
 | Cosmetics | off |
 | Partial replay | on |

@@ -124,7 +124,6 @@ add_library(dtr-controller SHARED
     src/common/live_entities.cpp
     src/common/dispatch.cpp
     src/common/commands.cpp
-    src/common/projectile_birth_align.cpp
     src/common/exports.cpp
     ${PROTO_SRCS}
     ${SDK_SOURCES}

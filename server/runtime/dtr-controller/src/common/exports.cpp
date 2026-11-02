@@ -8,7 +8,6 @@
 #include "BuyControllerState.h"
 #include "BuyController.h"
 #include "VoiceSender.h"
-#include "projectile_birth_align.h"
 #include "avatar_overrides.h"
 
 #include <cstdint>
@@ -184,46 +183,6 @@ extern "C" __declspec(dllexport) int DtrController_CanSendVoice()
 extern "C" __declspec(dllexport) int DtrController_GetVoiceStatus()
 {
     return BotController::VoiceSender::GetStatus();
-}
-
-extern "C" __declspec(dllexport) int DtrController_SetProjectileBirthAlignOffsets(
-    int initialPositionOffset,
-    int initialVelocityOffset)
-{
-    return BotController::ProjectileBirthAlign::ConfigureOffsets(
-        initialPositionOffset,
-        initialVelocityOffset);
-}
-
-extern "C" __declspec(dllexport) int DtrController_QueueProjectileBirthAlign(
-    uint64_t entityPtr,
-    float posX,
-    float posY,
-    float posZ,
-    float velX,
-    float velY,
-    float velZ)
-{
-    return BotController::ProjectileBirthAlign::Queue(
-        entityPtr,
-        posX,
-        posY,
-        posZ,
-        velX,
-        velY,
-        velZ);
-}
-
-extern "C" __declspec(dllexport) int DtrController_ClearProjectileBirthAlign()
-{
-    return BotController::ProjectileBirthAlign::Clear();
-}
-
-extern "C" __declspec(dllexport) int DtrController_GetProjectileBirthAlignStatus(
-    BotController::ProjectileBirthAlign::Status *out,
-    int size)
-{
-    return BotController::ProjectileBirthAlign::GetStatus(out, size);
 }
 
 extern "C" __declspec(dllexport) int DtrController_SendVoiceFrame(

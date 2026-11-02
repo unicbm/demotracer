@@ -53,9 +53,6 @@ namespace BotController::targets
             {"CBaseEntity", "m_nActualMoveType", &kEnt_ActualMoveType},
             {"CBaseEntity", "m_fFlags", &kEnt_Flags},
             {"CBaseEntity", "m_vecAbsVelocity", &kEnt_AbsVelocity},
-            {"CBaseEntity", "m_CBodyComponent", &kEnt_BodyComponent},
-            {"CBodyComponent", "m_pSceneNode", &kBody_SceneNode},
-            {"CGameSceneNode", "m_vecAbsOrigin", &kNode_AbsOrigin},
 
             {"CBasePlayerPawn", "m_pWeaponServices", &kPawn_WeaponServices},
             {"CBasePlayerPawn", "m_pMovementServices", &kPawn_MovementServices},

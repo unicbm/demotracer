@@ -43,10 +43,6 @@ namespace BotController::targets
     inline constexpr unsigned kFL_Ducking = 1u << 1;
     // m_vecAbsVelocity
     inline int kEnt_AbsVelocity = 0x38C;
-    // entity -> m_CBodyComponent -> m_pSceneNode -> m_vecAbsOrigin.
-    inline int kEnt_BodyComponent = 0x30;
-    inline int kBody_SceneNode = 0x08;
-    inline int kNode_AbsOrigin = 0xC8;
 
     // ---- CCSPlayerPawn ----
 

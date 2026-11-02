@@ -17,7 +17,6 @@
 #include "MotionRecorder.h"
 #include "ReplayPawnEquipment.h"
 #include "ReplaySubtickLayout.h"
-#include "projectile_birth_align.h"
 #include "version_targets.h"
 #include "live_entities.h"
 #include "hook.h"
@@ -692,7 +691,6 @@ namespace BotController
 
         static KHook::Return<void> BC_FASTCALL HookedPlayerRunCommand(void *services, void *cmd)
         {
-            ProjectileBirthAlign::ProcessPending();
             MotionRecorder::AddReplayPerf(MotionRecorder::ReplayPerfCounter::PlayerRunCommandHook);
             int slot = ServicesToSlot(services);
             bool replaying = ReplayActiveAndSafe(slot, services);
@@ -839,7 +837,6 @@ namespace BotController
 
         static KHook::Return<void> BC_FASTCALL HookedPhysicsSimulate(void *controller)
         {
-            ProjectileBirthAlign::ProcessPending();
             MotionRecorder::AddReplayPerf(MotionRecorder::ReplayPerfCounter::PhysicsSimulateHook);
             int slot = ControllerToSlot(controller);
             void *services = (slot >= 0 && slot < kMaxSlots)

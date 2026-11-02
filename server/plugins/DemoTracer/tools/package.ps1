@@ -26,7 +26,7 @@ $apiOutput = Join-Path $root '../../runtime/common/csharp/DemoTracerApi/bin/Rele
 $stage = Join-Path $OutputDirectory ('stage-' + [guid]::NewGuid().ToString('N'))
 $plugin = 'addons/counterstrikesharp/plugins/DemoTracer'
 $files = [ordered]@{}
-foreach ($name in @('DemoTracer.dll', 'DemoTracer.deps.json', 'ZstdSharp.dll', 'cs2-lib-econ-index.v1.json', 'demotracer-native.json')) {
+foreach ($name in @('DemoTracer.dll', 'DemoTracer.deps.json', 'ZstdSharp.dll', 'cs2-lib-econ-index.v1.json')) {
     $files["$plugin/$name"] = Join-Path $output $name
 }
 $files['addons/counterstrikesharp/shared/DemoTracerApi/DemoTracerApi.dll'] = $apiOutput

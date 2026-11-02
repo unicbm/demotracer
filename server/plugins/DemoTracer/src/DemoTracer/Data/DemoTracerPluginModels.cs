@@ -147,12 +147,6 @@ public sealed partial class DemoTracerPlugin
     private readonly record struct PendingBulletDamage(int AttackerSlot, int Damage, float Time);
 
 
-    private enum ProjectileAlignDecision
-    {
-        Apply,
-        Skip
-    }
-
     private enum HandoffMode
     {
         Off,

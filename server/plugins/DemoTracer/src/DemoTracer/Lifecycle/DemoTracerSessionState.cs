@@ -28,11 +28,8 @@ public sealed partial class DemoTracerPlugin
         public Dictionary<int, int> LastLockedWeaponTarget { get; } = [];
         public Dictionary<(int PlayerSlot, ReplayWeaponSlot WeaponSlot), PendingWeaponSlotReplacement>
             PendingWeaponSlotReplacements { get; } = [];
-        public Dictionary<int, int> ProjectileAlignNextBySlot { get; } = [];
         public Dictionary<int, ReplayInventoryTimeline> ReplayInventoryBySlot { get; } = [];
         public Dictionary<int, long> ReplayIdentityGenerationBySlot { get; } = [];
-        public Queue<string> ProjectileAlignLog { get; } = [];
-        public PendingProjectileBirths ProjectileBirths { get; } = new();
         public HashSet<int> RebuiltInventorySlots { get; } = [];
         public HashSet<int> WeaponLoadoutSyncedSlots { get; } = [];
         public ReplayPawnEquipmentSyncTracker PawnEquipmentSync { get; } = new();
@@ -77,7 +74,6 @@ public sealed partial class DemoTracerPlugin
             ClearWeaponSelection(slot);
             FreezePrerollSlots.Remove(slot);
             ResumedFreezePrerollSlots.Remove(slot);
-            ProjectileAlignNextBySlot.Remove(slot);
             ReplayInventoryBySlot.Remove(slot);
             ReplayPerceptionBaselineSerial.Remove(slot);
             PendingBulletHits.Remove(slot);
@@ -91,7 +87,6 @@ public sealed partial class DemoTracerPlugin
             LastLockedWeaponTarget.Clear();
             FreezePrerollSlots.Clear();
             ResumedFreezePrerollSlots.Clear();
-            ProjectileAlignNextBySlot.Clear();
             ReplayInventoryBySlot.Clear();
             RebuiltInventorySlots.Clear();
             ReplayPerceptionBaselineSerial.Clear();

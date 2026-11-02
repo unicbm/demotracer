@@ -49,8 +49,7 @@
     "provider_version": "1.7.0"
   },
   "demotracer": {
-    "companion_api": 7,
-    "external_projectile_entity_name": "dtr_external_projectile_v1"
+    "companion_api": 7
   },
   "counterstrikesharp": {
     "minimum_version": "1.0.378",

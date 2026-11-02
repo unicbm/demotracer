@@ -127,7 +127,6 @@ public sealed partial class DemoTracerPlugin
         _roundBannerEnabled = true;
 
         SetWeaponAlignEnabled(true);
-        SetProjectileAlignEnabled(true);
         SetCrosshairAlignEnabled(true);
         _leftHandDesiredEnabled = true;
         _balanceAlignEnabled = false;
@@ -153,8 +152,6 @@ public sealed partial class DemoTracerPlugin
 
         if (fidelity.Weapons.HasValue)
             SetWeaponAlignEnabled(fidelity.Weapons.Value);
-        if (fidelity.Projectiles.HasValue)
-            SetProjectileAlignEnabled(fidelity.Projectiles.Value);
         if (fidelity.Crosshair.HasValue)
             SetCrosshairAlignEnabled(fidelity.Crosshair.Value);
         if (fidelity.LeftHandDesired.HasValue)
@@ -266,7 +263,7 @@ public sealed partial class DemoTracerPlugin
     private void ReplyRuntimeSettings(Action<string> reply, string prefix)
     {
         reply($"{prefix} playback identity={ReplayIdentityModeName()} clan_tag={FormatOnOff(_replayClanTagEnabled)} allow_partial={FormatOnOff(_partialReplayEnabled)} playoff={FormatOnOff(_playoffEnabled)} chat_auto={FormatOnOff(_chatAutoEnabled)} mute_diverged_dead_comms={FormatOnOff(_muteDivergedDeadCommsEnabled)} round_banner={FormatOnOff(_roundBannerEnabled)} handoff={FormatHandoffMode(_handoffMode)}:{(_handoffAllSlots ? "all" : "slot")} viewmodel_continuity={ViewmodelContinuityModeName()} handoff_360={FormatOnOff(_handoffThreat360Enabled)}");
-        reply($"{prefix} fidelity preset={AlignPresetName()} weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_mode=birth_once crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)}");
+        reply($"{prefix} fidelity preset={AlignPresetName()} weapons={FormatOnOff(_weaponAlignEnabled)} crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)}");
         reply($"{prefix} cosmetics preset={CosmeticPresetName()} risk={FormatOnOff(_cosmeticAlignEnabled)} weapons={FormatOnOff(_cosmeticWeaponsEnabled)} knives={FormatOnOff(_cosmeticKnivesEnabled)} gloves={FormatOnOff(_cosmeticGlovesEnabled)} names={FormatOnOff(_cosmeticNamesEnabled)} agents={FormatOnOff(_cosmeticAgentsEnabled)} stickers={FormatOnOff(_stickerAlignEnabled)} charms={FormatOnOff(_charmAlignEnabled)}");
     }
 
@@ -325,8 +322,6 @@ public sealed partial class DemoTracerPlugin
         public string? Preset { get; set; }
 
         public bool? Weapons { get; set; }
-
-        public bool? Projectiles { get; set; }
 
         public bool? Crosshair { get; set; }
 

@@ -41,8 +41,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     };
     private const float BulletHandoffMatchSeconds = 0.25f;
     private const int BulletHandoffMinDamage = 1;
-    private const int ProjectileAlignLogMaxEntries = 128;
-    private const float ProjectileAlignMaxInitialPositionDistance = 128.0f;
     private const int ManifestAbiVersion = 20;
     private const int MaxPlayerSlots = BotControllerNative.MaxSlots;
     private const int ReplayStartHealth = 100;
@@ -64,7 +62,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
     private readonly DemoTracerBotHiderBridge _botHiderBridge = new();
     private readonly DemoTracerApiFacade _apiFacade;
     private bool _weaponAlignEnabled = true;
-    private bool _projectileAlignEnabled = true;
     private bool _cosmeticAlignEnabled;
     private bool _cosmeticWeaponsEnabled;
     private bool _cosmeticKnivesEnabled;
@@ -97,11 +94,8 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         RegisterListener<Listeners.OnMapEnd>(OnMapEnd);
         RegisterListener<Listeners.OnClientDisconnect>(OnClientDisconnect);
         RegisterListener<Listeners.OnTick>(OnTick);
-        RegisterListener<Listeners.OnEntitySpawned>(OnEntitySpawned);
-        RegisterListener<Listeners.OnEntityDeleted>(OnProjectileEntityDeleted);
         Capabilities.RegisterPluginCapability(ApiCapability, () => (IDemoTracerApi)_apiFacade);
         ConfigureNativeSafetyOffsets();
-        InstallProjectilePhysicsHook();
         StartPresentationLifetime();
         Server.PrintToConsole("dtr: CSS control plugin loaded");
     }
@@ -121,17 +115,6 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         CancelHiderSwitch();
         try
         {
-            _session.ProjectileBirths.Clear();
-            try
-            {
-                _projectilePhysicsHook?.Dispose();
-            }
-            catch (Exception ex)
-            {
-                // The callback is disabled before Unhook. Still release replay
-                // ownership and injected input if native hook cleanup reports an error.
-                Server.PrintToConsole($"dtr: projectile hook cleanup failed: {ex.Message}");
-            }
             UnregisterReplayBuySuppressionHooks();
             UnregisterReplayRetentionJoinHook();
             ClearReplayStateForLifecycle(hotReload ? "plugin_reload" : "plugin_unload");
@@ -141,6 +124,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
         }
         finally
         {
+            ClearOwnedTimers();
             StopPresentationLifetime();
         }
     }
@@ -154,6 +138,7 @@ public sealed partial class DemoTracerPlugin : BasePlugin
 
     private void OnMapEnd()
     {
+        ClearOwnedTimers();
         CancelHiderSwitch();
         _mapActive = false;
         ClearReplayStateForLifecycle("map_end");

@@ -20,6 +20,8 @@ using BotController::ReplayTick;
 namespace
 {
     constexpr int slot = 3;
+    // Fake engine scene layout, used only by the teleport stub and origin assertions.
+    constexpr int bodyComponentOffset = 0x30, sceneNodeOffset = 0x08, originOffset = 0xC8;
     alignas(16) std::array<std::byte, 0x3000> pawn{};
     alignas(16) std::array<std::byte, 0x1000> services{};
     alignas(16) std::array<std::byte, 0x100> body{};
@@ -98,8 +100,8 @@ namespace
         node.fill(std::byte{});
         aim.fill(std::byte{});
         Put(pawn, 0x2000, static_cast<void *>(aim.data()));
-        Put(pawn, tg::kEnt_BodyComponent, static_cast<void *>(body.data()));
-        Put(body, tg::kBody_SceneNode, static_cast<void *>(node.data()));
+        Put(pawn, bodyComponentOffset, static_cast<void *>(body.data()));
+        Put(body, sceneNodeOffset, static_cast<void *>(node.data()));
         Put(pawn, tg::kPawn_Controller, uint32_t{slot + 1});
         Put(pawn, tg::kEnt_MoveType, uint8_t{2});
         Put(pawn, tg::kEnt_ActualMoveType, uint8_t{2});
@@ -127,7 +129,7 @@ namespace
 
     void SimulatedOutput()
     {
-        Put(node, tg::kNode_AbsOrigin, std::array<float, 3>{107.0f, 2.0f, 16.0f});
+        Put(node, originOffset, std::array<float, 3>{107.0f, 2.0f, 16.0f});
         Put(pawn, tg::kEnt_AbsVelocity, std::array<float, 3>{190.0f, 4.0f, -662.0f});
         Put(pawn, tg::kEnt_Flags, uint32_t{0x100});
         Put(services, tg::kServices_DuckAmount, 0.37f);
@@ -138,8 +140,8 @@ namespace
 
     void CheckOutput()
     {
-        Check(Get<float>(node, tg::kNode_AbsOrigin) == 107.0f, "engine origin was overwritten");
-        Check(Get<float>(node, tg::kNode_AbsOrigin + 8) == 16.0f, "engine origin was nudged");
+        Check(Get<float>(node, originOffset) == 107.0f, "engine origin was overwritten");
+        Check(Get<float>(node, originOffset + 8) == 16.0f, "engine origin was nudged");
         Check(Get<float>(pawn, tg::kEnt_AbsVelocity) == 190.0f, "engine velocity was overwritten");
         Check(Get<float>(pawn, tg::kEnt_AbsVelocity + 8) == -662.0f, "fall velocity was clamped");
         Check(Get<uint32_t>(pawn, tg::kEnt_Flags) == 0x100, "engine ground/duck flags were overwritten");
@@ -245,7 +247,7 @@ namespace
         Check(mr::StartReplayAt(slot, false, 2), "seek");
         Prepare();
         Check(initializations == 2, "seek did not initialize");
-        Check(Get<float>(node, tg::kNode_AbsOrigin) == 120.0f, "seek initialized wrong snapshot");
+        Check(Get<float>(node, originOffset) == 120.0f, "seek initialized wrong snapshot");
         Check(mr::StartReplayAt(slot, true, 2), "start looping replay");
         Prepare();
         mr::OnReplayCommit(slot, services.data());
@@ -571,7 +573,7 @@ namespace BotController
         bool InitializeReplayPose(void *p, const float *origin, const float *velocity)
         {
             if (!allowInitialization || p != pawn.data()) return false;
-            std::memcpy(node.data() + tg::kNode_AbsOrigin, origin, sizeof(float) * 3);
+            std::memcpy(node.data() + originOffset, origin, sizeof(float) * 3);
             std::memcpy(pawn.data() + tg::kEnt_AbsVelocity, velocity, sizeof(float) * 3);
             ++initializations;
             return true;

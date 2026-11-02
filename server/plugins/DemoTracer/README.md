@@ -13,7 +13,7 @@ regression tests in `tests/DemoTracer.Tests/`.
 | --- | --- |
 | `Lifecycle`, `Commands`, `Configuration` | Plugin lifetime, console commands and settings |
 | `Playback`, `Playback/Inventory` | Round plans, ownership, scheduling, handoff and equipment |
-| `Native`, `Projectiles` | Native bindings, health checks and projectile birth alignment |
+| `Native` | Native bindings and health checks |
 | `Presentation`, `Cosmetics` | dtr-hider and BotRandomizer consumers |
 | `Data`, `Voice` | DTR/manifest readers and voice playback |
 
@@ -23,11 +23,7 @@ BotRandomizer applies cosmetics; DemoTracer tracks accepted plans.
 
 Console command responses and runtime status messages use English.
 
-External utility providers can set a projectile's entity name to
-`dtr_external_projectile_v1` before its first physics step. Playback skips both
-alignment and recorded-throw consumption for that projectile. The marker is
-published in `shared/contracts/playback-contract.v1.json`; NadeSystem uses it for
-fire-protection smoke without releasing replay ownership.
+Grenades use normal throws and engine physics; playback does not correct their position or velocity.
 
 ## Build and package
 

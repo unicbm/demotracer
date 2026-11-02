@@ -68,7 +68,7 @@ public sealed class ReplaySlotRegistryTests
         slots.Clear();
         Assert.False(slots.HasAnyState);
         Assert.Empty(slots.LoadedSlots);
-        Assert.Empty(slots.OwnedSlots);
+        Assert.Equal(0, slots.OwnedCount);
         Assert.Empty(slots.PlayingSlots);
     }
 
@@ -85,11 +85,12 @@ public sealed class ReplaySlotRegistryTests
     public void InvalidatingWritesKeepsThePhaseButExpiresPriorCallbacks()
     {
         var slots = new ReplaySlotRegistry();
-        var playing = slots.MarkPlaying(slots.LoadAndClaim(4).Slot);
+        var playing = slots.MarkPlaying(slots.LoadAndClaim(4).Slot, loop: true);
 
         Assert.True(slots.InvalidateWrites(4));
         Assert.True(slots.TryGet(4, out var invalidated));
         Assert.Equal(ReplaySlotPhase.Playing, invalidated.Phase);
+        Assert.True(invalidated.Loop);
         Assert.True(invalidated.Epoch > playing.Epoch);
         Assert.False(slots.IsCurrentEpoch(4, playing.Epoch));
         Assert.True(slots.IsCurrentEpoch(4, invalidated.Epoch));
@@ -140,44 +141,6 @@ public sealed class ReplaySlotRegistryTests
         slots.Release(2);
         Assert.False(slots.IsCompletedLoop([2]));
         Assert.False(slots.IsCompletedLoop([]));
-    }
-
-    [Fact]
-    public void LoopAndOwnerChangesExpireDeferredProjectileAndUtilityWrites()
-    {
-        var slots = new ReplaySlotRegistry();
-        var first = slots.MarkPlaying(slots.LoadAndClaim(2).Slot, loop: true);
-        var projectileBoundary = slots.CapturePlaybackBoundary();
-        Assert.True(slots.IsCurrentPlaybackFromBoundary(2, projectileBoundary));
-
-        // A second iteration keeps its loop intention while invalidating the
-        // old utility callback and the projectile born before the boundary.
-        slots.InvalidateWrites(2);
-        var second = slots.MarkPlaying(2, loop: true);
-        Assert.True(second.Loop);
-        Assert.False(slots.IsCurrentEpoch(2, first.Epoch));
-        Assert.False(slots.IsCurrentPlaybackFromBoundary(2, projectileBoundary));
-        Assert.True(slots.IsCurrentPlaybackFromBoundary(2, slots.CapturePlaybackBoundary()));
-
-        var secondBoundary = slots.CapturePlaybackBoundary();
-        slots.Release(2);
-        Assert.False(slots.IsCurrentPlaybackFromBoundary(2, secondBoundary));
-        slots.Claim(2);
-        slots.MarkPlaying(2);
-        Assert.False(slots.IsCurrentPlaybackFromBoundary(2, secondBoundary));
-        Assert.False(slots.IsCompletedLoop([2]));
-    }
-
-    [Fact]
-    public void ProjectileBornDuringPreparationCannotBindToLaterPlayback()
-    {
-        var slots = new ReplaySlotRegistry();
-        slots.LoadAndClaim(2);
-        var projectileBoundary = slots.CapturePlaybackBoundary();
-        slots.MarkPlaying(2, loop: true);
-
-        Assert.False(slots.IsCurrentPlaybackFromBoundary(2, projectileBoundary));
-        Assert.True(slots.IsCurrentPlaybackFromBoundary(2, slots.CapturePlaybackBoundary()));
     }
 
     [Fact]

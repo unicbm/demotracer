@@ -24,8 +24,6 @@ internal readonly record struct ReplaySlotRuntimeState(
     public bool IsPlaying => Phase == ReplaySlotPhase.Playing;
 }
 
-internal readonly record struct ReplayPlaybackBoundary(long Epoch, ulong PlayingSlots);
-
 internal sealed class ReplaySlotRegistry
 {
     private readonly Dictionary<int, ReplaySlotRuntimeState> _bySlot = [];
@@ -35,7 +33,6 @@ internal sealed class ReplaySlotRegistry
     private long _nextEpoch;
 
     public IReadOnlyList<int> LoadedSlots => _loadedSlots;
-    public IReadOnlySet<int> OwnedSlots => _ownedSlots;
     public IReadOnlySet<int> PlayingSlots => _playingSlots;
 
     public int LoadedCount => _loadedSlots.Count;
@@ -107,23 +104,6 @@ internal sealed class ReplaySlotRegistry
         SetPhase(slot, current.Phase, renewEpoch: true, loop: current.Loop, roundMedia: current.LoopRoundMedia);
         return true;
     }
-
-    public ReplayPlaybackBoundary CapturePlaybackBoundary()
-    {
-        ulong mask = 0;
-        foreach (var slot in _playingSlots)
-        {
-            if (slot is >= 0 and < 64)
-                mask |= 1UL << slot;
-        }
-        return new ReplayPlaybackBoundary(_nextEpoch, mask);
-    }
-
-    public bool IsCurrentPlaybackFromBoundary(int slot, ReplayPlaybackBoundary boundary)
-        => slot is >= 0 and < 64 &&
-           (boundary.PlayingSlots & (1UL << slot)) != 0 &&
-           _bySlot.TryGetValue(slot, out var state) &&
-           state.IsPlaying && state.Epoch <= boundary.Epoch;
 
     public bool IsCompletedLoop(ReadOnlySpan<int> completedSlots)
     {

@@ -24,37 +24,7 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
-    [ConsoleCommand("dtr_projectile_align_log", "dtr_projectile_align_log [clear|all|molotov|fire]")]
-    [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
-    public void ProjectileAlignLogCommand(CCSPlayerController? player, CommandInfo command)
-    {
-        var mode = command.ArgCount >= 2 ? command.GetArg(1).Trim().ToLowerInvariant() : "all";
-        if (mode is "clear" or "reset")
-        {
-            _session.ProjectileAlignLog.Clear();
-            command.ReplyToCommand("dtr: projectile_align_log cleared");
-            return;
-        }
-
-        var filterFire = mode is "molotov" or "fire" or "incendiary" or "incgrenade";
-        var lines = _session.ProjectileAlignLog
-            .Where(line => !filterFire || line.Contains("kind=Molotov", StringComparison.OrdinalIgnoreCase))
-            .TakeLast(20)
-            .ToArray();
-        if (lines.Length == 0)
-        {
-            command.ReplyToCommand(filterFire
-                ? "dtr: no recent molotov projectile align events"
-                : "dtr: no recent projectile align events");
-            return;
-        }
-
-        command.ReplyToCommand($"dtr: projectile_align_log showing {lines.Length} recent event(s)");
-        foreach (var line in lines)
-            command.ReplyToCommand($"dtr: {line}");
-    }
-
-    [ConsoleCommand("dtr_align", "dtr_align [status|default|full|handoff_safe|off|weapons|projectiles|left_hand|crosshair|balance] [on|off]")]
+    [ConsoleCommand("dtr_align", "dtr_align [status|default|full|handoff_safe|off|weapons|left_hand|crosshair|balance] [on|off]")]
     [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
     public void AlignCommand(CCSPlayerController? player, CommandInfo command)
     {
@@ -91,13 +61,13 @@ public sealed partial class DemoTracerPlugin
     private void ReplyAlignStatus(Action<string> reply)
     {
         reply($"[DTR ALIGN] preset={AlignPresetName()}");
-        reply($"[DTR ALIGN] weapons={FormatOnOff(_weaponAlignEnabled)} projectiles={FormatOnOff(_projectileAlignEnabled)} projectile_mode=first_physics_pre projectile_hook={ProjectilePhysicsHookStatus} crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)}");
+        reply($"[DTR ALIGN] weapons={FormatOnOff(_weaponAlignEnabled)} crosshair={FormatOnOff(_crosshairAlignEnabled)} left_hand={FormatOnOff(_leftHandDesiredEnabled)} balance={FormatOnOff(_balanceAlignEnabled)}");
     }
 
     private static void ReplyAlignUsage(Action<string> reply)
     {
         reply("usage: dtr_align [status|default|full|handoff_safe|off]");
-        reply("usage: dtr_align <weapons|projectiles|crosshair|left_hand|balance> <on|off>");
+        reply("usage: dtr_align <weapons|crosshair|left_hand|balance> <on|off>");
     }
 
     private void ReplyUnknownAlignTarget(string target, Action<string> reply)
@@ -115,13 +85,13 @@ public sealed partial class DemoTracerPlugin
 
     private string AlignPresetName()
     {
-        if (_weaponAlignEnabled && _projectileAlignEnabled && _crosshairAlignEnabled && _leftHandDesiredEnabled && _balanceAlignEnabled)
+        if (_weaponAlignEnabled && _crosshairAlignEnabled && _leftHandDesiredEnabled && _balanceAlignEnabled)
             return "full";
-        if (_weaponAlignEnabled && _projectileAlignEnabled && _crosshairAlignEnabled && _leftHandDesiredEnabled && !_balanceAlignEnabled)
+        if (_weaponAlignEnabled && _crosshairAlignEnabled && _leftHandDesiredEnabled && !_balanceAlignEnabled)
             return "default";
-        if (_weaponAlignEnabled && _projectileAlignEnabled && _crosshairAlignEnabled && !_leftHandDesiredEnabled && !_balanceAlignEnabled)
+        if (_weaponAlignEnabled && _crosshairAlignEnabled && !_leftHandDesiredEnabled && !_balanceAlignEnabled)
             return "handoff_safe";
-        if (!_weaponAlignEnabled && !_projectileAlignEnabled && !_crosshairAlignEnabled && !_leftHandDesiredEnabled && !_balanceAlignEnabled)
+        if (!_weaponAlignEnabled && !_crosshairAlignEnabled && !_leftHandDesiredEnabled && !_balanceAlignEnabled)
             return "off";
         return "custom";
     }
@@ -139,7 +109,6 @@ public sealed partial class DemoTracerPlugin
     private void ApplyReplayFidelityPreset((bool Gameplay, bool LeftHandDesired, bool Balance) preset)
     {
         SetWeaponAlignEnabled(preset.Gameplay);
-        SetProjectileAlignEnabled(preset.Gameplay);
         SetCrosshairAlignEnabled(preset.Gameplay);
         _leftHandDesiredEnabled = preset.LeftHandDesired;
         _balanceAlignEnabled = preset.Balance;
@@ -166,13 +135,6 @@ public sealed partial class DemoTracerPlugin
                 {
                     reply("[DTR WARN] loadout/active_weapon/slot_lock currently share the weapons align implementation.");
                 }
-                return true;
-            case "projectiles":
-            case "projectile":
-            case "nades":
-            case "grenades":
-                SetProjectileAlignEnabled(enabled);
-                reply($"[DTR OK] dtr_align projectiles={FormatOnOff(_projectileAlignEnabled)}");
                 return true;
             case "left_hand":
             case "left-hand":
@@ -226,16 +188,6 @@ public sealed partial class DemoTracerPlugin
         foreach (var slot in _session.LoadedSlots)
             BotControllerNative.UnlockWeaponSlot(slot);
         _ = SyncBotRandomizerCosmeticLease(announce: false);
-    }
-
-    private void SetProjectileAlignEnabled(bool enabled)
-    {
-        _projectileAlignEnabled = enabled;
-        if (_projectileAlignEnabled)
-            return;
-
-        _session.ProjectileAlignNextBySlot.Clear();
-        _session.ProjectileBirths.CancelAll();
     }
 
 }

@@ -30,18 +30,6 @@ submodule recursively. `CSGO_PROTO` is optional when the HL2SDK supplies
 `common/network_connection.proto`. Shared hook tests are covered by
 [common's check script](runtime/common/README.md).
 
-## Projectile hook profile
-
-Keep `demotracer-native.json` beside `DemoTracer.dll`. Its source is
-[`config/demotracer-native.json`](plugins/DemoTracer/config/demotracer-native.json).
-Missing or incompatible profiles disable projectile birth alignment and report
-a diagnostic. Updating a profile requires reviewing the PE image fingerprint,
-complete function body, signatures and projectile vtables, then restarting the server.
-See [signature maintenance](../docs/SIGNATURES.md).
-
-`PeImageFingerprint.cs` is shared with CS2-Bot-Improver-light under its retained
-GPL-3.0-or-later notice. Keep its algorithm and mutation tests synchronized.
-
 The runtime derives from
 [XBribo/CS2-Bot-Controller](https://github.com/XBribo/CS2-Bot-Controller) and
 [XBribo/CS2-Bot-Hider](https://github.com/XBribo/CS2-Bot-Hider).

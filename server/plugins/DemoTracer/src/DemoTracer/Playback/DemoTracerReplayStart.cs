@@ -202,7 +202,7 @@ public sealed partial class DemoTracerPlugin
                 return;
             }
 
-            AddTimer(
+            AddOwnedTimer(
                 ReplayReadinessPollSeconds,
                 TryAssign,
                 TimerFlags.STOP_ON_MAPCHANGE);
@@ -574,7 +574,7 @@ public sealed partial class DemoTracerPlugin
                     Server.PrintToConsole(
                         $"[DTR WARN] freeze pre-roll waiting for replay pawns on {label}: {readinessReason}");
                 }
-                AddTimer(
+                AddOwnedTimer(
                     ReplayReadinessPollSeconds,
                     TryStart,
                     TimerFlags.STOP_ON_MAPCHANGE);
@@ -598,7 +598,7 @@ public sealed partial class DemoTracerPlugin
                     Server.PrintToConsole(
                         $"[DTR WARN] freeze pre-roll retry {label}: slots={string.Join(",", missingSlots)}; {message}");
                 }
-                AddTimer(
+                AddOwnedTimer(
                     ReplayReadinessPollSeconds,
                     TryStart,
                     TimerFlags.STOP_ON_MAPCHANGE);
@@ -616,7 +616,7 @@ public sealed partial class DemoTracerPlugin
         }
         else
         {
-            AddTimer(delaySeconds, TryStart);
+            AddOwnedTimer(delaySeconds, TryStart);
             Server.PrintToConsole(
                 $"dtr: freeze pre-roll scheduled {label}: mp_freezetime={freezeTimeSeconds.ToString("F2", CultureInfo.InvariantCulture)}s delay={delaySeconds.ToString("F2", CultureInfo.InvariantCulture)}s");
         }

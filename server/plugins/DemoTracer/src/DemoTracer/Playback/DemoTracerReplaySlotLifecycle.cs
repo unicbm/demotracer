@@ -80,7 +80,6 @@ public sealed partial class DemoTracerPlugin
             BotControllerNative.TryGetNativePerceptionState(slot, out var perception)
                 ? perception.UpdateSerial
                 : 0u;
-        _session.ProjectileAlignNextBySlot[slot] = 0;
     }
 
     private bool CanWriteReplaySlot(int slot, TickPlayerSnapshot? playerSnapshot = null)

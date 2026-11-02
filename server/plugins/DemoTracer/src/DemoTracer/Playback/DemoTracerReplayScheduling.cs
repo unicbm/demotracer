@@ -138,7 +138,6 @@ public sealed partial class DemoTracerPlugin
     private void CancelReplaySlotDeferredWork(int slot)
     {
         _replaySlotWork.CancelWhere(key => key.Slot == slot);
-        _session.ProjectileBirths.CancelSlot(slot);
     }
 
     private void CancelPendingReplaySlotReconciliations()
@@ -146,7 +145,6 @@ public sealed partial class DemoTracerPlugin
 
     private void CancelAllReplayDeferredWork()
     {
-        _session.ProjectileBirths.CancelAll();
         _replaySlotWork.Clear();
         BeginReplayRoundWorkEpoch();
     }
@@ -192,7 +190,7 @@ public sealed partial class DemoTracerPlugin
         if (!_replayRoundWork.TrySchedule(kind, epoch))
             return;
 
-        AddTimer(
+        AddOwnedTimer(
             delaySeconds,
             () =>
             {

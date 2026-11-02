@@ -286,7 +286,7 @@ public sealed partial class DemoTracerPlugin
         var token = ++_session.Plan.SequencePreparePollToken;
         void Poll()
         {
-            AddTimer(ReplayReadinessPollSeconds, () =>
+            AddOwnedTimer(ReplayReadinessPollSeconds, () =>
             {
                 if (token != _session.Plan.SequencePreparePollToken ||
                     !_session.Plan.SequenceActive ||
@@ -373,7 +373,7 @@ public sealed partial class DemoTracerPlugin
         var token = ++_session.Plan.ArmedPreparePollToken;
         void Poll()
         {
-            AddTimer(ReplayReadinessPollSeconds, () =>
+            AddOwnedTimer(ReplayReadinessPollSeconds, () =>
             {
                 if (token != _session.Plan.ArmedPreparePollToken ||
                     !_session.Plan.Armed ||
