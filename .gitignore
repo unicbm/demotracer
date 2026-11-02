@@ -47,6 +47,7 @@ dist/
 !/docs/COMMANDS.md
 !/docs/FORMAT.md
 !/docs/SIGNATURES.md
+!/docs/ONLINE_SERVICES.md
 !/docs/media/
 
 # IDE and script caches

@@ -28,14 +28,18 @@
 
 ## Get Started
 
-1. Download the Windows x64 installer (`demotracer-gui-vVERSION.exe`) from the
-   [latest release](https://github.com/unicbm/demotracer/releases/latest).
-   The app requires Windows 10/11 and Microsoft Edge WebView2.
+Choose a download from the [latest release](https://github.com/unicbm/demotracer/releases/latest):
+
+| File | Use |
+| --- | --- |
+| `demotracer-gui-vVERSION.exe` | Windows desktop app; recommended for most users. It can install the matched Playback bundle. |
+| `demotracer-css-vVERSION.zip` | Playback bundle for manual server installation; keep its version matched to the app. |
+
+1. Install the desktop app on Windows 10/11 x64 with Microsoft Edge WebView2.
 2. Analyze a demo, or import up to eight at once. Split recordings are merged
    automatically. Select rounds and export them to the local replay library.
-3. For playback, prepare a local Windows x64 CS2 server with **Metamod 2.0 build 1483+
-   (plugin API 18)** and official **CounterStrikeSharp 1.0.378+**. See the
-   [server requirements](server/README.md#shared-hook-runtime) for exact pins.
+3. For playback, prepare a local Windows x64 CS2 server following the
+   [server requirements](server/README.md#shared-hook-runtime).
 4. In **Settings → CS2**, select the CS2 folder and install the matched playback
    bundle (`demotracer-css-vVERSION.zip`). Metamod and CounterStrikeSharp are
    installed separately. Keep GUI and Playback versions matched and the bundle's DLLs together.
@@ -97,18 +101,15 @@ Scores and match statistics are managed by CS2 during playback.
       <img src="docs/media/mirage-opening-replay.gif" alt="Mirage multi-bot opening replay" width="100%"><br>
       <sub>Mirage multi-bot opening</sub>
     </td>
-    <td align="center" width="50%">
-      <img src="docs/media/mirage-projectile-smokes.gif" alt="Projectile-aligned Mirage smoke replay" width="100%"><br>
-      <sub>Projectile-aligned Mirage smokes</sub>
-    </td>
   </tr>
 </table>
 
 ## Data and Updates
 
 Demos, generated replays, archives and logs stay on your machine. Update checks,
-Steam profile requests and telemetry use online services. Anonymous aggregate
-statistics are enabled by default; active-user estimates require opt-in.
+Steam profile requests and telemetry are described in
+[Online behavior](docs/ONLINE_SERVICES.md). Anonymous aggregate statistics are
+enabled by default; active-user estimates require opt-in.
 
 Only artifacts attached by `unicbm` to this repository's GitHub Releases are
 official builds. See [Trademarks](TRADEMARKS.md).
@@ -139,8 +140,9 @@ foundation for reconstructing continuous movement from discrete demo
 trajectories.
 
 The GUI and first-party converter are proprietary and free for personal and
-commercial use; playback remains **AGPL-3.0-only**, with corresponding source in
-this repository. The desktop license is included with the official installer.
+commercial use under the [desktop license](DESKTOP_LICENSE.txt), also included
+with the official installer. Playback remains **AGPL-3.0-only** under
+[LICENSE](LICENSE), with corresponding source in this repository.
 
 Third-party components retain their own licenses, and previously published
 versions retain their original grants. See [Trademarks](TRADEMARKS.md) for naming

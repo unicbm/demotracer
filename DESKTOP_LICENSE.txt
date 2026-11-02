@@ -1,0 +1,26 @@
+DemoTracer Proprietary License
+
+Copyright (c) 2026 unicbm. All rights reserved.
+
+This license applies to the original DemoTracer desktop GUI and converter code
+under desktop/ in the private development repository, based on public commit
+600b43d295320e91579a3e398cb93ced2ed8ea9d. No permission to copy, modify,
+redistribute, sublicense, or publish that source code is granted without the
+copyright holder's written authorization.
+
+Recipients of an official binary distribution may install, run, and make copies
+for their own personal or commercial use, free of charge, for the software's
+intended purpose. This grant does not authorize modification, redistribution,
+resale, or sublicensing of the proprietary software, or publication of its
+proprietary source code. Rights granted by applicable law remain unaffected.
+
+Third-party components, data, fonts, images, and other assets retain their own
+licenses and rights. This license does not restrict permissions granted by
+those licenses. Server playback components remain under their recorded open
+source licenses. Previously distributed AGPL versions retain their original
+licenses; this license does not revoke those grants.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT. TO THE EXTENT PERMITTED BY LAW, THE COPYRIGHT HOLDER
+IS NOT LIABLE FOR CLAIMS OR DAMAGES ARISING FROM THE SOFTWARE OR ITS USE.

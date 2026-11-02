@@ -38,8 +38,8 @@ Both scripts accept `-DotnetPath`. Checks build Release and run the managed
 suite without a live CS2 server. Engine hooks still need server testing.
 Dependencies come from `server/runtime/common`, `dtr-hider` and `BotRandomizer`.
 
-The component ZIP contains the plugin, dependency metadata, Zstd decoder, native
-profile, econ data and shared `DemoTracerApi.dll`. Full product packaging adds
+The component ZIP contains the plugin, dependency metadata, Zstd decoder,
+econ data and shared `DemoTracerApi.dll`. Full product packaging adds
 the native providers; CS2, Metamod and CounterStrikeSharp remain separate. See
 the [development guide](../../../docs/DEVELOPMENT.md#packaging).
 

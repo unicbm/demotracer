@@ -15,8 +15,8 @@ or endorsed by the upstream project.
 
 Official binaries are distributed through the unicbm/demotracer GitHub
 repository's GitHub Releases. The release page and its attached
-`DemoTracer-GUI` and `DemoTracer-CSS` assets are the canonical distribution
-surface. A source build is not an official binary merely because it was built
+`demotracer-gui-vVERSION.exe` and `demotracer-css-vVERSION.zip` assets are the
+canonical distribution surface. A source build is not an official binary merely because it was built
 from an unmodified commit.
 
 This policy protects users from source confusion without limiting the
