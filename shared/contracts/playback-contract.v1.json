@@ -4,6 +4,16 @@
   "platform": "windows-x64",
   "manifest_abi": 20,
   "dtr_writer": 13,
+  "analysis_metadata": {
+    "player_sensitivity": {
+      "optional": true,
+      "on_demand": true,
+      "method_version": 1,
+      "axis_coefficient": 0.022,
+      "sensitivity_search_range": [0.25, 5.0],
+      "semantics": "Independent yaw/pitch angle-step estimates; not recorded settings or DPI. Older readers may ignore this optional player-details field."
+    }
+  },
   "inventory_plan_schema": 5,
   "cosmetics": {
     "unpainted_weapon_and_knife_paint_kit": 0,

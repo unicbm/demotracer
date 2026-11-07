@@ -566,6 +566,7 @@ RandomizerControlTests.Run();
 UnifiedProviderTests.Run(catalog, charmPlacements);
 ReplayPlanValidationTests.Run(catalog, replayEconIndex);
 EconIdentityTests.Run();
+TakeoverWearableTests.Run();
 Console.WriteLine("BotRandomizer self-test passed.");
 
 static void Assert(bool condition, string label)

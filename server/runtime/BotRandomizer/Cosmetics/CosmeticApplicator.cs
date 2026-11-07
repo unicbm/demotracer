@@ -50,7 +50,8 @@ internal sealed class CosmeticApplicator
     internal void ApplyKnife(
         CCSPlayerController player,
         CCSPlayerPawn pawn,
-        KnifeSelection selection)
+        KnifeSelection selection,
+        uint? takeoverWeaponHandle = null)
     {
         if (!pawn.IsValid)
             return;
@@ -66,6 +67,8 @@ internal sealed class CosmeticApplicator
                 var weapon = handle.Value;
                 if (weapon is not { IsValid: true })
                     continue;
+                if (takeoverWeaponHandle is { } expected && weapon.EntityHandle.Raw != expected)
+                    continue;
 
                 var item = weapon.AttributeManager?.Item;
                 if (item is null)
@@ -77,16 +80,12 @@ internal sealed class CosmeticApplicator
                     && applied.WeaponHandle == weapon.EntityHandle.Raw
                     && applied.Selection == selection;
                 var isPreparedEntity = item.ItemDefinitionIndex == selection.DefIndex && item.Initialized;
-                if (!isDefaultKnife && !isAppliedEntity && !isPreparedEntity)
+                if (takeoverWeaponHandle is null && !isDefaultKnife && !isAppliedEntity && !isPreparedEntity)
                     continue;
 
-                var econIsCurrent = item.ItemDefinitionIndex == selection.DefIndex
+                var econIsCurrent = takeoverWeaponHandle is null && item.ItemDefinitionIndex == selection.DefIndex
                     && (isPreparedEntity || isAppliedEntity && item.ItemID == applied.ItemId);
 
-                // ChangeSubclass may be ignored while the fresh knife entity is still
-                // settling. Reassert it on the scheduled passes even when econ metadata
-                // is already current so model and animations cannot remain stale.
-                weapon.AcceptInput("ChangeSubclass", value: selection.DefIndex.ToString());
                 item.ItemDefinitionIndex = selection.DefIndex;
                 item.EntityQuality = selection.Identity?.ResolveQuality(defaultQuality: 3) ?? 3;
                 if (_setAttributeByName is not null)
@@ -109,11 +108,17 @@ internal sealed class CosmeticApplicator
                     MarkWeaponPaintStateChanged(weapon);
                 }
                 Utilities.SetStateChanged(weapon, "CEconEntity", "m_AttributeManager");
+                // Rebuild subclass/model/animations only after the complete econ
+                // identity is in place. Takeover may have left another knife's
+                // definition here; rebuilding first observes that stale identity.
+                // Reassert on settling passes even when econ is already current.
+                weapon.AcceptInput("ChangeSubclass", value: selection.DefIndex.ToString());
                 _appliedKnives[player.Slot] = new AppliedKnifeCosmetic(
                     pawn.EntityHandle.Raw,
                     weapon.EntityHandle.Raw,
                     selection,
-                    item.ItemID);
+                    item.ItemID,
+                    item.AccountID);
                 return;
             }
         }
@@ -233,15 +238,52 @@ internal sealed class CosmeticApplicator
                 if (item is null)
                     continue;
 
-                weapon.AcceptInput("ChangeSubclass", value: defIndex.ToString());
                 item.ItemDefinitionIndex = defIndex;
                 Utilities.SetStateChanged(weapon, "CEconEntity", "m_AttributeManager");
+                weapon.AcceptInput("ChangeSubclass", value: defIndex.ToString());
             }
         }
         catch (Exception exception)
         {
             _logger.LogError(exception, "[BotRandomizer] Failed to synchronize a picked-up knife");
         }
+    }
+
+    internal TakeoverWearables CaptureTakeoverWearables(int botSlot, uint pawnHandle)
+    {
+        KnifeSelection? knife = null;
+        uint weaponHandle = 0;
+        GloveSelection? gloves = null;
+        // Use what this provider actually applied to this pawn, not the human's
+        // inventory or a newly resolved policy after DTR releases control.
+        if (_appliedKnives.TryGetValue(botSlot, out var appliedKnife) && appliedKnife.PawnHandle == pawnHandle)
+        {
+            weaponHandle = appliedKnife.WeaponHandle;
+            var identity = appliedKnife.Selection.Identity ?? new ReplayEconIdentity(null, null, null, null, null, null);
+            knife = appliedKnife.Selection with
+            {
+                Identity = identity with { ItemId = appliedKnife.ItemId, ItemAccountId = appliedKnife.AccountId }
+            };
+        }
+        if (_appliedGloves.TryGetValue(botSlot, out var appliedGloves) && appliedGloves.PawnHandle == pawnHandle)
+        {
+            var identity = appliedGloves.Selection.Identity ?? new ReplayEconIdentity(null, null, null, null, null, null);
+            gloves = appliedGloves.Selection with
+            {
+                Identity = identity with { ItemId = appliedGloves.ItemId, ItemAccountId = appliedGloves.AccountId }
+            };
+        }
+        return new(weaponHandle, knife, gloves);
+    }
+
+    internal bool RestoreTakeoverWearables(CCSPlayerController bot, CCSPlayerPawn pawn, TakeoverWearables wearables)
+    {
+        // The engine may have rewritten an initialized item in place. Neither
+        // Initialized nor an old applied-item cache proves its econ is current.
+        ClearSlot(bot.Slot);
+        if (wearables.Knife is { } knife)
+            ApplyKnife(bot, pawn, knife, wearables.WeaponHandle);
+        return wearables.Gloves is { } gloves && ApplyGloves(bot, pawn, gloves);
     }
 
     private void SetTextureAttributes(
@@ -278,7 +320,8 @@ internal sealed class CosmeticApplicator
         uint PawnHandle,
         uint WeaponHandle,
         KnifeSelection Selection,
-        ulong ItemId);
+        ulong ItemId,
+        uint AccountId);
 
     private readonly record struct AppliedGloveCosmetic(
         uint PawnHandle,

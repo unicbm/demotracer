@@ -57,6 +57,12 @@ Required resources are `manifest.json` and `library.json`. The latter retains
 only the archive identity, round scores, player summaries and avatar references.
 Optional `demo-info.json` and `library-info.json` carry portable detailed and
 summary analysis respectively; `archive-note.json` carries the editable note.
+Player details may include optional `sensitivity` evidence (method version 1),
+with independent yaw/pitch estimates and discovery/held-out sample counts.
+Only supported estimates include a sens value; conversion assumes default
+axis coefficients of 0.022 and does not recover DPI. Old archives without this
+field remain readable. The player-configuration sensitivity action reads the original
+demo on demand; ordinary analysis and conversion do not run this estimator.
 Manifest `files[].path` identifies an indexed
 v12 record; avatar paths and `voice/roundNN.dtv` also identify indexed resources.
 Only the selected resources are read; the plugin never extracts the archive.

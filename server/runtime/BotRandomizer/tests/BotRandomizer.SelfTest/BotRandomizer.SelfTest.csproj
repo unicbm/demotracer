@@ -9,11 +9,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="CounterStrikeSharp.API" Version="1.0.378" />
     <ProjectReference Include="..\..\BotRandomizerApi\BotRandomizerApi.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Include="..\..\Cosmetics\AttributeEncoding.cs" Link="Cosmetics\AttributeEncoding.cs" />
+    <Compile Include="..\..\Cosmetics\CosmeticApplicator.cs" Link="Cosmetics\CosmeticApplicator.cs" />
+    <Compile Include="..\..\Cosmetics\EconItemIdentity.cs" Link="Cosmetics\EconItemIdentity.cs" />
+    <Compile Include="..\..\Cosmetics\TakeoverWearables.cs" Link="Cosmetics\TakeoverWearables.cs" />
     <Compile Include="..\..\Cosmetics\CharmPlacementCatalog.cs" Link="Cosmetics\CharmPlacementCatalog.cs" />
     <Compile Include="..\..\Cosmetics\CosmeticCatalog.cs" Link="Cosmetics\CosmeticCatalog.cs" />
     <Compile Include="..\..\Cosmetics\EconItemIdAllocator.cs" Link="Cosmetics\EconItemIdAllocator.cs" />

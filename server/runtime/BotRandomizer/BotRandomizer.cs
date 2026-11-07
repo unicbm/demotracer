@@ -61,6 +61,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         RegisterEventHandler<EventRoundMvp>(OnRoundMvp, HookMode.Pre);
         RegisterEventHandler<EventPlayerTeam>(OnPlayerTeam);
         RegisterEventHandler<EventItemPickup>(OnItemPickup);
+        RegisterEventHandler<EventBotTakeover>(OnBotTakeover);
         Capabilities.RegisterPluginCapability(ApiCapability, () => (IBotRandomizerApi)_apiFacade);
         if (_weaponItemViews?.NativeAvailable == true)
         {
