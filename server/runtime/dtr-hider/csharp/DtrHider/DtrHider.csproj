@@ -17,7 +17,7 @@
       <Private>false</Private>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Lib.Harmony" Version="2.4.2" GeneratePathProperty="true">
+    <PackageReference Include="Lib.Harmony" Version="2.4.3" GeneratePathProperty="true">
       <Private>false</Private>
     </PackageReference>
     <ProjectReference Include="..\DtrHiderApi\DtrHiderApi.csproj">
