@@ -118,7 +118,7 @@ public sealed partial class DemoTracerPlugin
         public string? PlayerColor { get; set; }
     }
 
-    private sealed class ReplayChatMessage
+    internal sealed class ReplayChatMessage
     {
         public int Tick { get; set; }
         public ulong SenderSteamId { get; set; }

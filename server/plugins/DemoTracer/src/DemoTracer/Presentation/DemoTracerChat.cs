@@ -26,6 +26,7 @@ public sealed partial class DemoTracerPlugin
     private int _loadedChatLiveStartTick;
     private float _loadedChatTickRate;
     private ChatPlaybackState? _chatPlayback;
+    private bool _chatPreroll;
 
     [ConsoleCommand("dtr_chat_auto", "dtr_chat_auto [status|on|off]")]
     [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
@@ -128,19 +129,28 @@ public sealed partial class DemoTracerPlugin
     private string TryStartLoadedAutoChatPlayback(
         ReplayStartAnchor anchor,
         float? freezeTimeSeconds,
-        int startedSlots)
+        int startedSlots,
+        bool restartLoop)
     {
         if (!_chatAutoEnabled || startedSlots <= 0 || _loadedChatMessages.Count == 0)
             return string.Empty;
 
         var tickRate = _loadedChatTickRate > 0.0f ? _loadedChatTickRate : 64.0f;
         var anchorTick = ChatAnchorTick(anchor, freezeTimeSeconds, tickRate);
+        if (!restartLoop && anchor == ReplayStartAnchor.Live && _chatPreroll)
+        {
+            _chatPreroll = false;
+            _chatPlayback?.AlignClock(Server.CurrentTime, anchorTick, tickRate);
+            return "; chat_auto=continued";
+        }
+
         var frames = BuildChatPlaybackFrames(_loadedChatMessages, anchorTick, tickRate);
+        StopChatPlayback("chat_auto_replace");
+        _chatPreroll = anchor == ReplayStartAnchor.FreezePreroll;
         if (frames.Count == 0)
             return "; chat_auto=no_messages";
 
-        StopChatPlayback("chat_auto_replace");
-        _chatPlayback = new ChatPlaybackState(Server.CurrentTime, frames);
+        _chatPlayback = new ChatPlaybackState(Server.CurrentTime, anchorTick, frames);
         return
             $"; chat_auto=started messages={frames.Count}/{_loadedChatMessages.Count} " +
             $"anchor={anchor.ToString().ToLowerInvariant()} offset_tick={anchorTick.ToString(CultureInfo.InvariantCulture)}";
@@ -164,7 +174,7 @@ public sealed partial class DemoTracerPlugin
         return anchorTick;
     }
 
-    private static List<ChatPlaybackFrame> BuildChatPlaybackFrames(
+    internal static List<ChatPlaybackFrame> BuildChatPlaybackFrames(
         IEnumerable<ReplayChatMessage> messages,
         int anchorTick,
         float tickRate)
@@ -175,10 +185,11 @@ public sealed partial class DemoTracerPlugin
 
         foreach (var message in messages)
         {
+            if (message.Tick < anchorTick) continue;
             var text = SanitizeReplayChatText(message.Text);
             if (string.IsNullOrWhiteSpace(text))
                 continue;
-            var playbackSeconds = Math.Max(0.0f, (message.Tick - anchorTick) / tickRate);
+            var playbackSeconds = (message.Tick - anchorTick) / tickRate;
             frames.Add(new ChatPlaybackFrame(
                 playbackSeconds,
                 message.Tick,
@@ -352,6 +363,7 @@ public sealed partial class DemoTracerPlugin
 
     private void StopChatPlayback(string reason)
     {
+        _chatPreroll = false;
         if (_chatPlayback != null)
             Server.PrintToConsole($"dtr: stopped chat playback reason={reason}");
         _chatPlayback = null;
@@ -471,16 +483,18 @@ public sealed partial class DemoTracerPlugin
         Server
     }
 
-    private sealed class ChatPlaybackState(float startTime, List<ChatPlaybackFrame> frames)
+    internal sealed class ChatPlaybackState(float startTime, int anchorTick, List<ChatPlaybackFrame> frames)
     {
-        public float StartTime { get; } = startTime;
+        public float StartTime { get; private set; } = startTime;
+        public void AlignClock(float now, int tick, float tickRate) =>
+            StartTime = now - (tick - anchorTick) / tickRate;
         public List<ChatPlaybackFrame> Frames { get; } = frames;
         public int NextFrameIndex { get; set; }
         public int SentMessages { get; set; }
         public int SkippedMessages { get; set; }
     }
 
-    private sealed class ChatPlaybackFrame(
+    internal sealed class ChatPlaybackFrame(
         float playbackSeconds,
         int demoTick,
         ulong senderSteamId,

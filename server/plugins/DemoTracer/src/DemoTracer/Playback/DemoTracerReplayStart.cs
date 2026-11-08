@@ -135,7 +135,7 @@ public sealed partial class DemoTracerPlugin
             ? TryStartLoadedAutoVoicePlayback(anchor, freezeTimeSeconds, ok, restartLoop)
             : string.Empty;
         var chat = restartMedia
-            ? TryStartLoadedAutoChatPlayback(anchor, freezeTimeSeconds, ok)
+            ? TryStartLoadedAutoChatPlayback(anchor, freezeTimeSeconds, ok, restartLoop)
             : string.Empty;
         timing.Mark("media");
         if (anchor == ReplayStartAnchor.Live && !restartLoop)

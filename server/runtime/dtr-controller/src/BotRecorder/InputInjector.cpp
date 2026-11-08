@@ -65,7 +65,6 @@ namespace BotController
         static Hook<PhysicsSimulate_t> g_hookPhysicsSimulate;
         static bool g_installed = false;
         // True once PhysicsSimulate is hooked
-        static bool g_physicsActive = false;
         static bool g_finishMoveActive = false;
         static bool g_setupMoveActive = false;
         // True once PlayerRunCommand is hooked
@@ -185,17 +184,23 @@ namespace BotController
             return true;
         }
 
+        static uint64_t AnalogDirectionMask(const UsercmdMovementIntentFrame &intent)
+        {
+            uint64_t mask = 0;
+            if (std::fabs(intent.analogForward) > kAnalogDeadzone)
+                mask |= kInForward | kInBack;
+            if (std::fabs(intent.analogLeft) > kAnalogDeadzone)
+                mask |= kInMoveLeft | kInMoveRight;
+            return mask;
+        }
+
         static uint64_t ApplyUsercmdMovementButtons(
             uint64_t buttons,
             const UsercmdMovementIntentFrame &intent)
         {
             uint64_t set = intent.buttonsSet |
                            ButtonsForAnalog(intent.analogForward, intent.analogLeft);
-            uint64_t clear = intent.buttonsClear;
-            if (std::fabs(intent.analogForward) > kAnalogDeadzone)
-                clear |= kInForward | kInBack;
-            if (std::fabs(intent.analogLeft) > kAnalogDeadzone)
-                clear |= kInMoveLeft | kInMoveRight;
+            const uint64_t clear = intent.buttonsClear | AnalogDirectionMask(intent);
             return (buttons & ~clear) | set;
         }
 
@@ -277,23 +282,27 @@ namespace BotController
 
             // Keep the previous engine-held state until this command consumes
             // the edge; pre-writing it loses single-tick jump presses.
-            uint64_t previous = 0;
-            if (services && SafeRead(services, tg::kServices_Buttons, previous))
+            const auto mask = intent.buttonsSet | intent.buttonsClear | AnalogDirectionMask(intent);
+            // Without a prior sample, publish steady held state for the owned bits.
+            uint64_t previous = buttons0;
+            SafeRead(services, tg::kServices_Buttons, previous);
+            auto &planes = pc->buttonstates.m_pButtonStates;
+            const auto edges = ButtonState::OverrideOwnedEdges(
+                {buttons0, planes[1], planes[2]}, previous, mask);
+            planes[1] = edges.state2;
+            planes[2] = edges.state3;
+            bp->set_buttonstate2(planes[1]);
+            bp->set_buttonstate3(planes[2]);
+            for (int i = 0; i < base->subtick_moves_size(); ++i)
             {
-                const auto mask = intent.buttonsSet | intent.buttonsClear;
-                auto &planes = pc->buttonstates.m_pButtonStates;
-                const auto edges = ButtonState::OverrideOwnedEdges(
-                    {buttons0, planes[1], planes[2]}, previous, mask);
-                planes[1] = edges.state2;
-                planes[2] = edges.state3;
-                bp->set_buttonstate2(planes[1]);
-                bp->set_buttonstate3(planes[2]);
-                for (int i = 0; i < base->subtick_moves_size(); ++i)
+                auto *step = base->mutable_subtick_moves(i);
+                step->set_button(step->button() & ~mask);
+                if (step->button() == 0)
+                    step->set_pressed(false);
+                if ((intent.flags & kUsercmdMovementIntentPreserveMoveAxes) == 0)
                 {
-                    auto *step = base->mutable_subtick_moves(i);
-                    step->set_button(step->button() & ~mask);
-                    if (step->button() == 0)
-                        step->set_pressed(false);
+                    step->clear_analog_forward_delta();
+                    step->clear_analog_left_delta();
                 }
             }
 
@@ -824,11 +833,6 @@ namespace BotController
             }
 
             g_hookPlayerRunCommand.Continue(services, cmd);
-            // The normal publisher runs inside PlayerRunCommand after FinishMove.
-            // Even without PhysicsSimulate, retain the final getter until that
-            // tail completes; ending replay in FinishMove loses the final view.
-            if (replaying && !g_physicsActive)
-                MotionRecorder::OnReplayCommit(slot, services);
             MotionRecorder::OnReplayCommandPost(slot, services, replaying);
             return {KHook::Action::Ignore};
         }
@@ -993,26 +997,19 @@ namespace BotController
             g_addrPhysicsSimulate = Sig::ResolveSig(
                 gd, serverModule, "CCSPlayer_MovementServices::PhysicsSimulate",
                 psErr, sizeof(psErr));
-            if (g_addrPhysicsSimulate &&
-                g_hookPhysicsSimulate.Create(g_addrPhysicsSimulate,
-                                             &HookedPhysicsSimulate) &&
-                g_hookPhysicsSimulate.Enable())
-            {
-                g_physicsActive = true;
-            }
-            else
+            if (!g_addrPhysicsSimulate ||
+                !g_hookPhysicsSimulate.Create(g_addrPhysicsSimulate, &HookedPhysicsSimulate) ||
+                !g_hookPhysicsSimulate.Enable())
             {
                 if (g_addrPhysicsSimulate)
-                {
                     g_hookPhysicsSimulate.Remove();
-                    g_addrPhysicsSimulate = nullptr;
-                }
-                char dbg[320];
-                std::snprintf(dbg, sizeof(dbg),
-                              "[dtr-controller] WARN: PhysicsSimulate hook unavailable (%s); "
-                              "replay falls back to PlayerRunCommand-post (may stutter)\n",
+                g_hookProcessMovement.Remove();
+                g_addrPhysicsSimulate = nullptr;
+                g_addrProcessMovement = nullptr;
+                std::snprintf(errorOut, errorOutLen, "required PhysicsSimulate hook unavailable: %s",
                               psErr[0] ? psErr : "KHook failed");
-                DebugOut(dbg);
+                g_status = "failed: hook PhysicsSimulate";
+                return false;
             }
 
             // FinishMove is hooked lazily from the live vtable on the first ProcessMovement tick.
@@ -1044,7 +1041,6 @@ namespace BotController
             g_addrSetupMove = nullptr;
             g_addrPlayerRunCommand = nullptr;
             g_addrPhysicsSimulate = nullptr;
-            g_physicsActive = false;
             g_finishMoveActive = false;
             g_setupMoveActive = false;
             g_subtickActive = false;

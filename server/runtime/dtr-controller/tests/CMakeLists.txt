@@ -75,26 +75,23 @@ endif()
 add_test(NAME BotControllerSafeReadTests
     COMMAND BotControllerSafeReadTests)
 
-# Production replay lifecycle against fake engine storage. The supported
-# runtime uses the Windows memory API in its stop/cleanup path.
-if(WIN32)
-    add_executable(BotControllerReplayMovementTests
-        replay_movement_tests.cpp
-        "${CMAKE_CURRENT_LIST_DIR}/../src/BotRecorder/MotionRecorder.cpp"
-        "${CMAKE_CURRENT_LIST_DIR}/../src/BotRecorder/ReplaySourceState.cpp"
-        ${REPLAY_LAYOUT_SOURCE})
-    target_include_directories(BotControllerReplayMovementTests PRIVATE
-        ${REPLAY_INCLUDE_DIR}
-        "${CMAKE_CURRENT_LIST_DIR}/../src/common"
-        "${CMAKE_CURRENT_LIST_DIR}/../src/WeaponLocker"
-        "${DTR_COMMON_DIR}"
-        "${DTR_COMMON_DIR}/third_party")
-    target_compile_definitions(BotControllerReplayMovementTests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    if(MSVC)
-        target_compile_options(BotControllerReplayMovementTests PRIVATE /EHsc /utf-8 /W4 /permissive-)
-    endif()
-    add_test(NAME BotControllerReplayMovementTests COMMAND BotControllerReplayMovementTests)
+# Replay lifecycle against fake engine storage.
+add_executable(BotControllerReplayMovementTests
+    replay_movement_tests.cpp
+    "${CMAKE_CURRENT_LIST_DIR}/../src/BotRecorder/MotionRecorder.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../src/BotRecorder/ReplaySourceState.cpp"
+    ${REPLAY_LAYOUT_SOURCE})
+target_include_directories(BotControllerReplayMovementTests PRIVATE
+    ${REPLAY_INCLUDE_DIR}
+    "${CMAKE_CURRENT_LIST_DIR}/../src/common"
+    "${CMAKE_CURRENT_LIST_DIR}/../src/WeaponLocker"
+    "${DTR_COMMON_DIR}"
+    "${DTR_COMMON_DIR}/third_party")
+target_compile_definitions(BotControllerReplayMovementTests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+if(MSVC)
+    target_compile_options(BotControllerReplayMovementTests PRIVATE /EHsc /utf-8 /W4 /permissive-)
 endif()
+add_test(NAME BotControllerReplayMovementTests COMMAND BotControllerReplayMovementTests)
 
 add_executable(BotControllerBuyPolicyTests
     buy_controller_policy_tests.cpp)

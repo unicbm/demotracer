@@ -8,6 +8,20 @@ namespace DemoTracer.Tests;
 
 public sealed class ReplayChatRoutingTests
 {
+    [Fact]
+    public void ShortPrerollSkipsEarlierMessagesAndLiveKeepsItsCursor()
+    {
+        var messages = new[] { 1000, 1050, 1280 }.Select(tick =>
+            new DemoTracerPlugin.ReplayChatMessage { Tick = tick, Text = "hello" });
+        var frames = DemoTracerPlugin.BuildChatPlaybackFrames(messages, 1024, 64);
+        Assert.Equal(new[] { 1050, 1280 }, frames.Select(frame => frame.DemoTick));
+        var playback = new DemoTracerPlugin.ChatPlaybackState(0, 1024, frames) { NextFrameIndex = 1 };
+        playback.AlignClock(10, 1280, 64);
+        var next = playback.Frames[playback.NextFrameIndex];
+        Assert.Equal(1280, next.DemoTick);
+        Assert.Equal(10f - playback.StartTime, next.PlaybackSeconds);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(1)]

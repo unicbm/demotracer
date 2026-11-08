@@ -34,6 +34,7 @@ namespace
     bool humanOwnsPawn = false;
     bool replayHooksReady = true;
     bool currentBotPawn = true;
+    bool clockAvailable = true;
     bool weaponsAvailable = false, weaponActive = false;
     int publishes = 0, deploys = 0;
     alignas(16) std::array<std::byte, 0x1000> weapon{}, weaponServices{};
@@ -343,6 +344,20 @@ namespace
         currentBotPawn = true;
     }
 
+    void SourceStateRequiresReplayClock()
+    {
+        Reset();
+        Check(mr::LoadReplaySourceState(slot, nullptr, 0, 64, 1.0f / 64), "load empty source state");
+        Check(mr::StartReplay(slot, false), "start clock fixture");
+        mr::ReplayCommandFrame frame{};
+        Check(mr::ReplayCommandFrameForSimulation(slot, frame), "read first command");
+        clockAvailable = false;
+        Check(!mr::OnReplayCommandPre(slot, services.data(), *frame.tick, frame.commandView),
+              "missing clock allowed command preparation");
+        clockAvailable = true;
+        mr::StopReplay(slot);
+    }
+
     void SourceStateRestoresAtBoundariesOnly()
     {
         namespace source = BotController::ReplaySourceState;
@@ -569,7 +584,7 @@ namespace BotController
             Put(pawn, tg::kEnt_MoveType, value); Put(pawn, tg::kEnt_ActualMoveType, value);
             return true;
         }
-        bool ReadReplayClock(int, float, ReplaySourceState::LiveClock &clock) { clock = {1000, 15.625f, 1.0f / 64}; return true; }
+        bool ReadReplayClock(int, float, ReplaySourceState::LiveClock &clock) { clock = {1000, 15.625f, 1.0f / 64}; return clockAvailable; }
         bool InitializeReplayPose(void *p, const float *origin, const float *velocity)
         {
             if (!allowInitialization || p != pawn.data()) return false;
@@ -621,6 +636,7 @@ int main()
     SilentReloadCommandHoldAndRelease();
     StopPreservesNativeMovementState();
     StartAndStopRespectPawnOwnership();
+    SourceStateRequiresReplayClock();
     SourceStateRestoresAtBoundariesOnly();
     CompactSourceClocksMatchDenseTimeline();
     LadderStartRequiresContact();
