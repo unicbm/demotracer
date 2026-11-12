@@ -94,9 +94,8 @@ include("${DTR_COMMON_DIR}/native/khook.cmake")
 
 set(SDK_SOURCES
     ${HL2SDK}/public/tier0/memoverride.cpp
-    ${HL2SDK}/tier1/generichash.cpp
-    ${HL2SDK}/tier1/keyvalues3.cpp
-    ${HL2SDK}/tier1/convar.cpp
+    ${HL2SDK}/tier0_perproject/keyvalues3.cpp
+    ${HL2SDK}/tier0_perproject/convar.cpp
 )
 
 add_library(dtr-controller SHARED
@@ -165,7 +164,6 @@ if(WIN32)
     target_link_libraries(dtr-controller PRIVATE
         psapi
         ${HL2SDK_LIBDIR}/tier0.lib
-        ${HL2SDK_LIBDIR}/tier1.lib
         ${HL2SDK_LIBDIR}/mathlib.lib
         ${HL2SDK_LIBDIR}/interfaces.lib
         ${HL2SDK_LIBDIR}/2015/libprotobuf.lib
@@ -183,7 +181,6 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(HL2SDK_LIBDIR ${HL2SDK}/lib/linux64)
     target_link_libraries(dtr-controller PRIVATE
         ${HL2SDK_LIBDIR}/libtier0.so
-        ${HL2SDK_LIBDIR}/tier1.a
         ${HL2SDK_LIBDIR}/mathlib.a
         ${HL2SDK_LIBDIR}/interfaces.a
         ${HL2SDK_LIBDIR}/release/libprotobuf.a

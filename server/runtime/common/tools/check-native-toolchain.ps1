@@ -11,7 +11,7 @@ foreach ($field in @('metamod_source_commit', 'khook_source_commit', 'counterstr
 if ($hooks.backend -ne 'khook' -or $hooks.metamod_plugin_api -ne 18 -or $hooks.metamod_minimum_build -lt 1483) {
     throw 'Unsupported shared hook runtime contract'
 }
-if ($sdk.hl2sdk_repository -ne 'alliedmodders/hl2sdk' -or
+if ($sdk.hl2sdk_repository -ne 'alliedmodders/s2sdk' -or
     [string]$sdk.hl2sdk_commit -notmatch '^[0-9a-f]{40}$' -or
     $sdk.protoc -ne 'devtools/bin/protoc.exe' -or
     [string]$sdk.protoc_version -notmatch '^3\.21\.\d+$') {

@@ -6,13 +6,14 @@
 
 #include <ISmmPlugin.h>
 #include <playerslot.h>
-#include <tier1/utlvector.h>
+#include <tier0/utlvector.h>
 #include <array>
 #include <memory>
 #include <vector>
-#include <eiface.h>
-#include <iserver.h>
-#include <icvar.h>
+#include <engine2/isource2server.h>
+#include <engine2/ivengineserver2.h>
+#include <engine2/inetworkserverservice.h>
+#include <tier0/icvar.h>
 
 class CServerSideClient;
 class INetworkGameClient;
@@ -51,14 +52,14 @@ namespace cs2bh
         KHook::Return<void> Hook_OnClientConnected_Post(IServerGameClients *, CPlayerSlot slot, const char *pszName, uint64 xuid,
                                          const char *pszNetworkID, const char *pszAddress,
                                          bool bFakePlayer);
-        KHook::Return<void> Hook_ClientPutInServer_Post(IServerGameClients *, CPlayerSlot slot, char const *pszName, int type, uint64 xuid);
+        KHook::Return<void> Hook_ClientPutInServer_Post(IServerGameClients *, CPlayerSlot slot, char const *pszName, ClientPutInServerType_t type, uint64 xuid);
         KHook::Return<void> Hook_ClientDisconnect_Pre(IServerGameClients *, CPlayerSlot slot, ENetworkDisconnectionReason reason,
                                        const char *pszName, uint64 xuid, const char *pszNetworkID);
 #if !defined(_WIN32)
         KHook::Return<CPlayerSlot> Hook_CreateFakeClient_Pre(IVEngineServer *, const char *netname);
         KHook::Return<CPlayerSlot> Hook_CreateFakeClient_Post(IVEngineServer *, const char *netname);
 #endif
-        KHook::Return<CUtlVector<INetworkGameClient *> *> Hook_StartChangeLevel_Pre(INetworkGameServer *, const char *mapName, const char *landmark, void *changelevelState);
+        KHook::Return<CServerChangelevelState *> Hook_StartChangeLevel_Pre(INetworkGameServer *, const char *mapName, const char *landmark, const char *addons);
         KHook::Return<void> Hook_GameFrame_Post(IServerGameDLL *, bool simulating, bool bFirstTick, bool bLastTick);
 
         // ICvar::DispatchConCommand  — restore bot identity before the engine and processes a kick

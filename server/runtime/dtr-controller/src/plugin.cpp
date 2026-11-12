@@ -7,9 +7,10 @@
 #include <filesystem>
 #include <string>
 
-#include <eiface.h>
-#include <icvar.h>
-#include <iserver.h>
+#include <engine2/isource2server.h>
+#include <engine2/ivengineserver2.h>
+#include <tier0/icvar.h>
+#include <engine2/inetworkserverservice.h>
 #include <convar.h>
 #include <interfaces/interfaces.h>
 #include <networksystem/inetworkmessages.h>

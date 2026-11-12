@@ -15,9 +15,10 @@
 
 #include <tier0/dbg.h>
 #include <convar.h>
-#include <eiface.h>
-#include <icvar.h>
-#include <iserver.h>
+#include <engine2/isource2server.h>
+#include <engine2/ivengineserver2.h>
+#include <tier0/icvar.h>
+#include <engine2/inetworkserverservice.h>
 #include <networkstringtabledefs.h>
 #include <playerslot.h>
 

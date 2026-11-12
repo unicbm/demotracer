@@ -6,7 +6,8 @@
 #include "WeaponSelection.h"
 #include "BotControllerState.h"
 
-#include <eiface.h>
+#include <engine2/isource2server.h>
+#include <engine2/ivengineserver2.h>
 #include <playerslot.h>
 
 namespace BotController

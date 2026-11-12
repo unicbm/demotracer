@@ -36,10 +36,11 @@
 #include <strings.h>
 #endif
 
-#include <iserver.h>
-#include <eiface.h>
-#include <tier1/utlvector.h>
-#include <tier1/convar.h>
+#include <engine2/networkgameserverbase.h>
+#include <engine2/isource2server.h>
+#include <engine2/ivengineserver2.h>
+#include <tier0/utlvector.h>
+#include <tier0/convar.h>
 
 namespace cs2bh
 {
@@ -1487,14 +1488,14 @@ namespace cs2bh
     }
 
     KHook::Return<void> HiderPlugin::Hook_ClientPutInServer_Post(IServerGameClients *, CPlayerSlot slot, char const *pszName,
-                                                  int type, uint64 /*xuid*/)
+                                                  ClientPutInServerType_t type, uint64 /*xuid*/)
     {
 #if defined(_WIN32)
         // OnClientConnected already classified the client before disguise
         // changed its fake-client fields
         (void)type;
 #else
-        if (type != 1)
+        if (type != CLIENT_PUT_IN_SERVER_FAKE_PLAYER)
             return {KHook::Action::Ignore};
 #endif
         int idx = slot.Get();
@@ -1534,7 +1535,7 @@ namespace cs2bh
             RefreshClientUserInfo(idx);
         }
 
-        META_CONPRINTF("[BOTHIDER] CPiS safety-net slot=%d name='%s'\n", idx, pszName ? pszName : "<null>");
+        META_CONPRINTF("[BOTHIDER] CPiS safety-net slot=%d name='%s'\n", idx, visibleName.c_str());
         return {KHook::Action::Ignore};
     }
 
@@ -2150,7 +2151,7 @@ namespace cs2bh
     }
 #endif
 
-    KHook::Return<CUtlVector<INetworkGameClient *> *> HiderPlugin::Hook_StartChangeLevel_Pre(INetworkGameServer *, const char *mapName, const char *landmark, void * /*changelevelState*/)
+    KHook::Return<CServerChangelevelState *> HiderPlugin::Hook_StartChangeLevel_Pre(INetworkGameServer *, const char *mapName, const char *landmark, const char * /*addons*/)
     {
 #if !defined(_WIN32)
         ClearFakeClientCallStack();
@@ -2591,7 +2592,7 @@ namespace cs2bh
                 const char *engineName = ssc::ReadName(client);
                 const std::string name = engineName ? engineName : "";
                 Hook_OnClientConnected_Post(gameclients, CPlayerSlot(slot), name.c_str(), 0, "BOT", "", true);
-                Hook_ClientPutInServer_Post(gameclients, CPlayerSlot(slot), name.c_str(), 1, 0);
+                Hook_ClientPutInServer_Post(gameclients, CPlayerSlot(slot), name.c_str(), CLIENT_PUT_IN_SERVER_FAKE_PLAYER, 0);
             }
         }
 #endif

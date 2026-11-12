@@ -148,13 +148,13 @@ namespace DemoTracerRuntime
         CSchemaClassInfo *info = FindClass(className);
         if (info && info->m_pFields)
         {
-            for (uint16 i = 0; i < info->m_nFieldCount; ++i)
+            for (uint16 i = 0; i < info->m_nNumFields; ++i)
             {
                 const SchemaClassFieldData_t &field = info->m_pFields[i];
-                if (!field.m_pszName || std::strcmp(field.m_pszName, fieldName) != 0)
+                if (!field.m_pName || std::strcmp(field.m_pName, fieldName) != 0)
                     continue;
                 const int offset = field.m_nSingleInheritanceOffset;
-                if (offset < 0 || offset >= info->m_nSize)
+                if (offset < 0 || offset >= info->m_nSizeOf)
                     break;
                 m_offsetCache.emplace(key, offset);
                 return offset;

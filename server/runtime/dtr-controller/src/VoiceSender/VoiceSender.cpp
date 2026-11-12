@@ -1,10 +1,9 @@
 #include "VoiceSender.h"
 
-#include <eiface.h>
-#include <inetchannel.h>
+#include <engine2/ivengineserver2.h>
+#include <networksystem/inetchannel.h>
 #include <netmessages.pb.h>
 #include <networksystem/inetworkmessages.h>
-#include <networksystem/netmessage.h>
 #include <playerslot.h>
 
 #include <cmath>
@@ -32,10 +31,6 @@ namespace BotController
                 return nullptr;
 
             g_voiceMessage = g_networkMessages->FindNetworkMessageById(svc_VoiceData);
-            if (!g_voiceMessage)
-                g_voiceMessage = g_networkMessages->FindNetworkMessage("CSVCMsg_VoiceData");
-            if (!g_voiceMessage)
-                g_voiceMessage = g_networkMessages->FindNetworkMessage("svc_VoiceData");
             return g_voiceMessage;
         }
 
@@ -126,7 +121,7 @@ namespace BotController
                 msg->set_tick(static_cast<uint32_t>(tick));
 
             const bool ok = channel->SendNetMessage(base, BUF_VOICE);
-            g_networkMessages->DeallocateNetMessageAbstract(messageType, base);
+            delete base;
             return ok ? 0 : -6;
         }
     }

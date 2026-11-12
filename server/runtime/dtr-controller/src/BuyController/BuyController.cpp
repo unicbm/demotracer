@@ -10,7 +10,7 @@
 #include "version_targets.h"
 
 #include <convar.h>
-#include <eiface.h>
+#include <engine2/isource2server.h>
 #include <playerslot.h>
 #include <tier0/dbg.h>
 
