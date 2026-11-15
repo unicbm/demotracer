@@ -24,6 +24,10 @@ validates and copies blocks into a new sibling archive; it retains the original
 folder and refuses to overwrite an existing destination. Import also upgrades
 legacy archives while retaining its source. Older record encodings are rejected.
 
+Round entries may include `notice` with the one-based `matchRound` and flags
+`disconnected`, `rolledBack` and `replayed`. Playback addresses each attempt
+by its unique `round` id. Match results exclude attempts the server rolled back.
+
 ## v13 Container
 
 Each portable archive contains its manifest, lightweight library projection,

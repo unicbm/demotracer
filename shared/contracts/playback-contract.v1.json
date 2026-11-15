@@ -5,6 +5,12 @@
   "manifest_abi": 20,
   "dtr_writer": 13,
   "analysis_metadata": {
+    "round_notice": {
+      "optional": true,
+      "location": "manifest.rounds[].notice",
+      "fields": ["matchRound", "disconnected", "rolledBack", "replayed"],
+      "semantics": "One-based match round. Playback uses the unique manifest round id. A disconnect is informational. A rolled-back attempt remains playable and is excluded from match results."
+    },
     "player_sensitivity": {
       "optional": true,
       "on_demand": true,
