@@ -1,7 +1,9 @@
 # cs2-lib data projection
 
-The exact `@ianlucas/cs2-lib` package version in this directory is the upstream
-data source for `../../econ/cs2-lib-econ-index.v1.json` and
+The locked cs2-lib source archive supplies item records and translations. The
+published npm package supplies enum constants. Valve scoreboard coin definitions
+omitted by cs2-lib are recorded with provenance in `tournament-coins.json`.
+Together they are the data source for `../../econ/cs2-lib-econ-index.v1.json` and
 `../../econ/randomizer-catalog.json`. The converter, playback plugin, and
 maintained Randomizer consume these shared projections; no game files or demo
 corpus are needed to regenerate them.
@@ -34,6 +36,6 @@ mappings, charm placements, and new cosmetic mechanics require separate
 review in the maintained provider repository.
 
 `layout.json` selects output locations only. Normal CI checks reproducibility
-and catalog coverage against the pinned published package. Do not hand-edit
+and catalog coverage against the locked upstream data. Do not hand-edit
 generated JSON or add fallback item identifiers. Consumer runtime smoke tests
 remain necessary when shipping new item availability or cosmetic behavior.

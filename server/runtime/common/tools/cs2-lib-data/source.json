@@ -1,7 +1,8 @@
 {
   "package": "@ianlucas/cs2-lib",
-  "version": "9.9.0",
-  "commit": "c273c00476bd41c87e4e7062a0b642f16e3118c7",
+  "version": "9.10.0",
+  "commit": "9d316bba28f563845d1796cfc09198daa1939752",
+  "itemDataCommit": "59eabeaf7fba0372c92279808c76ea6cb710df9e",
   "randomizerRepository": "ed0ard/CS2-Bot-Randomizer",
   "randomizerCommit": "6e9986270aac9c0405a7430a2f26727e7aff3c48"
 }

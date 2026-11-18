@@ -181,7 +181,11 @@ internal static class ReplayPlanValidationTests
         RejectChange(p => p.Weapons[0].CustomName = new string('x', 129), "invalid_weapon:1");
         RejectChange(p => p.Weapons[0].Stickers = [p.Weapons[0].Stickers[0], p.Weapons[0].Stickers[0]],
             "invalid_sticker:1:4");
-        RejectChange(p => p.Weapons[0].Stickers[0].StickerId = uint.MaxValue, "invalid_sticker:1:4");
+        RejectChange(p => p.Weapons[0].Stickers[0].StickerId = 0, "invalid_sticker:1:4");
+        var mixedStickers = FullPlan();
+        mixedStickers.Weapons[0].Stickers = [new() { Slot = 1, StickerId = uint.MaxValue }, mixedStickers.Weapons[0].Stickers[0]];
+        Require(Accept([mixedStickers])[1].Policy.Weapons[4].Stickers.Single().DefIndex == 7887,
+            "unknown stickers leave recognized stickers on the weapon");
         RejectChange(p => p.Weapons[0].Stickers[0].Schema = 5, "invalid_sticker:1:4");
         RejectChange(p => p.Weapons[0].Stickers[0].OffsetX = float.PositiveInfinity, "invalid_sticker:1:4");
         RejectChange(p => p.Weapons[0].Keychains[0].Slot = 1, "invalid_keychain:1:4");

@@ -224,9 +224,11 @@ internal sealed class ReplayPlanValidator(CosmeticCatalog catalog, ReplayEconInd
             var stickerSlots = new HashSet<int>();
             foreach (var sticker in requested.Stickers ?? [])
             {
+                if (sticker is { StickerId: > 0 } && !econ.IsSticker(sticker.StickerId))
+                    continue;
                 if (sticker is null || sticker.Slot is < 0 or > 4 || sticker.Schema > 4 ||
                     !stickerSlots.Add(sticker.Slot) ||
-                    !econ.IsSticker(sticker.StickerId) ||
+                    sticker.StickerId == 0 ||
                     !AreFinite(sticker.Wear, sticker.OffsetX, sticker.OffsetY) ||
                     sticker.Scale is { } scale && !float.IsFinite(scale) ||
                     sticker.Rotation is { } rotation && !float.IsFinite(rotation))

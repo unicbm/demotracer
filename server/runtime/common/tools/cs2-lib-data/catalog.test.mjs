@@ -7,8 +7,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { CS2_ITEMS } from "@ianlucas/cs2-lib";
-import { source, integrity, catalogPath, econPath } from "./source.mjs";
+import { source, integrity, itemDataIntegrity, catalogPath, econPath, CS2_ITEMS } from "./source.mjs";
 
 const read = path => JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
 const catalog = JSON.parse(readFileSync(catalogPath, "utf8"));
@@ -21,6 +20,8 @@ test("both runtime catalogs identify the same pinned source", () => {
   for (const document of [catalog, econ]) {
     assert.equal(document.source.version, source.version);
     assert.equal(document.source.integrity, integrity);
+    assert.equal(document.source.itemDataCommit, source.itemDataCommit);
+    assert.equal(document.source.itemDataIntegrity, itemDataIntegrity);
   }
   assert.equal(catalog.source.commit, source.commit);
   assert.deepEqual(catalog.source.proDemo, policy.proDemo);
@@ -50,6 +51,16 @@ test("randomized items are accepted by the replay validator projection", () => {
     assert.equal(p.legacy, legacy.has(`${w.defIndex}:${p.paintKit}`));
   }
   assert.equal(new Set(catalog.stickerKits.map(s => s.category)).size, catalog.stickerCategories.length);
+});
+
+test("Singapore Major weapon stickers, music kits and scoreboard coins are covered", () => {
+  const stickers = new Set(econ.sticker_ids);
+  for (let id = 11814; id <= 12618; id++) {
+    // The 33 team graffiti share Valve's sticker-kit ID space.
+    assert.equal(stickers.has(id), id < 11946 || id > 11978, `sticker ${id}`);
+  }
+  for (let id = 105; id <= 112; id++) assert.ok(catalog.musicKits.includes(id) && econ.music_kit_ids.includes(id));
+  for (let id = 5412; id <= 5415; id++) assert.ok(econ.scoreboard_flair_defidx.includes(id));
 });
 
 test("Ranked and Champion finishes retain their material class", () => {

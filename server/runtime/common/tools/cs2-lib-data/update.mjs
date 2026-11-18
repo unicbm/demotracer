@@ -40,10 +40,12 @@ if (values.report) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${report}\n`);
 }
-if (!values['check-only']) {
-  npm(['install', '--save-exact', '--ignore-scripts', `@ianlucas/cs2-lib@${metadata.version}`]);
+if (!values['check-only'] && (metadata.version !== source.version || metadata.gitHead !== source.commit)) {
+  npm(['install', '--save-exact', '--ignore-scripts', `@ianlucas/cs2-lib@${metadata.version}`,
+    `cs2-item-snapshot@https://codeload.github.com/ianlucas/cs2-lib/tar.gz/${metadata.gitHead}`]);
   source.version = metadata.version;
   source.commit = metadata.gitHead;
+  source.itemDataCommit = metadata.gitHead;
   writeFileSync(sourcePath, `${JSON.stringify(source, null, 2)}\n`);
   for (const task of ['generate', 'check', 'test']) npm(['run', task]);
 }

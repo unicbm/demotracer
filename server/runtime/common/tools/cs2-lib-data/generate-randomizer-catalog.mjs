@@ -4,10 +4,9 @@
  * See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { CS2_ITEMS, CS2RarityColorOrder } from "@ianlucas/cs2-lib";
-import { english } from "@ianlucas/cs2-lib/translations/english";
+import { CS2RarityColorOrder } from "@ianlucas/cs2-lib";
 import { readFileSync, writeFileSync } from "node:fs";
-import { source, integrity, catalogPath } from "./source.mjs";
+import { source, integrity, itemDataIntegrity, catalogPath, CS2_ITEMS, english } from "./source.mjs";
 
 const policy = JSON.parse(readFileSync(new URL("randomizer-policy.json", import.meta.url), "utf8"));
 const output = catalogPath;
@@ -76,6 +75,7 @@ const stickerKits = stickers.map(item => {
 }).sort((a, b) => a.defIndex - b.defIndex);
 const catalog = {
   source: { repository: "ianlucas/cs2-lib", commit: source.commit,
+    itemDataCommit: source.itemDataCommit, itemDataIntegrity,
     package: source.package, version: source.version, integrity, proDemo: policy.proDemo },
   weapons, knives, knifeFinishPreferences: policy.knifeFinishPreferences, gloves,
   stickerCategories, stickerKits,

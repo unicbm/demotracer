@@ -11,6 +11,7 @@
     "test": "node --test catalog.test.mjs"
   },
   "dependencies": {
-    "@ianlucas/cs2-lib": "9.9.0"
+    "@ianlucas/cs2-lib": "9.10.0",
+    "cs2-item-snapshot": "https://codeload.github.com/ianlucas/cs2-lib/tar.gz/59eabeaf7fba0372c92279808c76ea6cb710df9e"
   }
 }

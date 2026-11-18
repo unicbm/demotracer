@@ -5,11 +5,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 import {
-  CS2_ITEMS,
   CS2_PAINTABLE_ITEMS,
   CS2RarityColorOrder,
 } from "@ianlucas/cs2-lib";
-import { source, integrity, econPath } from "./source.mjs";
+import { source, integrity, itemDataIntegrity, econPath, CS2_ITEMS, eventCoins } from "./source.mjs";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -175,7 +174,7 @@ const agentDefIndices = itemDefIndices("agent");
 const stickerIds = itemIndices("sticker");
 const keychainIds = itemIndices("keychain");
 const musicKitIds = itemIndices("musickit");
-const scoreboardFlairDefIndices = itemDefIndices("collectible");
+const scoreboardFlairDefIndices = sortedUnique([...itemDefIndices("collectible"), ...Object.keys(eventCoins).map(Number)]);
 
 const index = {
   name: "cs2-lib-econ-index",
@@ -185,11 +184,14 @@ const index = {
   source: {
     package: PACKAGE_NAME,
     version: source.version,
+    commit: source.commit,
+    itemDataCommit: source.itemDataCommit,
+    itemDataIntegrity,
     integrity,
     repository: REPOSITORY,
   },
   generation_policy:
-    "Generated exclusively from @ianlucas/cs2-lib exports; do not hand-edit or add local item identifiers.",
+    "Generated from pinned cs2-lib item data and Valve tournament coin definitions.",
   id_space_warning:
     "Do not compare IDs across arrays unless the array name/domain matches.",
   weapon_paints: weaponPaintPairs,

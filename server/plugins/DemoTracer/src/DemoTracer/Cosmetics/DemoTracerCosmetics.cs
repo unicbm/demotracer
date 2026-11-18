@@ -142,9 +142,10 @@ public sealed partial class DemoTracerPlugin
         var slots = new HashSet<int>();
         foreach (var sticker in stickers)
         {
+            if (sticker.StickerId != 0 && !IsKnownStickerId(sticker.StickerId))
+                continue;
             if (sticker.Slot is < 0 or > 4 ||
                 sticker.StickerId == 0 ||
-                !IsKnownStickerId(sticker.StickerId) ||
                 sticker.Wear is < 0.0f or > 1.0f ||
                 !float.IsFinite(sticker.Wear) ||
                 !float.IsFinite(sticker.OffsetX) ||

@@ -1,0 +1,21 @@
+{
+  "source": "Valve CS2 build 2000946: scripts/items/items_game.txt, resource/csgo_english.txt, resource/csgo_schinese.txt",
+  "coins": {
+    "5412": [
+      "Singapore 2026 Coin",
+      "新加坡 2026 硬币"
+    ],
+    "5413": [
+      "Singapore 2026 Silver Coin",
+      "新加坡 2026 银色硬币"
+    ],
+    "5414": [
+      "Singapore 2026 Gold Coin",
+      "新加坡 2026 金色硬币"
+    ],
+    "5415": [
+      "Singapore 2026 Diamond Coin",
+      "新加坡 2026 钻石硬币"
+    ]
+  }
+}
