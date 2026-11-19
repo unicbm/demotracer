@@ -138,6 +138,14 @@ internal static partial class DtrReplayReader
             ?? ReplayHighFidelityMetadata.Empty;
         if (metadata.SchemaVersion is not 4 and not ReplayHighFidelityMetadata.CurrentSchemaVersion)
             throw new InvalidDataException("unsupported replay metadata schema; reconvert the demo with the current GUI");
+        metadata.PingTickIndices ??= [];
+        var lastPing = -1;
+        foreach (var tick in metadata.PingTickIndices)
+        {
+            if (tick <= lastPing || tick >= tickCount)
+                throw new InvalidDataException("invalid player ping frame index");
+            lastPing = tick;
+        }
         metadata.Events ??= [];
         metadata.InventorySnapshots ??= [];
         ValidateInventorySnapshots(metadata.InventorySnapshots, tickCount);

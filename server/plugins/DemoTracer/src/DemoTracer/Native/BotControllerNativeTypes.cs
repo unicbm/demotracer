@@ -221,6 +221,7 @@ internal sealed class ReplayHighFidelityMetadata
 
     public int SchemaVersion { get; set; }
     public uint? RoundStartBalance { get; set; }
+    public int[] PingTickIndices { get; set; } = [];
     public ReplayHifiEvent[] Events { get; set; } = [];
     public ReplayInventorySnapshot[] InventorySnapshots { get; set; } = [];
 }

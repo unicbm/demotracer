@@ -32,17 +32,21 @@ internal static class TakeoverWearableTests
         applicator.ClearSlot(7);
         Require(applicator.CaptureTakeoverWearables(7, pawn).Knife is null &&
             captured.Knife?.DefIndex == 507 && captured.Gloves?.DefIndex == 5032,
-            "the captured handoff survives DTR releasing its write lease");
+            "starting a new life clears the slot without altering the captured handoff");
 
         var binding = new TakeoverPawnBinding(1, 0x10001, 0x10007, pawn);
-        Require(binding.Matches(1, 0x10001, 0x10007, pawn, 0x10007, true, true), "same live takeover");
-        Require(!binding.Matches(2, 0x10001, 0x10007, pawn, 0x10007, true, true), "map change");
-        Require(!binding.Matches(1, 0x20001, 0x10007, pawn, 0x10007, true, true), "human reconnect");
-        Require(!binding.Matches(1, 0x10001, 0x20007, pawn, 0x10007, true, true), "bot replacement");
-        Require(!binding.Matches(1, 0x10001, 0x10007, 0x30007, 0x10007, true, true), "human respawn");
-        Require(!binding.Matches(1, 0x10001, 0x10007, pawn, 0x10008, true, true), "different source bot");
-        Require(!binding.Matches(1, 0x10001, 0x10007, pawn, 0x10007, false, true), "takeover ended");
-        Require(!binding.Matches(1, 0x10001, 0x10007, pawn, 0x10007, true, false), "pawn death");
+        bool Matches(ulong epoch = 1, uint human = 0x10001, uint bot = 0x10007,
+            uint active = pawn, uint body = pawn, uint owner = 0x10001, bool controlling = true, bool alive = true)
+            => binding.Matches(epoch, human, bot, active, body, owner, controlling, alive);
+        Require(Matches(), "same live takeover");
+        Require(!Matches(epoch: 2), "map change");
+        Require(!Matches(human: 0x20001), "human reconnect");
+        Require(!Matches(bot: 0x20007), "bot replacement");
+        Require(!Matches(active: 0x30007), "human switched to another pawn");
+        Require(!Matches(body: 0x30007), "source bot has another body");
+        Require(!Matches(owner: 0x10007), "pawn is no longer controlled by the human");
+        Require(!Matches(controlling: false), "takeover ended");
+        Require(!Matches(alive: false), "pawn death");
     }
 
     private static void SetApplied(CosmeticApplicator applicator, string field, string type, int slot, params object[] values)

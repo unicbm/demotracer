@@ -364,6 +364,7 @@ internal sealed class DtrReplayPrefetch
                 if (replay.HighFidelity != null)
                 {
                     bytes += replay.HighFidelity.Events.LongLength * 128L;
+                    bytes += replay.HighFidelity.PingTickIndices.LongLength * sizeof(int);
                     foreach (var snapshot in replay.HighFidelity.InventorySnapshots)
                         bytes += 64L + snapshot.WeaponDefCounts.LongLength * 32L;
                 }

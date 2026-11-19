@@ -5,8 +5,8 @@ internal sealed record TakeoverWearables(uint WeaponHandle, KnifeSelection? Knif
 internal readonly record struct TakeoverPawnBinding(ulong MapEpoch, uint HumanController, uint BotController, uint Pawn)
 {
     internal bool Matches(ulong mapEpoch, uint humanController, uint botController,
-        uint pawn, uint originalController, bool controllingBot, bool alive)
+        uint controlledPawn, uint botPlayerPawn, uint pawnController, bool controllingBot, bool alive)
         => MapEpoch == mapEpoch && HumanController == humanController &&
-           BotController == botController && Pawn == pawn &&
-           originalController == BotController && controllingBot && alive;
+           BotController == botController && Pawn == controlledPawn && Pawn == botPlayerPawn &&
+           HumanController == pawnController && controllingBot && alive;
 }

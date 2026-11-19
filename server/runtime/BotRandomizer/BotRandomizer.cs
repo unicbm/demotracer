@@ -189,7 +189,12 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         ConsumePendingReroll(@event.Userid);
         var state = GetOrCreateState(@event.Userid);
         if (state is not null)
+        {
+            // The engine can reuse the same pawn on respawn. Its previous life
+            // is no longer a source for takeover, even if the handles still match.
+            _applicator?.ClearSlot(state.Slot);
             ScheduleRestore(state, CosmeticScope.All);
+        }
 
         return HookResult.Continue;
     }

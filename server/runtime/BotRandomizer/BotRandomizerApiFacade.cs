@@ -187,7 +187,6 @@ public sealed partial class BotRandomizerPlugin
             // callbacks captured under the old generation. The provider consumes
             // the new desired state at the next natural spawn/item construction.
             _states.BumpGeneration(slot);
-            _applicator?.ClearSlot(slot);
         }
     }
 

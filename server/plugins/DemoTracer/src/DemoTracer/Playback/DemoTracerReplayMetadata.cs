@@ -133,6 +133,7 @@ public sealed partial class DemoTracerPlugin
             NormalizeReplayPlayerColor(playerColor),
             metadata.Projectiles ?? [],
             hifiEvents,
+            metadata.HighFidelity?.PingTickIndices ?? [],
             inventorySnapshots,
             metadata.HighFidelity?.RoundStartBalance,
             metadata.TickCount,

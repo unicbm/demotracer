@@ -39,6 +39,7 @@ internal sealed class ReplayPlanState
     public int[] SequenceRounds { get; set; } = [];
     public int SequenceIndex { get; set; }
     public bool SequencePrepared { get; set; }
+    public bool SequenceNativeOnly { get; set; }
     public int SequencePreparedRound { get; set; } = -1;
     public int SequencePreparePollToken { get; set; }
 
@@ -83,6 +84,7 @@ internal sealed class ReplayPlanState
         SequenceRounds = [];
         SequenceIndex = 0;
         SequencePrepared = false;
+        SequenceNativeOnly = false;
         SequencePreparedRound = -1;
         SequencePreparePollToken++;
     }
@@ -90,6 +92,7 @@ internal sealed class ReplayPlanState
     public void ClearSequencePreparation()
     {
         SequencePrepared = false;
+        SequenceNativeOnly = false;
         SequencePreparedRound = -1;
     }
 

@@ -25,6 +25,7 @@ public sealed partial class DemoTracerPlugin
         public Dictionary<int, AppliedHumanTeamAvatarOverride> HumanTeamAvatarOverrides { get; } = [];
         public Dictionary<int, int> LastEnsuredWeaponDef { get; } = [];
         public Dictionary<int, int> LastReplayWeaponDef { get; } = [];
+        public Dictionary<int, int> LastPingTick { get; } = [];
         public Dictionary<int, int> LastLockedWeaponTarget { get; } = [];
         public Dictionary<(int PlayerSlot, ReplayWeaponSlot WeaponSlot), PendingWeaponSlotReplacement>
             PendingWeaponSlotReplacements { get; } = [];
@@ -75,6 +76,7 @@ public sealed partial class DemoTracerPlugin
             FreezePrerollSlots.Remove(slot);
             ResumedFreezePrerollSlots.Remove(slot);
             ReplayInventoryBySlot.Remove(slot);
+            LastPingTick.Remove(slot);
             ReplayPerceptionBaselineSerial.Remove(slot);
             PendingBulletHits.Remove(slot);
             PendingBulletDamages.Remove(slot);
@@ -88,6 +90,7 @@ public sealed partial class DemoTracerPlugin
             FreezePrerollSlots.Clear();
             ResumedFreezePrerollSlots.Clear();
             ReplayInventoryBySlot.Clear();
+            LastPingTick.Clear();
             RebuiltInventorySlots.Clear();
             ReplayPerceptionBaselineSerial.Clear();
             PendingBulletHits.Clear();

@@ -262,7 +262,8 @@ public sealed partial class DemoTracerPlugin
         var load = LoadRound(
             _session.Plan.SequenceManifestPath,
             round,
-            switchingTeamsAtRoundReset);
+            switchingTeamsAtRoundReset,
+            sequence: true);
         if (!load.Ok)
         {
             _session.Plan.SequencePrepared = false;
@@ -275,6 +276,7 @@ public sealed partial class DemoTracerPlugin
 
         PrepareLoadedReplayOwnership();
         _session.Plan.SequencePrepared = true;
+        _session.Plan.SequenceNativeOnly = _session.LoadedSlots.Count == 0;
         _session.Plan.SequencePreparedRound = round;
         TryStartDtrRoundBanner($"sequence_r{round}");
         Server.PrintToConsole($"dtr: prepared sequence round {round} on {reason}: {load.Message}");
@@ -417,6 +419,11 @@ public sealed partial class DemoTracerPlugin
         }
 
         var round = _session.Plan.SequencePreparedRound;
+        if (_session.Plan.SequenceNativeOnly)
+        {
+            AdvanceSequenceRound();
+            return;
+        }
         var play = StartLoaded(loop: false, started => CompleteSequenceRoundStart(round, started));
         Server.PrintToConsole($"dtr: sequence round {round} start on round_freeze_end: {play}");
     }
@@ -426,7 +433,13 @@ public sealed partial class DemoTracerPlugin
         if (started <= 0)
             return;
         RecordStartedPlayoffSources(round, round);
+        AdvanceSequenceRound();
+    }
+
+    private void AdvanceSequenceRound()
+    {
         _session.Plan.SequencePrepared = false;
+        _session.Plan.SequenceNativeOnly = false;
         _session.Plan.SequencePreparedRound = -1;
         _session.Plan.SequenceIndex++;
         if (_session.Plan.SequenceIndex >= _session.Plan.SequenceRounds.Length)

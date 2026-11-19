@@ -100,6 +100,7 @@ public sealed partial class DemoTracerPlugin
         string? PlayerColor,
         ReplayProjectileEvent[] Projectiles,
         ReplayHifiEvent[] HifiEvents,
+        int[] PingTickIndices,
         ReplayInventorySnapshot[] InventorySnapshots,
         uint? RoundStartBalance,
         int TickCount,

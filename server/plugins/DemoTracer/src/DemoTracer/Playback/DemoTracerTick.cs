@@ -125,7 +125,17 @@ public sealed partial class DemoTracerPlugin
             var state = activeStates[activeIndex];
 
             if (_session.LoadedReplays.TryGetValue(slot, out var replay))
+            {
                 ProcessReplayInventory(slot, replay, state.CurrentTickIndex, playerSnapshot);
+                var tick = state.CurrentTickIndex;
+                if (replay.PingTickIndices.Length > 0 && Array.BinarySearch(replay.PingTickIndices, tick) >= 0 &&
+                    _session.LastPingTick.GetValueOrDefault(slot, -1) != tick &&
+                    playerSnapshot.TryGetSlot(slot, out var bot) && bot is { IsValid: true, PawnIsAlive: true })
+                {
+                    _session.LastPingTick[slot] = tick;
+                    bot.ExecuteClientCommandFromServer("player_ping");
+                }
+            }
 
             if (!_weaponAlignEnabled)
                 continue;

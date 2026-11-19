@@ -172,10 +172,7 @@ internal sealed class WeaponItemViewStore : IDisposable
             SetTextureAttributes(networked, paintKit, seed, wear);
             SetTextureAttributes(attributes, paintKit, seed, wear);
             if (identity?.StattrakCounter is { } counter)
-            {
-                SetStattrakAttributes(networked, counter);
-                SetStattrakAttributes(attributes, counter);
-            }
+                EconItemIdentity.ApplyStattrak(item, counter, _setAttributeByName);
             return true;
         }
         catch (Exception exception)
@@ -270,12 +267,6 @@ internal sealed class WeaponItemViewStore : IDisposable
         SetAttribute(attributes, "set item texture prefab", paintKit);
         SetAttribute(attributes, "set item texture seed", seed);
         SetAttribute(attributes, "set item texture wear", wear);
-    }
-
-    private void SetStattrakAttributes(CAttributeList attributes, int counter)
-    {
-        SetAttribute(attributes, "kill eater", AttributeEncoding.Int32BitsToSingle(counter));
-        SetAttribute(attributes, "kill eater score type", 0.0f);
     }
 
     private bool TryGetOrCreateItemView(

@@ -232,7 +232,8 @@ public sealed partial class DemoTracerPlugin
         // Presentation belongs to the managed bot controller, even while a
         // human owns its pawn. The pawn safety gate only governs replay input;
         // applying it here revokes this bot's identity on death/takeover.
-        if (!_botHiderBridge.TryGetManagedSlot(slot, out var managed))
+        if ((evidence.ControllerHandle != 0 && Utilities.GetPlayerFromSlot(slot)?.EntityHandle.Raw != evidence.ControllerHandle) ||
+            !_botHiderBridge.TryGetManagedSlot(slot, out var managed))
         {
             return;
         }
@@ -369,9 +370,12 @@ public sealed partial class DemoTracerPlugin
             UnicodeCategory.EnclosingMark;
     }
 
-    private void RetainLoadedBotHiderPresentation()
+    private void RetainLoadedBotHiderPresentation(IReadOnlyDictionary<uint, ulong>? seats)
     {
-        var replacement = new Dictionary<int, BotHiderPresentationEvidence>();
+        var replacement = _retainedBotHiderPresentation
+            .Where(pair => seats != null && seats.TryGetValue(pair.Value.ControllerHandle, out var id) &&
+                id == pair.Value.SteamId && Utilities.GetPlayerFromSlot(pair.Key)?.EntityHandle.Raw == pair.Value.ControllerHandle)
+            .ToDictionary();
         foreach (var pair in _session.LoadedReplays)
         {
             var replay = pair.Value;
@@ -385,19 +389,27 @@ public sealed partial class DemoTracerPlugin
                 replay.Clan)
             {
                 ControllerHandle = Utilities.GetPlayerFromSlot(pair.Key)?.EntityHandle.Raw ?? 0,
+                TeamColor = ReplayTeamColorValue(replay.PlayerColor),
             };
         }
 
         _retainedBotHiderPresentation.Clear();
         foreach (var pair in replacement)
             _retainedBotHiderPresentation[pair.Key] = pair.Value;
+        SyncReplayTeamColors();
     }
 
     private void ForgetRetainedBotHiderPresentation(int slot)
-        => _retainedBotHiderPresentation.Remove(slot);
+    {
+        _retainedBotHiderPresentation.Remove(slot);
+        RestoreReplayTeamColor(slot);
+    }
 
     private void ClearRetainedBotHiderPresentation()
-        => _retainedBotHiderPresentation.Clear();
+    {
+        _retainedBotHiderPresentation.Clear();
+        SyncReplayTeamColors();
+    }
 
     private void ReleaseBotHiderPresentationLease(string reason)
     {
@@ -459,5 +471,6 @@ public sealed partial class DemoTracerPlugin
         BotHiderClan? Clan)
     {
         public uint ControllerHandle { get; init; }
+        public int? TeamColor { get; init; }
     }
 }

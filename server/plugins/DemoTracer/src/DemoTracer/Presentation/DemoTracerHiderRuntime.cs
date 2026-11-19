@@ -11,6 +11,7 @@ using CounterStrikeSharp.API.Core.Plugin;
 using CounterStrikeSharp.API.Core.Plugin.Host;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Timers;
+using McMaster.NETCore.Plugins;
 
 namespace DemoTracer;
 
@@ -124,8 +125,22 @@ public sealed partial class DemoTracerPlugin
             Server.ExecuteCommand($"meta load {OriginalHiderPath}");
         if (_restoreOriginalHiderManaged is { } managed)
         {
-            managed.Load(hotReload: false);
-            managed.Plugin.OnAllPluginsLoaded(hotReload: false);
+            // CSS start/stop reuses the assembly and its cached native imports.
+            // BotHider's native image was unloaded during the handoff.
+            var loader = (PluginLoader)typeof(PluginContext)
+                .GetProperty("Loader", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(managed)!;
+            loader.Reload();
+            // With hot reload enabled CSS handles Reloaded on the next world update.
+            if (!CoreConfig.PluginHotReloadEnabled)
+            {
+                Server.NextWorldUpdate(() =>
+                {
+                    managed.Load(hotReload: false);
+                    if (managed.State == PluginState.Loaded)
+                        managed.Plugin.OnAllPluginsLoaded(hotReload: false);
+                });
+            }
         }
         _restoreOriginalHider = false;
         _restoreOriginalHiderManaged = null;

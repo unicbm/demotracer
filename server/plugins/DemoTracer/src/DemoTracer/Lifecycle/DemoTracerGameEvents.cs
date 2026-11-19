@@ -124,10 +124,13 @@ public sealed partial class DemoTracerPlugin
         // spawn batch, before any replay bot vacates its native spawn position.
         ScheduleInitialRoundSpawnAssignment();
 
+        // CS2 assigns competitive colors during the team's spawn/reset.
+        Server.NextFrame(SyncReplayTeamColors);
+
         // Preparation after this event is too late for spawn-time cosmetic
         // construction. Only schedule playback for a plan accepted in
         // round_prestart; otherwise leave it armed for the next server round.
-        if (_session.Plan.SequenceActive && _session.Plan.SequencePrepared)
+        if (_session.Plan.SequenceActive && _session.Plan.SequencePrepared && !_session.Plan.SequenceNativeOnly)
             ScheduleFreezePrerollStart($"sequence round {_session.Plan.SequencePreparedRound}");
         else if (IsPlayoffPlanReady() && _session.Plan.PlayoffPrepared)
             ScheduleFreezePrerollStart($"playoff extra round {_session.Plan.PlayoffRoundIndex + 1}");
@@ -252,8 +255,12 @@ public sealed partial class DemoTracerPlugin
         if (@event.Userid is not { IsValid: true } player)
             return HookResult.Continue;
 
-        if (IsHumanAvatarOverrideCandidate(player))
+        if (IsHumanPlayerController(player))
+        {
             ScheduleHumanTeamAvatarOverrideReconciliation();
+            if (_sequenceSeats.ContainsKey(player.EntityHandle.Raw))
+                Server.NextFrame(SyncReplayTeamColors);
+        }
 
         return HookResult.Continue;
     }

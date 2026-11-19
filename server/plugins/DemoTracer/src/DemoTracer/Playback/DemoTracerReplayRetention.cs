@@ -110,7 +110,8 @@ internal static class ReplayRetentionPriorityParser
     internal static int[] AssignReplayIndices(
         IReadOnlyList<ulong> steamIds,
         IReadOnlyList<int> ranks,
-        IReadOnlyList<ulong> retainedSteamIds)
+        IReadOnlyList<ulong> retainedSteamIds,
+        IReadOnlySet<ulong>? occupiedElsewhere = null)
     {
         if (steamIds.Count != ranks.Count)
             throw new ArgumentException("Replay identity and rank counts differ.");
@@ -128,17 +129,29 @@ internal static class ReplayRetentionPriorityParser
                 break;
             }
         }
-        var remaining = Enumerable.Range(0, steamIds.Count).Where(i => !used.Contains(i)).ToArray();
+        // In a sequence a bound controller sits out a missing/wrong-side track.
+        // Only unbound controllers can claim a genuinely vacant source identity.
+        var vacancies = Enumerable.Range(0, result.Length)
+            .Where(i => result[i] < 0 && (occupiedElsewhere == null || retainedSteamIds[i] == 0)).ToArray();
+        var remaining = Enumerable.Range(0, steamIds.Count)
+            .Where(i => !used.Contains(i) && !(occupiedElsewhere?.Contains(steamIds[i]) ?? false)).ToArray();
         var selected = SelectPreferredIndices(
-            remaining.Select(i => ranks[i]).ToArray(), result.Count(i => i < 0));
-        var next = 0;
-        for (var bot = 0; bot < result.Length && next < selected.Length; bot++)
-            if (result[bot] < 0) result[bot] = remaining[selected[next++]];
+            remaining.Select(i => ranks[i]).ToArray(), vacancies.Length);
+        for (var i = 0; i < selected.Length; i++)
+            result[vacancies[i]] = remaining[selected[i]];
         return result;
     }
 
     internal static int ReservedBotQuota(int baseline, int pendingHumanJoins)
         => Math.Max(0, baseline - Math.Max(0, pendingHumanJoins));
+
+    internal static void ReserveHumanSeats(Dictionary<uint, ulong> seats,
+        IEnumerable<uint> humanHandles, IEnumerable<ulong> lowestPriorityFirst)
+    {
+        var available = lowestPriorityFirst.Where(id => id != 0 && !seats.ContainsValue(id)).Distinct();
+        foreach (var (handle, id) in humanHandles.Where(h => !seats.ContainsKey(h)).Zip(available))
+            seats.Add(handle, id);
+    }
 }
 
 public sealed partial class DemoTracerPlugin
@@ -154,6 +167,8 @@ public sealed partial class DemoTracerPlugin
     private readonly HashSet<int> _pendingHumanTeamChangeSlots = new();
     private readonly Dictionary<int, (int? UserId, CsTeam Team)> _nativeHumanTeamChanges = new();
     private int? _replayRetentionBotQuotaBaseline;
+    // Controller handles include the incarnation. Human reservations never own replay input.
+    private Dictionary<uint, ulong> _sequenceSeats = new();
 
     [ConsoleCommand("dtr_retain", "dtr_retain <t-order-code> <ct-order-code>")]
     [CommandHelper(0, "", CommandUsage.CLIENT_AND_SERVER)]
@@ -254,6 +269,9 @@ public sealed partial class DemoTracerPlugin
 
     private void ActivatePendingReplayRetentionPriority()
     {
+        _sequenceSeats = new();
+        _sequenceSourceColors.Clear();
+        SyncReplayTeamColors();
         _activeReplayRetentionRanks.Clear();
         _activeReplayRetentionTCode = _pendingReplayRetentionTCode;
         _activeReplayRetentionCtCode = _pendingReplayRetentionCtCode;
@@ -321,6 +339,9 @@ public sealed partial class DemoTracerPlugin
 
     private void ClearReplayRetentionPriority(bool clearPending)
     {
+        _sequenceSeats = new();
+        _sequenceSourceColors.Clear();
+        SyncReplayTeamColors();
         _activeReplayRetentionRanks.Clear();
         _activeReplayRetentionTCode = null;
         _activeReplayRetentionCtCode = null;
@@ -413,6 +434,7 @@ public sealed partial class DemoTracerPlugin
             destination,
             evicted.Slot,
             evictedUserId,
+            evicted.SteamId,
             elapsedFrames: 1));
         Server.PrintToConsole(
             $"dtr: retained human join team={destination}; released replay slot={evicted.Slot} keep_rank={evicted.RetentionRank}");
@@ -441,6 +463,7 @@ public sealed partial class DemoTracerPlugin
         CsTeam destination,
         int evictedSlot,
         int evictedUserId,
+        ulong evictedSteamId,
         int elapsedFrames)
     {
         if (!_pendingHumanTeamChangeSlots.Contains(slot))
@@ -475,6 +498,7 @@ public sealed partial class DemoTracerPlugin
                     destination,
                     evictedSlot,
                     evictedUserId,
+                    evictedSteamId,
                     elapsedFrames + 1));
                 return;
             }
@@ -493,6 +517,15 @@ public sealed partial class DemoTracerPlugin
             _nativeHumanTeamChanges[slot] = (expectedUserId, destination);
             current.ExecuteClientCommandFromServer(
                 $"jointeam {((int)destination).ToString(CultureInfo.InvariantCulture)}");
+            var seats = _sequenceSeats;
+            if (_session.Plan.SequenceActive && evictedSteamId != 0)
+                Server.NextFrame(() =>
+                {
+                    var joined = Utilities.GetPlayerFromSlot(slot);
+                    if (ReferenceEquals(seats, _sequenceSeats) && joined is { IsValid: true } &&
+                        joined.UserId == expectedUserId && joined.Team == destination && IsHumanPlayerController(joined))
+                        seats[joined.EntityHandle.Raw] = evictedSteamId;
+                });
         }
         catch (Exception ex)
         {

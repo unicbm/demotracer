@@ -1,6 +1,7 @@
 using System.Drawing;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Modules.Memory;
 using CounterStrikeSharp.API.Modules.Memory.DynamicFunctions;
 using Microsoft.Extensions.Logging;
 
@@ -92,6 +93,7 @@ internal sealed class CosmeticApplicator
                 {
                     if (!econIsCurrent)
                     {
+                        item.Initialized = true;
                         item.AttributeList.Attributes.RemoveAll();
                         item.NetworkedDynamicAttributes.Attributes.RemoveAll();
                         EconItemIdentity.Apply(item, selection.Identity, player.SteamID, defaultQuality: 3);
@@ -101,13 +103,15 @@ internal sealed class CosmeticApplicator
                             selection.PaintKit,
                             selection.Seed,
                             selection.Wear);
+                        if (selection.Identity?.StattrakCounter is { } counter)
+                            EconItemIdentity.ApplyStattrak(item, counter, _setAttributeByName);
                     }
                     weapon.FallbackPaintKit = selection.PaintKit;
                     weapon.FallbackSeed = selection.Seed;
                     weapon.FallbackWear = selection.Wear;
                     MarkWeaponPaintStateChanged(weapon);
                 }
-                Utilities.SetStateChanged(weapon, "CEconEntity", "m_AttributeManager");
+                MarkKnifeItemChanged(weapon, fullIdentity: !econIsCurrent && _setAttributeByName is not null);
                 // Rebuild subclass/model/animations only after the complete econ
                 // identity is in place. Takeover may have left another knife's
                 // definition here; rebuilding first observes that stale identity.
@@ -175,7 +179,7 @@ internal sealed class CosmeticApplicator
                 selection.PaintKit,
                 selection.Seed,
                 selection.Wear);
-            Utilities.SetStateChanged(pawn, "CCSPlayerPawn", "m_EconGloves");
+            MarkItemChanged(pawn, "CCSPlayerPawn", "m_EconGloves", itemOffset: 0, fullIdentity: true);
             pawn.AcceptInput("SetBodygroup", value: "first_or_third_person,0");
             _appliedGloves[player.Slot] = new AppliedGloveCosmetic(
                 pawn.EntityHandle.Raw,
@@ -239,7 +243,7 @@ internal sealed class CosmeticApplicator
                     continue;
 
                 item.ItemDefinitionIndex = defIndex;
-                Utilities.SetStateChanged(weapon, "CEconEntity", "m_AttributeManager");
+                MarkKnifeItemChanged(weapon, fullIdentity: false);
                 weapon.AcceptInput("ChangeSubclass", value: defIndex.ToString());
             }
         }
@@ -308,6 +312,32 @@ internal sealed class CosmeticApplicator
         Utilities.SetStateChanged(weapon, "CEconEntity", "m_nFallbackPaintKit");
         Utilities.SetStateChanged(weapon, "CEconEntity", "m_nFallbackSeed");
         Utilities.SetStateChanged(weapon, "CEconEntity", "m_flFallbackWear");
+    }
+
+    private static void MarkKnifeItemChanged(CBasePlayerWeapon weapon, bool fullIdentity)
+        => MarkItemChanged(weapon, "CEconEntity", "m_AttributeManager",
+            Schema.GetSchemaOffset("CAttributeContainer", "m_Item"), fullIdentity);
+
+    private static void MarkItemChanged(CBaseEntity entity, string parentClass, string parentField,
+        int itemOffset, bool fullIdentity)
+    {
+        // The weapon and glove net tables contain the individual econ properties.
+        // A change at the container's base address cannot be resolved by CS2.
+        void Mark(string field, int extraOffset = 0) => Utilities.SetStateChanged(entity, parentClass,
+            parentField, itemOffset + Schema.GetSchemaOffset("CEconItemView", field) + extraOffset);
+
+        Mark("m_iItemDefinitionIndex");
+        Mark("m_iEntityQuality");
+        if (!fullIdentity)
+            return;
+        Mark("m_iItemIDHigh");
+        Mark("m_iItemIDLow");
+        Mark("m_iAccountID");
+        Mark("m_bInitialized");
+        Mark("m_szCustomName");
+        var attributesOffset = Schema.GetSchemaOffset("CAttributeList", "m_Attributes");
+        Mark("m_AttributeList", attributesOffset);
+        Mark("m_NetworkedDynamicAttributes", attributesOffset);
     }
 
     private void SetAttribute(CAttributeList attributes, string name, float value)

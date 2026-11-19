@@ -5,6 +5,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Modules.Memory.DynamicFunctions;
 
 namespace BotRandomizer;
 
@@ -33,5 +34,17 @@ internal static class EconItemIdentity
         const ulong steamId64AccountBase = 76_561_197_960_265_728;
         var accountId = steamId >= steamId64AccountBase ? steamId - steamId64AccountBase : steamId;
         return accountId <= uint.MaxValue ? (uint)accountId : 0;
+    }
+
+    internal static void ApplyStattrak(CEconItemView item, int counter,
+        MemoryFunctionWithReturn<nint, string, float, int> setAttribute)
+    {
+        void ApplyTo(CAttributeList list)
+        {
+            setAttribute.Invoke(list.Handle, "kill eater", AttributeEncoding.Int32BitsToSingle(counter));
+            setAttribute.Invoke(list.Handle, "kill eater score type", 0.0f);
+        }
+        ApplyTo(item.NetworkedDynamicAttributes);
+        ApplyTo(item.AttributeList);
     }
 }

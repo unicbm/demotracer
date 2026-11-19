@@ -9,35 +9,37 @@ public sealed partial class BotRandomizerPlugin
     private HookResult OnBotTakeover(EventBotTakeover @event, GameEventInfo info)
     {
         if (_draining || _applicator is null ||
-            @event.Userid is not { IsValid: true, IsBot: false } human ||
-            @event.Botid is not { IsValid: true, IsBot: true } bot ||
-            human.PlayerPawn.Value is not { IsValid: true } pawn)
+            @event.Userid is not { IsValid: true, IsBot: false } human)
             return HookResult.Continue;
 
-        var wearables = _applicator.CaptureTakeoverWearables(bot.Slot, pawn.EntityHandle.Raw);
-        if (wearables.Knife is null && wearables.Gloves is null)
-            return HookResult.Continue;
-
+        // CS2 has already transferred m_hPawn when the event fires. Both event
+        // controllers can resolve to the human; m_hPlayerPawn still names their own body.
         var humanSlot = human.Slot;
-        var botSlot = bot.Slot;
         var binding = new TakeoverPawnBinding(_mapEpoch, human.EntityHandle.Raw,
-            bot.EntityHandle.Raw, pawn.EntityHandle.Raw);
+            human.OriginalControllerOfCurrentPawn.Raw, human.Pawn.Raw);
         bool TryResolve(out CCSPlayerController currentBot, out CCSPlayerPawn currentPawn)
         {
             currentBot = null!;
             currentPawn = null!;
             if (_draining || _applicator is null ||
                 Utilities.GetPlayerFromSlot(humanSlot) is not { IsValid: true, IsBot: false } currentHuman ||
-                Utilities.GetPlayerFromSlot(botSlot) is not { IsValid: true, IsBot: true } resolvedBot ||
-                currentHuman.PlayerPawn.Value is not { IsValid: true } resolvedPawn ||
+                currentHuman.OriginalControllerOfCurrentPawn.Value is not { IsValid: true, IsBot: true, IsHLTV: false } resolvedBot ||
+                resolvedBot.PlayerPawn.Value is not { IsValid: true } resolvedPawn ||
                 !binding.Matches(_mapEpoch, currentHuman.EntityHandle.Raw, resolvedBot.EntityHandle.Raw,
-                    resolvedPawn.EntityHandle.Raw, currentHuman.OriginalControllerOfCurrentPawn.Raw,
+                    currentHuman.Pawn.Raw, resolvedPawn.EntityHandle.Raw, resolvedPawn.Controller.Raw,
                     currentHuman.ControllingBot, currentHuman.PawnIsAlive))
                 return false;
             currentBot = resolvedBot;
             currentPawn = resolvedPawn;
             return true;
         }
+
+        if (!TryResolve(out var bot, out var pawn))
+            return HookResult.Continue;
+        var wearables = _applicator.CaptureTakeoverWearables(bot.Slot, pawn.EntityHandle.Raw);
+        if (wearables.Knife is null && wearables.Gloves is null)
+            return HookResult.Continue;
+
         void Restore()
         {
             if (!TryResolve(out var currentBot, out var currentPawn))

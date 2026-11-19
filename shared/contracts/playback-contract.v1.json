@@ -20,6 +20,11 @@
       "semantics": "Independent yaw/pitch angle-step estimates; not recorded settings or DPI. Older readers may ignore this optional player-details field."
     }
   },
+  "player_ping": {
+    "location": "high_fidelity.ping_tick_indices",
+    "optional": true,
+    "semantics": "Sorted unique zero-based input frames on a player track. Only the active replay bot issues the native player_ping command. CS2 resolves the target, urgency and lifetime."
+  },
   "inventory_plan_schema": 5,
   "cosmetics": {
     "unpainted_weapon_and_knife_paint_kit": 0,

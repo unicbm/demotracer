@@ -461,6 +461,7 @@ public sealed partial class DemoTracerPlugin
                 }
 
                 startIndex = FreezePrerollStartIndex(replay, freezeTimeSeconds ?? 0.0f);
+                _session.LastPingTick.Remove(slot);
                 StartReplayInventory(slot, startIndex);
                 var startedUntil = startIndex < replay.PlayStartTickIndex &&
                                    RegisterReplayPawnForSlot(slot) &&
@@ -499,6 +500,7 @@ public sealed partial class DemoTracerPlugin
             _session.ReplaySlots.Claim(slot);
             return true;
         }
+        _session.LastPingTick.Remove(slot);
         StartReplayInventory(slot, startIndex);
         var started = RegisterReplayPawnForSlot(slot) &&
                       BotControllerNative.StartReplayAt(slot, false, startIndex);

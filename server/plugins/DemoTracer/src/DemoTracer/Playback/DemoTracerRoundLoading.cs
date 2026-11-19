@@ -27,13 +27,15 @@ public sealed partial class DemoTracerPlugin
     private LoadRoundResult LoadRound(
         string manifestPath,
         int round,
-        bool switchingTeamsAtRoundReset = false)
+        bool switchingTeamsAtRoundReset = false,
+        bool sequence = false)
         => LoadRoundSelection(
             manifestPath,
             round,
             round,
             steamIdMatch: false,
-            switchingTeamsAtRoundReset);
+            switchingTeamsAtRoundReset,
+            sequence);
 
     private LoadRoundResult LoadPlayoffRound(
         string manifestPath,
@@ -52,7 +54,8 @@ public sealed partial class DemoTracerPlugin
         int tRound,
         int ctRound,
         bool steamIdMatch,
-        bool switchingTeamsAtRoundReset)
+        bool switchingTeamsAtRoundReset,
+        bool sequence = false)
     {
         using var timing = new ReplayPhaseTimer($"round load T={tRound}/CT={ctRound}");
         var replayStateReplaced = false;
@@ -114,6 +117,7 @@ public sealed partial class DemoTracerPlugin
 
             List<ReplayAssignment> tAssignments;
             List<ReplayAssignment> ctAssignments;
+            Dictionary<uint, ulong>? seats = null;
             if (steamIdMatch)
             {
                 if (!TryBuildSteamMatchedReplayAssignments(allTFiles, tBots, out tAssignments, out var tMatchError))
@@ -123,10 +127,14 @@ public sealed partial class DemoTracerPlugin
             }
             else
             {
-                tAssignments = BuildReplayAssignments(allTFiles, tBots);
-                ctAssignments = BuildReplayAssignments(allCtFiles, ctBots);
+                if (sequence)
+                    seats = PlanSequenceSeats(allTFiles, allCtFiles, switchingTeamsAtRoundReset);
+                tAssignments = BuildReplayAssignments(allTFiles, tBots, seats);
+                ctAssignments = BuildReplayAssignments(allCtFiles, ctBots, seats);
             }
-            if (tAssignments.Count == 0 && ctAssignments.Count == 0)
+            var nativeOnly = tAssignments.Count == 0 && ctAssignments.Count == 0;
+            if (nativeOnly && (seats == null || !_retainedBotHiderPresentation.Values.Any(bot =>
+                    seats.TryGetValue(bot.ControllerHandle, out var id) && id == bot.SteamId)))
             {
                 return LoadRoundResult.Fail(
                     $"dtr: no safe bot targets, need T={allTFiles.Count}/CT={allCtFiles.Count}, have T={tBots.Count}/CT={ctBots.Count}");
@@ -160,22 +168,21 @@ public sealed partial class DemoTracerPlugin
                     out loadError))
                 return FailLoadRoundAfterPartialLoad(selectionLabel, loadError);
 
-            ConfigureLoadedTeamAvatarOverrides(
-                manifestDir,
-                allTFiles,
-                allCtFiles,
-                avatarOverrides);
-            ScheduleHumanTeamAvatarOverrideReconciliation();
+            if (!nativeOnly)
+            {
+                ConfigureLoadedTeamAvatarOverrides(manifestDir, allTFiles, allCtFiles, avatarOverrides);
+                ScheduleHumanTeamAvatarOverrideReconciliation();
+            }
             timing.Mark("avatars");
 
-            var voice = steamIdMatch
+            var voice = steamIdMatch || nativeOnly
                 ? string.Empty
                 : ConfigureLoadedAutoVoiceClip(
                     resolvedManifestPath,
                     tRound,
                     roundMetadata,
                     manifest.TickRate);
-            var chat = steamIdMatch
+            var chat = steamIdMatch || nativeOnly
                 ? string.Empty
                 : ConfigureLoadedAutoChat(tRound, roundMetadata, manifest.TickRate);
             var partial = skippedT > 0 || skippedCt > 0
@@ -188,12 +195,21 @@ public sealed partial class DemoTracerPlugin
                 ? string.Empty
                 : $" chat={chat}";
             ReleaseUnusedWarmReplayBuffers();
-            RetainLoadedBotHiderPresentation();
+            if (seats != null)
+            {
+                _sequenceSeats = seats;
+                foreach (var file in allTFiles.Concat(allCtFiles))
+                    if (file.SteamId != 0 && ReplayTeamColorValue(file.PlayerIdentity?.PlayerColor) is int color)
+                        _sequenceSourceColors[file.SteamId] = color;
+            }
+            RetainLoadedBotHiderPresentation(seats);
             loadSucceeded = true;
             _loadedRoundSources = new(tRound, ctRound, selectionLabel);
             _loadedDemoSha256 = NormalizeSha256(manifest.DemoSha256);
             timing.Mark("media_finish");
-            return LoadRoundResult.Success($"dtr: loaded {loaded.Count} replays for {selectionLabel}{partial}{voiceStatus}{chatStatus}: {string.Join(", ", loaded)}");
+            return LoadRoundResult.Success(nativeOnly
+                ? $"dtr: {selectionLabel} has no matching tracks on the live sides; retaining identities for native bot play"
+                : $"dtr: loaded {loaded.Count} replays for {selectionLabel}{partial}{voiceStatus}{chatStatus}: {string.Join(", ", loaded)}");
         }
         catch (Exception ex)
         {
@@ -313,9 +329,34 @@ public sealed partial class DemoTracerPlugin
         return true;
     }
 
+    private Dictionary<uint, ulong> PlanSequenceSeats(
+        IReadOnlyList<ManifestFile> tFiles, IReadOnlyList<ManifestFile> ctFiles, bool switchingTeams)
+    {
+        var participants = FindPlayerControllers().Where(p => !p.IsHLTV).OrderBy(p => p.Slot).ToArray();
+        var seats = new Dictionary<uint, ulong>();
+        foreach (var player in participants)
+            if (_sequenceSeats.TryGetValue(player.EntityHandle.Raw, out var id) &&
+                (player.Team is CsTeam.Terrorist or CsTeam.CounterTerrorist || !IsHumanPlayerController(player)))
+                seats.Add(player.EntityHandle.Raw, id);
+
+        foreach (var team in new[] { CsTeam.Terrorist, CsTeam.CounterTerrorist })
+        {
+            var humans = participants.Where(p => IsHumanPlayerController(p) &&
+                ReplayTeamAssignmentPolicy.ResolveUpcomingTeam(p.Team, switchingTeams) == team);
+            var files = team == CsTeam.Terrorist ? tFiles : ctFiles;
+            var lowestPriorityFirst = files.Select((file, index) =>
+                    (file.SteamId, Rank: ResolveReplayRetentionRank(file.SteamId, index + 1), Index: index))
+                .OrderByDescending(f => f.Rank).ThenByDescending(f => f.Index);
+            ReplayRetentionPriorityParser.ReserveHumanSeats(seats, humans.Select(p => p.EntityHandle.Raw),
+                lowestPriorityFirst.Select(f => f.SteamId));
+        }
+        return seats;
+    }
+
     private List<ReplayAssignment> BuildReplayAssignments(
         IReadOnlyList<ManifestFile> files,
-        IReadOnlyList<CCSPlayerController> bots)
+        IReadOnlyList<CCSPlayerController> bots,
+        Dictionary<uint, ulong>? seats)
     {
         var count = Math.Min(files.Count, bots.Count);
         var assignments = new List<ReplayAssignment>(count);
@@ -330,14 +371,18 @@ public sealed partial class DemoTracerPlugin
         var indices = ReplayRetentionPriorityParser.AssignReplayIndices(
             rankedFiles.Select(item => item.File.SteamId).ToArray(),
             rankedFiles.Select(item => item.Rank).ToArray(),
-            bots.Select(bot => _retainedBotHiderPresentation.TryGetValue(bot.Slot, out var retained) &&
+            bots.Select(bot => seats != null ? seats.GetValueOrDefault(bot.EntityHandle.Raw)
+                : _retainedBotHiderPresentation.TryGetValue(bot.Slot, out var retained) &&
                                retained.ControllerHandle == bot.EntityHandle.Raw
-                ? retained.SteamId : 0UL).ToArray());
+                ? retained.SteamId : 0UL).ToArray(),
+            seats?.Values.ToHashSet());
         for (var i = 0; i < indices.Length; i++)
         {
             if (indices[i] < 0) continue;
             var selected = rankedFiles[indices[i]];
             assignments.Add(new ReplayAssignment(selected.File, bots[i], selected.Rank));
+            if (seats != null && selected.File.SteamId != 0)
+                seats[bots[i].EntityHandle.Raw] = selected.File.SteamId;
         }
         return assignments;
     }

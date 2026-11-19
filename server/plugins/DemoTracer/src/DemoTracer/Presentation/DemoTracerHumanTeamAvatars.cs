@@ -87,7 +87,7 @@ public sealed partial class DemoTracerPlugin
         }
 
         var humans = FindPlayerControllers()
-            .Where(IsHumanAvatarOverrideCandidate)
+            .Where(IsHumanPlayerController)
             .ToArray();
         var liveSlots = humans.Select(player => player.Slot).ToHashSet();
         foreach (var slot in _session.HumanTeamAvatarOverrides.Keys
@@ -101,7 +101,7 @@ public sealed partial class DemoTracerPlugin
             ReconcileHumanTeamAvatarOverride(player);
     }
 
-    private bool IsHumanAvatarOverrideCandidate(CCSPlayerController player)
+    private bool IsHumanPlayerController(CCSPlayerController player)
         => player is { IsValid: true } &&
            !player.IsHLTV &&
            !player.IsBot &&

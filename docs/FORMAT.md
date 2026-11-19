@@ -457,6 +457,9 @@ The top-level object contains:
   player row at or after the source round's live-start tick. Absence means no
   balance evidence and must never be interpreted as zero.
 - `events`: player-scoped high-fidelity events.
+- `ping_tick_indices`: optional sorted, unique player input frames that issued
+  a ping. Only a live replay-controlled bot repeats the native command on that
+  frame. CS2 determines the live point, urgency, recipients and expiry.
 - `inventory_snapshots`: inventory state after weapon, armor, helmet or defuser
   changes, including freeze time. Playback initializes from the snapshot at or
   before its actual start cursor, then grants only newly acquired equipment at

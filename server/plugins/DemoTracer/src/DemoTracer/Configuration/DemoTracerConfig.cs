@@ -235,6 +235,7 @@ public sealed partial class DemoTracerPlugin
 
     private void ApplyRuntimeConfigSideEffects()
     {
+        SyncReplayTeamColors();
         if (!_playoffEnabled)
             CancelPlayoffPreparation(unloadPrepared: true);
         if (!_roundBannerEnabled)

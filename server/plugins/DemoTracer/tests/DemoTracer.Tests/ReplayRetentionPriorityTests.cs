@@ -11,6 +11,25 @@ namespace DemoTracer.Tests;
 public sealed class ReplayRetentionPriorityTests
 {
     [Fact]
+    public void TwoHumanSeatsAndTemporarilyAbsentBotStayReservedAcrossSides()
+    {
+        var seats = new Dictionary<uint, ulong> { [3] = 103 };
+        ReplayRetentionPriorityParser.ReserveHumanSeats(seats, [4, 5], [105, 104, 103, 102, 101]);
+        Assert.Equal(105UL, seats[4]);
+        Assert.Equal(104UL, seats[5]);
+        var held = seats.Values.ToHashSet();
+        Assert.Equal([0, 1], ReplayRetentionPriorityParser.AssignReplayIndices(
+            [101, 102, 103, 104, 105], [1, 2, 3, 4, 5], [0, 0], held));
+        held.UnionWith([101, 102, 201, 202, 203, 204, 205]);
+        Assert.Equal([-1, -1, -1], ReplayRetentionPriorityParser.AssignReplayIndices(
+            [201, 202, 203, 204, 205], [1, 2, 3, 4, 5], [101, 102, 103], held));
+        Assert.Equal([-1, -1, -1, -1, -1], ReplayRetentionPriorityParser.AssignReplayIndices(
+            [101, 102, 103, 104, 105], [1, 2, 3, 4, 5], [201, 202, 203, 204, 0], held));
+        Assert.Equal([2, 0, 1], ReplayRetentionPriorityParser.AssignReplayIndices(
+            [102, 103, 101, 105, 104], [1, 2, 3, 4, 5], [101, 102, 103], held));
+    }
+
+    [Fact]
     public void RemovedMiddleBotDoesNotRenameSurvivingControllers()
     {
         Assert.Equal([0, 2, 3, 4], ReplayRetentionPriorityParser.AssignReplayIndices(
