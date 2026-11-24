@@ -28,8 +28,16 @@ public sealed partial class DemoTracerPlugin
 
     private void DispatchPlanCommand(CommandInfo command, string commandName, bool restart)
     {
+        var archive = command.ArgCount > 2 ? command.GetArg(2) : null;
+        void ReportProviderFailure(string detail)
+        {
+            if (!string.IsNullOrWhiteSpace(archive)) ReportPlaybackResult(ResolveReadableManifestPath(archive), "error", detail: detail);
+        }
         if (!CheckAbi(command))
+        {
+            ReportProviderFailure(BotControllerNative.RuntimeSummary);
             return;
+        }
         if (command.ArgCount < 2)
         {
             command.ReplyToCommand($"[DTR ERR] Missing mode. Usage: {commandName} <seq|round> ...");
@@ -42,11 +50,11 @@ public sealed partial class DemoTracerPlugin
         {
             case "seq":
             case "sequence":
-                if (!EnsureHiderForCommand(command)) return;
+                if (!EnsureHiderForCommand(command, onFailure: ReportProviderFailure)) return;
                 RunManifestSequence(command, $"{commandName} seq", restart, argOffset: 2);
                 return;
             case "round":
-                if (!EnsureHiderForCommand(command)) return;
+                if (!EnsureHiderForCommand(command, onFailure: ReportProviderFailure)) return;
                 ArmSingleRound(command, $"{commandName} round", restart, argOffset: 2);
                 return;
             default:
@@ -76,6 +84,7 @@ public sealed partial class DemoTracerPlugin
         var hasManifestStampBefore = ReplayFileStamp.TryRead(resolvedManifestPath, out var manifestStampBefore);
         if (!TryReadManifest(resolvedManifestPath, out var manifest, out var readError))
         {
+            ReportPlaybackResult(resolvedManifestPath, "error", detail: readError);
             command.ReplyToCommand($"dtr: failed to read manifest: {readError}");
             return;
         }
@@ -84,7 +93,7 @@ public sealed partial class DemoTracerPlugin
                                   manifestStampBefore == manifestStampAfter
             ? manifestStampAfter
             : (ReplayFileStamp?)null;
-        if (!CheckManifestMap(command, manifest.Map, manifestPath))
+        if (!CheckManifestMap(command.ReplyToCommand, manifest.Map, resolvedManifestPath))
             return;
 
         var rounds = manifest.Files
@@ -95,6 +104,7 @@ public sealed partial class DemoTracerPlugin
 
         if (rounds.Length == 0)
         {
+            ReportPlaybackResult(resolvedManifestPath, "no_rounds");
             command.ReplyToCommand("dtr: manifest has no playable rounds");
             return;
         }
@@ -103,6 +113,7 @@ public sealed partial class DemoTracerPlugin
         if (command.ArgCount > argOffset + 1 &&
             (!int.TryParse(command.GetArg(argOffset + 1), out startRound) || !rounds.Contains(startRound)))
         {
+            ReportPlaybackResult(resolvedManifestPath, "round_missing", detail: command.GetArg(argOffset + 1));
             command.ReplyToCommand($"[DTR ERR] from_source_round={command.GetArg(argOffset + 1)} was not found in manifest.");
             command.ReplyToCommand($"[DTR HINT] Available source rounds: {string.Join(", ", rounds)}.");
             return;
@@ -111,6 +122,7 @@ public sealed partial class DemoTracerPlugin
         var missingRound = ReplaySequenceContinuityPolicy.FindFirstMissingRound(rounds, startRound);
         if (missingRound.HasValue)
         {
+            ReportPlaybackResult(resolvedManifestPath, "sequence_gap", missingRound.Value);
             command.ReplyToCommand(
                 $"[DTR ERR] Sequence cannot cross missing source_round={missingRound.Value}; its replay files were not exported.");
             command.ReplyToCommand(
@@ -122,7 +134,10 @@ public sealed partial class DemoTracerPlugin
                 message => command.ReplyToCommand(message),
                 stopCurrentForOverride: true,
                 deferStopUntilRoundStart: restart))
+        {
+            ReportPlaybackResult(resolvedManifestPath, "warmup", startRound);
             return;
+        }
 
         CancelSoulChallenge("replaced_by_sequence");
         ActivatePendingReplayRetentionPriority();
@@ -186,6 +201,7 @@ public sealed partial class DemoTracerPlugin
         var hasManifestStampBefore = ReplayFileStamp.TryRead(resolvedManifestPath, out var manifestStampBefore);
         if (!TryReadManifest(resolvedManifestPath, out var manifest, out var readError))
         {
+            ReportPlaybackResult(resolvedManifestPath, "error", round, readError);
             reply($"[DTR ERR] failed to read manifest: {readError}");
             return false;
         }
@@ -194,13 +210,11 @@ public sealed partial class DemoTracerPlugin
                                   manifestStampBefore == manifestStampAfter
             ? manifestStampAfter
             : (ReplayFileStamp?)null;
-        if (!CurrentMapMatchesManifest(manifest.Map, out var currentMap))
-        {
-            reply($"[DTR ERR] map mismatch: server=\"{currentMap}\" manifest=\"{manifest.Map}\" path=\"{manifestPath}\"");
+        if (!CheckManifestMap(reply, manifest.Map, resolvedManifestPath))
             return false;
-        }
         if (!ManifestContainsSourceRound(manifest, round, out var validateError))
         {
+            ReportPlaybackResult(resolvedManifestPath, "round_missing", round);
             reply(validateError);
             return false;
         }
@@ -209,7 +223,10 @@ public sealed partial class DemoTracerPlugin
                 reply,
                 stopCurrentForOverride: true,
                 deferStopUntilRoundStart: restart))
+        {
+            ReportPlaybackResult(resolvedManifestPath, "warmup", round);
             return false;
+        }
 
         CancelSoulChallenge("replaced_by_single_round");
         ActivatePendingReplayRetentionPriority();
@@ -259,8 +276,9 @@ public sealed partial class DemoTracerPlugin
             return false;
         }
 
+        var sequencePath = _session.Plan.SequenceManifestPath;
         var load = LoadRound(
-            _session.Plan.SequenceManifestPath,
+            sequencePath,
             round,
             switchingTeamsAtRoundReset,
             sequence: true);
@@ -268,6 +286,7 @@ public sealed partial class DemoTracerPlugin
         {
             _session.Plan.SequencePrepared = false;
             _session.Plan.SequencePreparedRound = -1;
+            ReportPlaybackResult(ResolveReadableManifestPath(sequencePath), "error", round, load.Message);
             Server.PrintToConsole(
                 $"[DTR WARN] sequence source round {round} could not be prepared on {reason}; " +
                 $"keeping it armed for the next round_prestart: {load.Message}");
@@ -351,6 +370,7 @@ public sealed partial class DemoTracerPlugin
         if (!load.Ok)
         {
             _session.Plan.ClearArmed();
+            ReportPlaybackResult(ResolveReadableManifestPath(manifestPath), "error", sourceRound, load.Message);
             Server.PrintToConsole($"[DTR ERR] single source_round={sourceRound} failed while preparing on {reason}: {load.Message}");
             return false;
         }
@@ -421,6 +441,7 @@ public sealed partial class DemoTracerPlugin
         var round = _session.Plan.SequencePreparedRound;
         if (_session.Plan.SequenceNativeOnly)
         {
+            ReportPlaybackResult(ResolveReadableManifestPath(_session.Plan.SequenceManifestPath), "native_only", round);
             AdvanceSequenceRound();
             return;
         }

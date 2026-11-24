@@ -287,6 +287,44 @@ public sealed class DtrReplayReaderLimitsTests : IDisposable
     }
 
     [Fact]
+    public void ContainerPrefetchChecksEachTrackAndReleasesHandleBeforeConsumption()
+    {
+        var loose = WriteAuxiliaryReplay(new byte[48]);
+        var baseline = DtrReplayReader.ReadForPlayback(loose);
+        var payload = File.ReadAllBytes(loose);
+        var digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(payload));
+        var names = new[] { "t/one.dtr", "ct/damaged.dtr", "ct/three.dtr" };
+        var rows = names.Select((name, i) => new DtrArchive.Entry(name, (ulong)(64 + i * payload.Length),
+            (ulong)payload.Length, i == 1 ? new string('0', 64) : digest)).ToArray();
+        var index = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(rows);
+        var packed = WriteFile(writer =>
+        {
+            writer.Write("CSDTRPAK"u8);
+            writer.Write(13U);
+            writer.Write(64U);
+            writer.Write(64UL + (ulong)(payload.Length * names.Length));
+            writer.Write((ulong)index.Length);
+            writer.Write(System.Security.Cryptography.SHA256.HashData(index));
+            foreach (var _ in names) writer.Write(payload);
+            writer.Write(index);
+        });
+        var paths = names.Select(name => DtrResources.Address(packed, name)).ToArray();
+        var prefetch = new DtrReplayPrefetch();
+        prefetch.Begin(paths);
+        Assert.True(SpinWait.SpinUntil(prefetch.AllPendingCompleted, TimeSpan.FromSeconds(5)));
+        using (File.Open(packed, FileMode.Open, FileAccess.Read, FileShare.None)) { }
+        Assert.Equal(DtrReplayPrefetchTakeStatus.Failed, prefetch.TryTake(paths[1], out _));
+        foreach (var path in new[] { paths[0], paths[2] })
+        {
+            Assert.Equal(DtrReplayPrefetchTakeStatus.Success, prefetch.TryTake(path, out var replay));
+            Assert.Equal(baseline.Ticks, replay.Ticks);
+            Assert.Equal(baseline.CommandFrames, replay.CommandFrames);
+            Assert.Equal(baseline.SourceState, replay.SourceState);
+        }
+        prefetch.Cancel();
+    }
+
+    [Fact]
     public void PlaybackReadRejectsInvalidDiscardedMovementExtras()
     {
         var extras = new byte[48];

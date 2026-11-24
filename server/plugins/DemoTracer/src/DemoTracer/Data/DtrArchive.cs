@@ -104,7 +104,7 @@ internal static class DtrResources
         DtrArchive.ValidateName(name);
         return Path.GetFullPath(container) + "!/" + name;
     }
-    private static (string File, string? Entry) Split(string path)
+    internal static (string File, string? Entry) Split(string path)
     {
         var normalized = path.Replace('\\', '/');
         var split = normalized.LastIndexOf(".dtr!/", StringComparison.OrdinalIgnoreCase);

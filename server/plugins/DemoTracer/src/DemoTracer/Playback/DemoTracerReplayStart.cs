@@ -26,6 +26,15 @@ namespace DemoTracer;
 
 public sealed partial class DemoTracerPlugin
 {
+    private string? _loadedArchivePath;
+
+    private static void ReportPlaybackResult(string path, string status, int? round = null,
+        string? detail = null, int? started = null, int? total = null, int? ctRound = null)
+    {
+        var payload = JsonSerializer.Serialize(new { path, status, round, ctRound, map = CurrentMapName(), detail, started, total });
+        CoreLogging.Factory.CreateLogger("DemoTracer").LogInformation("DTR_PLAYBACK_RESULT_V1 {Payload:l}", payload);
+    }
+
     private string _loadedDemoSha256 = string.Empty;
     private string StartLoaded(bool loop, Action<int>? onStarted = null)
         => StartLoaded(loop, ReplayStartAnchor.Live, null, onStarted);
@@ -67,11 +76,17 @@ public sealed partial class DemoTracerPlugin
         Action<int>? onStarted = null)
     {
         using var timing = new ReplayPhaseTimer("round playback start");
+        var reportingPath = !restartLoop && anchor == ReplayStartAnchor.Live ? _loadedArchivePath : null;
+        var sources = _loadedRoundSources;
         if (IsWarmupPeriod())
+        {
+            if (reportingPath != null) ReportPlaybackResult(reportingPath, "warmup", sources?.TRound);
             return "[DTR ERR] Replay is unavailable during warmup.";
+        }
 
         if (!restartLoop && !TryAssignInitialRoundSpawns(out var spawnReason))
         {
+            if (reportingPath != null) ReportPlaybackResult(reportingPath, "error", sources?.TRound, spawnReason);
             if (anchor == ReplayStartAnchor.Live && _soulChallenge is { Active: true })
                 StopAllState("soul_spawn_assignment_failed");
             return $"[DTR ERR] initial spawn assignment is not ready: {spawnReason}";
@@ -144,6 +159,9 @@ public sealed partial class DemoTracerPlugin
             // The GUI monitors log-cssharp, not the separate per-plugin log.
             CoreLogging.Factory.CreateLogger("DemoTracer")
                 .LogInformation("DTR_PLAYED_DEMO_V1 sha256={DemoSha256}", _loadedDemoSha256);
+        if (reportingPath != null && sources is { } played)
+            ReportPlaybackResult(reportingPath, ok > 0 ? "started" : "no_slots", played.TRound,
+                started: ok, total: slots.Count, ctRound: played.CtRound);
         onStarted?.Invoke(ok);
         return $"dtr: started {ok}/{slots.Count} loaded slots, loop={loop}{voice}{chat}";
     }

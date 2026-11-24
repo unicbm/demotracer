@@ -4,6 +4,8 @@ Run `dtr_*` commands from the server console or the local listen-server host.
 Remote players cannot use them. Prefer the high-level `dtr_go` commands; manual
 slot commands are for development and diagnostics.
 
+For local playback, the GUI shows the latest reported start or failure beside the archive command. The result includes its timestamp. Source round IDs and slot counts refer to that attempt.
+
 ## Quick Start
 
 ```text

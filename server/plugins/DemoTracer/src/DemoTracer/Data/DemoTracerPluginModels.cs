@@ -191,12 +191,13 @@ public sealed partial class DemoTracerPlugin
         }
     }
 
-    private static bool CheckManifestMap(CommandInfo command, string manifestMap, string manifestPath)
+    private static bool CheckManifestMap(Action<string> reply, string manifestMap, string manifestPath)
     {
         if (CurrentMapMatchesManifest(manifestMap, out var currentMap))
             return true;
 
-        command.ReplyToCommand(
+        ReportPlaybackResult(manifestPath, "map_mismatch", detail: manifestMap);
+        reply(
             $"[DTR ERR] map mismatch: server=\"{currentMap}\" manifest=\"{manifestMap}\" path=\"{manifestPath}\"");
         return false;
     }

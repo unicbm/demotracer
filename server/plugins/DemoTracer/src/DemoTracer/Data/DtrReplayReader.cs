@@ -85,7 +85,10 @@ internal static partial class DtrReplayReader
     public static DtrReplayFile ReadForPlayback(string path)
         => Read(path, DtrReadLimits.Default, retainAuxiliaryData: false);
 
-    private static DtrReplayFile Read(string path, DtrReadLimits limits, bool retainAuxiliaryData)
+    internal static DtrReplayFile ReadForPlayback(string path, Func<string, Stream> open)
+        => Read(path, DtrReadLimits.Default, retainAuxiliaryData: false, open);
+
+    private static DtrReplayFile Read(string path, DtrReadLimits limits, bool retainAuxiliaryData, Func<string, Stream>? open = null)
     {
         ArgumentNullException.ThrowIfNull(limits);
         limits.Validate();
@@ -93,7 +96,7 @@ internal static partial class DtrReplayReader
         if (!string.Equals(Path.GetExtension(path), ".dtr", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("expected .dtr replay file");
 
-        using var stream = DtrResources.OpenRead(path);
+        using var stream = open == null ? DtrResources.OpenRead(path) : open(path);
         if (stream.Length > limits.MaxFileBytes)
             throw new InvalidDataException(
                 $".dtr file length {stream.Length} exceeds limit {limits.MaxFileBytes}");

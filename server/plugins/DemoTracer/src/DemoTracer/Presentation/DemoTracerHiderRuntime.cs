@@ -36,15 +36,17 @@ public sealed partial class DemoTracerPlugin
         return plugins.FindPluginByModuleName("BotHiderImpl");
     }
 
-    private bool EnsureHiderForCommand(CommandInfo command, string? deferredCommand = null)
+    private bool EnsureHiderForCommand(CommandInfo command, string? deferredCommand = null, Action<string>? onFailure = null)
     {
         if (BotControllerNative.AbiInfo.AbiMinor < MinimumBotControllerAbiMinor)
         {
+            onFailure?.Invoke("dtr-controller ABI 22.1+ required");
             command.ReplyToCommand("[DTR ERR] Hider switching requires a matching dtr-controller with native ABI 22.1 or newer.");
             return false;
         }
         if (_hiderSwitchTimer != null)
         {
+            onFailure?.Invoke("BotHider switch already in progress");
             command.ReplyToCommand("[DTR] Hider switching is in progress. Please wait.");
             return false;
         }
@@ -76,6 +78,7 @@ public sealed partial class DemoTracerPlugin
             if (++attempts > 100)
             {
                 CancelHiderSwitch();
+                onFailure?.Invoke(loadingReplayHider ? "dtr-hider failed to take control" : "BotHider failed to unload");
                 Server.PrintToConsole(loadingReplayHider
                     ? "[DTR ERR] dtr-hider did not finish loading or taking control of bots; playback was not started."
                     : "[DTR ERR] BotHider did not finish unloading; playback was not started.");

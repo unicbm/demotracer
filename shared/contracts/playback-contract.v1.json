@@ -25,6 +25,13 @@
     "optional": true,
     "semantics": "Sorted unique zero-based input frames on a player track. Only the active replay bot issues the native player_ping command. CS2 resolves the target, urgency and lifetime."
   },
+  "playback_result": {
+    "log_prefix": "DTR_PLAYBACK_RESULT_V1 ",
+    "source": "DemoTracer",
+    "fields": ["path", "status", "round", "ctRound", "map", "detail", "started", "total"],
+    "statuses": ["started", "no_slots", "native_only", "error", "map_mismatch", "round_missing", "sequence_gap", "warmup", "no_rounds"],
+    "semantics": "Optional local CSS log event. Absolute archive path identifies the export. Round IDs are source IDs. Started counts successful live slot starts; freeze pre-roll, loop restarts, copying and arming do not emit a success."
+  },
   "inventory_plan_schema": 5,
   "cosmetics": {
     "unpainted_weapon_and_knife_paint_kit": 0,

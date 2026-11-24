@@ -205,6 +205,7 @@ public sealed partial class DemoTracerPlugin
             RetainLoadedBotHiderPresentation(seats);
             loadSucceeded = true;
             _loadedRoundSources = new(tRound, ctRound, selectionLabel);
+            _loadedArchivePath = resolvedManifestPath;
             _loadedDemoSha256 = NormalizeSha256(manifest.DemoSha256);
             timing.Mark("media_finish");
             return LoadRoundResult.Success(nativeOnly

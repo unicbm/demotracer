@@ -127,7 +127,10 @@ by CS2. This does not change the manifest ABI or the `.dtr` format.
 Each `files[]` entry may carry `"clan": { "tag": "example", "id": 12345 }`.
 The pair comes from `CCSPlayerController.m_szClan` and `m_unClanId32bit` at
 the replay's live-start row. `id` is the unsigned 32-bit Steam group account ID,
-not a SteamID64 or the team's `m_szClanTeamname`.
+not a SteamID64 or the team's `m_szClanTeamname`. If the source server explicitly
+disabled `sv_clantags_enabled` at that row, the converter writes an empty tag
+and ID zero regardless of the controller fields. A missing setting leaves the
+recorded controller evidence unchanged.
 
 Absent or incomplete evidence produces no override. An explicit empty tag and
 ID zero clears the clan. Tags preserve Unicode and are bounded to 127 UTF-8

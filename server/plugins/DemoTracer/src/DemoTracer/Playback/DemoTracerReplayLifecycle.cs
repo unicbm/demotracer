@@ -185,6 +185,7 @@ public sealed partial class DemoTracerPlugin
     private void ClearLoadedReplaySession()
     {
         _loadedRoundSources = null;
+        _loadedArchivePath = null;
         _loadedDemoSha256 = string.Empty;
         _session.ClearLoaded();
         ClearAllPendingWeaponSlotReplacements("replay_execution_stopped");

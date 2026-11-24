@@ -203,7 +203,7 @@ internal sealed class DtrReplayPrefetch
     private const long MaxRetainedDecodedBytes = 64L * 1024 * 1024;
     private readonly object _sync = new();
     private readonly SemaphoreSlim _singleReader = new(1, 1);
-    private readonly Func<string, DtrReplayFile> _readReplay;
+    private readonly Func<string, DtrReplayFile>? _readReplay;
     private readonly long _decodedByteLimit;
     private Dictionary<string, PrefetchEntry> _pending =
         new(StringComparer.OrdinalIgnoreCase);
@@ -211,7 +211,7 @@ internal sealed class DtrReplayPrefetch
 
     internal DtrReplayPrefetch(Func<string, DtrReplayFile>? readReplay = null, long decodedByteLimit = MaxRetainedDecodedBytes)
     {
-        _readReplay = readReplay ?? DtrReplayReader.ReadForPlayback;
+        _readReplay = readReplay;
         _decodedByteLimit = decodedByteLimit;
     }
 
@@ -243,7 +243,6 @@ internal sealed class DtrReplayPrefetch
             {
                 var task = DecodeAsync(fullPath, generation);
                 _pending[fullPath] = new PrefetchEntry(task, generation);
-                generation.Track(task);
             }
         }
 
@@ -321,7 +320,8 @@ internal sealed class DtrReplayPrefetch
 
                 var replay = await Task.Run(() =>
                     {
-                        var decoded = _readReplay(path);
+                        var decoded = _readReplay != null ? _readReplay(path) :
+                            DtrReplayReader.ReadForPlayback(path, resource => generation.OpenResource(resource, before));
                         return decoded with { PreparedMetadata = ReplayNativeMapper.BuildMetadata(decoded) };
                     }, cancellationToken)
                     .ConfigureAwait(false);
@@ -345,6 +345,10 @@ internal sealed class DtrReplayPrefetch
         catch
         {
             return DtrReplayDecodeResult.Failed;
+        }
+        finally
+        {
+            generation.TaskCompleted();
         }
     }
 
@@ -385,16 +389,27 @@ internal sealed class DtrReplayPrefetch
         private int _disposed;
         private long _decodedBytes;
 
+        private DtrArchive? _archive;
+        private string? _archivePath;
+        private ReplayFileStamp _archiveStamp;
+
         public CancellationToken Token => _cancellation.Token;
 
-        public void Track(Task<DtrReplayDecodeResult> task)
+        // DecodeAsync serializes readers. Close the container as soon as the final decode ends.
+        public Stream OpenResource(string path, ReplayFileStamp stamp)
         {
-            _ = task.ContinueWith(
-                static (_, state) => ((PrefetchGeneration)state!).TaskCompleted(),
-                this,
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+            var (file, entry) = DtrResources.Split(path);
+            if (entry == null) return File.OpenRead(file);
+            if (_archive == null || _archiveStamp != stamp ||
+                !string.Equals(_archivePath, file, StringComparison.OrdinalIgnoreCase))
+            {
+                _archive?.Dispose();
+                _archive = null;
+                _archive = new DtrArchive(file);
+                _archivePath = file;
+                _archiveStamp = stamp;
+            }
+            return new MemoryStream(_archive.Read(entry), writable: false);
         }
 
         public bool TryReserveDecodedBytes(long bytes)
@@ -430,9 +445,13 @@ internal sealed class DtrReplayPrefetch
             }
         }
 
-        private void TaskCompleted()
+        public void TaskCompleted()
         {
-            Interlocked.Decrement(ref _remainingTasks);
+            if (Interlocked.Decrement(ref _remainingTasks) == 0)
+            {
+                _archive?.Dispose();
+                _archive = null;
+            }
             TryDispose();
         }
 
