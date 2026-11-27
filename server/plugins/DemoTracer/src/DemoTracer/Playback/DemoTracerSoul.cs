@@ -31,7 +31,7 @@ public sealed partial class DemoTracerPlugin
             command.ReplyToCommand("[DTR ERR] Join T/CT first, or specify dtr_soul <replay.dtr> <source_round> t|ct.");
             return;
         }
-        if (!Utilities.GetPlayers().Any(p => IsSoulHuman(p) && p.Team == team))
+        if (!Utilities.GetPlayers().Any(p => IsHumanPlayer(p) && p.Team == team))
         {
             command.ReplyToCommand("[DTR ERR] The challenge team needs at least one human player.");
             return;
@@ -46,7 +46,6 @@ public sealed partial class DemoTracerPlugin
         _soulChallenge = new SoulChallengeState(manifest, round, (int)team);
         _soulParticipantUserIds.Clear();
         LoadSoulDeathSound();
-        CancelDtrRoundBanner(resetRound: false);
         command.ReplyToCommand($"[Demo Souls] Source round {round}, team={team}. Team defeat retries this round; victory completes the challenge.");
     }
 
@@ -68,7 +67,7 @@ public sealed partial class DemoTracerPlugin
     public void SoulStatsCommand(CCSPlayerController? player, CommandInfo command)
         => ReplySoulStats(command.ReplyToCommand);
 
-    private bool IsSoulHuman(CCSPlayerController player)
+    private bool IsHumanPlayer(CCSPlayerController player)
         // dtr-hider clears the fake-client flag, so IsBot alone is insufficient.
         => player is { IsValid: true, IsBot: false, IsHLTV: false } && player.UserId.HasValue &&
            !_botHiderBridge.IsManagedBot(player.Slot);
@@ -84,7 +83,7 @@ public sealed partial class DemoTracerPlugin
         }
         _soulParticipantUserIds.Clear();
         foreach (var player in Utilities.GetPlayers())
-            if (IsSoulHuman(player) && (int)player.Team == soul.Team)
+            if (IsHumanPlayer(player) && (int)player.Team == soul.Team)
                 _soulParticipantUserIds.Add(player.UserId!.Value);
         if (_soulParticipantUserIds.Count == 0)
         {
@@ -151,7 +150,7 @@ public sealed partial class DemoTracerPlugin
     }
 
     private bool IsSoulParticipant(CCSPlayerController? player)
-        => player != null && IsSoulHuman(player) && player.UserId is { } id &&
+        => player != null && IsHumanPlayer(player) && player.UserId is { } id &&
            _soulParticipantUserIds.Contains(id) && (int)player.Team == _soulChallenge?.Team;
 
     private void CancelSoulChallenge(string reason)
@@ -186,7 +185,7 @@ public sealed partial class DemoTracerPlugin
     {
         if (_soulChallenge is { Active: true } soul &&
             !Utilities.GetPlayers().Any(player => player.Slot != excludedSlot &&
-                IsSoulHuman(player) && (int)player.Team == soul.Team))
+                IsHumanPlayer(player) && (int)player.Team == soul.Team))
             StopAllState("soul_team_empty");
     }
 
@@ -194,7 +193,7 @@ public sealed partial class DemoTracerPlugin
     {
         var html = $"<font color='#e8ce8b' class='fontSize-l'>Demo Souls</font><br>源回合 {soul.SourceRound} · {(CsTeam)soul.Team} · 尝试 #{soul.AttemptNumber}<br><font color='#aaaaaa'>队伍获胜即通关 · 战败自动重试</font>";
         foreach (var player in Utilities.GetPlayers())
-            if (IsSoulHuman(player) && ((int)player.Team == soul.Team || player.Team == CsTeam.Spectator))
+            if (IsHumanPlayer(player) && ((int)player.Team == soul.Team || player.Team == CsTeam.Spectator))
                 player.PrintToCenterHtml(html, 5);
     }
 }

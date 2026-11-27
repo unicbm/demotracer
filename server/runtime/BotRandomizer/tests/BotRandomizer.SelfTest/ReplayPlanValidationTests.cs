@@ -54,6 +54,19 @@ internal static class ReplayPlanValidationTests
         var empty = Plan();
         empty.MusicKit = null;
         Reject([empty], "empty_plan:1");
+        empty.StockGloves = true;
+        empty.StockKnife = true;
+        empty.StockWeapons = [4];
+        var stock = Accept([empty])[1].Policy;
+        Require(stock.StockKnife && stock.StockGloves && stock.StockWeapons.SetEquals([4]) &&
+                stock.Knife is null && stock.Gloves is null, "stock-only plan keeps the engine loadout");
+        empty.Knife = FullPlan().Knife;
+        Reject([empty], "conflicting_stock_wearable:1");
+        empty.StockKnife = false;
+        Require(Accept([empty])[1].Policy is { StockGloves: true, Knife.DefIndex: 507 },
+            "custom knife and stock gloves are independent");
+        empty.Weapons = FullPlan().Weapons;
+        Reject([empty], "invalid_stock_weapon:1:4");
 
         var first = Accept([Plan(), Plan(slot: 2)])[1];
         Require(first.Incarnation == 11 && first.SubjectSteamId == 76_561_198_012_345_678UL,

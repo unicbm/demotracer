@@ -27,9 +27,7 @@ namespace BotController
         {
             std::atomic<bool> playing{false};
             std::atomic<bool> loop{false};
-            std::vector<ReplayTick> ticks;
-            std::vector<SubtickMove> subs;
-            std::vector<ReplayCommandFrameData> commands;
+            ReplaySubtickLayout::ReplayLoadStaging frames;
             ReplaySourceState::Timeline sourceState;
             bool hasSourceState = false;
             float sourceTickRate = 0;
@@ -37,7 +35,6 @@ namespace BotController
             // Remember complete entity handles, including serial numbers. Switching
             // back to an existing weapon must not reset its native cooldown/reload.
             std::vector<std::pair<uint32_t, uint32_t>> restoredWeapons;
-            std::vector<size_t> subOffset; // prefix sum, size ticks.size()+1
             std::atomic<int> cursor{0};
             std::atomic<int> startCursor{0};
             std::atomic<int> holdBeforeCursor{-1};
@@ -73,10 +70,7 @@ namespace BotController
             p.hasSourceState = false;
             p.sourceTickRate = 0;
             p.restoredWeapons.clear();
-            std::vector<ReplayTick>().swap(p.ticks);
-            std::vector<SubtickMove>().swap(p.subs);
-            std::vector<ReplayCommandFrameData>().swap(p.commands);
-            std::vector<size_t>().swap(p.subOffset);
+            p.frames = {};
         }
 
         constexpr uint64_t kPrimeAttackButtons = (1ull << 0) | (1ull << 11);
@@ -277,22 +271,21 @@ namespace BotController
 
         // ---- replay ----
 
-        static const ReplayTick *CurrentReplayTickPtr(ReplayState &p, int &cur, int &total)
+        static int CurrentSimulationIndex(const ReplayState &p)
         {
-            total = static_cast<int>(p.ticks.size());
-            cur = p.cursor.load(std::memory_order_relaxed);
-            if (cur < 0 || cur >= total)
-                return nullptr;
+            const int cursor = p.cursor.load(std::memory_order_relaxed);
+            if (cursor < 0 || static_cast<size_t>(cursor) >= p.frames.ticks.size())
+                return -1;
             AddReplayPerf(ReplayPerfCounter::ReplayTickRead);
-            return &p.ticks[static_cast<size_t>(cur)];
+            return cursor;
         }
 
         static uint64_t ReplayPressedButtonsForPreStartTick(const ReplayState &p, int index)
         {
-            if (index < 0 || index >= static_cast<int>(p.ticks.size()))
+            if (index < 0 || index >= static_cast<int>(p.frames.ticks.size()))
                 return 0;
 
-            const MovementSnapshot &pre = p.ticks[static_cast<size_t>(index)].pre;
+            const MovementSnapshot &pre = p.frames.Pre(index);
             if (pre.buttons1 != 0 || pre.buttons2 != 0)
                 return ButtonState::Decode(
                            pre.buttons, pre.buttons1, pre.buttons2)
@@ -305,7 +298,7 @@ namespace BotController
                 return 0;
 
             const uint64_t heldPrev =
-                p.ticks[static_cast<size_t>(index - 1)].pre.buttons;
+                p.frames.Pre(index - 1).buttons;
             return pre.buttons & ~heldPrev;
         }
 
@@ -472,10 +465,7 @@ namespace BotController
                 p.hasSourceState = false;
                 p.sourceTickRate = 0;
                 p.restoredWeapons.clear();
-                p.ticks.swap(staged.ticks);
-                p.subs.swap(staged.subs);
-                p.commands.swap(staged.commands);
-                p.subOffset.swap(staged.offsets);
+                p.frames.Swap(staged);
                 p.cursor.store(0, std::memory_order_relaxed);
                 p.startCursor.store(0, std::memory_order_relaxed);
                 p.holdBeforeCursor.store(-1, std::memory_order_relaxed);
@@ -498,7 +488,7 @@ namespace BotController
             std::lock_guard<std::mutex> lock(p.mu);
             if (p.playing.load(std::memory_order_acquire)) return false;
             ReplaySourceState::Timeline staged;
-            if (!staged.Load(changes, count, static_cast<int>(p.ticks.size()))) return false;
+            if (!staged.Load(changes, count, static_cast<int>(p.frames.ticks.size()))) return false;
             p.sourceState = std::move(staged);
             p.sourceTickRate = tickRate;
             p.liveTickInterval = liveTickInterval;
@@ -531,20 +521,17 @@ namespace BotController
                 return false;
             ReplayState &p = g_rep[slot];
             std::lock_guard<std::mutex> lk(p.mu);
-            if (p.ticks.empty() || startIndex < 0 ||
-                startIndex >= static_cast<int>(p.ticks.size()))
+            if (p.frames.ticks.empty() || startIndex < 0 ||
+                startIndex >= static_cast<int>(p.frames.ticks.size()))
             {
                 return false;
             }
             if (!InputInjector::PrepareReplayPawn(slot)) return false;
-            // Equipment initialization is best-effort here. A newly spawned
-            // Pawn may not expose ItemServices until its first movement hook;
-            // refusing to start would prevent that final one-shot pass.
             const bool resumesHeldReplay =
                 p.playing.load(std::memory_order_acquire) &&
                 p.holdBeforeCursor.load(std::memory_order_relaxed) == startIndex;
-            if (!resumesHeldReplay && !CanInitializeMovement(p.ticks[startIndex].pre)) return false;
-            ReplayPawnEquipment::PrepareForReplayStart(slot);
+            if (!resumesHeldReplay && !CanInitializeMovement(p.frames.Pre(startIndex))) return false;
+            ReplayPawnEquipment::PrepareForReplayStart(slot, resumesHeldReplay);
             p.cursor.store(startIndex, std::memory_order_relaxed);
             // Freeze pre-roll is one continuous replay. Keep its original
             // start cursor when releasing the hold so start-only input
@@ -570,14 +557,14 @@ namespace BotController
                 return false;
             ReplayState &p = g_rep[slot];
             std::lock_guard<std::mutex> lk(p.mu);
-            const int total = static_cast<int>(p.ticks.size());
+            const int total = static_cast<int>(p.frames.ticks.size());
             if (total <= 0 || startIndex < 0 || startIndex >= total ||
                 holdBeforeIndex <= startIndex || holdBeforeIndex > total)
             {
                 return false;
             }
             if (!InputInjector::PrepareReplayPawn(slot) ||
-                !CanInitializeMovement(p.ticks[startIndex].pre)) return false;
+                !CanInitializeMovement(p.frames.Pre(startIndex))) return false;
             ReplayPawnEquipment::PrepareForReplayStart(slot);
             p.cursor.store(startIndex, std::memory_order_relaxed);
             p.startCursor.store(startIndex, std::memory_order_relaxed);
@@ -643,7 +630,7 @@ namespace BotController
                 return 0;
             ReplayState &p = g_rep[slot];
             std::lock_guard<std::mutex> lk(p.mu);
-            return static_cast<int>(p.ticks.size());
+            return static_cast<int>(p.frames.ticks.size());
         }
 
         bool GetReplaySlotState(int slot, ReplaySlotState &out)
@@ -657,7 +644,7 @@ namespace BotController
             if (!playing)
             {
                 std::lock_guard<std::mutex> lk(p.mu);
-                out.total = static_cast<int32_t>(p.ticks.size());
+                out.total = static_cast<int32_t>(p.frames.ticks.size());
                 // The aggregate state retains the terminal cursor so managed
                 // consumers can distinguish natural completion from a stop.
                 // GetReplayCursor keeps its legacy -1-when-idle contract.
@@ -665,7 +652,7 @@ namespace BotController
                 return true;
             }
 
-            const int total = static_cast<int>(p.ticks.size());
+            const int total = static_cast<int>(p.frames.ticks.size());
             const int cursor = p.cursor.load(std::memory_order_relaxed);
             out.playing = 1;
             out.cursor = cursor;
@@ -677,35 +664,20 @@ namespace BotController
             if (idx < 0 || idx >= total)
                 return true;
 
-            const ReplayTick &tick = p.ticks[static_cast<size_t>(idx)];
+            const auto &tick = p.frames.ticks[static_cast<size_t>(idx)];
             out.currentTickIndex = idx;
             out.weaponDefIndex = tick.weaponDefIndex;
             out.numSubtick = static_cast<int32_t>(tick.numSubtick);
             return true;
         }
 
-        bool ReplayTickForSimulation(int slot, ReplayTick &out)
+        int ReplayWeaponDefForSimulation(int slot)
         {
-            if (!ValidSlot(slot))
-                return false;
-            ReplayState &p = g_rep[slot];
-            if (!p.playing.load(std::memory_order_acquire))
-                return false;
-            int cur = -1;
-            int total = 0;
-            const ReplayTick *tick = CurrentReplayTickPtr(p, cur, total);
-            if (!tick)
-                return false;
-            size_t subtickBegin = 0;
-            size_t subtickEnd = 0;
-            if (!ReplaySubtickLayout::TryGetReplaySubtickRange(
-                    p.ticks.data(), p.ticks.size(), p.subOffset, p.subs.size(),
-                    static_cast<size_t>(cur), subtickBegin, subtickEnd))
-            {
-                return false;
-            }
-            out = *tick;
-            return true;
+            if (!ValidSlot(slot) || !IsReplaying(slot))
+                return -1;
+            const ReplayState &p = g_rep[slot];
+            const int cursor = CurrentSimulationIndex(p);
+            return cursor < 0 ? -1 : p.frames.ticks[cursor].weaponDefIndex;
         }
 
         bool ReplayCommandFrameForSimulation(int slot, ReplayCommandFrame &out)
@@ -717,20 +689,19 @@ namespace BotController
             if (!p.playing.load(std::memory_order_acquire))
                 return false;
 
-            int cur = -1;
-            int total = 0;
-            const ReplayTick *tick = CurrentReplayTickPtr(p, cur, total);
-            if (!tick)
+            const int cur = CurrentSimulationIndex(p);
+            if (cur < 0)
                 return false;
 
-            const MovementSnapshot &pre = tick->pre;
+            const MovementSnapshot &pre = p.frames.Pre(cur);
+            const auto &tick = p.frames.ticks[cur];
             uint64_t b0 = pre.buttons;
             uint64_t b1 = pre.buttons1;
             uint64_t b2 = pre.buttons2;
 
             const ReplayCommandFrameData *command = nullptr;
-            if (cur >= 0 && static_cast<size_t>(cur) < p.commands.size())
-                command = &p.commands[static_cast<size_t>(cur)];
+            if (cur >= 0 && static_cast<size_t>(cur) < p.frames.commands.size())
+                command = &p.frames.commands[static_cast<size_t>(cur)];
 
             const bool hasCommandButtons =
                 command && ((command->fields & kCommandFieldButtons) != 0);
@@ -742,7 +713,7 @@ namespace BotController
             }
             else if (b1 == 0 && b2 == 0)
             {
-                uint64_t heldPrev = (cur > 0) ? p.ticks[static_cast<size_t>(cur - 1)].pre.buttons : 0;
+                uint64_t heldPrev = (cur > 0) ? p.frames.Pre(cur - 1).buttons : 0;
                 const ButtonState::Planes planes =
                     ButtonState::EncodeAdjacentHeld(b0, heldPrev);
                 b1 = planes.state2;
@@ -757,27 +728,27 @@ namespace BotController
             const SubtickMove *subticks = nullptr;
             size_t subtickBegin = 0;
             size_t subtickEnd = 0;
-            if (cur < 0 ||
-                !ReplaySubtickLayout::TryGetReplaySubtickRange(
-                    p.ticks.data(), p.ticks.size(), p.subOffset, p.subs.size(),
+            if (!ReplaySubtickLayout::TryGetReplaySubtickRange(
+                    tick.numSubtick, p.frames.ticks.size(), p.frames.offsets, p.frames.subs.size(),
                     static_cast<size_t>(cur), subtickBegin, subtickEnd))
             {
                 return false;
             }
             const int subtickCount = static_cast<int>(subtickEnd - subtickBegin);
-            subticks = subtickCount > 0 ? p.subs.data() + subtickBegin : nullptr;
+            subticks = subtickCount > 0 ? p.frames.subs.data() + subtickBegin : nullptr;
 
-            out.tick = tick;
+            out.pre = &pre;
             out.subticks = subticks;
-            out.command = command;
             out.subtickCount = subtickCount;
-            out.weaponSelect = ReplayWeaponSelectForDef(slot, tick->weaponDefIndex);
-            out.commandView = tick->pre;
+            out.weaponSelect = ReplayWeaponSelectForDef(slot, tick.weaponDefIndex);
+            out.pitch = pre.pitch;
+            out.yaw = pre.yaw;
+            out.roll = pre.roll;
             if (command && ((command->fields & kCommandFieldViewAngles) != 0))
             {
-                out.commandView.pitch = command->pitch;
-                out.commandView.yaw = command->yaw;
-                out.commandView.roll = command->roll;
+                out.pitch = command->pitch;
+                out.yaw = command->yaw;
+                out.roll = command->roll;
             }
             out.buttons0 = b0;
             out.buttons1 = b1;
@@ -796,8 +767,6 @@ namespace BotController
                     out.mouseDx = command->mouseDx;
                     out.mouseDy = command->mouseDy;
                 }
-                if ((command->fields & kCommandFieldWeaponSelect) != 0)
-                    out.rawWeaponSelect = command->weaponSelect;
                 if ((command->fields & kCommandFieldLeftHand) != 0)
                     out.leftHandDesired = command->leftHandDesired;
             }
@@ -812,7 +781,7 @@ namespace BotController
             ReplayState &p = g_rep[slot];
             if (!p.playing.load(std::memory_order_acquire))
                 return false;
-            int total = static_cast<int>(p.ticks.size());
+            int total = static_cast<int>(p.frames.ticks.size());
             if (total <= 0)
                 return false;
 
@@ -838,7 +807,7 @@ namespace BotController
                 return false;
 
             AddReplayPerf(ReplayPerfCounter::ReplayTickRead);
-            out = p.ticks[static_cast<size_t>(idx)].post;
+            out = p.frames.Post(idx);
             return true;
         }
 
@@ -851,14 +820,14 @@ namespace BotController
             ReplayState &p = g_rep[slot];
             if (!p.playing.load(std::memory_order_acquire))
                 return false;
-            int total = static_cast<int>(p.ticks.size());
+            int total = static_cast<int>(p.frames.ticks.size());
             int idx = p.cursor.load(std::memory_order_relaxed) - 1;
             if (idx < 0)
                 idx = 0;
             if (idx >= total)
                 return false;
             AddReplayPerf(ReplayPerfCounter::ReplayTickRead);
-            out = p.ticks[static_cast<size_t>(idx)];
+            out = p.frames.AbiTick(idx);
             return true;
         }
 
@@ -866,15 +835,17 @@ namespace BotController
         {
             if (!ValidSlot(slot) || defIndex < 0)
                 return false;
-            InvalidateReplayWeaponCache(g_rep[slot]);
             if (!WeaponLockerHooks::WeaponHooksReady())
                 return false;
             void *ws = WeaponLockerHooks::WsForSlot(slot);
             if (!ws)
                 return false;
+            if (WeaponLockerHooks::ActiveWeaponDef(ws, defIndex == WeaponLockerHooks::kKnifeDef) == defIndex)
+                return true;
             void *weapon = WeaponLockerHooks::FindWeaponByDef(ws, defIndex);
             if (!weapon)
                 return false;
+            InvalidateReplayWeaponCache(g_rep[slot]);
             return WeaponLockerHooks::SelectWeaponRaw(ws, weapon);
         }
 
@@ -954,8 +925,8 @@ namespace BotController
             *reinterpret_cast<uint8_t *>(sv + tg::kServices_DesiresDuck) = s.desiresDuck;
         }
 
-        bool OnReplayCommandPre(int slot, void *services, const ReplayTick &t,
-                                const MovementSnapshot &commandView)
+        bool OnReplayCommandPre(int slot, void *services, const MovementSnapshot &pre,
+                                float pitch, float yaw)
         {
             if (!ValidSlot(slot) || !services || !IsReplaying(slot))
                 return false;
@@ -967,14 +938,14 @@ namespace BotController
             auto *pp = reinterpret_cast<char *>(pawn);
             if (p.initializeMovement)
             {
-                if (!CanInitializeMovement(t.pre)) return false;
-                const float origin[] = {t.pre.originX, t.pre.originY, t.pre.originZ};
-                const float velocity[] = {t.pre.velX, t.pre.velY, t.pre.velZ};
+                if (!CanInitializeMovement(pre)) return false;
+                const float origin[] = {pre.originX, pre.originY, pre.originZ};
+                const float velocity[] = {pre.velX, pre.velY, pre.velZ};
                 if (!InputInjector::InitializeReplayPose(pawn, origin, velocity))
                     return false;
                 // Boundary state only. Duck/ladder/ground processing owns all
                 // subsequent transitions, including the state kept at handoff.
-                if (!InputInjector::InitializeReplayMoveType(pawn, t.pre.moveType)) return false;
+                if (!InputInjector::InitializeReplayMoveType(pawn, pre.moveType)) return false;
                 if (p.hasSourceState)
                 {
                     ReplaySourceState::LiveClock clock{};
@@ -982,15 +953,15 @@ namespace BotController
                         !ReplaySourceState::Apply(pawn, services, nullptr, nullptr,
                             p.sourceState.At(p.cursor.load(std::memory_order_relaxed)), p.sourceTickRate, clock, false)) return false;
                 }
-                else WriteMovementServiceState(services, t.pre);
-                if (t.pre.moveType == 9)
+                else WriteMovementServiceState(services, pre);
+                if (pre.moveType == 9)
                 {
-                    const float normal[] = {t.pre.ladderNormalX, t.pre.ladderNormalY, t.pre.ladderNormalZ};
+                    const float normal[] = {pre.ladderNormalX, pre.ladderNormalY, pre.ladderNormalZ};
                     if (!TryWriteMemory(services, tg::kServices_LadderNormal, normal, sizeof(normal))) return false;
                 }
                 const uint32_t mask = tg::kFL_OnGround | tg::kFL_Ducking;
                 auto *flags = reinterpret_cast<uint32_t *>(pp + tg::kEnt_Flags);
-                *flags = (*flags & ~mask) | (t.pre.entityFlags & mask);
+                *flags = (*flags & ~mask) | (pre.entityFlags & mask);
                 p.initializeMovement = false;
                 AddReplayPerf(ReplayPerfCounter::ReplayMovementInitialization);
             }
@@ -1023,8 +994,8 @@ namespace BotController
                 }
             }
 
-            WriteLocalViewAnglesToPawn(pp, commandView.pitch, commandView.yaw);
-            WriteReplayViewHistory(services, pp, commandView.pitch, commandView.yaw);
+            WriteLocalViewAnglesToPawn(pp, pitch, yaw);
+            WriteReplayViewHistory(services, pp, pitch, yaw);
             return true;
         }
 
@@ -1052,12 +1023,10 @@ namespace BotController
             ReplayState &p = g_rep[slot];
             if (p.initializeMovement)
                 return; // wait for the first prepared PlayerRunCommand
-            int cursor = -1;
-            int total = 0;
-            const ReplayTick *t = CurrentReplayTickPtr(p, cursor, total);
-            if (t)
+            const int cursor = CurrentSimulationIndex(p);
+            if (cursor >= 0)
             {
-                WriteMoveData(moveData, t->pre);
+                WriteMoveData(moveData, p.frames.Pre(cursor));
                 AddReplayPerf(ReplayPerfCounter::ReplayMovementInput);
             }
         }
@@ -1072,13 +1041,11 @@ namespace BotController
             ReplayState &p = g_rep[slot];
             if (!p.playing.load(std::memory_order_acquire) || p.initializeMovement)
                 return;
-            int cur = -1;
-            int total = 0;
-            const ReplayTick *t = CurrentReplayTickPtr(p, cur, total);
-            if (!t)
+            const int cur = CurrentSimulationIndex(p);
+            if (cur < 0)
                 return;
 
-            SyncReplayLocalView(slot, services, t->post);
+            SyncReplayLocalView(slot, services, p.frames.Post(cur));
             g_lastFinalViewCursor[slot] = cur;
         }
 
@@ -1092,7 +1059,7 @@ namespace BotController
             if (!p.playing.load(std::memory_order_acquire) || p.initializeMovement)
                 return;
             int cur = p.cursor.load(std::memory_order_relaxed);
-            int total = static_cast<int>(p.ticks.size());
+            int total = static_cast<int>(p.frames.ticks.size());
             if (cur < 0 || cur >= total)
             {
                 EndReplayExecution(slot, p, services);
@@ -1102,7 +1069,7 @@ namespace BotController
             if (g_lastFinalViewCursor[slot] != cur)
             {
                 AddReplayPerf(ReplayPerfCounter::ReplayTickRead);
-                SyncReplayLocalView(slot, services, p.ticks[static_cast<size_t>(cur)].post);
+                SyncReplayLocalView(slot, services, p.frames.Post(cur));
             }
 
             const int holdBefore = p.holdBeforeCursor.load(std::memory_order_relaxed);

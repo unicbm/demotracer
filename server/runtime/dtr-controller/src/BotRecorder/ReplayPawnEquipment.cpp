@@ -1,12 +1,11 @@
 // Replay-owned pawn equipment initialization.
 
 #include "ReplayPawnEquipment.h"
+#include "ReplayNetworkState.h"
 
 #include "ccsbot_slot.h"
 #include "version_targets.h"
 #include "live_entities.h"
-
-#include <entity2/entityinstance.h>
 
 #include <array>
 #include <atomic>
@@ -38,12 +37,18 @@ namespace BotController::ReplayPawnEquipment
             return slot >= 0 && slot < kMaxSlots;
         }
 
-        void MarkNetworkStateChanged(void *entity, int offset)
+        template <typename T>
+        bool SetIfChanged(void *owner, int offset, T expected, void (*notify)(void *, int))
         {
-            if (!entity || offset <= 0)
-                return;
-            NetworkStateChangedData data(static_cast<uint32_t>(offset));
-            reinterpret_cast<CEntityInstance *>(entity)->NetworkStateChanged(data);
+            T current;
+            if (!SafeRead(owner, offset, current))
+                return false;
+            if (current == expected)
+                return true;
+            if (!WriteField(owner, offset, expected))
+                return false;
+            notify(owner, offset);
+            return true;
         }
 
         bool ReadCurrent(const SlotState &state,
@@ -79,6 +84,7 @@ namespace BotController::ReplayPawnEquipment
             if (!state.configured.load(std::memory_order_acquire))
                 return true;
 
+            state.applied.store(false, std::memory_order_release);
             void *pawn = state.pawn.load(std::memory_order_acquire);
             void *controller = state.controller.load(std::memory_order_acquire);
             if (!pawn || !controller ||
@@ -97,42 +103,14 @@ namespace BotController::ReplayPawnEquipment
             const int armor = state.armor.load(std::memory_order_relaxed);
             const uint8_t helmet = state.helmet.load(std::memory_order_relaxed);
             const uint8_t defuser = state.defuser.load(std::memory_order_relaxed);
-            if (!WriteField(pawn, tg::kPawn_ArmorValue, armor) ||
-                !WriteField(itemServices, tg::kItemServices_HasHelmet, helmet) ||
-                !WriteField(itemServices, tg::kItemServices_HasDefuser, defuser) ||
-                !WriteField(controller, tg::kController_PawnArmor, armor) ||
-                !WriteField(controller, tg::kController_PawnHasHelmet, helmet) ||
-                !WriteField(controller, tg::kController_PawnHasDefuser, defuser))
-            {
-                return false;
-            }
-
-            MarkNetworkStateChanged(pawn, tg::kPawn_ArmorValue);
-            MarkNetworkStateChanged(pawn, tg::kPawn_ItemServices);
-            MarkNetworkStateChanged(controller, tg::kController_PawnArmor);
-            MarkNetworkStateChanged(controller, tg::kController_PawnHasHelmet);
-            MarkNetworkStateChanged(controller, tg::kController_PawnHasDefuser);
-
-            int livePawnArmor = -1;
-            int liveControllerArmor = -1;
-            uint8_t liveItemHelmet = 0;
-            uint8_t liveControllerHelmet = 0;
-            uint8_t liveItemDefuser = 0;
-            uint8_t liveControllerDefuser = 0;
+            using namespace ReplayNetworkState;
             const bool matches =
-                ReadCurrent(state,
-                            livePawnArmor,
-                            liveControllerArmor,
-                            liveItemHelmet,
-                            liveControllerHelmet,
-                            liveItemDefuser,
-                            liveControllerDefuser) &&
-                livePawnArmor == armor &&
-                liveControllerArmor == armor &&
-                liveItemHelmet == helmet &&
-                liveControllerHelmet == helmet &&
-                liveItemDefuser == defuser &&
-                liveControllerDefuser == defuser;
+                SetIfChanged(pawn, tg::kPawn_ArmorValue, armor, EntityFieldChanged) &&
+                SetIfChanged(itemServices, tg::kItemServices_HasHelmet, helmet, PawnComponentFieldChanged) &&
+                SetIfChanged(itemServices, tg::kItemServices_HasDefuser, defuser, PawnComponentFieldChanged) &&
+                SetIfChanged(controller, tg::kController_PawnArmor, armor, EntityFieldChanged) &&
+                SetIfChanged(controller, tg::kController_PawnHasHelmet, helmet, EntityFieldChanged) &&
+                SetIfChanged(controller, tg::kController_PawnHasDefuser, defuser, EntityFieldChanged);
             state.applied.store(matches, std::memory_order_release);
             return matches;
         }
@@ -171,11 +149,16 @@ namespace BotController::ReplayPawnEquipment
         return Apply(slot);
     }
 
-    bool PrepareForReplayStart(int slot)
+    bool PrepareForReplayStart(int slot, bool resumesHeldReplay)
     {
         if (!ValidSlot(slot))
             return false;
-        if (!g_slots[slot].configured.load(std::memory_order_acquire))
+        const auto &state = g_slots[slot];
+        if (!state.configured.load(std::memory_order_acquire))
+            return true;
+        // Pre-roll and live start share a pawn. Only retry a failed spawn
+        // initialization here (e.g. ItemServices was still unavailable).
+        if (resumesHeldReplay && state.applied.load(std::memory_order_acquire))
             return true;
         return Apply(slot);
     }
@@ -194,7 +177,7 @@ namespace BotController::ReplayPawnEquipment
         if (!state.pending.load(std::memory_order_acquire))
             return true;
         // Consume this generation's hook-side pass before writing. Even a
-        // failed readback must not turn round-start initialization into a
+        // failed application must not turn round-start initialization into a
         // combat-time armor refill loop.
         if (!state.pending.exchange(false, std::memory_order_acq_rel))
             return true;

@@ -7,6 +7,7 @@
 using System.Text.Json;
 using BotRandomizerApi;
 using CounterStrikeSharp.API;
+using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Utils;
 
 namespace DemoTracer;
@@ -57,6 +58,9 @@ internal sealed class DemoTracerBotRandomizerPlanSnapshot
                 ModelPath = plan.Agent.ModelPath
             },
             Knife = CloneItem(plan.Knife),
+            StockKnife = plan.StockKnife,
+            StockGloves = plan.StockGloves,
+            StockWeapons = [.. plan.StockWeapons],
             Gloves = CloneItem(plan.Gloves),
             MusicKit = plan.MusicKit,
             Weapons = (plan.Weapons ?? []).Select(CloneWeapon).ToArray()
@@ -155,7 +159,7 @@ public sealed partial class DemoTracerPlugin
             InvalidateBotRandomizerCosmeticLease("provider_epoch_changed");
         }
 
-        var requests = BuildBotRandomizerReplayPlans();
+        var requests = BuildBotRandomizerReplayPlans(allowItemCosmetics: !CoreConfig.FollowCS2ServerGuidelines);
         if (requests.Length == 0)
         {
             ReleaseBotRandomizerCosmeticLease("no_replay_plans", clearEvidence: false);
@@ -233,7 +237,7 @@ public sealed partial class DemoTracerPlugin
         return result;
     }
 
-    private BotRandomizerReplayCosmeticPlan[] BuildBotRandomizerReplayPlans()
+    private BotRandomizerReplayCosmeticPlan[] BuildBotRandomizerReplayPlans(bool allowItemCosmetics)
     {
         var plans = new List<BotRandomizerReplayCosmeticPlan>();
         foreach (var pair in _session.LoadedReplays.OrderBy(pair => pair.Key))
@@ -243,7 +247,7 @@ public sealed partial class DemoTracerPlugin
             var canWriteReplaySlot = CanWriteReplaySlot(slot);
             if (canWriteReplaySlot &&
                 _botRandomizerBridge.TryGetManagedBot(slot, out var managed) &&
-                BuildBotRandomizerReplayPlan(managed.Slot, managed.Incarnation, replay) is { } plan)
+                BuildBotRandomizerReplayPlan(managed.Slot, managed.Incarnation, replay, allowItemCosmetics) is { } plan)
             {
                 plans.Add(plan);
             }
@@ -259,7 +263,7 @@ public sealed partial class DemoTracerPlugin
                 _retainedBotRandomizerCosmeticSlots.Remove(slot);
                 continue;
             }
-            if (BuildBotRandomizerReplayPlan(slot, evidence) is { } retained)
+            if (BuildBotRandomizerReplayPlan(slot, evidence, allowItemCosmetics) is { } retained)
                 plans.Add(retained);
         }
         return plans.ToArray();
@@ -279,11 +283,12 @@ public sealed partial class DemoTracerPlugin
     private BotRandomizerReplayCosmeticPlan? BuildBotRandomizerReplayPlan(
         int slot,
         ulong incarnation,
-        LoadedReplay replay)
+        LoadedReplay replay,
+        bool allowItemCosmetics)
         => BuildBotRandomizerReplayPlan(slot, new RetainedReplayCosmetics(
-            incarnation, replay.SteamId, replay.ManifestTeam, replay.Cosmetics, replay.MusicKitId, string.Empty));
+            incarnation, replay.SteamId, replay.ManifestTeam, replay.Cosmetics, replay.MusicKitId, string.Empty), allowItemCosmetics);
 
-    private BotRandomizerReplayCosmeticPlan? BuildBotRandomizerReplayPlan(int slot, RetainedReplayCosmetics replay)
+    private BotRandomizerReplayCosmeticPlan? BuildBotRandomizerReplayPlan(int slot, RetainedReplayCosmetics replay, bool allowItemCosmetics)
     {
         if (slot < 0 || replay.Incarnation == 0 || replay.SteamId == 0)
             return null;
@@ -301,6 +306,7 @@ public sealed partial class DemoTracerPlugin
                 : new BotRandomizerAgentPlan { Mode = BotRandomizerAgentPlanMode.PreserveEngineDefault };
         }
 
+        var alignItems = allowItemCosmetics && _cosmeticAlignEnabled && _weaponAlignEnabled;
         var plan = new BotRandomizerReplayCosmeticPlan
         {
             Slot = slot,
@@ -310,17 +316,21 @@ public sealed partial class DemoTracerPlugin
                 ? (byte)replay.ManifestTeam.Value
                 : (byte)0,
             Agent = agent,
-            Knife = _cosmeticAlignEnabled && _weaponAlignEnabled && _cosmeticKnivesEnabled
+            StockKnife = alignItems && _cosmeticKnivesEnabled && replay.Cosmetics.StockKnife,
+            StockGloves = alignItems && _cosmeticGlovesEnabled && replay.Cosmetics.StockGloves,
+            StockWeapons = alignItems && _cosmeticWeaponsEnabled ? [.. replay.Cosmetics.StockWeapons] : [],
+            Knife = alignItems && _cosmeticKnivesEnabled
                 ? ToReplayItem(replay.Cosmetics.Knife)
                 : null,
-            Gloves = _cosmeticAlignEnabled && _weaponAlignEnabled && _cosmeticGlovesEnabled
+            Gloves = alignItems && _cosmeticGlovesEnabled
                 ? ToReplayItem(replay.Cosmetics.Glove)
                 : null,
             MusicKit = ReplayMusicKitAlignmentAllowed(replay.MusicKitId) ? replay.MusicKitId : null,
-            Weapons = BuildReplayWeapons(replay.Cosmetics)
+            Weapons = alignItems && _cosmeticWeaponsEnabled ? BuildReplayWeapons(replay.Cosmetics) : []
         };
 
         var claimsAnything = plan.Agent.Mode != BotRandomizerAgentPlanMode.Randomized ||
+                             plan.StockKnife || plan.StockGloves || plan.StockWeapons.Length > 0 ||
                              plan.Knife is not null || plan.Gloves is not null ||
                              plan.MusicKit is not null || plan.Weapons.Length > 0;
         return claimsAnything ? plan : null;
@@ -328,9 +338,6 @@ public sealed partial class DemoTracerPlugin
 
     private BotRandomizerReplayWeapon[] BuildReplayWeapons(ReplayCosmetics cosmetics)
     {
-        if (!_cosmeticAlignEnabled || !_weaponAlignEnabled || !_cosmeticWeaponsEnabled)
-            return [];
-
         return cosmetics.Weapons
             .Where(weapon => HasCompleteAuthoritativePaintEvidence(weapon))
             .OrderBy(weapon => weapon.WeaponDefIndex)

@@ -181,9 +181,6 @@ public sealed partial class DemoTracerPlugin
         if (HasConflictingWeaponInSlot(pawn, slot, className))
             return false;
 
-        if (HasReplayWeapon(pawn, className))
-            return true;
-
         if (!TryGiveNamedItem(player, className))
             return false;
 

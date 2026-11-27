@@ -1,5 +1,6 @@
 using BotRandomizerApi;
 using CounterStrikeSharp.API;
+using CounterStrikeSharp.API.Core;
 
 namespace BotRandomizer;
 
@@ -43,9 +44,9 @@ public sealed partial class BotRandomizerPlugin
             MapEpoch = _mapEpoch,
             Ready = !_draining && _catalog is not null && _replayEconIndex is not null && _roller is not null,
             Draining = _draining,
-            EconAttributeWriterAvailable = _applicator?.NativeAvailable == true,
-            WeaponPrebuildAvailable = _weaponItemViews?.NativeAvailable == true,
-            ReplayPlanPrebuildAvailable = _weaponItemViews?.NativeAvailable == true,
+            EconAttributeWriterAvailable = !CoreConfig.FollowCS2ServerGuidelines && _applicator?.NativeAvailable == true,
+            WeaponPrebuildAvailable = !CoreConfig.FollowCS2ServerGuidelines && _weaponItemViews?.NativeAvailable == true,
+            ReplayPlanPrebuildAvailable = !CoreConfig.FollowCS2ServerGuidelines && _weaponItemViews?.NativeAvailable == true,
             CatalogRepository = _catalog?.SourceRepository ?? string.Empty,
             CatalogCommit = _catalog?.SourceCommit ?? string.Empty
         };
@@ -162,6 +163,13 @@ public sealed partial class BotRandomizerPlugin
         {
             normalized = new Dictionary<int, LeasedCosmeticWriteClaim>();
             reason = "provider_not_ready";
+            return false;
+        }
+        if (CoreConfig.FollowCS2ServerGuidelines && requestedPlans is { Length: > 0 and <= 64 } &&
+            requestedPlans.Any(plan => plan is { Knife: not null } or { Gloves: not null } or { Weapons.Length: > 0 }))
+        {
+            normalized = new Dictionary<int, LeasedCosmeticWriteClaim>();
+            reason = "item_cosmetics_blocked_by_server_guidelines";
             return false;
         }
         return new ReplayPlanValidator(_catalog, _replayEconIndex).TryNormalize(

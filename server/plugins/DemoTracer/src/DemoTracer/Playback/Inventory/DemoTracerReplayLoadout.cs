@@ -59,9 +59,7 @@ public sealed partial class DemoTracerPlugin
             _session.PawnEquipmentSync.IsSynced(slot, equipmentIdentity) &&
             ReplayPawnEquipmentStateMatches(player, pawn, replay.Loadout);
         var loadoutRetryScheduled = false;
-        if (!equipmentSynced &&
-            TryApplyReplayArmorAndKit(slot, player, pawn, replay.Loadout) &&
-            ReplayPawnEquipmentStateMatches(player, pawn, replay.Loadout))
+        if (!equipmentSynced && TryApplyReplayArmorAndKit(slot, player, pawn, replay.Loadout))
         {
             _session.PawnEquipmentSync.MarkSynced(slot, equipmentIdentity);
             equipmentSynced = true;
@@ -189,17 +187,15 @@ public sealed partial class DemoTracerPlugin
         ReplayLoadoutSnapshot loadout)
     {
         var expectedDefuser = player.Team == CsTeam.CounterTerrorist && loadout.HasDefuser;
-        var itemServicesAvailable =
-            pawn.ItemServices != null && pawn.ItemServices.Handle != IntPtr.Zero;
-        var itemServices = itemServicesAvailable
-            ? new CCSPlayer_ItemServices(pawn.ItemServices!.Handle)
+        var itemServices = pawn.ItemServices is { Handle: var handle } && handle != IntPtr.Zero
+            ? new CCSPlayer_ItemServices(handle)
             : null;
         return ReplayRuntimePolicy.PawnEquipmentStateMatches(
             (int)loadout.ArmorValue,
             loadout.HasHelmet,
             expectedDefuser,
             pawn.ArmorValue,
-            itemServicesAvailable,
+            itemServices != null,
             itemServices?.HasHelmet ?? false,
             itemServices?.HasDefuser ?? false,
             player.PawnArmor,
@@ -215,6 +211,9 @@ public sealed partial class DemoTracerPlugin
             return false;
 
         var pawn = player.PlayerPawn.Value;
+        if (pawn.Health == ReplayStartHealth)
+            return true;
+
         pawn.Health = ReplayStartHealth;
         Utilities.SetStateChanged(pawn, "CBaseEntity", "m_iHealth");
         return true;
@@ -242,16 +241,19 @@ public sealed partial class DemoTracerPlugin
             return;
         }
 
-        var offset = Schema.GetSchemaOffset("CCSPlayerController_InGameMoneyServices", "m_iAccount");
-        var chainOffset = Schema.GetSchemaOffset("CPlayerControllerComponent", "__m_pChainEntity");
-        if (offset <= 0 || chainOffset <= 0 ||
-            !Schema.IsSchemaFieldNetworked("CCSPlayerController_InGameMoneyServices", "m_iAccount"))
-            throw new InvalidOperationException("round-start balance network field unavailable");
-        moneyServices.Account = balance;
-        NativeAPI.SchemaNetworkStateChanged(moneyServices.Handle + chainOffset,
-            (uint)offset, uint.MaxValue, uint.MaxValue);
         if (moneyServices.Account != balance)
-            throw new InvalidOperationException("round-start balance server write was not retained");
+        {
+            var offset = Schema.GetSchemaOffset("CCSPlayerController_InGameMoneyServices", "m_iAccount");
+            var chainOffset = Schema.GetSchemaOffset("CPlayerControllerComponent", "__m_pChainEntity");
+            if (offset <= 0 || chainOffset <= 0 ||
+                !Schema.IsSchemaFieldNetworked("CCSPlayerController_InGameMoneyServices", "m_iAccount"))
+                throw new InvalidOperationException("round-start balance network field unavailable");
+            moneyServices.Account = balance;
+            NativeAPI.SchemaNetworkStateChanged(moneyServices.Handle + chainOffset,
+                (uint)offset, uint.MaxValue, uint.MaxValue);
+            if (moneyServices.Account != balance)
+                throw new InvalidOperationException("round-start balance server write was not retained");
+        }
         // Records server initialization, not client receipt or a persistent lock.
         _session.BalanceInitializedSlots.Add(slot);
     }

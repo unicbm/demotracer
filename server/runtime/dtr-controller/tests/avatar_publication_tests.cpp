@@ -15,6 +15,7 @@ struct Table : INetworkStringTable
 {
     struct Entry { std::string key; Bytes bytes; };
     std::vector<Entry> entries;
+    int updates = 0;
     bool rejectWrites = false;
     SetStringUserDataRequest_t read{};
     int FindStringIndex(const char *key) override
@@ -45,6 +46,7 @@ struct Table : INetworkStringTable
     }
     bool SetStringUserData(int index, const SetStringUserDataRequest_t *data, bool) override
     {
+        ++updates;
         if (rejectWrites) return false;
         entries.at(index).bytes = Copy(data);
         return true;
@@ -84,7 +86,10 @@ int main()
     CHECK(AvatarTest::reliable);
     CHECK(tables.table.entries[0].bytes.empty()); // Reserve index-zero fallback.
     CHECK(tables.table.At("7") == a);
+    const int initialUpdates = tables.table.updates;
+    AvatarTest::reliable = false;
     CHECK(publish(7, a) == 0);
+    CHECK(tables.table.updates == initialUpdates && AvatarTest::reliable);
     CHECK(Clear(7) == 1);
     CHECK(tables.table.At("7").empty());
     CHECK(Clear(7) == 0);
@@ -127,6 +132,7 @@ int main()
     invalidFallback.table.entries.push_back({"7", a});
     Init(&invalidFallback);
     CHECK(publish(8, b) == -5); // Never give an unknown SteamID another avatar.
+    CHECK(publish(7, a) == -5);
     Shutdown();
     std::puts("server-only avatar publication lifecycle passed");
 }

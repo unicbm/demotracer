@@ -245,11 +245,44 @@ public sealed class BotRandomizerCosmeticLeaseTests
             ]
         };
 
-    private static BotRandomizerReplayCosmeticPlan[] BuildPlans(DemoTracerPlugin plugin)
-        => (BotRandomizerReplayCosmeticPlan[])typeof(DemoTracerPlugin)
-            .GetMethod("BuildBotRandomizerReplayPlans", PrivateInstance)!.Invoke(plugin, null)!;
+    [Fact]
+    public void HostItemRestrictionPreservesAgentAndMusicAndRetainedItemEvidence()
+    {
+        var (plugin, _, _) = CreateRetainedPlugin();
+        var full = Assert.Single(BuildPlans(plugin));
+        var restricted = Assert.Single(BuildPlans(plugin, allowItemCosmetics: false));
+        Assert.Equal(full.Agent.Mode, restricted.Agent.Mode);
+        Assert.Equal(full.MusicKit, restricted.MusicKit);
+        Assert.Null(restricted.Knife);
+        Assert.Null(restricted.Gloves);
+        Assert.Empty(restricted.Weapons);
+        Assert.Equal(JsonSerializer.Serialize(full), JsonSerializer.Serialize(Assert.Single(BuildPlans(plugin))));
+    }
 
-    private static (DemoTracerPlugin, ManagedBotProvider, DemoTracerBotRandomizerPlanSnapshot) CreateRetainedPlugin()
+    private static BotRandomizerReplayCosmeticPlan[] BuildPlans(DemoTracerPlugin plugin, bool allowItemCosmetics = true)
+        => (BotRandomizerReplayCosmeticPlan[])typeof(DemoTracerPlugin)
+            .GetMethod("BuildBotRandomizerReplayPlans", PrivateInstance)!.Invoke(plugin, [allowItemCosmetics])!;
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void StockSlotsRemainClaimedWithoutRequestingCustomItems(bool stockKnife)
+    {
+        var evidence = stockKnife ? """{"StockKnife":true,"StockGloves":true,"StockWeapons":[4]}"""
+            : """{"Knife":{"ItemDefIndex":507,"PaintKit":38},"StockGloves":true,"StockWeapons":[4]}""";
+        var (plugin, _, _) = CreateRetainedPlugin(evidence);
+        typeof(DemoTracerPlugin).GetField("_cosmeticAgentsEnabled", PrivateInstance)!.SetValue(plugin, false);
+        var plan = Assert.Single(BuildPlans(plugin));
+        Assert.Equal(stockKnife, plan.StockKnife);
+        Assert.Equal(stockKnife ? null : (int?)507, plan.Knife?.ItemDefinitionIndex);
+        Assert.True(plan.StockGloves);
+        Assert.Null(plan.Gloves);
+        Assert.Equal(4, Assert.Single(plan.StockWeapons));
+        Assert.Equal(!stockKnife, DemoTracerPlugin.RequestsRequireReplayPrebuild([plan]));
+        Assert.Empty(BuildPlans(plugin, allowItemCosmetics: false));
+    }
+
+    private static (DemoTracerPlugin, ManagedBotProvider, DemoTracerBotRandomizerPlanSnapshot) CreateRetainedPlugin(string? evidence = null)
     {
         var plugin = (DemoTracerPlugin)RuntimeHelpers.GetUninitializedObject(typeof(DemoTracerPlugin));
         typeof(DemoTracerPlugin).GetField("_replayEquipment", PrivateInstance)!.SetValue(plugin, ReplayEquipmentCatalog.Empty);
@@ -270,7 +303,7 @@ public sealed class BotRandomizerCosmeticLeaseTests
         replayType.GetProperty("SteamId")!.SetValue(replay, 76561198000000001UL);
         replayType.GetProperty("ManifestTeam")!.SetValue(replay, CsTeam.CounterTerrorist);
         var cosmetics = replayType.GetProperty("Cosmetics")!;
-        cosmetics.SetValue(replay, JsonSerializer.Deserialize("""
+        cosmetics.SetValue(replay, JsonSerializer.Deserialize(evidence ?? """
             {
               "Agent":{"ModelPath":"demo_agent"},
               "Knife":{"ItemDefIndex":507,"PaintKit":38,"CustomName":"knife"},

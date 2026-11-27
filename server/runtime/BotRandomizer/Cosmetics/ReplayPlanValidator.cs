@@ -70,6 +70,15 @@ internal sealed class ReplayPlanValidator(CosmeticCatalog catalog, ReplayEconInd
                 return false;
             }
 
+            if (requested.StockKnife && knife is not null || requested.StockGloves && gloves is not null)
+                return Fail($"conflicting_stock_wearable:{requested.Slot}", out reason);
+            var stockWeapons = new HashSet<ushort>();
+            foreach (var def in requested.StockWeapons ?? [])
+            {
+                if (def is <= 0 or > ushort.MaxValue || !catalog.TryGetWeapon((ushort)def, out _) ||
+                    weapons.ContainsKey((ushort)def) || !stockWeapons.Add((ushort)def))
+                    return Fail($"invalid_stock_weapon:{requested.Slot}:{def}", out reason);
+            }
             var policy = new CosmeticWritePolicy(
                 spawnTeam,
                 agentMode,
@@ -79,6 +88,9 @@ internal sealed class ReplayPlanValidator(CosmeticCatalog catalog, ReplayEconInd
                 musicKit,
                 weapons)
             {
+                StockKnife = requested.StockKnife,
+                StockGloves = requested.StockGloves,
+                StockWeapons = stockWeapons,
                 AgentItemDefinitionIndex = agentMode == BotRandomizerAgentPlanMode.ReplayModel
                     ? checked((ushort)requested.Agent!.ItemDefinitionIndex!.Value)
                     : (ushort)0

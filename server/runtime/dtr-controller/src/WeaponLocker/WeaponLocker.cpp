@@ -61,13 +61,12 @@ namespace BotController
 
         static bool ReplayAllowsWeaponSelection(int slot, void *weapon)
         {
-            ReplayTick tick{};
-            if (!MotionRecorder::ReplayTickForSimulation(slot, tick))
+            const int desiredDef = MotionRecorder::ReplayWeaponDefForSimulation(slot);
+            if (desiredDef < 0)
                 return false;
 
-            const int desiredDef = tick.weaponDefIndex;
             const int selectedDef = ReadDefIndex(weapon);
-            if (desiredDef < 0 || selectedDef < 0)
+            if (selectedDef < 0)
                 return false;
 
             return selectedDef == desiredDef ||
@@ -304,13 +303,13 @@ namespace BotController
             return EntIndexOf(weapon);
         }
 
-        int ActiveWeaponDef(void *ws)
+        int ActiveWeaponDef(void *ws, bool normalizeKnife)
         {
             if (!ws) return -1;
             uint32_t handle = 0;
             if (!SafeRead(ws, tg::kWs_ActiveWeapon, handle)) return -1;
             const int def = ReadDefIndex(LiveEntities::FromHandle(handle));
-            return IsKnifeDefIndex(def) ? kKnifeDef : def;
+            return normalizeKnife && IsKnifeDefIndex(def) ? kKnifeDef : def;
         }
 
         int ActiveWeaponEntIndex(void *ws)

@@ -9,33 +9,24 @@ namespace DemoTracer.Tests;
 public sealed class DtrRoundBannerPlaybackTests
 {
     [Fact]
-    public void SendsOnEveryTickForFiveSeconds()
+    public void OnlyPreparedRoundsGetAnOpeningBanner()
     {
-        var playback = new DtrRoundBannerPlayback(
-            [new DtrRoundBannerRecipient(2, 20), new DtrRoundBannerRecipient(7, 70)]);
-        var sends = 0;
+        var plan = new ReplayPlanState { Armed = true, ArmedLabel = "single" };
+        Assert.Null(plan.PreparedRoundStartLabel(false));
+        plan.ArmedPrepared = true;
+        Assert.Equal("single", plan.PreparedRoundStartLabel(false));
+        plan.ClearArmed();
 
-        while (playback.TryBeginTick())
-            sends++;
+        plan.PlayoffPrepared = true;
+        Assert.Null(plan.PreparedRoundStartLabel(false));
+        Assert.Equal("playoff extra round 1", plan.PreparedRoundStartLabel(true));
 
-        Assert.Equal(320, sends);
-        Assert.Equal(DemoTracerPlugin.DtrRoundBannerTotalTicks, playback.SentTicks);
-        Assert.True(playback.IsComplete);
-        Assert.False(playback.TryBeginTick());
+        plan.SequenceActive = true;
+        plan.SequencePrepared = true;
+        plan.SequencePreparedRound = 15;
+        Assert.Equal("sequence round 15", plan.PreparedRoundStartLabel(true));
+        plan.SequenceNativeOnly = true;
+        plan.PlayoffPrepared = false;
+        Assert.Null(plan.PreparedRoundStartLabel(false));
     }
-
-    [Fact]
-    public void KeepsAStableRecipientSnapshot()
-    {
-        var playback = new DtrRoundBannerPlayback(
-            [
-                new DtrRoundBannerRecipient(7, 70),
-                new DtrRoundBannerRecipient(2, 20),
-                new DtrRoundBannerRecipient(7, 700),
-            ]);
-
-        Assert.Equal([2, 7], playback.Recipients.Select(recipient => recipient.Slot));
-        Assert.Equal([20, 70], playback.Recipients.Select(recipient => recipient.UserId));
-    }
-
 }

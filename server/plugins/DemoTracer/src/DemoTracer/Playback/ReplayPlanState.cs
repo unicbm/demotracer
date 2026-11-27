@@ -54,6 +54,15 @@ internal sealed class ReplayPlanState
     public string PlayoffPreparedLabel { get; set; } = string.Empty;
     public int PlayoffRoundIndex { get; set; }
 
+    public string? PreparedRoundStartLabel(bool playoffReady)
+    {
+        if (SequenceActive && SequencePrepared && !SequenceNativeOnly)
+            return $"sequence round {SequencePreparedRound}";
+        if (playoffReady && PlayoffPrepared)
+            return $"playoff extra round {PlayoffRoundIndex + 1}";
+        return Armed && ArmedPrepared ? ArmedLabel : null;
+    }
+
     public bool TryCompletePlayoffStart(int started)
     {
         if (started <= 0)

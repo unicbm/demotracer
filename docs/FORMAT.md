@@ -178,6 +178,11 @@ the unpainted definition and supported attachments/name. Gloves still require a
 known nonzero paint kit. Missing or malformed painted attributes are not evidence
 of an unpainted item.
 
+Round cosmetics may include `stock_knife: true`, `stock_gloves: true`, and
+`stock_weapons` (a list of weapon definition IDs). Each records an observed
+engine appearance and suppresses randomization for that item. Older archives
+without these optional fields retain their previous behavior.
+
 Glove evidence is retained when the demo exposes an exact item definition,
 paint kit, and wear but omits the texture seed. Such entries carry
 `"seed": 0` as a placeholder plus `"seed_known": false`. The UI reports the

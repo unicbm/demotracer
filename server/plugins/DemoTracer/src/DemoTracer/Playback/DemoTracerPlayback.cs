@@ -297,7 +297,6 @@ public sealed partial class DemoTracerPlugin
         _session.Plan.SequencePrepared = true;
         _session.Plan.SequenceNativeOnly = _session.LoadedSlots.Count == 0;
         _session.Plan.SequencePreparedRound = round;
-        TryStartDtrRoundBanner($"sequence_r{round}");
         Server.PrintToConsole($"dtr: prepared sequence round {round} on {reason}: {load.Message}");
         return true;
     }
@@ -382,7 +381,6 @@ public sealed partial class DemoTracerPlugin
         _session.Plan.ArmedLoop = loop;
         _session.Plan.ArmedLabel = label;
         PrepareLoadedReplayOwnership();
-        TryStartDtrRoundBanner($"single_r{sourceRound}");
         Server.PrintToConsole($"[DTR OK] round_prestart: loaded SINGLE source_round={sourceRound} on {reason}: {load.Message}");
         return true;
     }

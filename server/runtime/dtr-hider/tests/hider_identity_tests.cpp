@@ -113,6 +113,7 @@ int main()
     if (manager.IsManaged(-1) || manager.IsManaged(cs2bh::FakeClientManager::kMaxSlots)) return 23;
     if (!manager.AdoptSlot(63, "last slot", 0, "", 0) || !manager.IsManaged(63)) return 24;
     manager.ReleaseSlot(0);
+    if (manager.ManagedSlotMask() != ((uint64_t{1} << 63) | 6)) return 34;
     if (publisher.CanPublishSteamId(0, zero.Session, zero.Incarnation, 0)) return 15;
     if (manager.IsManaged(0) || !manager.IsManaged(1) || !manager.IsManaged(2) ||
         !manager.IsManaged(63) || !manager.HasManagedSlots()) return 25;

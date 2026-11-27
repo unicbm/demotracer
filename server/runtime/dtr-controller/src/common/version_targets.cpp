@@ -57,6 +57,7 @@ namespace BotController::targets
             {"CBasePlayerPawn", "m_pWeaponServices", &kPawn_WeaponServices},
             {"CBasePlayerPawn", "m_pMovementServices", &kPawn_MovementServices},
             {"CBasePlayerPawn", "m_pItemServices", &kPawn_ItemServices},
+            {"CPlayerPawnComponent", "__m_pChainEntity", &kPawnComponent_ChainEntity},
             {"CBasePlayerPawn", "m_hController", &kPawn_Controller},
             {"CCSPlayerPawnBase", "m_hOriginalController", &kPawn_OriginalController},
             {"CBasePlayerPawn", "v_angle", &kPawn_ViewAngle},

@@ -14,7 +14,6 @@ namespace cs2bh
 
     struct ManagedSlot
     {
-        std::atomic<bool> Active{false};
         PingJitter Jitter{50}; // 50ms baseline
         PingDisplay Display;
     };
@@ -38,13 +37,14 @@ namespace cs2bh
         // True if the slot has a managed bot bound
         bool IsManaged(int slot) const;
 
-        bool HasManagedSlots() const;
+        uint64_t ManagedSlotMask() const { return m_ActiveSlots.load(std::memory_order_acquire); }
+        bool HasManagedSlots() const { return ManagedSlotMask() != 0; }
 
     private:
-        mutable std::mutex m_Mutex;
-        // PackEntities reads only Active from worker threads. Ping state stays
-        // under the mutex; identity remains in the main-thread SlotPublisher.
-        // An active flag does not extend the lifetime of any engine entity.
+        std::mutex m_Mutex;
+        // Packing workers enumerate slots without borrowing any engine entities.
+        static_assert(kMaxSlots == 64);
+        std::atomic<uint64_t> m_ActiveSlots{0};
         std::array<ManagedSlot, kMaxSlots> m_Slots;
         uint64_t m_PingSeed;
     };

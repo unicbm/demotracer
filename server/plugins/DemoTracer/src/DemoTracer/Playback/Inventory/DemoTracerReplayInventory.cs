@@ -64,7 +64,7 @@ public sealed partial class DemoTracerPlugin
                     HasHelmet = timeline.Helmet ?? items.HasHelmet,
                     HasDefuser = timeline.Defuser ?? items.HasDefuser,
                 };
-                if (TryApplyReplayArmorAndKit(slot, player, pawn, gear) && ReplayPawnEquipmentStateMatches(player, pawn, gear))
+                if (TryApplyReplayArmorAndKit(slot, player, pawn, gear))
                     timeline.ClearGear();
             }
         }

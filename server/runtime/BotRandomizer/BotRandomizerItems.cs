@@ -58,7 +58,7 @@ public sealed partial class BotRandomizerPlugin
 
     private HookResult OnGiveNamedItemPre(DynamicHook hook)
     {
-        if (_draining || _catalog is null
+        if (_draining || CoreConfig.FollowCS2ServerGuidelines || _catalog is null
             || _roller is null
             || _weaponItemViews is null)
         {
@@ -83,7 +83,7 @@ public sealed partial class BotRandomizerPlugin
             TryGetWritePolicy(state, out var writePolicy);
             if (designerName is "weapon_knife" or "weapon_knife_t")
             {
-                if (writePolicy?.Knife is null && !_options.Knives)
+                if (writePolicy?.StockKnife == true || writePolicy?.Knife is null && !_options.Knives)
                     return HookResult.Continue;
 
                 var prepared = writePolicy?.Knife is { } replayKnife
@@ -98,7 +98,7 @@ public sealed partial class BotRandomizerPlugin
                 return HookResult.Continue;
             }
 
-            if (!_catalog.TryGetWeapon(designerName, out var weapon))
+            if (!_catalog.TryGetWeapon(designerName, out var weapon) || writePolicy?.StockWeapons.Contains(weapon.DefIndex) == true)
             {
                 return HookResult.Continue;
             }
@@ -146,6 +146,9 @@ public sealed partial class BotRandomizerPlugin
 
     private HookResult OnGiveNamedItemPost(DynamicHook hook)
     {
+        if (_draining || CoreConfig.FollowCS2ServerGuidelines)
+            return HookResult.Continue;
+
         try
         {
             var weaponHandle = hook.GetReturn<nint>();
@@ -197,10 +200,16 @@ public sealed partial class BotRandomizerPlugin
             return;
 
         var (low, high) = ReplayOriginalOwner.SplitSteamId(owner);
-        weapon.OriginalOwnerXuidLow = low;
-        weapon.OriginalOwnerXuidHigh = high;
-        Utilities.SetStateChanged(weapon, "CEconEntity", "m_OriginalOwnerXuidLow");
-        Utilities.SetStateChanged(weapon, "CEconEntity", "m_OriginalOwnerXuidHigh");
+        if (weapon.OriginalOwnerXuidLow != low)
+        {
+            weapon.OriginalOwnerXuidLow = low;
+            Utilities.SetStateChanged(weapon, "CEconEntity", "m_OriginalOwnerXuidLow");
+        }
+        if (weapon.OriginalOwnerXuidHigh != high)
+        {
+            weapon.OriginalOwnerXuidHigh = high;
+            Utilities.SetStateChanged(weapon, "CEconEntity", "m_OriginalOwnerXuidHigh");
+        }
     }
 
     private static CCSPlayerController? GetPlayerFromItemServices(CCSPlayer_ItemServices itemServices)

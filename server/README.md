@@ -20,7 +20,7 @@ The managed API minimum is 1.0.380. Reproducible build pins are recorded in
 
 All three providers use Metamod's shared KHook engine. KHook coordinates hooks;
 the provider APIs coordinate presentation and cosmetic ownership. Run one
-BotRandomizer provider and use its [API v3](runtime/BotRandomizer/API.md) for external plans.
+BotRandomizer provider and use its [API v4](runtime/BotRandomizer/API.md) for external plans.
 Consumers cancel ownership on the server thread when unloading and reconnect
 through provider lifecycle notifications.
 

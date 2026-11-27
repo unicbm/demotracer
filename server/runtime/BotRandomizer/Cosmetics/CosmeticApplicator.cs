@@ -41,11 +41,20 @@ internal sealed class CosmeticApplicator
         if (!pawn.IsValid)
             return;
 
-        pawn.SetModel(model);
-        Utilities.SetStateChanged(pawn, "CBaseEntity", "m_CBodyComponent");
+        var skeleton = pawn.CBodyComponent?.SceneNode?.GetSkeletonInstance();
+        var currentModel = skeleton is not null && skeleton.Handle != IntPtr.Zero
+            ? skeleton.ModelState.ModelName
+            : null;
+        if (!string.Equals(currentModel?.Replace('\\', '/'), model.Replace('\\', '/'),
+                StringComparison.OrdinalIgnoreCase))
+            // SetModel publishes the skeleton's model handle through the engine.
+            pawn.SetModel(model);
         var color = pawn.Render;
-        pawn.Render = Color.FromArgb(255, color.R, color.G, color.B);
-        Utilities.SetStateChanged(pawn, "CBaseModelEntity", "m_clrRender");
+        if (color.A != 255)
+        {
+            pawn.Render = Color.FromArgb(255, color.R, color.G, color.B);
+            Utilities.SetStateChanged(pawn, "CBaseModelEntity", "m_clrRender");
+        }
     }
 
     internal void ApplyKnife(
@@ -87,31 +96,28 @@ internal sealed class CosmeticApplicator
                 var econIsCurrent = takeoverWeaponHandle is null && item.ItemDefinitionIndex == selection.DefIndex
                     && (isPreparedEntity || isAppliedEntity && item.ItemID == applied.ItemId);
 
-                item.ItemDefinitionIndex = selection.DefIndex;
-                item.EntityQuality = selection.Identity?.ResolveQuality(defaultQuality: 3) ?? 3;
-                if (_setAttributeByName is not null)
+                if (!econIsCurrent && _setAttributeByName is not null)
                 {
-                    if (!econIsCurrent)
-                    {
-                        item.Initialized = true;
-                        item.AttributeList.Attributes.RemoveAll();
-                        item.NetworkedDynamicAttributes.Attributes.RemoveAll();
-                        EconItemIdentity.Apply(item, selection.Identity, player.SteamID, defaultQuality: 3);
-                        SetTextureAttributes(
-                            item.NetworkedDynamicAttributes,
-                            item.AttributeList,
-                            selection.PaintKit,
-                            selection.Seed,
-                            selection.Wear);
-                        if (selection.Identity?.StattrakCounter is { } counter)
-                            EconItemIdentity.ApplyStattrak(item, counter, _setAttributeByName);
-                    }
-                    weapon.FallbackPaintKit = selection.PaintKit;
-                    weapon.FallbackSeed = selection.Seed;
-                    weapon.FallbackWear = selection.Wear;
-                    MarkWeaponPaintStateChanged(weapon);
+                    item.ItemDefinitionIndex = selection.DefIndex;
+                    item.Initialized = true;
+                    item.AttributeList.Attributes.RemoveAll();
+                    item.NetworkedDynamicAttributes.Attributes.RemoveAll();
+                    EconItemIdentity.Apply(item, selection.Identity, player.SteamID, defaultQuality: 3);
+                    SetTextureAttributes(item.NetworkedDynamicAttributes, item.AttributeList,
+                        selection.PaintKit, selection.Seed, selection.Wear);
+                    if (selection.Identity?.StattrakCounter is { } counter)
+                        EconItemIdentity.ApplyStattrak(item, counter, _setAttributeByName);
+                    MarkRebuiltItem(weapon, "CEconEntity", "m_AttributeManager",
+                        Schema.GetSchemaOffset("CAttributeContainer", "m_Item"));
                 }
-                MarkKnifeItemChanged(weapon, fullIdentity: !econIsCurrent && _setAttributeByName is not null);
+                else
+                {
+                    SetKnifeItemField(weapon, ref item.ItemDefinitionIndex, selection.DefIndex, "m_iItemDefinitionIndex");
+                    var quality = selection.Identity?.ResolveQuality(defaultQuality: 3) ?? 3;
+                    SetKnifeItemField(weapon, ref item.EntityQuality, quality, "m_iEntityQuality");
+                }
+                if (_setAttributeByName is not null)
+                    ApplyFallbackPaint(weapon, selection);
                 // Rebuild subclass/model/animations only after the complete econ
                 // identity is in place. Takeover may have left another knife's
                 // definition here; rebuilding first observes that stale identity.
@@ -179,7 +185,7 @@ internal sealed class CosmeticApplicator
                 selection.PaintKit,
                 selection.Seed,
                 selection.Wear);
-            MarkItemChanged(pawn, "CCSPlayerPawn", "m_EconGloves", itemOffset: 0, fullIdentity: true);
+            MarkRebuiltItem(pawn, "CCSPlayerPawn", "m_EconGloves", itemOffset: 0);
             pawn.AcceptInput("SetBodygroup", value: "first_or_third_person,0");
             _appliedGloves[player.Slot] = new AppliedGloveCosmetic(
                 pawn.EntityHandle.Raw,
@@ -209,6 +215,54 @@ internal sealed class CosmeticApplicator
                 selection.Wear,
                 selection.Seed,
                 selection.Identity));
+
+    // A surviving bot can enter the new round with the item this provider dressed last round.
+    internal void RestoreSurvivingStockKnife(int slot, CCSPlayerPawn pawn, byte team)
+    {
+        if (!_appliedKnives.TryGetValue(slot, out var previous) || previous.PawnHandle != pawn.EntityHandle.Raw ||
+            pawn.WeaponServices?.MyWeapons is not { } weapons)
+            return;
+        foreach (var handle in weapons)
+        {
+            if (handle.Raw != previous.WeaponHandle || handle.Value is not { IsValid: true } weapon ||
+                weapon.AttributeManager?.Item is not { } item || item.ItemID != previous.ItemId ||
+                item.ItemDefinitionIndex != previous.Selection.DefIndex)
+                continue;
+            ushort stockDef = team == RandomizerAssets.TerroristTeam ? (ushort)59 : (ushort)42;
+            ResetItem(item, stockDef);
+            MarkRebuiltItem(weapon, "CEconEntity", "m_AttributeManager",
+                Schema.GetSchemaOffset("CAttributeContainer", "m_Item"));
+            ApplyFallbackPaint(weapon, new KnifeSelection(stockDef, 0, 0, 0));
+            weapon.AcceptInput("ChangeSubclass", value: stockDef.ToString());
+            return;
+        }
+    }
+
+    internal void ApplyStockGloves(int slot, CCSPlayerPawn pawn)
+    {
+        _appliedGloves.Remove(slot);
+        var item = pawn.EconGloves;
+        if (item.ItemDefinitionIndex is 0 or 5028 or 5029)
+            return;
+        ResetItem(item, 0);
+        MarkRebuiltItem(pawn, "CCSPlayerPawn", "m_EconGloves", itemOffset: 0);
+        pawn.AcceptInput("SetBodygroup", value: "first_or_third_person,0");
+    }
+
+    private static void ResetItem(CEconItemView item, ushort definition)
+    {
+        item.AttributeList.Attributes.RemoveAll();
+        item.NetworkedDynamicAttributes.Attributes.RemoveAll();
+        item.ItemDefinitionIndex = definition;
+        item.ItemID = 0;
+        item.ItemIDHigh = 0;
+        item.ItemIDLow = 0;
+        item.AccountID = 0;
+        item.EntityQuality = 0;
+        item.CustomName = string.Empty;
+        // The equipped team knife has an initialized item view. Empty pawn gloves do not.
+        item.Initialized = definition != 0;
+    }
 
     internal void ShowGloves(CCSPlayerPawn pawn)
     {
@@ -242,8 +296,7 @@ internal sealed class CosmeticApplicator
                 if (item is null)
                     continue;
 
-                item.ItemDefinitionIndex = defIndex;
-                MarkKnifeItemChanged(weapon, fullIdentity: false);
+                SetKnifeItemField(weapon, ref item.ItemDefinitionIndex, defIndex, "m_iItemDefinitionIndex");
                 weapon.AcceptInput("ChangeSubclass", value: defIndex.ToString());
             }
         }
@@ -307,19 +360,35 @@ internal sealed class CosmeticApplicator
         SetAttribute(attributeList, "set item texture wear", wear);
     }
 
-    private static void MarkWeaponPaintStateChanged(CBasePlayerWeapon weapon)
+    private static void ApplyFallbackPaint(CBasePlayerWeapon weapon, KnifeSelection selection)
     {
-        Utilities.SetStateChanged(weapon, "CEconEntity", "m_nFallbackPaintKit");
-        Utilities.SetStateChanged(weapon, "CEconEntity", "m_nFallbackSeed");
-        Utilities.SetStateChanged(weapon, "CEconEntity", "m_flFallbackWear");
+        if (weapon.FallbackPaintKit != selection.PaintKit)
+        {
+            weapon.FallbackPaintKit = selection.PaintKit;
+            Utilities.SetStateChanged(weapon, "CEconEntity", "m_nFallbackPaintKit");
+        }
+        if (weapon.FallbackSeed != selection.Seed)
+        {
+            weapon.FallbackSeed = selection.Seed;
+            Utilities.SetStateChanged(weapon, "CEconEntity", "m_nFallbackSeed");
+        }
+        if (weapon.FallbackWear != selection.Wear)
+        {
+            weapon.FallbackWear = selection.Wear;
+            Utilities.SetStateChanged(weapon, "CEconEntity", "m_flFallbackWear");
+        }
     }
 
-    private static void MarkKnifeItemChanged(CBasePlayerWeapon weapon, bool fullIdentity)
-        => MarkItemChanged(weapon, "CEconEntity", "m_AttributeManager",
-            Schema.GetSchemaOffset("CAttributeContainer", "m_Item"), fullIdentity);
+    private static void SetKnifeItemField<T>(CBasePlayerWeapon weapon, ref T current, T value, string field)
+        where T : struct, IEquatable<T>
+    {
+        if (current.Equals(value)) return;
+        current = value;
+        Utilities.SetStateChanged(weapon, "CEconEntity", "m_AttributeManager",
+            Schema.GetSchemaOffset("CAttributeContainer", "m_Item") + Schema.GetSchemaOffset("CEconItemView", field));
+    }
 
-    private static void MarkItemChanged(CBaseEntity entity, string parentClass, string parentField,
-        int itemOffset, bool fullIdentity)
+    private static void MarkRebuiltItem(CBaseEntity entity, string parentClass, string parentField, int itemOffset)
     {
         // The weapon and glove net tables contain the individual econ properties.
         // A change at the container's base address cannot be resolved by CS2.
@@ -328,8 +397,6 @@ internal sealed class CosmeticApplicator
 
         Mark("m_iItemDefinitionIndex");
         Mark("m_iEntityQuality");
-        if (!fullIdentity)
-            return;
         Mark("m_iItemIDHigh");
         Mark("m_iItemIDLow");
         Mark("m_iAccountID");

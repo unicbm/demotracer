@@ -7,6 +7,7 @@
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using DtrHiderApi;
+using System.Numerics;
 
 namespace DemoTracer;
 
@@ -154,16 +155,7 @@ public sealed partial class DemoTracerPlugin
                 ApplyReplayBotViewmodel(slot, pawn, owner, replay.View.Viewmodel!);
         }
 
-        for (var slot = 0; slot < MaxPlayerSlots; slot++)
-        {
-            if ((activeReplaySlotMask & (1UL << slot)) == 0 &&
-                IsReplayViewmodelSlotTracked(slot) &&
-                !_session.FreezePrerollSlots.Contains(slot) &&
-                !_retainedReplayViewmodelSlots.Contains(slot))
-            {
-                RestoreReplayBotViewmodel(slot);
-            }
-        }
+        RestoreNonRetainedReplayBotViewmodels(activeReplaySlotMask);
     }
 
     private bool HasTrackedReplayViewmodelState()
@@ -201,15 +193,21 @@ public sealed partial class DemoTracerPlugin
         return true;
     }
 
-    private void RestoreNonRetainedReplayBotViewmodels()
+    private void RestoreNonRetainedReplayBotViewmodels(ulong activeSlots = 0)
     {
-        if (!HasTrackedReplayViewmodelState())
-            return;
+        // Restoring a slot removes its view and hand latch. Snapshot their union before any writes.
+        ulong tracked = 0;
+        foreach (var slot in _session.ReplayViewmodels.Keys)
+            tracked |= 1UL << slot;
+        foreach (var slot in _replayLeftHandDesiredLatches.Keys)
+            tracked |= 1UL << slot;
 
-        for (var slot = 0; slot < MaxPlayerSlots; slot++)
+        var pending = tracked & ~activeSlots;
+        while (pending != 0)
         {
-            if (IsReplayViewmodelSlotTracked(slot) &&
-                !_session.FreezePrerollSlots.Contains(slot) &&
+            var slot = BitOperations.TrailingZeroCount(pending);
+            pending &= pending - 1;
+            if (!_session.FreezePrerollSlots.Contains(slot) &&
                 !_retainedReplayViewmodelSlots.Contains(slot))
                 RestoreReplayBotViewmodel(slot);
         }

@@ -75,6 +75,15 @@ endif()
 add_test(NAME BotControllerSafeReadTests
     COMMAND BotControllerSafeReadTests)
 
+add_executable(BotControllerEquipmentTests replay_pawn_equipment_tests.cpp
+    "../src/BotRecorder/ReplayPawnEquipment.cpp")
+target_include_directories(BotControllerEquipmentTests PRIVATE ${REPLAY_INCLUDE_DIR}
+    "../src/common" "${DTR_COMMON_DIR}/third_party")
+if(MSVC)
+    target_compile_options(BotControllerEquipmentTests PRIVATE /utf-8 /EHsc)
+endif()
+add_test(NAME BotControllerEquipmentTests COMMAND BotControllerEquipmentTests)
+
 # Replay lifecycle against fake engine storage.
 add_executable(BotControllerReplayMovementTests
     replay_movement_tests.cpp

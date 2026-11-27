@@ -383,7 +383,6 @@ public sealed partial class DemoTracerPlugin
         _session.Plan.PlayoffPreparedTRound = tRound;
         _session.Plan.PlayoffPreparedCtRound = ctRound;
         _session.Plan.PlayoffPreparedLabel = $"{reason}; {load.Message}";
-        TryStartDtrRoundBanner($"playoff_t{tRound}_ct{ctRound}");
         Server.PrintToConsole(
             $"dtr: prepared playoff extra round {_session.Plan.PlayoffRoundIndex + 1} on {prepareReason} -> {_session.Plan.PlayoffPreparedLabel}");
         return true;

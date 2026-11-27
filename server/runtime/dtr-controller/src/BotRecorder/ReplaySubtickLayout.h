@@ -19,13 +19,24 @@ namespace BotController
             return recordedWhen <= 0.0f ? 0.0f : recordedWhen;
         }
 
+        struct StoredTick
+        {
+            std::uint32_t preIndex;
+            std::int32_t weaponDefIndex;
+            std::uint32_t numSubtick;
+        };
+
         struct ReplayLoadStaging
         {
-            std::vector<ReplayTick> ticks;
+            std::vector<StoredTick> ticks;
+            std::vector<MovementSnapshot> snapshots;
             std::vector<SubtickMove> subs;
             std::vector<ReplayCommandFrameData> commands;
             std::vector<std::size_t> offsets;
 
+            const MovementSnapshot &Pre(std::size_t index) const { return snapshots[ticks[index].preIndex]; }
+            const MovementSnapshot &Post(std::size_t index) const { return snapshots[ticks[index].preIndex + 1]; }
+            ReplayTick AbiTick(std::size_t index) const;
             void Swap(ReplayLoadStaging &other) noexcept;
         };
 
@@ -40,7 +51,7 @@ namespace BotController
         // Validate and return one tick's range in the parallel subtick array.
         // On failure, begin and end are left unchanged.
         bool TryGetReplaySubtickRange(
-            const ReplayTick *ticks,
+            std::uint32_t expectedCount,
             std::size_t tickCount,
             const std::vector<std::size_t> &offsets,
             std::size_t subCount,

@@ -110,6 +110,7 @@ add_library(dtr-controller SHARED
     src/BotRecorder/InputInjector.cpp
     src/BotRecorder/MotionRecorder.cpp
     src/BotRecorder/ReplaySourceState.cpp
+    src/BotRecorder/ReplayNetworkState.cpp
     src/BotRecorder/ReplayPawnEquipment.cpp
     src/BotRecorder/ReplaySubtickLayout.cpp
     src/VoiceSender/VoiceSender.cpp

@@ -90,7 +90,7 @@ public sealed partial class DemoTracerPlugin
 
     private void ReleaseReplaySlot(
         int slot,
-        string reason,
+        string? reason,
         ReplayReleaseKind releaseKind = ReplayReleaseKind.Immediate)
     {
         CancelReplaySlotDeferredWork(slot);
@@ -126,8 +126,9 @@ public sealed partial class DemoTracerPlugin
                 $"dtr: handoff best-weapon request unavailable slot={slot}");
         }
         _ = SyncBotRandomizerCosmeticLease(announce: false);
-        Server.PrintToConsole(
-            $"dtr: released slot={slot} reason={reason} viewmodel={(retainedViewmodel ? "retained_round" : "released")}");
+        if (reason != null)
+            Server.PrintToConsole(
+                $"dtr: released slot={slot} reason={reason} viewmodel={(retainedViewmodel ? "retained_round" : "released")}");
     }
 
     private bool CheckReplayStartGates(

@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <bit>
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
@@ -971,9 +972,9 @@ namespace cs2bh
     static BotPawnBatch CollectManagedBotPawns()
     {
         BotPawnBatch pawns;
-        for (int slot = 0; slot < FakeClientManager::kMaxSlots; ++slot)
+        for (auto slots = Manager().ManagedSlotMask(); slots != 0; slots &= slots - 1)
         {
-            BotPawnRef pawn = ResolveManagedBotPawn(slot);
+            BotPawnRef pawn = ResolveManagedBotPawn(std::countr_zero(slots));
             if (!pawn.Instance)
                 continue;
 

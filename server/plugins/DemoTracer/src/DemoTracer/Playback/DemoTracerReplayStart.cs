@@ -36,6 +36,7 @@ public sealed partial class DemoTracerPlugin
     }
 
     private string _loadedDemoSha256 = string.Empty;
+    private int? _reportedPlayedPrerollToken;
     private string StartLoaded(bool loop, Action<int>? onStarted = null)
         => StartLoaded(loop, ReplayStartAnchor.Live, null, onStarted);
 
@@ -137,7 +138,8 @@ public sealed partial class DemoTracerPlugin
             }
             else
             {
-                ReleaseReplaySlot(slot, "start_failed");
+                // Freeze pre-roll reports missing slots together across retries.
+                ReleaseReplaySlot(slot, anchor == ReplayStartAnchor.FreezePreroll ? null : "start_failed");
             }
         }
         timing.Mark("slots");
@@ -155,10 +157,16 @@ public sealed partial class DemoTracerPlugin
         timing.Mark("media");
         if (anchor == ReplayStartAnchor.Live && !restartLoop)
             BeginSoulAttempt(ok);
-        if (!restartLoop && ok > 0 && _loadedDemoSha256.Length == 64)
+        if (!restartLoop && ok > 0 && _loadedDemoSha256.Length == 64 &&
+            (anchor != ReplayStartAnchor.FreezePreroll || _reportedPlayedPrerollToken != _session.FreezePrerollToken))
+        {
+            // A partial pre-roll retries every 50 ms and counts already-playing slots again.
+            if (anchor == ReplayStartAnchor.FreezePreroll)
+                _reportedPlayedPrerollToken = _session.FreezePrerollToken;
             // The GUI monitors log-cssharp, not the separate per-plugin log.
             CoreLogging.Factory.CreateLogger("DemoTracer")
                 .LogInformation("DTR_PLAYED_DEMO_V1 sha256={DemoSha256}", _loadedDemoSha256);
+        }
         if (reportingPath != null && sources is { } played)
             ReportPlaybackResult(reportingPath, ok > 0 ? "started" : "no_slots", played.TRound,
                 started: ok, total: slots.Count, ctRound: played.CtRound);
@@ -452,19 +460,20 @@ public sealed partial class DemoTracerPlugin
     }
 
     private bool StartReplayForSlot(int slot)
-        => StartReplayForSlot(slot, ReplayStartAnchor.Live, null);
-
-    private bool StartReplayForSlot(
-        int slot,
-        ReplayStartAnchor anchor,
-        float? freezeTimeSeconds)
     {
         if (IsWarmupPeriod())
         {
             Server.PrintToConsole("[DTR ERR] Replay is unavailable during warmup.");
             return false;
         }
+        return StartReplayForSlot(slot, ReplayStartAnchor.Live, null);
+    }
 
+    private bool StartReplayForSlot(
+        int slot,
+        ReplayStartAnchor anchor,
+        float? freezeTimeSeconds)
+    {
         var startIndex = 0u;
         if (_session.LoadedReplays.TryGetValue(slot, out var replay))
         {
@@ -568,6 +577,7 @@ public sealed partial class DemoTracerPlugin
         var token = ++_session.FreezePrerollToken;
         var attempts = 0;
         var replayPreparationApplied = false;
+        var reportedMissingSlots = false;
         _session.FreezePrerollStarted = false;
         void TryStart()
         {
@@ -613,8 +623,9 @@ public sealed partial class DemoTracerPlugin
             var missingSlots = MissingFreezePrerollStartSlots();
             if (missingSlots.Length > 0)
             {
-                if (attempts == 1 || attempts % 64 == 0)
+                if (!reportedMissingSlots || attempts % 64 == 0)
                 {
+                    reportedMissingSlots = true;
                     Server.PrintToConsole(
                         $"[DTR WARN] freeze pre-roll retry {label}: slots={string.Join(",", missingSlots)}; {message}");
                 }

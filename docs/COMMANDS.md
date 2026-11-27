@@ -149,7 +149,7 @@ dtr_cosmetics <weapons|knives|gloves|names|agents|stickers|charms> <on|off>
 | `full` | Basic plus stickers and charms |
 
 Cosmetics default off and require demo evidence. The bundled BotRandomizer
-API v3 provider is the sole entity writer; DemoTracer submits plans. Missing
+API v4 provider is the sole entity writer; DemoTracer submits plans. Missing
 agent evidence preserves the engine model. See [BotRandomizer](../server/runtime/BotRandomizer/README.md)
 for randomization commands, configuration and host requirements. Changes apply
 during spawn/item creation; existing items are not rebuilt.

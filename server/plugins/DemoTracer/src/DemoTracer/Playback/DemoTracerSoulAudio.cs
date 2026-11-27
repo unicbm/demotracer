@@ -46,12 +46,12 @@ public sealed partial class DemoTracerPlugin
         var senderXuid = victim.SteamID;
         _soulDeathSoundTimer = AddOwnedTimer(0.01f, () =>
         {
-            if (!IsSoulHuman(victim) || victim.UserId != senderUserId)
+            if (!IsHumanPlayer(victim) || victim.UserId != senderUserId)
             {
                 StopSoulDeathSound();
                 return;
             }
-            var recipients = Utilities.GetPlayers().Where(IsSoulHuman).ToArray();
+            var recipients = Utilities.GetPlayers().Where(IsHumanPlayer).ToArray();
             var handle = GCHandle.Alloc(clip.AudioPayload, GCHandleType.Pinned);
             try
             {

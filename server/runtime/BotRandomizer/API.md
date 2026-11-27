@@ -1,8 +1,8 @@
-# Optional cosmetic-plan API v3
+# Optional cosmetic-plan API v4
 
 Reference the shared `BotRandomizerApi.dll` with `Private=false` and resolve
 `PluginCapability<IBotRandomizerApi>(BotRandomizerContract.Capability)` after
-plugins load. The capability is `botrandomizer:replay-cosmetic-plan:v3`.
+plugins load. The capability is `botrandomizer:replay-cosmetic-plan:v4`.
 Ordinary randomization has no dependency on a consumer being installed.
 
 On the server thread:
@@ -31,6 +31,11 @@ keychain evidence; agent policies distinguish explicit models, random defaults
 and preserving the engine default. Weapon/model combinations and ID domains
 are validated before the provider writes from its normal spawn and
 GiveNamedItem Pre/Post lifecycle. Consumers must not write econ entities directly.
+
+`StockKnife`, `StockGloves`, and `StockWeapons` (weapon definition IDs) request
+the engine appearance for those items. Each counts as a claim with randomization
+disabled. A plan may pair stock gloves with a custom knife. Conflicting stock
+and custom claims for the same item are rejected.
 
 The owner string is an identifier, not an authentication boundary between CSS
 plugins. `DemoTracerOwner` is a compatibility convenience; other consumers may

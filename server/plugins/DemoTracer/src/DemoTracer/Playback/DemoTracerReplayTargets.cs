@@ -18,15 +18,16 @@ public sealed partial class DemoTracerPlugin
     private static TickPlayerSnapshot BuildTickPlayerSnapshot(TickPlayerSnapshot? snapshot = null)
     {
         snapshot ??= new TickPlayerSnapshot();
-        snapshot.Refresh(Utilities.FindAllEntitiesByDesignerName<CCSPlayerController>("cs_player_controller"));
+        snapshot.Refresh(FindPlayerControllers());
         return snapshot;
     }
 
     private List<CCSPlayerController> FindReplayTargets()
     {
-        var players = FindTeamPlayers();
+        var snapshot = BuildTickPlayerSnapshot();
+        var players = FindTeamPlayers(snapshot.Controllers);
         var targets = players
-            .Where(IsReplayTargetBot)
+            .Where(player => IsReplayTargetBot(player, snapshot.TakeoverControllers))
             .Where(player => _session.ReplaySlots.IsLoaded(player.Slot) ||
                              _session.WarmReplayBufferSlots.Contains(player.Slot) ||
                              !IsReplaySlotBusy(player.Slot))
@@ -121,12 +122,12 @@ public sealed partial class DemoTracerPlugin
         return false;
     }
 
-    private static List<CCSPlayerController> FindPlayerControllers()
+    private static IEnumerable<CCSPlayerController> FindPlayerControllers()
     {
-        return Utilities
-            .FindAllEntitiesByDesignerName<CCSPlayerController>("cs_player_controller")
-            .Where(player => player.IsValid)
-            .ToList();
+        var maxPlayers = Server.MaxPlayers;
+        for (var slot = 0; slot < maxPlayers; slot++)
+            if (Utilities.GetPlayerFromSlot(slot) is { IsValid: true } player)
+                yield return player;
     }
 
     private static List<CCSPlayerController> FindTeamPlayers(

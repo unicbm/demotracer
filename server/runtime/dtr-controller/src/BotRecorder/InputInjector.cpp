@@ -21,7 +21,6 @@
 #include "live_entities.h"
 #include "hook.h"
 #include "platform.h"
-#include <entity2/entityinstance.h>
 
 #include <algorithm>
 #include <array>
@@ -564,23 +563,24 @@ namespace BotController
             return SafeRead(controller, offset, value) && value != 0;
         }
 
-        static bool ReplayActiveAndSafe(int slot, void *services)
+        static void *ActiveReplayPawn(int slot, void *services)
         {
             if (slot < 0 || slot >= kMaxSlots || !MotionRecorder::IsReplaying(slot))
-                return false;
+                return nullptr;
             if (!g_setupMoveActive || !g_finishMoveActive || !g_subtickActive)
             {
                 MotionRecorder::StopReplay(slot);
                 DebugOut("[dtr-controller] stopped replay: required command/movement/view boundary hooks unavailable\n");
-                return false;
+                return nullptr;
             }
-            if (!IsReplayPawnCurrent(slot, ResolveReplayPawn(slot, services)))
+            void *pawn = ResolveReplayPawn(slot, services);
+            if (!IsReplayPawnCurrent(slot, pawn))
             {
                 MotionRecorder::StopReplay(slot);
-                return false;
+                return nullptr;
             }
             if (!g_slotControllingBot[slot].load(std::memory_order_acquire))
-                return true;
+                return pawn;
 
             MotionRecorder::StopReplay(slot);
             char dbg[128];
@@ -588,7 +588,7 @@ namespace BotController
                           "[dtr-controller] stopped replay slot=%d: controller is controlling a bot\n",
                           slot);
             DebugOut(dbg);
-            return false;
+            return nullptr;
         }
 
         bool ReadReplayClock(int slot, float tickInterval, ReplaySourceState::LiveClock &clock)
@@ -611,16 +611,6 @@ namespace BotController
             return true;
         }
 
-        void MarkReplayStateChanged(void *entity)
-        {
-            if (!entity) return;
-            // Request serialization of networked boundary state, including
-            // nested services. Local-only fields are not published by this call;
-            // simulation can also change values before the next snapshot.
-            const NetworkStateChangedData changed(true);
-            reinterpret_cast<CEntityInstance *>(entity)->NetworkStateChanged(changed);
-        }
-
         bool InitializeReplayPose(void *pawn, const float *origin, const float *velocity)
         {
             if (!pawn || !origin || !velocity || !g_setAbsOrigin || !g_setAbsVelocity)
@@ -636,7 +626,7 @@ namespace BotController
         {
             g_hookSetupMove.Continue(services, cmd, moveData);
             const int slot = ServicesToSlot(services);
-            if (ReplayActiveAndSafe(slot, services))
+            if (ActiveReplayPawn(slot, services))
                 MotionRecorder::OnReplaySetupMove(slot, moveData);
             return {KHook::Action::Ignore};
         }
@@ -657,15 +647,12 @@ namespace BotController
             if (slot >= 0 && slot < kMaxSlots)
                 g_slotServices[slot].store(services, std::memory_order_release);
 
-            bool replaying = ReplayActiveAndSafe(slot, services);
-            if (replaying)
-            {
-                ReplayPawnEquipment::ApplyPendingForPawn(
-                    slot, ResolveReplayPawn(slot, services));
-            }
+            void *replayPawn = ActiveReplayPawn(slot, services);
+            if (replayPawn)
+                ReplayPawnEquipment::ApplyPendingForPawn(slot, replayPawn);
             UsercmdMovementIntentFrame movementIntent{};
             bool hasMovementIntent =
-                !replaying && !IsSlotControllingBot(slot) &&
+                !replayPawn && !IsSlotControllingBot(slot) &&
                 ActiveUsercmdMovementIntent(slot, services, movementIntent);
 
             if (hasMovementIntent)
@@ -683,7 +670,7 @@ namespace BotController
         {
             MotionRecorder::AddReplayPerf(MotionRecorder::ReplayPerfCounter::FinishMoveHook);
             int slot = ServicesToSlot(services);
-            bool replaying = ReplayActiveAndSafe(slot, services);
+            bool replaying = ActiveReplayPawn(slot, services) != nullptr;
 
             // Publish the engine's output through its normal origin/velocity
             // setters. Never replace it with post snapshots or fake an origin delta.
@@ -702,12 +689,10 @@ namespace BotController
         {
             MotionRecorder::AddReplayPerf(MotionRecorder::ReplayPerfCounter::PlayerRunCommandHook);
             int slot = ServicesToSlot(services);
-            bool replaying = ReplayActiveAndSafe(slot, services);
+            void *replayPawn = ActiveReplayPawn(slot, services);
+            bool replaying = replayPawn != nullptr;
             if (replaying)
-            {
-                ReplayPawnEquipment::ApplyPendingForPawn(
-                    slot, ResolveReplayPawn(slot, services));
-            }
+                ReplayPawnEquipment::ApplyPendingForPawn(slot, replayPawn);
             UsercmdMovementIntentFrame movementIntent{};
             bool hasMovementIntent =
                 !replaying && !IsSlotControllingBot(slot) &&
@@ -717,7 +702,7 @@ namespace BotController
                                     g_leftHandLatches[slot].Get(leftHandDesired);
             if (hasLeftHandLatch)
             {
-                void *pawn = ResolveReplayPawn(slot, services);
+                void *pawn = replayPawn ? replayPawn : ResolveReplayPawn(slot, services);
                 uint32_t handle = 0;
                 const bool safeOwner = ReadHandLatchOwner(slot, pawn, handle);
                 hasLeftHandLatch = g_leftHandLatches[slot].Validate(
@@ -735,7 +720,7 @@ namespace BotController
                     MotionRecorder::ReplayCommandFrame frame{};
                     if (MotionRecorder::ReplayCommandFrameForSimulation(slot, frame) &&
                         MotionRecorder::OnReplayCommandPre(
-                            slot, services, *frame.tick, frame.commandView))
+                            slot, services, *frame.pre, frame.pitch, frame.yaw))
                     {
                         CInButtonStatePB *bp = base->mutable_buttons_pb();
                         bp->set_buttonstate1(frame.buttons0);
@@ -746,11 +731,11 @@ namespace BotController
                         pc->buttonstates.m_pButtonStates[2] = frame.buttons2;
 
                         CMsgQAngle *view = base->mutable_viewangles();
-                        view->set_x(frame.commandView.pitch);
-                        view->set_y(NormalizeDeg(frame.commandView.yaw));
+                        view->set_x(frame.pitch);
+                        view->set_y(NormalizeDeg(frame.yaw));
                         view->set_z(
                             (frame.commandFields & MotionRecorder::kCommandFieldViewAngles) != 0
-                                ? frame.commandView.roll
+                                ? frame.roll
                                 : 0.0f);
 
                         // Missing recorded axes are neutral. Never inherit the
@@ -853,7 +838,7 @@ namespace BotController
                 g_slotControllingBot[slot].store(ControllerIsControllingBot(controller), std::memory_order_release);
             }
 
-            bool replaying = services && ReplayActiveAndSafe(slot, services);
+            bool replaying = services && ActiveReplayPawn(slot, services);
 
             g_hookPhysicsSimulate.Continue(controller);
 

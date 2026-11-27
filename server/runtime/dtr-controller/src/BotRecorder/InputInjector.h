@@ -86,7 +86,6 @@ namespace BotController
         // origin/velocity setters, also used by FinishMove for normal output.
         bool ReadReplayClock(int slot, float tickInterval, ReplaySourceState::LiveClock &clock);
         bool InitializeReplayMoveType(void *pawn, uint8_t moveType);
-        void MarkReplayStateChanged(void *entity);
         bool InitializeReplayPose(void *pawn, const float *origin, const float *velocity);
 
         // Resolved address of the hooked function.

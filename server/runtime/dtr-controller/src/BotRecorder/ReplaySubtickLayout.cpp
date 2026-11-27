@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 
 namespace
@@ -141,9 +142,20 @@ namespace
 
 namespace BotController::ReplaySubtickLayout
 {
+    ReplayTick ReplayLoadStaging::AbiTick(std::size_t index) const
+    {
+        ReplayTick result{};
+        result.pre = Pre(index);
+        result.post = Post(index);
+        result.weaponDefIndex = ticks[index].weaponDefIndex;
+        result.numSubtick = ticks[index].numSubtick;
+        return result;
+    }
+
     void ReplayLoadStaging::Swap(ReplayLoadStaging &other) noexcept
     {
         ticks.swap(other.ticks);
+        snapshots.swap(other.snapshots);
         subs.swap(other.subs);
         commands.swap(other.commands);
         offsets.swap(other.offsets);
@@ -199,7 +211,7 @@ namespace BotController::ReplaySubtickLayout
     }
 
     bool TryGetReplaySubtickRange(
-        const ReplayTick *ticks,
+        std::uint32_t expectedCount,
         std::size_t tickCount,
         const std::vector<std::size_t> &offsets,
         std::size_t subCount,
@@ -207,7 +219,7 @@ namespace BotController::ReplaySubtickLayout
         std::size_t &begin,
         std::size_t &end) noexcept
     {
-        if (!ticks || tickIndex >= tickCount ||
+        if (tickIndex >= tickCount ||
             tickCount == std::numeric_limits<std::size_t>::max() ||
             offsets.size() != tickCount + 1 || offsets.empty() ||
             offsets.front() != 0 || offsets.back() != subCount)
@@ -217,7 +229,6 @@ namespace BotController::ReplaySubtickLayout
 
         const std::size_t candidateBegin = offsets[tickIndex];
         const std::size_t candidateEnd = offsets[tickIndex + 1];
-        const std::uint32_t expectedCount = ticks[tickIndex].numSubtick;
         if (expectedCount > static_cast<std::uint32_t>(MotionRecorder::kMaxSubtickPerTick) ||
             candidateBegin > candidateEnd || candidateEnd > subCount ||
             candidateEnd - candidateBegin != static_cast<std::size_t>(expectedCount))
@@ -279,11 +290,9 @@ namespace BotController::ReplaySubtickLayout
                 return false;
             }
 
-            // Check the raw ABI layout before copying the other parallel
-            // buffers, then validate the exact staged tick bytes again below.
-            std::vector<std::size_t> rawOffsets;
+            ReplayLoadStaging candidate;
             if (!TryBuildReplaySubtickOffsets(
-                    ticks, tickCount, subCount, rawOffsets))
+                    ticks, tickCount, subCount, candidate.offsets))
             {
                 return false;
             }
@@ -296,9 +305,23 @@ namespace BotController::ReplaySubtickLayout
                 return false;
             }
 
-            ReplayLoadStaging candidate;
+            candidate.ticks.reserve(tickCount);
             if (tickCount > 0)
-                candidate.ticks.assign(ticks, ticks + tickCount);
+                candidate.snapshots.reserve(static_cast<std::size_t>(tickCount) + 1);
+            for (int i = 0; i < tickCount; ++i)
+            {
+                const auto &tick = ticks[i];
+                if (tick.numSubtick != candidate.offsets[i + 1] - candidate.offsets[i])
+                    return false;
+                // Archive ticks share their boundary. The native ABI also permits
+                // discontinuities, so retain both snapshots when their bits differ.
+                if (candidate.snapshots.empty() ||
+                    std::memcmp(&candidate.snapshots.back(), &tick.pre, sizeof(tick.pre)) != 0)
+                    candidate.snapshots.push_back(tick.pre);
+                const auto preIndex = static_cast<std::uint32_t>(candidate.snapshots.size() - 1);
+                candidate.snapshots.push_back(tick.post);
+                candidate.ticks.push_back({preIndex, tick.weaponDefIndex, tick.numSubtick});
+            }
             if (subCount > 0)
                 candidate.subs.assign(subs, subs + subCount);
             if (commandCount > 0)
@@ -323,14 +346,6 @@ namespace BotController::ReplaySubtickLayout
                 }
                 if (total != static_cast<std::uint64_t>(inputHistoryEntryCount))
                     return false;
-            }
-
-            const ReplayTick *candidateTicks =
-                candidate.ticks.empty() ? ticks : candidate.ticks.data();
-            if (!TryBuildReplaySubtickOffsets(
-                    candidateTicks, tickCount, subCount, candidate.offsets))
-            {
-                return false;
             }
 
             staged.Swap(candidate);

@@ -34,7 +34,6 @@ public sealed partial class DemoTracerPlugin
     {
         CancelAllReplayDeferredWork();
         InvalidateFreezePreroll();
-        CancelDtrRoundBanner(resetRound: false);
         InvalidateInitialSpawnAssignment();
         ClearLoadedTeamAvatarOverrides("unload_all");
         StopVoiceTestPlayback("unload_all", printSummary: false);
@@ -91,7 +90,6 @@ public sealed partial class DemoTracerPlugin
             var hadReplayState = _session.ReplaySlots.HasAnyState ||
                                  _session.LoadedReplays.Count > 0 ||
                                  _retainedReplayViewmodelSlots.Count > 0 ||
-                                 _roundBannerPlayback != null ||
                                  _voiceTestPlayback != null ||
                                  _chatPlayback != null ||
                                  _session.Plan.Armed ||
@@ -99,7 +97,6 @@ public sealed partial class DemoTracerPlugin
                                  HasPlayoffSchedulingState();
 
             StopVoiceTestPlayback(reason, printSummary: false);
-            CancelDtrRoundBanner(resetRound: true);
             InvalidateFreezePreroll();
             ReleaseBotRandomizerCosmeticLease(reason);
 
@@ -163,7 +160,6 @@ public sealed partial class DemoTracerPlugin
         CancelAllReplayDeferredWork();
         InvalidateFreezePreroll();
         InvalidateInitialSpawnAssignment();
-        CancelDtrRoundBanner(resetRound: false);
         StopVoiceTestPlayback(reason, printSummary: false);
         StopChatPlayback(reason);
         foreach (var slot in _session.LoadedSlots.ToArray())

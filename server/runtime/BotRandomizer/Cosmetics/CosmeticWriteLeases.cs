@@ -28,10 +28,14 @@ internal sealed class CosmeticWritePolicy
     internal ushort AgentItemDefinitionIndex { get; init; }
     internal ReplayItemSelection? Knife { get; }
     internal ReplayItemSelection? Gloves { get; }
+    internal bool StockKnife { get; init; }
+    internal bool StockGloves { get; init; }
+    internal IReadOnlySet<ushort> StockWeapons { get; init; } = new HashSet<ushort>();
     internal int? MusicKit { get; }
     internal IReadOnlyDictionary<ushort, ReplayWeaponSelection> Weapons { get; }
     internal bool ClaimsAnything =>
         AgentMode != BotRandomizerAgentPlanMode.Randomized ||
+        StockKnife || StockGloves || StockWeapons.Count > 0 ||
         Knife is not null || Gloves is not null || MusicKit is not null || Weapons.Count > 0;
 
     internal bool TryGetWeapon(ushort defIndex, out ReplayWeaponSelection policy)

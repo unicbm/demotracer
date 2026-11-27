@@ -52,6 +52,7 @@ namespace BotController::targets
     inline int kPawn_MovementServices = 0xA40;
     // m_pItemServices and replay-owned round-start equipment.
     inline int kPawn_ItemServices = 0;
+    inline int kPawnComponent_ChainEntity = -1;
     inline int kPawn_ArmorValue = 0;
     // m_hController (CHandle)
     inline int kPawn_Controller = 0xB80;

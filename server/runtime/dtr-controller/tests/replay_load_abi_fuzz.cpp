@@ -55,6 +55,7 @@ namespace
             staged.offsets.size()};
         HashBytes(hash, sizes, std::size(sizes));
         HashBytes(hash, staged.ticks.data(), staged.ticks.size());
+        HashBytes(hash, staged.snapshots.data(), staged.snapshots.size());
         HashBytes(hash, staged.subs.data(), staged.subs.size());
         HashBytes(hash, staged.commands.data(), staged.commands.size());
         HashBytes(hash, staged.offsets.data(), staged.offsets.size());
@@ -64,10 +65,8 @@ namespace
     ReplayLoadStaging SentinelStaging()
     {
         ReplayLoadStaging staged;
-        ReplayTick tick{};
-        tick.weaponDefIndex = 777;
-        tick.numSubtick = 0;
-        staged.ticks.push_back(tick);
+        staged.snapshots.resize(2);
+        staged.ticks.push_back({0, 777, 0});
         staged.offsets = {0, 0};
         return staged;
     }
@@ -85,7 +84,7 @@ namespace
             std::size_t begin = 111;
             std::size_t end = 222;
             if (!TryGetReplaySubtickRange(
-                    staged.ticks.data(), staged.ticks.size(), staged.offsets,
+                    staged.ticks[i].numSubtick, staged.ticks.size(), staged.offsets,
                     staged.subs.size(), i, begin, end) ||
                 begin > end || end > staged.subs.size() ||
                 end - begin != staged.ticks[i].numSubtick)
@@ -177,7 +176,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t *data, std::size_t size
             std::size_t begin = 555;
             std::size_t end = 666;
             if (!TryGetReplaySubtickRange(
-                    tickData, static_cast<std::size_t>(advertisedTickCount),
+                    tickData[i].numSubtick, static_cast<std::size_t>(advertisedTickCount),
                     offsets, static_cast<std::size_t>(advertisedSubCount),
                     static_cast<std::size_t>(i), begin, end))
             {
@@ -217,7 +216,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t *data, std::size_t size
         std::size_t begin = 333;
         std::size_t end = 444;
         const bool rangeOk = TryGetReplaySubtickRange(
-            staged.ticks.data(), staged.ticks.size(), mutated,
+            staged.ticks[tickIndex].numSubtick, staged.ticks.size(), mutated,
             staged.subs.size(), tickIndex, begin, end);
         if (!rangeOk && (begin != 333 || end != 444))
             Trap();

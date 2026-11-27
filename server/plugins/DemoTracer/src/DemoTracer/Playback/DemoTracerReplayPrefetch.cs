@@ -314,28 +314,25 @@ internal sealed class DtrReplayPrefetch
             await _singleReader.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!ReplayFileStamp.TryRead(path, out var before))
-                    return DtrReplayDecodeResult.Failed;
-
-                var replay = await Task.Run(() =>
+                // An available reader permit completes synchronously on the calling game thread.
+                return await Task.Run(() =>
                     {
+                        if (!ReplayFileStamp.TryRead(path, out var before))
+                            return DtrReplayDecodeResult.Failed;
                         var decoded = _readReplay != null ? _readReplay(path) :
                             DtrReplayReader.ReadForPlayback(path, resource => generation.OpenResource(resource, before));
-                        return decoded with { PreparedMetadata = ReplayNativeMapper.BuildMetadata(decoded) };
+                        var replay = decoded with { PreparedMetadata = ReplayNativeMapper.BuildMetadata(decoded) };
+                        if (cancellationToken.IsCancellationRequested ||
+                            !ReplayFileStamp.TryRead(path, out var after) || before != after)
+                            return DtrReplayDecodeResult.Failed;
+
+                        var reservedBytes = EstimateReplayBytes(replay);
+                        if (!generation.TryReserveDecodedBytes(reservedBytes))
+                            return new DtrReplayDecodeResult(DtrReplayPrefetchTakeStatus.CapacityExceeded, default, after, 0);
+
+                        return new DtrReplayDecodeResult(DtrReplayPrefetchTakeStatus.Success, replay, after, reservedBytes);
                     }, cancellationToken)
                     .ConfigureAwait(false);
-                if (cancellationToken.IsCancellationRequested ||
-                    !ReplayFileStamp.TryRead(path, out var after) ||
-                    before != after)
-                {
-                    return DtrReplayDecodeResult.Failed;
-                }
-                var reservedBytes = EstimateReplayBytes(replay);
-                if (!generation.TryReserveDecodedBytes(reservedBytes))
-                    return new DtrReplayDecodeResult(DtrReplayPrefetchTakeStatus.CapacityExceeded, default, after, 0);
-
-                return new DtrReplayDecodeResult(DtrReplayPrefetchTakeStatus.Success, replay, after, reservedBytes);
             }
             finally
             {

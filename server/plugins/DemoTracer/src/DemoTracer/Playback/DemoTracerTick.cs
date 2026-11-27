@@ -30,7 +30,6 @@ public sealed partial class DemoTracerPlugin
 
     private void ProcessReplayTick()
     {
-        ProcessDtrRoundBanner();
         TickPlayerSnapshot? playerSnapshot = null;
         ProcessVoiceTestPlayback(ref playerSnapshot);
         ProcessChatPlayback(ref playerSnapshot);

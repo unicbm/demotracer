@@ -53,14 +53,14 @@ public sealed class ReplayLifecycleBoundaryTests
             [typeof(bool), typeof(bool), typeof(bool)])!.Invoke(plugin, [false, true, true]);
         Assert.Empty(replays);
         Assert.False(GetProperty<ReplaySlotRegistry>(session, "ReplaySlots").HasAnyState);
-        var retained = Assert.Single(Invoke<BotRandomizerReplayCosmeticPlan[]>(plugin, "BuildBotRandomizerReplayPlans"));
+        var retained = Assert.Single(Invoke<BotRandomizerReplayCosmeticPlan[]>(plugin, "BuildBotRandomizerReplayPlans", true));
         Assert.Equal("demo_agent", retained.Agent.ModelPath);
         Assert.Equal(309U, Assert.Single(retained.Weapons).PaintKit);
-        Assert.Single(Invoke<BotRandomizerReplayCosmeticPlan[]>(plugin, "BuildBotRandomizerReplayPlans"));
+        Assert.Single(Invoke<BotRandomizerReplayCosmeticPlan[]>(plugin, "BuildBotRandomizerReplayPlans", true));
 
         // Explicit unload inside the same transition cannot resurrect the plan.
         typeof(DemoTracerPlugin).GetMethod("StopAndUnloadLoaded", PrivateInstance, Type.EmptyTypes)!.Invoke(plugin, null);
-        Assert.Empty(Invoke<BotRandomizerReplayCosmeticPlan[]>(plugin, "BuildBotRandomizerReplayPlans"));
+        Assert.Empty(Invoke<BotRandomizerReplayCosmeticPlan[]>(plugin, "BuildBotRandomizerReplayPlans", true));
 
         // Stop-all can retain loaded metadata inside an atomic transition.
         // That metadata must not revive the just-released cosmetic plan.
@@ -68,7 +68,7 @@ public sealed class ReplayLifecycleBoundaryTests
         GetProperty<HashSet<int>>(session, "CosmeticSyncedSlots").Add(3);
         typeof(DemoTracerPlugin).GetMethod("ReleaseBotRandomizerCosmeticLease", PrivateInstance,
             [typeof(string)])!.Invoke(plugin, ["stop_all"]);
-        Assert.Empty(Invoke<BotRandomizerReplayCosmeticPlan[]>(plugin, "BuildBotRandomizerReplayPlans"));
+        Assert.Empty(Invoke<BotRandomizerReplayCosmeticPlan[]>(plugin, "BuildBotRandomizerReplayPlans", true));
     }
 
     [Fact]
@@ -344,6 +344,22 @@ public sealed class ReplayLifecycleBoundaryTests
     }
 
     [Fact]
+    public void ViewCleanupPreservesTheLastActiveSlotAndClearsInactiveHandLatches()
+    {
+        var plugin = CreatePlugin();
+        var hands = GetField<Dictionary<int, DemoTracerPlugin.ReplayViewOwner>>(plugin, "_replayLeftHandDesiredLatches");
+        var owner = new DemoTracerPlugin.ReplayViewOwner(0x8005, 0x8010, 0x1000);
+        hands.Add(0, owner);
+        hands.Add(63, owner);
+
+        Invoke<object?>(plugin, "RestoreNonRetainedReplayBotViewmodels", 1UL << 63);
+        Assert.Equal(63, Assert.Single(hands).Key);
+
+        Invoke<object?>(plugin, "RestoreNonRetainedReplayBotViewmodels", 0UL);
+        Assert.Empty(hands);
+    }
+
+    [Fact]
     public void CommandOnlyFreezePrerollKeepsHandDesireBeforeManagedPlayingStarts()
     {
         var plugin = CreatePlugin();
@@ -354,7 +370,7 @@ public sealed class ReplayLifecycleBoundaryTests
 
         // No manifest viewmodel and no PlayingSlots yet. Running the real
         // cleanup must not clear the already-running native pre-roll's desire.
-        Invoke<object?>(plugin, "RestoreNonRetainedReplayBotViewmodels");
+        Invoke<object?>(plugin, "RestoreNonRetainedReplayBotViewmodels", 0UL);
 
         Assert.Equal(owner, GetField<Dictionary<int, DemoTracerPlugin.ReplayViewOwner>>(plugin, "_replayLeftHandDesiredLatches")[4]);
         Assert.True(Invoke<bool>(plugin, "IsReplayViewmodelSlotTracked", 4));
@@ -373,7 +389,7 @@ public sealed class ReplayLifecycleBoundaryTests
         // This entry point implements viewmodel_continuity=release. Changing
         // visual offsets must not force a weapon redeploy during native combat.
         Invoke<object?>(plugin, "RestoreRetainedReplayBotViewmodels");
-        Invoke<object?>(plugin, "RestoreNonRetainedReplayBotViewmodels");
+        Invoke<object?>(plugin, "RestoreNonRetainedReplayBotViewmodels", 0UL);
 
         Assert.Contains(4, retained);
         Assert.Equal(owner, hands[4]);

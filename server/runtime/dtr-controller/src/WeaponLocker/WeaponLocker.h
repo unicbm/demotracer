@@ -48,7 +48,7 @@ namespace BotController
 
         // Active weapon's def index, resolved by full entity handle including
         // serial. -1 if none/unresolved (no inventory scan or stale-serial match).
-        int ActiveWeaponDef(void *ws);
+        int ActiveWeaponDef(void *ws, bool normalizeKnife = true);
 
         // Active weapon entity index read directly from m_hActiveWeapon.
         // Used to populate the engine's weapon-selection input.

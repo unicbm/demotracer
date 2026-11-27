@@ -18,6 +18,13 @@ public sealed partial class DemoTracerPlugin
         if (cosmetics == null)
             return normalized;
 
+        normalized.StockKnife = cosmetics.StockKnife && cosmetics.Knife is null;
+        normalized.StockGloves = cosmetics.StockGloves && cosmetics.Glove is null;
+        normalized.StockWeapons = (cosmetics.StockWeapons ?? [])
+            .Where(def => IsWeaponCosmeticDefIndex(def) && NormalizeWeaponDefIndex(def) == def)
+            .Except((cosmetics.Weapons ?? []).Select(weapon => weapon.WeaponDefIndex))
+            .Order().ToList();
+
         foreach (var group in (cosmetics.Weapons ?? [])
                      .Where(IsValidWeaponCosmetic)
                      .GroupBy(weapon => NormalizeWeaponDefIndex(weapon.WeaponDefIndex)))
@@ -105,7 +112,8 @@ public sealed partial class DemoTracerPlugin
 
     private static bool HasCosmeticEvidence(ReplayCosmetics? cosmetics)
         => cosmetics != null &&
-           ((cosmetics.Weapons?.Count ?? 0) > 0 ||
+           (cosmetics.StockKnife || cosmetics.StockGloves || cosmetics.StockWeapons.Count > 0 ||
+            (cosmetics.Weapons?.Count ?? 0) > 0 ||
             cosmetics.Knife != null ||
             cosmetics.Glove != null ||
             cosmetics.Agent != null);

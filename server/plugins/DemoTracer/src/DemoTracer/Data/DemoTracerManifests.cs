@@ -129,6 +129,9 @@ public sealed partial class DemoTracerPlugin
 
     private sealed class ReplayCosmetics
     {
+        public bool StockKnife { get; set; }
+        public bool StockGloves { get; set; }
+        public List<int> StockWeapons { get; set; } = [];
         public List<ReplayWeaponCosmetic> Weapons { get; set; } = new();
         public ReplayItemCosmetic? Knife { get; set; }
         public ReplayItemCosmetic? Glove { get; set; }

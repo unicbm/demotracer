@@ -195,12 +195,11 @@ namespace BotController
 
         struct ReplayCommandFrame
         {
-            const ReplayTick *tick;
+            const MovementSnapshot *pre;
             const SubtickMove *subticks;
-            const ReplayCommandFrameData *command;
             int32_t subtickCount;
             int32_t weaponSelect;
-            MovementSnapshot commandView;
+            float pitch, yaw, roll;
             uint64_t buttons0;
             uint64_t buttons1;
             uint64_t buttons2;
@@ -210,7 +209,6 @@ namespace BotController
             float upMove;
             int32_t mouseDx;
             int32_t mouseDy;
-            int32_t rawWeaponSelect;
             uint8_t leftHandDesired;
         };
 
@@ -253,7 +251,7 @@ namespace BotController
         bool GetReplaySlotState(int slot, ReplaySlotState &out);
 
         // Current tick being applied this server tick
-        bool ReplayTickForSimulation(int slot, ReplayTick &out);
+        int ReplayWeaponDefForSimulation(int slot);
         bool ReplayCommandFrameForSimulation(int slot, ReplayCommandFrame &out);
         // Snapshot to return from replay-owned eye-angle getters. This uses
         // the last post view prepared by FinishMove when available, so camera
@@ -263,8 +261,8 @@ namespace BotController
         bool CurrentReplayTick(int slot, ReplayTick &out);
         // Initialize movement once at a start/seek/loop boundary, then prepare
         // the command view. Returns false without injecting a command on failure.
-        bool OnReplayCommandPre(int slot, void *services, const ReplayTick &tick,
-                                const MovementSnapshot &commandView);
+        bool OnReplayCommandPre(int slot, void *services, const MovementSnapshot &pre,
+                                float pitch, float yaw);
         // PlayerRunCommand (post): if FinishMove naturally stopped replay inside
         // the command, scrub any replay state restored by the remaining tail.
         void OnReplayCommandPost(int slot, void *services, bool wasReplaying);

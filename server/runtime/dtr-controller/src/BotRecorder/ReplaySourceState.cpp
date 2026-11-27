@@ -1,8 +1,7 @@
 #include "ReplaySourceState.h"
-#include "InputInjector.h"
+#include "ReplayNetworkState.h"
 #include "schema_resolver.h"
 #include "ccsbot_slot.h"
-#include "version_targets.h"
 #include <initializer_list>
 #include "platform.h"
 #include <cstdio>
@@ -10,14 +9,14 @@
 namespace BotController::ReplaySourceState {
 namespace {
 std::array<int, FieldCount> offsets;
-int modernJumpOffset = -1, aimServicesOffset = -1;
+int aimServicesOffset = -1;
 int Find(std::initializer_list<const char *> classes, const char *field) {
     for (auto name : classes) { const int offset = Schema::GetFieldOffset(name, field); if (offset >= 0) return offset; }
     return -1;
 }
 }
 bool InitializeOffsets() {
-    modernJumpOffset = Schema::GetFieldOffset("CCSPlayer_MovementServices", "m_ModernJump");
+    const int modernJumpOffset = Schema::GetFieldOffset("CCSPlayer_MovementServices", "m_ModernJump");
     aimServicesOffset = Schema::GetFieldOffset("CCSPlayerPawn", "m_pAimPunchServices");
     bool ready = modernJumpOffset >= 0 && aimServicesOffset >= 0;
     for (uint32_t i = 0; i < FieldCount; ++i) {
@@ -34,7 +33,9 @@ bool InitializeOffsets() {
         case Target::WeaponServices: offset = Find({"CCSPlayer_WeaponServices", "CPlayer_WeaponServices"}, f.field); break;
         default: break;
         }
-        offsets[i] = offset < 0 ? -1 : offset + f.componentOffset;
+        offsets[i] = offset;
+        if (f.target == Target::ModernJump && offset >= 0 && modernJumpOffset >= 0)
+            offsets[i] += modernJumpOffset;
         if (offset < 0 && f.target != Target::Clock && f.target != Target::Identity) {
             char message[160];
             std::snprintf(message, sizeof(message), "[dtr-controller] source state field unavailable: %s\n", f.field);
@@ -54,10 +55,15 @@ bool Apply(void *pawn, void *movement, void *weaponServices, void *weapon,
     if (aimServicesOffset >= 0) SafeRead(pawn, aimServicesOffset, aim);
     // Player tickbase is the command simulation clock; never use the demo file tick.
     const auto sourceTick = state[PlayerTick];
-    struct Write { void *base; int offset; uint32_t bits; size_t size; };
+    struct Write {
+        void *owner;
+        int fieldOffset, valueOffset;
+        uint32_t bits;
+        size_t size;
+        bool pawnComponent;
+    };
     std::array<Write, FieldCount> writes;
     size_t writeCount = 0;
-    bool pawnChanged = false, weaponChanged = false;
     for (uint32_t i = 0; i < FieldCount; ++i) {
         const auto &f = fields[i];
         const bool weaponField = f.target == Target::Weapon || f.target == Target::WeaponServices;
@@ -65,8 +71,8 @@ bool Apply(void *pawn, void *movement, void *weaponServices, void *weapon,
         void *base = nullptr;
         switch (f.target) {
         case Target::Pawn: base = pawn; break;
-        case Target::Movement: base = movement; break;
-        case Target::ModernJump: if (modernJumpOffset >= 0) base = static_cast<char *>(movement) + modernJumpOffset; break;
+        case Target::Movement:
+        case Target::ModernJump: base = movement; break;
         case Target::Aim: base = aim; break;
         case Target::Weapon: base = weapon; break;
         case Target::WeaponServices: base = weaponServices; break;
@@ -80,16 +86,30 @@ bool Apply(void *pawn, void *movement, void *weaponServices, void *weapon,
             bits = Rebase(*bits, f.clock, sourceTick.value_or(0), sourceRate, clock);
             if (!bits) return false;
         }
-        writes[writeCount++] = {base, offsets[i], *bits, f.kind == Kind::Bool ? size_t{1} : size_t{4}};
-        if (f.target == Target::Weapon) weaponChanged = true;
-        else pawnChanged = true;
+        const size_t size = f.kind == Kind::Bool ? 1 : 4;
+        const int valueOffset = offsets[i] + f.componentOffset;
+        uint32_t current = 0;
+        if (!TryReadMemory(base, valueOffset, &current, size)) return false;
+        if (current != *bits)
+            writes[writeCount++] = {base, offsets[i], valueOffset, *bits, size,
+                                    f.target != Target::Pawn && f.target != Target::Weapon};
     }
-    for (size_t i = 0; i < writeCount; ++i) {
+    size_t applied = 0;
+    for (; applied < writeCount; ++applied) {
+        const auto &write = writes[applied];
+        if (!TryWriteMemory(write.owner, write.valueOffset, &write.bits, write.size)) break;
+    }
+    // Components of one recorded vector are contiguous and share one network field.
+    // Publish successful writes even if a later write failed.
+    for (size_t i = 0; i < applied; ++i) {
         const auto &write = writes[i];
-        if (!TryWriteMemory(write.base, write.offset, &write.bits, write.size)) return false;
+        if (i > 0 && writes[i - 1].owner == write.owner && writes[i - 1].fieldOffset == write.fieldOffset)
+            continue;
+        if (write.pawnComponent)
+            ReplayNetworkState::PawnComponentFieldChanged(write.owner, write.fieldOffset);
+        else
+            ReplayNetworkState::EntityFieldChanged(write.owner, write.fieldOffset);
     }
-    if (pawnChanged) InputInjector::MarkReplayStateChanged(pawn);
-    if (weaponChanged) InputInjector::MarkReplayStateChanged(weapon);
-    return true;
+    return applied == writeCount;
 }
 }

@@ -26,6 +26,8 @@ public sealed class UnpaintedCosmeticTests
         var type = typeof(DemoTracerPlugin).GetNestedType("ReplayCosmetics", BindingFlags.NonPublic)!;
         var input = JsonSerializer.Deserialize("""
             {
+              "StockGloves": true,
+              "StockWeapons": [7, 16, 16, -1],
               "Weapons": [
                 { "WeaponDefIndex": 7, "PaintKit": 0, "Seed": 0, "Wear": 0,
                   "ItemId": 123, "Stickers": [{ "Slot": 0, "StickerId": 4793, "Wear": 0 }] },
@@ -38,6 +40,8 @@ public sealed class UnpaintedCosmeticTests
             """, type)!;
         var normalized = typeof(DemoTracerPlugin).GetMethod("NormalizeReplayCosmetics", flags)!.Invoke(plugin, [input])!;
         var result = JsonSerializer.SerializeToElement(normalized, type);
+        Assert.Equal(16, Assert.Single(result.GetProperty("StockWeapons").EnumerateArray()).GetInt32());
+        Assert.False(result.GetProperty("StockGloves").GetBoolean());
         var weapon = Assert.Single(result.GetProperty("Weapons").EnumerateArray());
         Assert.Equal(7, weapon.GetProperty("WeaponDefIndex").GetInt32());
         Assert.Equal(4793, Assert.Single(weapon.GetProperty("Stickers").EnumerateArray()).GetProperty("StickerId").GetInt32());

@@ -4,8 +4,8 @@
 - Upstream commit: `81d7b9e31eea917bcfd0dd21a691dfccfee7c7ea`
 - Upstream paths: `BotRandomizerApi/BotRandomizerApi.csproj` and
   `BotRandomizerApi/IBotRandomizerApi.cs`
-- Local status: API v3 replay-plan contract maintained with the bundled
-  common BotRandomizer 1.7 provider
+- Local status: API v4 replay-plan contract maintained with the bundled
+  common BotRandomizer 1.8 provider
 - License: AGPL-3.0-only, the same license distributed in this repository's
   root `LICENSE` file
 
@@ -15,6 +15,6 @@ This API is maintained beside its canonical provider in
 Product consumers reference this project directly. Runtime deployment
 uses the single canonical `BotRandomizerApi.dll` installed by the playback
 bundle under `addons/counterstrikesharp/shared/BotRandomizerApi/`. Compatible
-BotRandomizer providers must reference that same API v3 contract rather than
+BotRandomizer providers must reference that same API v4 contract rather than
 shipping a private plugin-local copy. The provider validates complete desired
 state and is the sole cosmetic entity writer.

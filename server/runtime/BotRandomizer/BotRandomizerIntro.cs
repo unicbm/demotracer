@@ -1,5 +1,6 @@
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Modules.Memory;
 
 namespace BotRandomizer;
 
@@ -42,8 +43,12 @@ public sealed partial class BotRandomizerPlugin
                 continue;
 
             var preview = previews[previewIndex];
-            preview.AgentItem.ItemDefinitionIndex = defIndex;
-            Utilities.SetStateChanged(preview, "CCSGO_TeamPreviewCharacterPosition", "m_agentItem");
+            var agentItem = preview.AgentItem;
+            if (agentItem.ItemDefinitionIndex == defIndex)
+                continue;
+            agentItem.ItemDefinitionIndex = defIndex;
+            Utilities.SetStateChanged(preview, "CCSGO_TeamPreviewCharacterPosition", "m_agentItem",
+                Schema.GetSchemaOffset("CEconItemView", "m_iItemDefinitionIndex"));
         }
     }
 }

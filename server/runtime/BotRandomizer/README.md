@@ -9,7 +9,7 @@ and DemoTracer playback. There is no separate replay Randomizer plugin.
 
 ## Install
 
-Use the unified `BotRandomizer-v1.7.0.zip`. Extract its `addons` folder into the
+Use the unified `BotRandomizer-v1.8.0.zip`. Extract its `addons` folder into the
 server's `game/csgo` directory. Install **both** the plugin and the shared API:
 
 ```text

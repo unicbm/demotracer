@@ -5,8 +5,8 @@ namespace BotRandomizerApi;
 
 public static class BotRandomizerContract
 {
-    public const int ApiVersion = 3;
-    public const string Capability = "botrandomizer:replay-cosmetic-plan:v3";
+    public const int ApiVersion = 4;
+    public const string Capability = "botrandomizer:replay-cosmetic-plan:v4";
     public const string DemoTracerOwner = "demotracer";
     // Shared contract assembly: subscribers defer work and unsubscribe on unload.
     public static event Action? ProviderChanged;
@@ -113,6 +113,9 @@ public sealed class BotRandomizerReplayCosmeticPlan
     /// </summary>
     public byte SpawnTeam { get; set; }
     public BotRandomizerAgentPlan Agent { get; set; } = new();
+    public bool StockKnife { get; set; }
+    public bool StockGloves { get; set; }
+    public int[] StockWeapons { get; set; } = [];
     public BotRandomizerReplayItem? Knife { get; set; }
     public BotRandomizerReplayItem? Gloves { get; set; }
     public int? MusicKit { get; set; }

@@ -3,6 +3,7 @@
 #include "MotionRecorder.h"
 #include "InputInjector.h"
 #include "ReplayPawnEquipment.h"
+#include "ReplayNetworkState.h"
 #include "WeaponLocker.h"
 #include "ccsbot_slot.h"
 #include "version_targets.h"
@@ -11,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 namespace mr = BotController::MotionRecorder;
 namespace tg = BotController::targets;
@@ -36,7 +38,9 @@ namespace
     bool currentBotPawn = true;
     bool clockAvailable = true;
     bool weaponsAvailable = false, weaponActive = false;
-    int publishes = 0, deploys = 0;
+    int deploys = 0, writes = 0, equipmentStarts = 0, equipmentResumes = 0, inventorySearches = 0;
+    struct Notification { void *owner; int offset; bool component; };
+    std::vector<Notification> notifications;
     alignas(16) std::array<std::byte, 0x1000> weapon{}, weaponServices{};
     alignas(16) std::array<std::byte, 0x100> weaponIdentity{};
 
@@ -111,7 +115,8 @@ namespace
         humanOwnsPawn = false;
         replayHooksReady = currentBotPawn = true;
         weaponsAvailable = weaponActive = false;
-        publishes = deploys = 0;
+        deploys = writes = equipmentStarts = equipmentResumes = inventorySearches = 0;
+        notifications.clear();
         weapon.fill(std::byte{}); weaponServices.fill(std::byte{}); weaponIdentity.fill(std::byte{});
         Put(weapon, tg::kEnt_Identity, static_cast<void *>(weaponIdentity.data()));
         Put(weaponIdentity, tg::kEntIdentity_EHandle, uint32_t{55});
@@ -124,7 +129,7 @@ namespace
     {
         mr::ReplayCommandFrame frame{};
         Check(mr::ReplayCommandFrameForSimulation(slot, frame), "read command frame");
-        Check(mr::OnReplayCommandPre(slot, services.data(), *frame.tick, frame.commandView),
+        Check(mr::OnReplayCommandPre(slot, services.data(), *frame.pre, frame.pitch, frame.yaw),
               "prepare command");
     }
 
@@ -236,16 +241,19 @@ namespace
     {
         Reset();
         Check(mr::StartReplayUntil(slot, false, 0, 1), "start pre-roll");
+        Check(equipmentStarts == 1, "pre-roll did not reconcile gear");
         Prepare();
         mr::OnReplayCommit(slot, services.data());
         Prepare();
         Check(initializations == 1 && mr::ReplayCursor(slot) == 0, "hold restarted movement");
         SimulatedOutput();
         Check(mr::StartReplayAt(slot, false, 1), "resume held replay");
+        Check(equipmentStarts == 1 && equipmentResumes == 1, "held resume treated gear as a fresh start");
         Prepare();
         Check(initializations == 1, "held resume broke continuous movement");
         CheckOutput();
         Check(mr::StartReplayAt(slot, false, 2), "seek");
+        Check(equipmentStarts == 2, "seek did not reconcile gear");
         Prepare();
         Check(initializations == 2, "seek did not initialize");
         Check(Get<float>(node, originOffset) == 120.0f, "seek initialized wrong snapshot");
@@ -255,6 +263,22 @@ namespace
         Check(mr::ReplayCursor(slot) == 2, "loop exposed an out-of-range command");
         Prepare();
         Check(initializations == 4, "loop did not initialize next playback pass");
+    }
+
+    void RepeatedWeaponSelection()
+    {
+        namespace source = BotController::ReplaySourceState;
+        Reset();
+        weaponsAvailable = true;
+        Check(mr::SwitchBotWeaponByDef(slot, 7), "initial selection failed");
+        const int attackOffset = 0x800 + source::NextPrimaryTick * 4;
+        Put(weapon, attackOffset, 42);
+        Check(mr::SwitchBotWeaponByDef(slot, 7), "active weapon was not recognized");
+        Check(deploys == 1 && inventorySearches == 1 && Get<int>(weapon, attackOffset) == 42,
+              "reselecting active weapon searched inventory or reset its clock");
+        weaponActive = false;
+        Check(mr::SwitchBotWeaponByDef(slot, 7) && deploys == 2, "inactive weapon was not selected");
+        Check(!mr::SwitchBotWeaponByDef(slot, 9), "missing weapon reported success");
     }
 
     void FinishAndHumanTakeover()
@@ -271,7 +295,7 @@ namespace
         Check(Get<uint64_t>(services, tg::kServices_Buttons) == 0, "injected buttons leaked at finish");
         Check(equipmentReleases > 0 && inputReleases > 0, "ownership not released");
         const auto ticks = Ticks();
-        Check(!mr::OnReplayCommandPre(slot, services.data(), ticks[2], ticks[2].pre),
+        Check(!mr::OnReplayCommandPre(slot, services.data(), ticks[2].pre, ticks[2].pre.pitch, ticks[2].pre.yaw),
               "stopped replay still prepares commands");
         alignas(16) std::array<std::byte, 0x200> move{};
         mr::OnReplaySetupMove(slot, move.data());
@@ -333,7 +357,7 @@ namespace
         const auto pawnBefore = pawn;
         const auto nodeBefore = node;
         const auto ticks = Ticks();
-        Check(!mr::OnReplayCommandPre(slot, services.data(), ticks[0], ticks[0].pre),
+        Check(!mr::OnReplayCommandPre(slot, services.data(), ticks[0].pre, ticks[0].pre.pitch, ticks[0].pre.yaw),
               "replacement pawn received replay input");
         mr::OnReplayFinalView(slot, services.data());
         Check(mr::StopReplay(slot), "stale replay failed to stop");
@@ -352,7 +376,7 @@ namespace
         mr::ReplayCommandFrame frame{};
         Check(mr::ReplayCommandFrameForSimulation(slot, frame), "read first command");
         clockAvailable = false;
-        Check(!mr::OnReplayCommandPre(slot, services.data(), *frame.tick, frame.commandView),
+        Check(!mr::OnReplayCommandPre(slot, services.data(), *frame.pre, frame.pitch, frame.yaw),
               "missing clock allowed command preparation");
         clockAvailable = true;
         mr::StopReplay(slot);
@@ -431,6 +455,38 @@ namespace
         Check(a.At(5) == b.At(5), "invalid compact load damaged timeline");
     }
 
+    void OnlyChangedSourceFieldsArePublished()
+    {
+        namespace source = BotController::ReplaySourceState;
+        Reset();
+        Check(source::InitializeOffsets(), "source offsets");
+        source::Snapshot state{};
+        state[source::PlayerTick] = 4000;
+        state[source::Ducked] = 0;
+        state[source::LastActualJumpPressTick] = 3992;
+        state[source::BaseVelocityY] = source::Bits(1.0f);
+        state[source::BaseVelocityZ] = source::Bits(2.0f);
+        state[source::PredictableAngleZ] = source::Bits(3.0f);
+        constexpr int vectorOffset = 0x800 + source::BaseVelocityX * 4;
+        constexpr int jumpOffset = 0x40 + 0x800 + source::LastActualJumpPressTick * 4;
+        constexpr int aimOffset = 0x800 + source::PredictableAngleX * 4;
+        const auto apply = [&] {
+            return source::Apply(pawn.data(), services.data(), nullptr, nullptr, state, 64,
+                                 {1000, 15.625f, 1.0f / 64}, false);
+        };
+        const int before = writes;
+        Check(apply() && writes == before + 4 && notifications.size() == 3, "source delta counts");
+        const auto &jump = notifications[0], &velocity = notifications[1], &angle = notifications[2];
+        Check(jump.component && jump.owner == services.data() && jump.offset == jumpOffset &&
+              Get<int>(services, jumpOffset) == 992, "embedded jump notification");
+        Check(!velocity.component && velocity.owner == pawn.data() && velocity.offset == vectorOffset &&
+              Get<float>(pawn, vectorOffset + 8) == 2.0f, "pawn vector notification");
+        Check(angle.component && angle.owner == aim.data() && angle.offset == aimOffset &&
+              Get<float>(aim, aimOffset + 8) == 3.0f, "aim vector notification");
+        Check(apply() && writes == before + 4 && notifications.size() == 3,
+              "equal source or rebased clock was rewritten");
+    }
+
     void InitializationFailureDoesNotConsumeBoundary()
     {
         Reset();
@@ -438,7 +494,7 @@ namespace
         allowInitialization = false;
         const auto before = pawn;
         const auto ticks = Ticks();
-        Check(!mr::OnReplayCommandPre(slot, services.data(), ticks[0], ticks[0].pre),
+        Check(!mr::OnReplayCommandPre(slot, services.data(), ticks[0].pre, ticks[0].pre.pitch, ticks[0].pre.yaw),
               "failed engine setter accepted");
         Check(pawn == before && initializations == 0, "failed initialization changed pawn");
         allowInitialization = true;
@@ -490,7 +546,7 @@ namespace
         Put(weapon, 0x800 + source::ReserveAmmoSecondary * 4, 0);
         Check(mr::LoadReplaySourceState(slot, changes, 9, 64, 1.0f / 64) && mr::StartReplay(slot, false), "start weapon replay");
         Prepare();
-        Check(deploys == 1 && publishes == 2, "boundary deploy/publication count");
+        Check(deploys == 1 && notifications.size() == 2, "boundary deploy/publication count");
         Check(Get<int>(weapon, clipOffset) == 30 && Get<int>(weapon, attackOffset) == 1008 &&
               Get<float>(weaponServices, 0x800 + source::NextAttack * 4) == 15.75f, "weapon clock restore changed native ammo");
         Check(Get<int>(weapon, 0x800 + source::Clip2 * 4) == 0 &&
@@ -499,13 +555,13 @@ namespace
               Get<int>(weapon, 0x800 + source::ReserveAmmoSecondary * 4) == 0, "demo replaced server ammo/reload rules");
         Put(weapon, clipOffset, 6); Put(weapon, attackOffset, 1010);
         mr::OnReplayCommit(slot, services.data()); Prepare();
-        Check(Get<int>(weapon, clipOffset) == 6 && Get<int>(weapon, attackOffset) == 1010 && publishes == 2, "continuous replay reset weapon");
+        Check(Get<int>(weapon, clipOffset) == 6 && Get<int>(weapon, attackOffset) == 1010 && notifications.size() == 2, "continuous replay reset weapon");
         // A normal switch away/back must preserve the native incarnation.
         weaponActive = false; Prepare();
         Check(deploys == 1 && Get<int>(weapon, clipOffset) == 6, "switch reset weapon state");
         // Reused entity index, new serial: this really is a new incarnation.
         Put(weaponIdentity, tg::kEntIdentity_EHandle, uint32_t{55 + 0x8000}); Prepare();
-        Check(deploys == 2 && publishes == 4 && Get<int>(weapon, clipOffset) == 6, "recreated weapon changed native ammo");
+        Check(deploys == 2 && notifications.size() == 4 && Get<int>(weapon, clipOffset) == 6, "recreated weapon changed native ammo");
         source::Snapshot missingClock{};
         missingClock[source::Clip1] = 20;
         missingClock[source::NextPrimaryTick] = 10;
@@ -554,6 +610,7 @@ namespace BotController
     bool TryWriteMemory(void *base, int offset, const void *value, size_t size)
     {
         if (!base || !value || offset < 0) return false;
+        ++writes;
         std::memcpy(static_cast<std::byte *>(base) + offset, value, size);
         return true;
     }
@@ -563,18 +620,22 @@ namespace BotController
     {
         int GetFieldOffset(const char *, const char *field)
         {
-            if (!std::strcmp(field, "m_ModernJump")) return 0;
+            if (!std::strcmp(field, "m_ModernJump")) return 0x40;
             if (!std::strcmp(field, "m_pAimPunchServices")) return 0x2000;
             for (uint32_t i = 0; i < ReplaySourceState::FieldCount; ++i)
                 if (!std::strcmp(field, ReplaySourceState::fields[i].field)) return 0x800 + i * 4;
             return -1;
         }
     }
+    namespace ReplayNetworkState
+    {
+        void EntityFieldChanged(void *owner, int offset) { notifications.push_back({owner, offset, false}); }
+        void PawnComponentFieldChanged(void *owner, int offset) { notifications.push_back({owner, offset, true}); }
+    }
     namespace InputInjector
     {
         bool PrepareReplayPawn(int s) { return s == slot && replayHooksReady && currentBotPawn && !humanOwnsPawn; }
         bool IsReplayPawnCurrent(int s, const void *p) { return s == slot && p == pawn.data() && currentBotPawn && !humanOwnsPawn; }
-        void MarkReplayStateChanged(void *) { ++publishes; }
         void *ResolveReplayPawn(int s, void *sv) { return s == slot && sv == services.data() ? pawn.data() : nullptr; }
         void *LiveMovementServices(int s) { return s == slot ? services.data() : nullptr; }
         bool IsSlotControllingBot(int) { return humanOwnsPawn; }
@@ -599,7 +660,12 @@ namespace BotController
     }
     namespace ReplayPawnEquipment
     {
-        bool PrepareForReplayStart(int) { return true; }
+        bool PrepareForReplayStart(int, bool resumesHeldReplay)
+        {
+            if (resumesHeldReplay) ++equipmentResumes;
+            else ++equipmentStarts;
+            return true;
+        }
         bool Clear(int) { ++equipmentReleases; return true; }
         void ClearAll() {}
     }
@@ -609,11 +675,14 @@ namespace BotController
         void *WsForSlot(int) { return weaponsAvailable ? weaponServices.data() : nullptr; }
         int ReadDefIndex(void *) { return weaponsAvailable ? 7 : -1; }
         int WeaponEntIndex(void *) { return weaponsAvailable ? 55 : -1; }
-        int ActiveWeaponDef(void *) { return -1; }
+        int ActiveWeaponDef(void *, bool) { return weaponActive ? 7 : -1; }
         int ActiveWeaponEntIndex(void *) { return weaponActive ? 55 : -1; }
         void *FindWeaponByDef(void *, int def, int *s, unsigned int *p) {
+            ++inventorySearches;
             if (!weaponsAvailable || def != 7) return nullptr;
-            *s = 0; *p = 0; return weapon.data();
+            if (s) *s = 0;
+            if (p) *p = 0;
+            return weapon.data();
         }
         void *WeaponAtInventoryPosition(void *, int, unsigned int) { return weaponsAvailable ? weapon.data() : nullptr; }
         bool SelectWeaponRaw(void *, void *) {
@@ -630,6 +699,7 @@ int main()
 {
     ContinuousInputAndEngineOutput();
     StartSeekLoopAndHeldResume();
+    RepeatedWeaponSelection();
     FinishAndHumanTakeover();
     InitializationFailureDoesNotConsumeBoundary();
     CommandAxisPresence();
@@ -638,6 +708,7 @@ int main()
     StartAndStopRespectPawnOwnership();
     SourceStateRequiresReplayClock();
     SourceStateRestoresAtBoundariesOnly();
+    OnlyChangedSourceFieldsArePublished();
     CompactSourceClocksMatchDenseTimeline();
     LadderStartRequiresContact();
     WeaponSourceRestoresOnceAfterDeploy();

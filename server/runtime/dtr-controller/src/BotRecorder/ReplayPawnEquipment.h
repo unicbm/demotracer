@@ -29,12 +29,12 @@ namespace BotController::ReplayPawnEquipment
     static_assert(sizeof(State) == 48);
 
     // Bind replay equipment to one validated pawn/controller identity. The
-    // values are written immediately, at replay start, and once more from the
+    // values are reconciled immediately, at replay start, and once more from the
     // first movement/usercmd hook. They are not enforced after initialization,
     // so real combat damage remains authoritative.
     bool Set(int slot, void *pawn, void *controller,
              int armor, bool helmet, bool defuser);
-    bool PrepareForReplayStart(int slot);
+    bool PrepareForReplayStart(int slot, bool resumesHeldReplay = false);
     bool ApplyPendingForPawn(int slot, void *pawn);
     bool Clear(int slot);
     void ClearAll();

@@ -238,8 +238,6 @@ public sealed partial class DemoTracerPlugin
         SyncReplayTeamColors();
         if (!_playoffEnabled)
             CancelPlayoffPreparation(unloadPrepared: true);
-        if (!_roundBannerEnabled)
-            CancelDtrRoundBanner(resetRound: false);
         BotControllerNative.WriteLeftHandDesired = _leftHandDesiredEnabled;
         if (!_leftHandDesiredEnabled)
             ClearReplayLeftHandDesiredLatches();

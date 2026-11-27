@@ -41,7 +41,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
     }
 
     public override string ModuleName => "BotRandomizer";
-    public override string ModuleVersion => "1.7.0";
+    public override string ModuleVersion => "1.8.0";
     public override string ModuleAuthor => "ed0ard, Misaka17032, unicbm & XBribo";
     public override string ModuleDescription =>
         "Stable per-bot knives, gloves, weapon skins, stickers, charms, agents and music kits";
@@ -53,6 +53,8 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         LoadCatalog();
         LoadReplayEconIndex();
         LoadAttributeWriter();
+        if (CoreConfig.FollowCS2ServerGuidelines)
+            Logger.LogInformation("[BotRandomizer] Item cosmetics disabled by FollowCS2ServerGuidelines.");
 
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
         RegisterListener<Listeners.OnClientDisconnect>(OnClientDisconnect);
@@ -190,6 +192,9 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         var state = GetOrCreateState(@event.Userid);
         if (state is not null)
         {
+            if (!CoreConfig.FollowCS2ServerGuidelines && TryGetWritePolicy(state, out var policy) &&
+                policy.StockKnife && @event.Userid?.PlayerPawn.Value is { IsValid: true } pawn)
+                _applicator?.RestoreSurvivingStockKnife(state.Slot, pawn, policy.SpawnTeam);
             // The engine can reuse the same pawn on respawn. Its previous life
             // is no longer a source for takeover, even if the handles still match.
             _applicator?.ClearSlot(state.Slot);
@@ -214,9 +219,10 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         if (state is null)
             return HookResult.Continue;
 
-        if (TryGetWritePolicy(state, out var writePolicy) && writePolicy.Knife is not null)
+        if (TryGetWritePolicy(state, out var writePolicy) && (writePolicy.StockKnife || writePolicy.Knife is not null))
         {
-            ScheduleWearableRetry(state.Slot, state.UserId, state.Generation, 0.0f, CosmeticScope.Knife);
+            if (!writePolicy.StockKnife && !CoreConfig.FollowCS2ServerGuidelines)
+                ScheduleWearableRetry(state.Slot, state.UserId, state.Generation, 0.0f, CosmeticScope.Knife);
             return HookResult.Continue;
         }
 
@@ -350,12 +356,17 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         {
             if (writePolicy?.Knife is { } replayKnife)
                 _applicator.ApplyKnife(player, pawn, replayKnife);
-            else if (_options.Knives)
+            else if (writePolicy?.StockKnife != true && _options.Knives)
                 _applicator.ApplyKnife(player, pawn, state.Loadout.Knife);
         }
 
         if ((scope & CosmeticScope.Gloves) != 0)
         {
+            if (writePolicy?.StockGloves == true)
+            {
+                _applicator.ApplyStockGloves(player.Slot, pawn);
+                return;
+            }
             var applied = writePolicy?.Gloves is { } replayGloves
                 ? _applicator.ApplyGloves(player, pawn, replayGloves)
                 : _options.Gloves && _applicator.ApplyGloves(player, pawn, state.Loadout.Glove);
@@ -390,7 +401,8 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
     {
         AddTimer(delay, () =>
         {
-            if (TryResolveCurrentBot(slot, userId, generation, out var player, out var pawn, out var state))
+            if (!CoreConfig.FollowCS2ServerGuidelines &&
+                TryResolveCurrentBot(slot, userId, generation, out var player, out var pawn, out var state))
                 ApplyWearables(player, pawn, state, scope);
         }, TimerFlags.STOP_ON_MAPCHANGE);
     }
@@ -406,7 +418,7 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         {
             if (_options.Knives && _applicator is not null
                 && TryResolveCurrentBot(slot, userId, generation, out _, out var pawn, out var state)
-                && !(TryGetWritePolicy(state, out var writePolicy) && writePolicy.Knife is not null))
+                && !(TryGetWritePolicy(state, out var writePolicy) && (writePolicy.StockKnife || writePolicy.Knife is not null)))
             {
                 _applicator.SyncPickedUpKnife(pawn);
             }
@@ -452,9 +464,10 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
         int botSlot,
         CCSPlayerPawn pawn)
     {
-        foreach (var controller in Utilities.FindAllEntitiesByDesignerName<CCSPlayerController>(
-                     "cs_player_controller"))
+        var maxPlayers = Server.MaxPlayers;
+        for (var slot = 0; slot < maxPlayers; slot++)
         {
+            var controller = Utilities.GetPlayerFromSlot(slot);
             if (controller is not { IsValid: true } || controller.Slot == botSlot)
                 continue;
 
@@ -506,7 +519,9 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
 
             ApplyIdentity(currentPlayer, pawn, current, scope);
             var wearableScope = scope & (CosmeticScope.Knife | CosmeticScope.Gloves);
-            if (wearableScope != CosmeticScope.None)
+            // Both wearable restores need CEconItemView::m_bInitialized,
+            // which CSS blocks while server guidelines are enabled.
+            if (wearableScope != CosmeticScope.None && !CoreConfig.FollowCS2ServerGuidelines)
             {
                 ApplyWearables(currentPlayer, pawn, current, wearableScope);
                 ScheduleWearableRetry(slot, userId, generation, 0.10f, wearableScope);
@@ -603,12 +618,15 @@ public sealed partial class BotRandomizerPlugin : BasePlugin
     {
         var inventory = player.InventoryServices
             ?? throw new InvalidOperationException("music-kit inventory service unavailable");
+        var musicId = checked((ushort)kitId);
+        if (inventory.MusicID == musicId)
+            return;
         var offset = Schema.GetSchemaOffset("CCSPlayerController_InventoryServices", "m_unMusicID");
         var chainOffset = Schema.GetSchemaOffset("CPlayerControllerComponent", "__m_pChainEntity");
         if (offset <= 0 || chainOffset <= 0 ||
             !Schema.IsSchemaFieldNetworked("CCSPlayerController_InventoryServices", "m_unMusicID"))
             throw new InvalidOperationException("music-kit network field unavailable");
-        inventory.MusicID = checked((ushort)kitId);
+        inventory.MusicID = musicId;
         NativeAPI.SchemaNetworkStateChanged(inventory.Handle + chainOffset,
             (uint)offset, uint.MaxValue, uint.MaxValue);
     }

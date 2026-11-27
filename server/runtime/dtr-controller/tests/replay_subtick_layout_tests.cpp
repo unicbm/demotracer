@@ -90,9 +90,30 @@ namespace
         std::size_t begin = 123;
         std::size_t end = 456;
         Check(TryGetReplaySubtickRange(
-                  ticks.data(), ticks.size(), offsets, 37, 1, begin, end),
+                  ticks[1].numSubtick, ticks.size(), offsets, 37, 1, begin, end),
               "valid range rejected");
         Check(begin == 0 && end == 36, "valid range is wrong");
+    }
+
+    void TestSharedAndDiscontinuousBoundaries()
+    {
+        ReplayTick ticks[]{Tick(0, 11), Tick(0, 22), Tick(0, 33)};
+        ticks[0].post.yaw = 45.0f;
+        ticks[1].pre = ticks[0].post;
+        // The native ABI permits a discontinuity even when only the sign of zero differs.
+        ticks[2].pre.velZ = -0.0f;
+        ticks[2].post.originX = 100.0f;
+        ReplayLoadStaging staged;
+        Check(TryStageReplayLoad(ticks, 3, nullptr, 0, nullptr, 0, nullptr, 0, staged),
+              "mixed snapshot boundaries rejected");
+        Check(staged.snapshots.size() == 5 && &staged.Post(0) == &staged.Pre(1),
+              "continuous boundary stored twice");
+        for (std::size_t i = 0; i < 3; ++i)
+        {
+            const ReplayTick restored = staged.AbiTick(i);
+            Check(std::memcmp(&restored, &ticks[i], sizeof(restored)) == 0,
+                  "native tick changed during compact storage round trip");
+        }
     }
 
     void TestEngineWhenProjection()
@@ -170,7 +191,7 @@ namespace
             std::size_t begin = 123;
             std::size_t end = 456;
             Check(!TryGetReplaySubtickRange(
-                      ticks.data(), ticks.size(), offsets, subCount,
+                      ticks[0].numSubtick, ticks.size(), offsets, subCount,
                       tickIndex, begin, end),
                   message);
             Check(begin == 123 && end == 456,
@@ -190,7 +211,7 @@ namespace
         std::size_t descendingBegin = 123;
         std::size_t descendingEnd = 456;
         Check(!TryGetReplaySubtickRange(
-                  descendingTicks.data(), descendingTicks.size(),
+                  descendingTicks[1].numSubtick, descendingTicks.size(),
                   {0, 2, 1, 2}, 2, 1,
                   descendingBegin, descendingEnd),
               "descending begin/end range accepted");
@@ -201,7 +222,7 @@ namespace
         std::size_t begin = 123;
         std::size_t end = 456;
         Check(!TryGetReplaySubtickRange(
-                  tooMany.data(), tooMany.size(), {0, 37}, 37, 0, begin, end),
+                  tooMany[0].numSubtick, tooMany.size(), {0, 37}, 37, 0, begin, end),
               "range accepted per-tick count above 36");
         Check(begin == 123 && end == 456,
               "rejected high-count range changed output");
@@ -374,7 +395,7 @@ static void TestReservedEventTailIsRejectedTransactionally()
         const std::uint32_t nonzero = 1;
         std::memcpy(reinterpret_cast<unsigned char *>(&ticks[0]) + offset, &nonzero, sizeof(nonzero));
         Check(!load(), "unsupported native event payload accepted");
-        Check(staged.ticks.size() == 2 && staged.ticks[0].weaponDefIndex == 7 && staged.ticks[0].eventFlags == 0,
+        Check(staged.ticks.size() == 2 && staged.ticks[0].weaponDefIndex == 7 && staged.AbiTick(0).eventFlags == 0,
               "rejected native event replaced previous staging");
     }
     ticks[0] = Tick(0, 42);
@@ -388,6 +409,7 @@ int main()
 {
     TestReservedEventTailIsRejectedTransactionally();
     TestValidOffsetsAndRanges();
+    TestSharedAndDiscontinuousBoundaries();
     TestEngineWhenProjection();
     TestZeroTickLayout();
     TestInvalidBuildPreservesOutput();

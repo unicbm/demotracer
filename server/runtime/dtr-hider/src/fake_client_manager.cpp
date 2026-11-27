@@ -3,6 +3,7 @@
 #include "fake_client_manager.h"
 #include "presentation_state.h"
 
+#include <bit>
 #include <chrono>
 
 namespace cs2bh
@@ -48,7 +49,7 @@ namespace cs2bh
 
         s.Jitter = PingJitter(baseline);
         s.Display = PingDisplay{};
-        s.Active.store(true, std::memory_order_release);
+        m_ActiveSlots.fetch_or(uint64_t{1} << slot, std::memory_order_release);
 
         // The caller has already resolved the base identity. Zero preserves
         // the engine bot SteamID when no configured persona was supplied.
@@ -62,7 +63,7 @@ namespace cs2bh
         if (slot < 0 || slot >= kMaxSlots)
             return;
         std::lock_guard<std::mutex> g(m_Mutex);
-        m_Slots[slot].Active.store(false, std::memory_order_release);
+        m_ActiveSlots.fetch_and(~(uint64_t{1} << slot), std::memory_order_release);
         m_Slots[slot].Display.Reset();
         Publisher().PublishRelease(slot);
     }
@@ -72,7 +73,7 @@ namespace cs2bh
         std::lock_guard<std::mutex> g(m_Mutex);
         for (int i = 0; i < kMaxSlots; ++i)
         {
-            m_Slots[i].Active.store(false, std::memory_order_release);
+            m_ActiveSlots.fetch_and(~(uint64_t{1} << i), std::memory_order_release);
             m_Slots[i].Display.Reset();
             Publisher().PublishRelease(i);
         }
@@ -89,11 +90,10 @@ namespace cs2bh
         int n = 0;
         {
             std::lock_guard<std::mutex> g(m_Mutex);
-            for (int i = 0; i < kMaxSlots; ++i)
+            for (auto slots = ManagedSlotMask(); slots != 0; slots &= slots - 1)
             {
+                const int i = std::countr_zero(slots);
                 auto &s = m_Slots[i];
-                if (!s.Active.load(std::memory_order_relaxed))
-                    continue;
                 s.Display.RecordSample(s.Jitter.NextSample());
                 int produced = s.Display.MaybeProduce();
                 if (produced >= 0)
@@ -108,15 +108,7 @@ namespace cs2bh
     {
         if (slot < 0 || slot >= kMaxSlots)
             return false;
-        return m_Slots[slot].Active.load(std::memory_order_acquire);
-    }
-
-    bool FakeClientManager::HasManagedSlots() const
-    {
-        std::lock_guard<std::mutex> g(m_Mutex);
-        for (const auto &slot : m_Slots)
-            if (slot.Active.load(std::memory_order_relaxed)) return true;
-        return false;
+        return (ManagedSlotMask() & (uint64_t{1} << slot)) != 0;
     }
 
 } // namespace cs2bh

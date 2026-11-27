@@ -35,7 +35,6 @@ public sealed partial class DemoTracerPlugin
         // plan here so its GiveNamedItem hook can build the correct item views.
         BeginReplayRoundWorkEpoch();
         _session.RoundSpawnsPending = true;
-        ResetDtrRoundBannerForRound();
         BeginBotHiderPresentationTransition();
         BeginBotRandomizerCosmeticLeaseTransition();
         try
@@ -130,15 +129,14 @@ public sealed partial class DemoTracerPlugin
         // Preparation after this event is too late for spawn-time cosmetic
         // construction. Only schedule playback for a plan accepted in
         // round_prestart; otherwise leave it armed for the next server round.
-        if (_session.Plan.SequenceActive && _session.Plan.SequencePrepared && !_session.Plan.SequenceNativeOnly)
-            ScheduleFreezePrerollStart($"sequence round {_session.Plan.SequencePreparedRound}");
-        else if (IsPlayoffPlanReady() && _session.Plan.PlayoffPrepared)
-            ScheduleFreezePrerollStart($"playoff extra round {_session.Plan.PlayoffRoundIndex + 1}");
-        else if (_session.Plan.Armed && _session.Plan.ArmedPrepared)
-            ScheduleFreezePrerollStart(_session.Plan.ArmedLabel);
+        var label = _session.Plan.PreparedRoundStartLabel(IsPlayoffPlanReady());
+        if (label != null)
+            ScheduleFreezePrerollStart(label);
 
         if (_session.LoadedSlots.Count > 0)
             ScheduleRoundBoundarySpawnReconciliation();
+        if (label != null)
+            ShowDtrRoundBanner();
         return HookResult.Continue;
     }
 

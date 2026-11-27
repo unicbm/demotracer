@@ -42,7 +42,7 @@ namespace BotController::Avatars
             return true;
         }
 
-        bool WriteBytes(INetworkStringTable *table, const char *key, const Bytes &bytes)
+        bool SetBytes(INetworkStringTable *table, const char *key, const Bytes &bytes, const Bytes &current)
         {
             if (table->GetNumStrings() == 0)
             {
@@ -57,7 +57,7 @@ namespace BotController::Avatars
             int index = table->FindStringIndex(key);
             if (index == 0)
                 return false;
-            if (index < 0 && bytes.empty())
+            if (bytes == current)
                 return true;
             SetStringUserDataRequest_t data{const_cast<unsigned char *>(bytes.data()),
                                            static_cast<unsigned int>(bytes.size())};
@@ -104,7 +104,7 @@ namespace BotController::Avatars
         const auto existing = publications.find(id);
         if (existing == publications.end() && publications.size() >= 128)
             return -4;
-        if (!WriteBytes(table, key.c_str(), desired))
+        if (!SetBytes(table, key.c_str(), desired, previous))
             return -5;
         if (existing == publications.end())
             publications.emplace(id, Publication{desired, previous});
@@ -133,7 +133,7 @@ namespace BotController::Avatars
             return -3;
         // Preserve a later writer's data; retain ownership if restoration fails.
         if (table && actual == it->second.desired && actual != it->second.restore &&
-            !WriteBytes(table, key.c_str(), it->second.restore))
+            !SetBytes(table, key.c_str(), it->second.restore, actual))
             return -5;
         publications.erase(it);
         return 1;

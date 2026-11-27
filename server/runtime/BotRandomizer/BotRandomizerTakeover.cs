@@ -21,7 +21,7 @@ public sealed partial class BotRandomizerPlugin
         {
             currentBot = null!;
             currentPawn = null!;
-            if (_draining || _applicator is null ||
+            if (_draining || _applicator is null || CoreConfig.FollowCS2ServerGuidelines ||
                 Utilities.GetPlayerFromSlot(humanSlot) is not { IsValid: true, IsBot: false } currentHuman ||
                 currentHuman.OriginalControllerOfCurrentPawn.Value is not { IsValid: true, IsBot: true, IsHLTV: false } resolvedBot ||
                 resolvedBot.PlayerPawn.Value is not { IsValid: true } resolvedPawn ||
