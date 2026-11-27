@@ -32,8 +32,9 @@ public sealed partial class DemoTracerPlugin
         ReplayWeaponSlot weaponSlot)
     {
         var weaponName = ObservedReplayWeaponClassName(weapon);
-        var weaponEntityHandle = weapon.EntityHandle.Raw;
-        if (weaponEntityHandle == Utilities.InvalidEHandleIndex ||
+        var weaponServices = pawn.WeaponServices;
+        if (weaponServices == null ||
+            weapon.EntityHandle.Raw == Utilities.InvalidEHandleIndex ||
             !ReplayWeaponReplacementPolicy.CanReplaceOccupiedWeaponSlot(
                 weaponSlot,
                 weaponName,
@@ -46,124 +47,18 @@ public sealed partial class DemoTracerPlugin
 
         try
         {
-            pawn.RemovePlayerItem(weapon);
+            // CSS's legacy RemovePlayerItem signature resolves to the weapon
+            // services method. Its this pointer must not be the pawn: the
+            // method clears active/inventory references before UTIL_Remove.
+            // It owns destruction; do not enqueue a second Kill afterward.
+            VirtualFunctions.RemovePlayerItemVirtual(weaponServices.Handle, weapon.Handle);
+            return true;
         }
         catch (Exception ex)
         {
             Server.PrintToConsole(
-                $"dtr: failed to detach occupied weapon slot={player.Slot}:{weaponSlot} item={weaponName}: {ex.Message}");
+                $"dtr: failed to remove occupied weapon slot={player.Slot}:{weaponSlot} item={weaponName}: {ex.Message}");
             return false;
-        }
-
-        if (weapon is { IsValid: true } && PawnOwnsWeapon(pawn, weapon))
-        {
-            Server.PrintToConsole(
-                $"dtr: occupied weapon detach is pending slot={player.Slot}:{weaponSlot} item={weaponName}");
-        }
-
-        if (weapon is not { IsValid: true })
-            return true;
-        if (weapon.EntityHandle.Raw != weaponEntityHandle ||
-            !ReplayWeaponMatches(weapon, weaponName))
-        {
-            Server.PrintToConsole(
-                $"[DTR WARN] detached weapon identity changed slot={player.Slot}:{weaponSlot} item={weaponName}");
-            // Detachment succeeded; continue replacement without touching a reused entity.
-            return true;
-        }
-
-        ScheduleRemovedWeaponCleanup(
-            player.Slot,
-            weaponEntityHandle,
-            weaponName);
-        return true;
-    }
-
-    private void ScheduleRemovedWeaponCleanup(
-        int slot,
-        uint weaponEntityHandle,
-        string weaponName)
-    {
-        var roundEpoch = _replayRoundWorkEpoch;
-        Server.NextFrame(() => CleanupRemovedWeapon(
-            slot,
-            weaponEntityHandle,
-            weaponName,
-            roundEpoch,
-            framesSinceDetach: 1,
-            retriesRemaining: DetachedWeaponCleanupRetryFrames));
-    }
-
-    private void CleanupRemovedWeapon(
-        int slot,
-        uint weaponEntityHandle,
-        string weaponName,
-        long roundEpoch,
-        int framesSinceDetach,
-        int retriesRemaining)
-    {
-        if (!IsReplayRoundWorkEpochCurrent(roundEpoch))
-            return;
-
-        try
-        {
-            var weapon = new CHandle<CBasePlayerWeapon>(weaponEntityHandle).Value;
-            var identityMatches = weapon is { IsValid: true } &&
-                                  weapon.EntityHandle.Raw == weaponEntityHandle &&
-                                  ReplayWeaponMatches(weapon, weaponName);
-            if (!identityMatches)
-                return;
-
-            var ownedByPawn = false;
-            var activeWeaponReference = false;
-            foreach (var candidate in Utilities.GetPlayers())
-            {
-                var candidatePawn = candidate?.PlayerPawn.Value;
-                var weaponServices = candidatePawn?.WeaponServices;
-                if (candidate is not { IsValid: true } ||
-                    candidatePawn is not { IsValid: true } ||
-                    weaponServices == null)
-                {
-                    continue;
-                }
-
-                ownedByPawn |= PawnOwnsWeapon(candidatePawn, weapon!);
-                activeWeaponReference |= weaponServices.ActiveWeapon.Raw == weaponEntityHandle;
-                if (ownedByPawn && activeWeaponReference)
-                    break;
-            }
-
-            switch (ReplayWeaponReplacementPolicy.DecideDetachedWeaponCleanup(
-                        identityMatches,
-                        ownedByPawn,
-                        activeWeaponReference,
-                        framesSinceDetach,
-                        retriesRemaining))
-            {
-                case DetachedWeaponCleanupAction.Destroy:
-                    weapon!.AcceptInput("Kill");
-                    return;
-
-                case DetachedWeaponCleanupAction.Retry:
-                    Server.NextFrame(() => CleanupRemovedWeapon(
-                        slot,
-                        weaponEntityHandle,
-                        weaponName,
-                        roundEpoch,
-                        framesSinceDetach + 1,
-                        retriesRemaining - 1));
-                    return;
-
-                case DetachedWeaponCleanupAction.Abandon:
-                    Server.PrintToConsole(
-                        $"[DTR WARN] detached weapon remains engine-referenced slot={slot} item={weaponName}");
-                    return;
-            }
-        }
-        catch (Exception ex)
-        {
-            Server.PrintToConsole(
-                $"dtr: failed to clean detached weapon slot={slot} item={weaponName}: {ex.Message}");
         }
     }
 

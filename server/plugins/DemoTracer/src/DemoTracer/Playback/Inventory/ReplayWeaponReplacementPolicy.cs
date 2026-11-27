@@ -38,13 +38,6 @@ internal enum WeaponGrantVerificationAction
     Failed
 }
 
-internal enum DetachedWeaponCleanupAction
-{
-    Destroy,
-    Retry,
-    Abandon
-}
-
 internal enum SafeC4AlignmentAction
 {
     DropForeignOwners,
@@ -117,31 +110,6 @@ internal static class ReplayWeaponReplacementPolicy
         return grantRetryAttemptsRemaining > 0
             ? WeaponGrantVerificationAction.RetryGrant
             : WeaponGrantVerificationAction.Failed;
-    }
-
-    internal static DetachedWeaponCleanupAction DecideDetachedWeaponCleanup(
-        bool identityMatches,
-        bool ownedByPawn,
-        bool activeWeaponReference,
-        int framesSinceDetach,
-        int retriesRemaining)
-    {
-        if (!identityMatches)
-            return DetachedWeaponCleanupAction.Abandon;
-
-        if (framesSinceDetach <= 0)
-        {
-            return retriesRemaining > 0
-                ? DetachedWeaponCleanupAction.Retry
-                : DetachedWeaponCleanupAction.Abandon;
-        }
-
-        if (!ownedByPawn && !activeWeaponReference)
-            return DetachedWeaponCleanupAction.Destroy;
-
-        return retriesRemaining > 0
-            ? DetachedWeaponCleanupAction.Retry
-            : DetachedWeaponCleanupAction.Abandon;
     }
 
     internal static SafeC4AlignmentAction DecideSafeC4Alignment(

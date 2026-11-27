@@ -91,31 +91,6 @@ public sealed class WeaponSlotReplacementTests
     }
 
     [Theory]
-    [InlineData(true, false, false, 0, 8, (int)DetachedWeaponCleanupAction.Retry)]
-    [InlineData(true, false, false, 1, 8, (int)DetachedWeaponCleanupAction.Destroy)]
-    [InlineData(true, true, false, 1, 8, (int)DetachedWeaponCleanupAction.Retry)]
-    [InlineData(true, false, true, 1, 8, (int)DetachedWeaponCleanupAction.Retry)]
-    [InlineData(true, true, true, 9, 0, (int)DetachedWeaponCleanupAction.Abandon)]
-    [InlineData(false, false, false, 1, 8, (int)DetachedWeaponCleanupAction.Abandon)]
-    public void DetachedWeaponCleanupWaitsForEngineReferences(
-        bool identityMatches,
-        bool ownedByPawn,
-        bool activeWeaponReference,
-        int framesSinceDetach,
-        int retriesRemaining,
-        int expected)
-    {
-        Assert.Equal(
-            (DetachedWeaponCleanupAction)expected,
-            ReplayWeaponReplacementPolicy.DecideDetachedWeaponCleanup(
-                identityMatches,
-                ownedByPawn,
-                activeWeaponReference,
-                framesSinceDetach,
-                retriesRemaining));
-    }
-
-    [Theory]
     [InlineData(true, true, 4, 1, (int)WeaponGrantVerificationAction.TargetReady)]
     [InlineData(false, true, 4, 1, (int)WeaponGrantVerificationAction.Conflict)]
     [InlineData(false, false, 4, 1, (int)WeaponGrantVerificationAction.WaitForAttachment)]
